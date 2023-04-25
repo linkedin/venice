@@ -95,12 +95,21 @@ public abstract class AbstractClientEndToEndSetup {
    * not be sent due to blocked instances. Setting this variable to be 100 from the tests for now.
    * This needs to be discussed further.
    */
-  public final Object[] BATCH_GET_KEY_SIZE = { 2, /*recordCnt*/ };
+  public final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
 
   @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
   public Object[][] fourBooleanAndANumber() {
     return DataProviderUtils.allPermutationGenerator(
         DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        BATCH_GET_KEY_SIZE);
+  }
+
+  @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
+  public Object[][] threeBooleanAndANumber() {
+    return DataProviderUtils.allPermutationGenerator(
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,

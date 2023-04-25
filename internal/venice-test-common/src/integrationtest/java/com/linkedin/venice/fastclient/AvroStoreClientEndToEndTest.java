@@ -4,18 +4,21 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.AssertJUnit.assertEquals;
 
 import com.linkedin.r2.transport.common.Client;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.Test;
@@ -233,7 +236,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setSpeculativeQueryEnabled(speculativeQueryEnabled)
             .setDualReadEnabled(dualRead)
             // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
-            .setMaxAllowedKeyCntInBatchGetReq(recordCnt);
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
+            // this needs to be revisited to see how much this should be set. Current default is 50.
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
     // dualRead also needs thinClient
     AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;
@@ -256,7 +261,75 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             Optional.of(genericVsonThinClient),
             useRequestBasedMetadata);
       } else {
-        runTest(clientConfigBuilder, multiGet, batchGetKeySize, m -> {}, Optional.empty(), useRequestBasedMetadata);
+        runTest(
+            clientConfigBuilder,
+            multiGet,
+            batchGetKeySize, m -> {},
+            Optional.empty(),
+            useRequestBasedMetadata);
+      }
+    } finally {
+      if (genericThinClient != null) {
+        genericThinClient.close();
+      }
+      if (specificThinClient != null) {
+        specificThinClient.close();
+      }
+      if (genericVsonThinClient != null) {
+        genericVsonThinClient.close();
+      }
+    }
+  }
+
+  @Test(expectedExceptions = { VeniceClientException.class, ExecutionException.class },
+      expectedExceptionsMessageRegExp = ".* metadata is not ready, attempting to re-initialize",
+      dataProvider = "FastClient-Three-Boolean-And-A-Number", timeOut = TIME_OUT)
+  public void testFastClientWithoutServers(
+      boolean multiGet,
+      boolean dualRead,
+      boolean speculativeQueryEnabled,
+      int batchGetKeySize) throws Exception {
+    // stop all servers
+    for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
+      veniceCluster.stopVeniceServer(veniceServerWrapper.getPort());
+    }
+
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setSpeculativeQueryEnabled(speculativeQueryEnabled)
+            .setDualReadEnabled(dualRead)
+            // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt);
+
+    // dualRead also needs thinClient
+    AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;
+    AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = null;
+    AvroGenericStoreClient<String, Object> genericVsonThinClient = null;
+
+    try {
+      if (dualRead) {
+        genericThinClient = getGenericThinClient();
+        clientConfigBuilder.setGenericThinClient(genericThinClient);
+        specificThinClient = getSpecificThinClient();
+        clientConfigBuilder.setSpecificThinClient(specificThinClient);
+        genericVsonThinClient = getGenericVsonThinClient();
+
+        runTest(
+            clientConfigBuilder,
+            multiGet,
+            batchGetKeySize,
+            m -> {},
+            Optional.of(genericVsonThinClient),
+            true);
+      } else {
+        runTest(
+            clientConfigBuilder,
+            multiGet,
+            batchGetKeySize,
+            m -> {},
+            Optional.empty(),
+            true);
       }
     } finally {
       if (genericThinClient != null) {
