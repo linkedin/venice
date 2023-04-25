@@ -53,7 +53,6 @@ include 'services:venice-standalone'
 include 'internal:venice-avro-compatibility-test'
 include 'internal:venice-client-common'
 include 'internal:venice-common'
-include 'internal:venice-consumer'
 include 'internal:venice-jdk-compatibility-test'
 include 'internal:venice-test-common'
 

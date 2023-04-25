@@ -18,7 +18,6 @@ dependencies {
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
   }
 
-  implementation project(':internal:venice-consumer')
   implementation project(':clients:venice-thin-client')
 
   implementation libraries.avroUtilFastserde

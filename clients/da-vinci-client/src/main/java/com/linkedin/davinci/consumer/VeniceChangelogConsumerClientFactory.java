@@ -1,4 +1,4 @@
-package com.linkedin.venice.client.consumer;
+package com.linkedin.davinci.consumer;
 
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.D2ControllerClient;

@@ -47,7 +47,6 @@ dependencies {
   implementation project(':services:venice-router')
   implementation project(':clients:venice-samza')
   implementation project(':internal:venice-client-common')
-  implementation project(':internal:venice-consumer')
   implementation project(':services:venice-server')
   implementation project(':clients:venice-thin-client')
   implementation project(':internal:alpini:netty4:alpini-netty4-base')

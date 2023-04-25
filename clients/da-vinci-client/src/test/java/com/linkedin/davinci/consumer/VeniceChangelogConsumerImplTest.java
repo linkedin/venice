@@ -1,10 +1,12 @@
-package com.linkedin.venice.client.consumer;
+package com.linkedin.davinci.consumer;
 
 import static org.mockito.Mockito.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -13,6 +15,7 @@ import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -104,8 +107,10 @@ public class VeniceChangelogConsumerImplTest {
             .setViewName("changeCaptureView");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockKafkaConsumer);
+    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    veniceChangelogConsumer.setReadOnlySchemaRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
-    verify(mockKafkaConsumer).assign(Arrays.asList(new TopicPartition(oldChangeCaptureTopic, 0)));
+    verify(mockKafkaConsumer).assign(Arrays.asList(new TopicPartition(oldVersionTopic, 0)));
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, Long>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, Long>>) veniceChangelogConsumer.poll(100);
@@ -149,6 +154,8 @@ public class VeniceChangelogConsumerImplTest {
             .setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, kafkaConsumer);
+    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    veniceChangelogConsumer.setReadOnlySchemaRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(oldVersionTopic, 0)));
 
@@ -164,9 +171,9 @@ public class VeniceChangelogConsumerImplTest {
     prepareChangeCaptureRecordsToBePolled(0L, 10L, kafkaConsumer, oldChangeCaptureTopic, 0, oldVersionTopic, "");
     pubSubMessages = (List<PubSubMessage<String, ChangeEvent<Utf8>, Long>>) veniceChangelogConsumer.poll(100);
     Assert.assertFalse(pubSubMessages.isEmpty());
-    Assert.assertEquals(pubSubMessages.size(), 5);
-    for (int i = 5; i < 10; i++) {
-      PubSubMessage<String, ChangeEvent<Utf8>, Long> pubSubMessage = pubSubMessages.get(i - 5);
+    Assert.assertEquals(pubSubMessages.size(), 10);
+    for (int i = 0; i < 10; i++) {
+      PubSubMessage<String, ChangeEvent<Utf8>, Long> pubSubMessage = pubSubMessages.get(i);
       Utf8 pubSubMessageValue = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(pubSubMessageValue.toString(), "newValue" + i);
     }
@@ -185,6 +192,10 @@ public class VeniceChangelogConsumerImplTest {
       String oldVersionTopic,
       String newVersionTopic) {
     List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> consumerRecordList = new ArrayList<>();
+
+    // Add a start of push message
+    consumerRecordList.add(constructStartOfPushMessage(oldVersionTopic, partition));
+
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsMap = new HashMap<>();
     for (long i = startIdx; i < endIdx; i++) {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = constructChangeCaptureConsumerRecord(
@@ -310,6 +321,20 @@ public class VeniceChangelogConsumerImplTest {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageUnion = endOfPush;
     controlMessage.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+    kafkaMessageEnvelope.payloadUnion = controlMessage;
+    return new ConsumerRecord<>(versionTopic, partition, 0, kafkaKey, kafkaMessageEnvelope);
+  }
+
+  private ConsumerRecord<KafkaKey, KafkaMessageEnvelope> constructStartOfPushMessage(
+      String versionTopic,
+      int partition) {
+    KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, null);
+    StartOfPush startOfPush = new StartOfPush();
+    startOfPush.compressionStrategy = CompressionStrategy.NO_OP.getValue();
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    ControlMessage controlMessage = new ControlMessage();
+    controlMessage.controlMessageUnion = startOfPush;
+    controlMessage.controlMessageType = ControlMessageType.START_OF_PUSH.getValue();
     kafkaMessageEnvelope.payloadUnion = controlMessage;
     return new ConsumerRecord<>(versionTopic, partition, 0, kafkaKey, kafkaMessageEnvelope);
   }

@@ -1,4 +1,4 @@
-package com.linkedin.venice.client.consumer;
+package com.linkedin.davinci.consumer;
 
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
