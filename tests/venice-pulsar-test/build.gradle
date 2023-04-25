@@ -1,0 +1,58 @@
+
+configurations {
+    pulsarIntegrationTestImplementation.extendsFrom testImplementation
+
+    pulsarIntegrationTestCompile.extendsFrom testCompile
+    pulsarIntegrationTestCompileOnly.extendsFrom testCompileOnly
+    pulsarIntegrationTestRuntime.extendsFrom testRuntime
+    pulsarIntegrationTestAnnotationProcessor.extendsFrom testAnnotationProcessor
+
+}
+
+sourceSets {
+    pulsarIntegrationTest {
+        java.srcDirs = ['src/pulsarintegrationtest/java']
+        resources.srcDirs = ['src/pulsarintegrationtest/resources']
+    }
+}
+
+dependencies {
+    // https://projectlombok.org
+    compileOnly 'org.projectlombok:lombok:1.18.26'
+    annotationProcessor 'org.projectlombok:lombok:1.18.26'
+    testCompileOnly 'org.projectlombok:lombok:1.18.26'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.26'
+
+    testImplementation project(':clients:venice-pulsar')
+
+    testImplementation libraries.log4j2api
+
+    testImplementation libraries.testng
+    testImplementation libraries.testcontainers
+
+    testImplementation libraries.pulsarClient
+}
+
+def pulsarIntegrationTestConfigs = {
+
+    classpath = sourceSets.pulsarIntegrationTest.runtimeClasspath
+    testClassesDirs = sourceSets.pulsarIntegrationTest.output.classesDirs
+
+    //forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
+    //maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
+}
+
+task pulsarIntegrationTest(type: Test) {
+    configure pulsarIntegrationTestConfigs
+}
+
+idea {
+    module {
+        testSourceDirs += project.sourceSets.pulsarIntegrationTest.java.srcDirs
+        testResourceDirs += project.sourceSets.pulsarIntegrationTest.resources.srcDirs
+    }
+}
+
+ext {
+    jacocoCoverageThreshold = 0.01
+}

@@ -16,9 +16,10 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.pulsar.client.api.schema.GenericObject;
@@ -35,27 +36,64 @@ public class VeniceSink implements Sink<GenericObject> {
   VeniceSinkConfig config;
   VeniceSystemProducer producer;
 
-  AtomicInteger count = new AtomicInteger();
+  // thread safe, fast access to count()
+  private ArrayBlockingQueue<Record<GenericObject>> pendingFlushQueue;
+  private final ScheduledExecutorService scheduledExecutor =
+      Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "pulsar-venice-sink-flush-thread"));
+
+  private int maxNumberUnflushedRecords = 10;
+  private long flushIntervalMs = 500L;
+  private volatile long lastFlush = 0L;
+
+  private volatile Throwable flushException = null;
+  private volatile boolean doThrottle = false;
 
   @Override
-  public void open(Map<String, Object> config, SinkContext sinkContext) throws Exception {
-    this.config = VeniceSinkConfig.load(config, sinkContext);
+  public void open(Map<String, Object> cfg, SinkContext sinkContext) throws Exception {
+    this.config = VeniceSinkConfig.load(cfg, sinkContext);
     LOGGER.info("Starting, config {}", this.config);
+
     VeniceSystemFactory factory = new VeniceSystemFactory();
     final String systemName = "venice";
     this.producer =
         factory.getClosableProducer(systemName, new MapConfig(getConfig(this.config.getStoreName(), systemName)), null);
     this.producer.start();
     String kafkaBootstrapServers = this.producer.getKafkaBootstrapServers();
-    LOGGER.info("Connected to Kafka {}", kafkaBootstrapServers);
+    LOGGER.info("Kafka bootstrap for Venice producer {}", kafkaBootstrapServers);
 
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = this.producer.getInternalProducer();
     String topicName = veniceWriter.getTopicName();
     LOGGER.info("Kafka topic name is {}", topicName);
+
+    maxNumberUnflushedRecords = this.config.getMaxNumberUnflushedRecords();
+    final int capacityMutliplier = 3;
+    int queueSize = Integer.MAX_VALUE / capacityMutliplier < maxNumberUnflushedRecords
+        ? Integer.MAX_VALUE
+        : maxNumberUnflushedRecords * capacityMutliplier;
+    pendingFlushQueue = new ArrayBlockingQueue<>(queueSize, false);
+    flushIntervalMs = this.config.getFlushIntervalMs();
+
+    scheduledExecutor.scheduleAtFixedRate(() -> flush(false), flushIntervalMs, flushIntervalMs, TimeUnit.MILLISECONDS);
   }
 
   @Override
   public void write(Record<GenericObject> record) throws Exception {
+
+    if (flushException != null) {
+      LOGGER.error("Error while flushing records, stopping processing", flushException);
+      throw new RuntimeException("Error while flushing records", flushException);
+    }
+
+    if (doThrottle) {
+      LOGGER.warn("Throttling, not accepting new records; {} records pending", pendingFlushQueue.size());
+
+      while (pendingFlushQueue.size() > maxNumberUnflushedRecords) {
+        Thread.sleep(1);
+      }
+      doThrottle = false;
+      LOGGER.info("done throttling");
+    }
+
     Object nativeObject = record.getValue().getNativeObject();
     Object key;
     Object value;
@@ -68,47 +106,121 @@ public class VeniceSink implements Sink<GenericObject> {
       key = record.getKey();
       value = extract(record.getValue());
     }
-    LOGGER.info("Processing {}", nativeObject);
-    // dumpSchema("key", key);
-    // dumpSchema("value", value);
+
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Processing key: {}, value: {}", key, value);
+    }
     if (value == null) {
       // here we are making it explicit, but "put(key, null) means DELETE in the API"
-      // LOGGER.info("Deleting key: {}", key);
       producer.delete(key).whenComplete((___, error) -> {
+        if (LOGGER.isDebugEnabled()) {
+          LOGGER.debug("Deleted key: {}", key);
+        }
+
         if (error != null) {
+          LOGGER.error("Error deleting record with key {}", key, error);
           record.fail();
         } else {
-          record.ack();
+          if (safePutToQueue(record)) {
+            maybeSubmitFlush();
+          }
         }
       });
     } else {
-      // LOGGER.info("Writing key: {} value {}", key, value);
       producer.put(key, value).whenComplete((___, error) -> {
-        if (count.incrementAndGet() % 1000 == 0) {
-          LOGGER.info("written {} records", count);
+        if (LOGGER.isDebugEnabled()) {
+          LOGGER.debug("Processed key: {}, value: {}", key, value);
         }
+
         if (error != null) {
-          LOGGER.error("error", error);
+          LOGGER.error("Error handling record with key {}", key, error);
           record.fail();
         } else {
-          record.ack();
+          if (safePutToQueue(record)) {
+            maybeSubmitFlush();
+          }
         }
       });
     }
   }
 
-  private static void dumpSchema(String prefix, Object key) {
-    if (key instanceof GenericRecord) {
-      GenericRecord record = (GenericRecord) key;
-      Schema schema = record.getSchema();
-      LOGGER.info("Schema for {}: {}", prefix, schema.toString());
+  private boolean safePutToQueue(Record<GenericObject> record) {
+    if (pendingFlushQueue.offer(record)) {
+      return true;
+    }
+
+    doThrottle = true;
+    scheduledExecutor.submit(() -> safePutToQueue(record));
+    return false;
+  }
+
+  private void maybeSubmitFlush() {
+    if (pendingFlushQueue.size() >= maxNumberUnflushedRecords) {
+      scheduledExecutor.submit(() -> flush(false));
+    }
+  }
+
+  // flush should happen on the same thread
+  private void flush(boolean force) {
+    long startTimeMillis = System.currentTimeMillis();
+    int sz = pendingFlushQueue.size();
+    if (force || sz >= maxNumberUnflushedRecords || startTimeMillis - lastFlush > flushIntervalMs) {
+      lastFlush = System.currentTimeMillis();
+      if (sz == 0) {
+        LOGGER.debug("Nothing to flush");
+        return;
+      }
+
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("Flushing {} records", sz);
+      }
+
+      try {
+        // there are no checked exceptions but unchecked ones can be thrown
+        producer.flush("not used");
+      } catch (Throwable t) {
+        LOGGER.error("Error flushing", t);
+        flushException = t;
+        failAllPendingRecords();
+        throw new RuntimeException("Error while flushing records", flushException);
+      }
+
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("Acking the records");
+      }
+      for (int i = 0; i < sz; i++) {
+        Record<GenericObject> rec = pendingFlushQueue.poll();
+        if (rec != null) {
+          rec.ack();
+        } else {
+          // should not happen as long as the removal from queue happens in the single thread
+          RuntimeException err =
+              new IllegalStateException("Error while flushing records: Record is null, expected actual record");
+          flushException = err;
+          failAllPendingRecords();
+          throw err;
+        }
+      }
+
+      LOGGER.info("Flush of {} records took {} ms", sz, System.currentTimeMillis() - startTimeMillis);
+    } else {
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("Skipping flush of {} records", sz);
+      }
+    }
+  }
+
+  private void failAllPendingRecords() {
+    for (Record<GenericObject> rec: pendingFlushQueue) {
+      if (rec != null) {
+        rec.fail();
+      } else {
+        break;
+      }
     }
   }
 
   private static Object extract(Object o) {
-    if (o instanceof GenericRecord) {
-      return (GenericRecord) o;
-    }
     // Pulsar GenericRecord is a wrapper over AVRO GenericRecord
     if (o instanceof org.apache.pulsar.client.api.schema.GenericRecord) {
       return ((org.apache.pulsar.client.api.schema.GenericRecord) o).getNativeObject();
@@ -120,6 +232,8 @@ public class VeniceSink implements Sink<GenericObject> {
   @Override
   public void close() throws Exception {
     if (producer != null) {
+      scheduledExecutor.submit(() -> flush(true)).get();
+      scheduledExecutor.shutdown();
       producer.close();
     }
   }

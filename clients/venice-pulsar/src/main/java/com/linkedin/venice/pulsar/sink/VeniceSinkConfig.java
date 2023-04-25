@@ -31,7 +31,7 @@ import org.apache.pulsar.io.core.annotations.FieldDoc;
 
 
 /**
- * Configuration class for the ElasticSearch Sink Connector.
+ * Configuration class for the Sink Connector.
  */
 @Data
 @Accessors(chain = true)
@@ -54,6 +54,12 @@ public class VeniceSinkConfig implements Serializable {
 
   @FieldDoc(defaultValue = "", help = "The name of the Venice store")
   private String storeName = "test-store";
+
+  @FieldDoc(defaultValue = "500", help = "Interval in milliseconds to flush data to Venice")
+  private long flushIntervalMs = 500L;
+
+  @FieldDoc(defaultValue = "10", help = "Max number of buffered records before flushing to Venice")
+  private int maxNumberUnflushedRecords = 10;
 
   public static VeniceSinkConfig load(Map<String, Object> map, SinkContext sinkContext) throws IOException {
     LOGGER.info("Loading config {}", map);

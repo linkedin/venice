@@ -1,1 +1,0 @@
-{"type":"record","name":"Person","namespace":"org.example.WriteKeyValue","fields":[{"name":"age","type":"int"},{"name":"name","type":["null","string"],"default":null}]}

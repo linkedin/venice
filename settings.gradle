@@ -87,5 +87,8 @@ include 'internal:alpini:router:alpini-router-api'
 include 'internal:alpini:router:alpini-router-base'
 include 'internal:alpini:router:alpini-router-impl'
 
+// integration tests
+include 'tests:venice-pulsar-test'
+
 // Depend-all module
 include 'all-modules'

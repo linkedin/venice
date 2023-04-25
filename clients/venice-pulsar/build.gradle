@@ -5,42 +5,39 @@ plugins {
 dependencies {
     // Schema related dependencies
     implementation (project(':internal:venice-common')) {
-        //TODO, pull venice writer out of venice common so this is a smaller dependency
         exclude module: 'kafka_2.10'
         exclude group: 'org.scala-lang'
     }
     // https://projectlombok.org
-    compileOnly 'org.projectlombok:lombok:1.18.22'
-    annotationProcessor 'org.projectlombok:lombok:1.18.22'
+    compileOnly 'org.projectlombok:lombok:1.18.26'
+    annotationProcessor 'org.projectlombok:lombok:1.18.26'
+    testCompileOnly 'org.projectlombok:lombok:1.18.26'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.26'
 
-    //implementation project(':clients:venice-client')
-    //implementation project(':clients:venice-java-client')
     implementation project(':clients:venice-thin-client')
     implementation project(':clients:venice-samza')
+
+    implementation libraries.samzaApi
 
     implementation libraries.pulsarIoCore
     implementation libraries.pulsarIoCommon
     implementation libraries.jacksonDatabind
 
-    implementation libraries.samzaApi
-
     implementation libraries.log4j2api
-
-    //nar "${pulsarGroup}:pulsar-io:${pulsarVersion}"
 }
 
 nar {
     archivesBaseName = 'pulsar-venice-sink'
-    //manifest {
-    //    attributes 'Nar-Group': '${pulsarGroup}'
-    //    attributes 'Nar-Id': 'pulsar-io-venice-sink-nar'
-    //}
+    manifest {
+        attributes 'Nar-Id': 'pulsar-venice-sink-nar'
+    }
 }
 
 test.dependsOn(nar)
 assemble.dependsOn(nar)
 
 ext {
-    jacocoCoverageThreshold = 0.01
+    // tested in integration test
+    jacocoCoverageThreshold = 0.00
 }
 
