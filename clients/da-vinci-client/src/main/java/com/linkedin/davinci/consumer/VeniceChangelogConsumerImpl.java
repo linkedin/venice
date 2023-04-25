@@ -26,6 +26,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
@@ -73,7 +74,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final CompressorFactory compressorFactory = new CompressorFactory();
 
-  protected ThinClientMetaStoreBasedRepository readOnlySchemaRepository;
+  protected ThinClientMetaStoreBasedRepository storeRepository;
 
   protected final ReadOnlySchemaRepository recordChangeEventSchemaRepository;
 
@@ -141,11 +142,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     // The in memory storage engine only relies on the name of store and nothing else. We use an unversioned store name
     // here in order to reduce confusion (as this storage engine can be used across version topics).
     this.inMemoryStorageEngine = new InMemoryStorageEngine(storeName);
-    readOnlySchemaRepository = new ThinClientMetaStoreBasedRepository(
+    storeRepository = new ThinClientMetaStoreBasedRepository(
         changelogClientConfig.getInnerClientConfig(),
         new VeniceProperties(),
         null);
-    recordChangeEventSchemaRepository = new RecordChangeEventReadOnlySchemaRepository(readOnlySchemaRepository);
+    recordChangeEventSchemaRepository = new RecordChangeEventReadOnlySchemaRepository(storeRepository);
     Class<V> valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
     if (valueClass != null) {
       // If a value class is supplied, we'll use a Specific record adapter
@@ -165,12 +166,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     return CompletableFuture.supplyAsync(() -> {
       try {
-        readOnlySchemaRepository.start();
-        readOnlySchemaRepository.subscribe(storeName);
+        storeRepository.start();
+        storeRepository.subscribe(storeName);
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
-      readOnlySchemaRepository.refresh();
+      storeRepository.refresh();
       Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
       List<TopicPartition> topicPartitionList = getPartitionListToSubscribe(partitions, topicPartitionSet);
       kafkaConsumer.assign(topicPartitionList);
@@ -182,7 +183,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
-    // this.currentTopic
+    Store store = storeRepository.getStore(storeName);
+    int currentVersion = store.getCurrentVersion();
+    String topic = Version.composeKafkaTopic(storeName, currentVersion);
+
+    // Unsub pending subscriptions
+    // Sub with version topic and the partitions
+
     return null;
   }
 
@@ -451,7 +458,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema));
         chunkingAdapter = userEventChunkingAdapter;
         readerSchemaId = AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersion();
-        schemaRepo = readOnlySchemaRepository;
+        schemaRepo = storeRepository;
       } else {
         deserializerProvider = Lazy.of(() -> recordChangeDeserializer);
         chunkingAdapter = recordChangeEventChunkingAdapter;
@@ -633,7 +640,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     kafkaConsumer.close();
   }
 
-  protected void setReadOnlySchemaRepository(ThinClientMetaStoreBasedRepository repository) {
-    this.readOnlySchemaRepository = repository;
+  protected void setStoreRepository(ThinClientMetaStoreBasedRepository repository) {
+    this.storeRepository = repository;
   }
 }

@@ -108,7 +108,7 @@ public class VeniceChangelogConsumerImplTest {
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockKafkaConsumer);
     ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
-    veniceChangelogConsumer.setReadOnlySchemaRepository(mockRepository);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     verify(mockKafkaConsumer).assign(Arrays.asList(new TopicPartition(oldVersionTopic, 0)));
 
@@ -155,7 +155,7 @@ public class VeniceChangelogConsumerImplTest {
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, kafkaConsumer);
     ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
-    veniceChangelogConsumer.setReadOnlySchemaRepository(mockRepository);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(oldVersionTopic, 0)));
 
