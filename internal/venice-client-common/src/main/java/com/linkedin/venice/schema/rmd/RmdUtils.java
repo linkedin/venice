@@ -70,6 +70,31 @@ public class RmdUtils {
     return (List<Long>) offsetVector;
   }
 
+  /**
+   * Merge two offset vectors olderVector,v2 into olderVector retaining only the largest values at each list's index.  v2 may be longer
+   * then olderVector, so olderVector's index domain will grow to match v2 and v2's values at those indexes will be copied into olderVector.
+   * Ex:
+   *   if olderVector=[20,10]
+   *      v2=[9,15,5]
+   *  return [20,15,5]
+   *
+   * @param olderVector the vector to fold into. In most RMD merge scenarios, it can be intuited that this should be the OLDER value
+   *           that we're merging into.
+   * @param newerVector the vector to fold from. In most RMD merge scenarios, it can be intuited that this should be associated to
+   *           the NEWER (or incoming) value.
+   */
+  public static void mergeNewOffsetVectorIntoOlderOffsetVector(List<Long> olderVector, List<Long> newerVector) {
+    for (int i = 0; i < newerVector.size(); i++) {
+      if (i < olderVector.size()) {
+        if (newerVector.get(i) > olderVector.get(i)) {
+          olderVector.set(i, newerVector.get(i));
+        }
+      } else {
+        olderVector.add(newerVector.get(i));
+      }
+    }
+  }
+
   public static List<Long> extractTimestampFromRmd(GenericRecord replicationMetadataRecord) {
     // TODO: This function needs a heuristic to work on field level timestamps. At time of writing, this function
     // is only for recording the previous value of a record's timestamp, so we could consider specifying the incoming

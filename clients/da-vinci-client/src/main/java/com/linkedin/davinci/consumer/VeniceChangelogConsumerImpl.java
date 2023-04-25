@@ -132,8 +132,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.storeChunkingEnabled = store.isChunkingEnabled();
     this.currentValuePayloadSize = new int[partitionCount];
     this.viewClassName = changelogClientConfig.getViewName();
-    this.currentTopic = Version.composeKafkaTopic(storeName, storeCurrentVersion);// +
-                                                                                  // ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+    this.currentTopic = Version.composeKafkaTopic(storeName, storeCurrentVersion);
     this.replicationMetadataSchemaRepository = new ReplicationMetadataSchemaRepository(d2ControllerClient);
     this.schemaReader = changelogClientConfig.getSchemaReader();
     this.subscribedPartitions = new HashSet<>();
@@ -179,6 +178,42 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       subscribedPartitions.addAll(partitions);
       return null;
     });
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
+    // this.currentTopic
+    return null;
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToBeginningOfPush() {
+    return null;
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
+    return null;
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToEndOfPush() {
+    return null;
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
+    return null;
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToTail() {
+    return null;
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToCheckpoint(Map<Integer, byte[]> checkpoints) {
+    return null;
   }
 
   @Override
