@@ -1,5 +1,6 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.Utils;
@@ -15,14 +16,26 @@ import java.io.Closeable;
 @Deprecated
 public class StoreStateReader implements Closeable {
   private final com.linkedin.venice.store.StoreStateReader internalStoreStateReader;
+  private final boolean externalClient;
 
   private StoreStateReader(com.linkedin.venice.store.StoreStateReader storeStateReader) {
+    this(storeStateReader, false);
+  }
+
+  private StoreStateReader(com.linkedin.venice.store.StoreStateReader storeStateReader, boolean externalClient) {
     this.internalStoreStateReader = storeStateReader;
+    this.externalClient = externalClient;
   }
 
   @Deprecated
   public static StoreStateReader getInstance(ClientConfig clientConfig) {
     return new StoreStateReader(com.linkedin.venice.store.StoreStateReader.getInstance(clientConfig));
+  }
+
+  // Visible for testing
+  @Deprecated
+  static StoreStateReader getInstance(AbstractAvroStoreClient storeClient) {
+    return new StoreStateReader(com.linkedin.venice.store.StoreStateReader.getInstance(storeClient), true);
   }
 
   @Deprecated
@@ -32,6 +45,8 @@ public class StoreStateReader implements Closeable {
 
   @Override
   public void close() {
-    Utils.closeQuietlyWithErrorLogged(internalStoreStateReader);
+    if (!externalClient) {
+      Utils.closeQuietlyWithErrorLogged(internalStoreStateReader);
+    }
   }
 }
