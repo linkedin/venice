@@ -190,9 +190,13 @@ public class TestActiveActiveIngestion {
         .setNativeReplicationEnabled(true)
         .setPartitionCount(1);
     MetricsRepository metricsRepository = new MetricsRepository();
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+    ControllerClient setupControllerClient =
+        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
     storeParms.setStoreViews(viewConfig);
-    IntegrationTestPushUtils.updateStore(clusterName, props, storeParms);
+    // IntegrationTestPushUtils.updateStore(clusterName, props, storeParms);
+    setupControllerClient
+        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
+    // controllerClient.updateStore(storeName, storeParms);
     TestWriteUtils.runPushJob("Run push job", props);
     Map<String, String> samzaConfig = getSamzaConfig(storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
