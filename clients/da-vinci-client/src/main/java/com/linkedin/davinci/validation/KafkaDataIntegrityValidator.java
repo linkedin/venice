@@ -1,8 +1,9 @@
-package com.linkedin.venice.kafka.validation;
+package com.linkedin.davinci.validation;
 
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
