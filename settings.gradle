@@ -47,6 +47,7 @@ include 'clients:venice-thin-client'
 include 'services:venice-controller'
 include 'services:venice-router'
 include 'services:venice-server'
+include 'services:venice-standalone'
 
 // Internal modules
 include 'internal:venice-avro-compatibility-test'

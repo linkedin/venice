@@ -142,11 +142,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     // The in memory storage engine only relies on the name of store and nothing else. We use an unversioned store name
     // here in order to reduce confusion (as this storage engine can be used across version topics).
     this.inMemoryStorageEngine = new InMemoryStorageEngine(storeName);
-    storeRepository = new ThinClientMetaStoreBasedRepository(
+    this.storeRepository = new ThinClientMetaStoreBasedRepository(
         changelogClientConfig.getInnerClientConfig(),
         new VeniceProperties(),
         null);
-    recordChangeEventSchemaRepository = new RecordChangeEventReadOnlySchemaRepository(storeRepository);
+    recordChangeEventSchemaRepository = new RecordChangeEventReadOnlySchemaRepository(this.storeRepository);
     Class<V> valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
     if (valueClass != null) {
       // If a value class is supplied, we'll use a Specific record adapter
@@ -423,7 +423,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
       // We only buffer one record at a time for a given partition. If we've made it this far
       // we either just finished assembling a large record, or, didn't specify anything. So we'll clear
-      // the cache. Kafka might give duplicate delivery but it won't give out of order delivery, so
+      // the cache. Kafka might give duplicate delivery, but it won't give out of order delivery, so
       // this is safe to do in all such contexts.
       inMemoryStorageEngine.dropPartition(pubSubTopicPartition.getPartitionNumber());
     } else {

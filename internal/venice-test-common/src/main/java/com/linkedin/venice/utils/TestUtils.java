@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
@@ -67,11 +68,13 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -94,6 +97,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -585,8 +589,8 @@ public class TestUtils {
 
   public static Store getRandomStore() {
     return new ZKStore(
-        Utils.getUniqueString("RandomStore"),
-        Utils.getUniqueString("RandomOwner"),
+        getUniqueString("RandomStore"),
+        getUniqueString("RandomOwner"),
         System.currentTimeMillis(),
         PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH,
@@ -808,5 +812,28 @@ public class TestUtils {
     propertyMap.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED);
     propertyMap.put(SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "-Xms256M;-Xmx1G");
     return propertyMap;
+  }
+
+  public static String getUniqueTopicString(String prefix) {
+    int typesNum = PubSubTopicType.values().length;
+    int pubSubTopicTypeIndex = Math.abs(ThreadLocalRandom.current().nextInt() % typesNum);
+    PubSubTopicType pubSubTopicType = PubSubTopicType.values()[pubSubTopicTypeIndex];
+    int version = Math.abs(ThreadLocalRandom.current().nextInt() % typesNum);
+    if (pubSubTopicType.equals(PubSubTopicType.REALTIME_TOPIC)) {
+      return getUniqueString(prefix) + Version.REAL_TIME_TOPIC_SUFFIX;
+    } else if (pubSubTopicType.equals(PubSubTopicType.REPROCESSING_TOPIC)) {
+      return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version) + Version.STREAM_REPROCESSING_TOPIC_SUFFIX;
+    } else if (pubSubTopicType.equals(PubSubTopicType.VERSION_TOPIC)) {
+      return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version);
+    } else if (pubSubTopicType.equals(PubSubTopicType.ADMIN_TOPIC)) {
+      return pubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
+    } else if (pubSubTopicType.equals(PubSubTopicType.VIEW_TOPIC)) {
+      return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version)
+          + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+    } else if (pubSubTopicType.equals(PubSubTopicType.UNKNOWN_TYPE_TOPIC)) {
+      return getUniqueString(prefix);
+    } else {
+      throw new VeniceException("Unsupported topic type for: " + pubSubTopicType);
+    }
   }
 }

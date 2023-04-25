@@ -77,6 +77,7 @@ dependencies {
   }
   testImplementation project(':clients:venice-admin-tool')
   testImplementation project(':internal:alpini:common:alpini-common-base')
+  testImplementation project(":internal:venice-common").sourceSets.test.output
 
   jmhAnnotationProcessor libraries.jmhGenerator
   jmhImplementation libraries.jmhCore
@@ -226,7 +227,7 @@ task generateGHCI() {
   jobs << validateGradleWrapper
 
   def common = "--stacktrace --continue --no-daemon "
-  def staticAnalysisFlowGradleArgs = common + "-DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
+  def staticAnalysisFlowGradleArgs = common + "clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification"
 
   def staticAnalysis = "StaticAnalysis"
   appendToGHCI(paramFileContent, targetFilePath, staticAnalysis, 20, staticAnalysisFlowGradleArgs)

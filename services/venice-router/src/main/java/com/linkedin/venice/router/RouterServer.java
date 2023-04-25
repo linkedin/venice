@@ -183,14 +183,18 @@ public class RouterServer extends AbstractVeniceService {
     if (args.length != 1) {
       Utils.exit("USAGE: java -jar venice-router-all.jar <router_config_file_path>");
     }
-    VeniceProperties props;
+
     try {
       String routerConfigFilePath = args[0];
-      props = Utils.parseProperties(routerConfigFilePath);
+      run(routerConfigFilePath, true);
     } catch (Exception e) {
       throw new VeniceException("No config file parameter found", e);
     }
+  }
 
+  public static void run(String routerConfigFilePath, boolean runForever) throws Exception {
+
+    VeniceProperties props = Utils.parseProperties(routerConfigFilePath);
     LOGGER.info("Zookeeper: {}", props.getString(ConfigKeys.ZOOKEEPER_ADDRESS));
     LOGGER.info("Cluster: {}", props.getString(ConfigKeys.CLUSTER_NAME));
     LOGGER.info("Port: {}", props.getInt(ConfigKeys.LISTENER_PORT));
@@ -214,8 +218,10 @@ public class RouterServer extends AbstractVeniceService {
       }
     });
 
-    while (true) {
-      Thread.sleep(TimeUnit.HOURS.toMillis(1));
+    if (runForever) {
+      while (true) {
+        Thread.sleep(TimeUnit.HOURS.toMillis(1));
+      }
     }
   }
 
