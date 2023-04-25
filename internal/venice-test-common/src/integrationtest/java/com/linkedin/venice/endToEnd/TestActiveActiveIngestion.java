@@ -528,7 +528,7 @@ public class TestActiveActiveIngestion {
     });
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testAAIngestionWithStoreView() throws Exception {
     ControllerClient childControllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
