@@ -274,7 +274,7 @@ public abstract class PushStatusDecider {
     // partitions can be completed. Vice versa, partitions will be in error state if leader is in error
     // state.
     boolean isLeaderCompleted = true;
-    int previouslyDisabledReplica = 0;
+    int previouslyDisabledErrorReplica = 0;
     for (Map.Entry<Instance, String> entry: instanceToStateMap.entrySet()) {
       ExecutionStatus currentStatus =
           getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(entry.getKey().getNodeId()));
@@ -282,15 +282,16 @@ public abstract class PushStatusDecider {
         if (!currentStatus.equals(COMPLETED)) {
           isLeaderCompleted = false;
         }
-
-        if (currentStatus.equals(ERROR) && callback != null) {
+        if (currentStatus.equals(ERROR) && callback != null
+            && !callback.isReplicaDisabled(entry.getKey().getNodeId(), partitionStatus.getPartitionId())) {
           callback.disableReplica(entry.getKey().getNodeId(), partitionStatus.getPartitionId());
         }
       } else if (entry.getValue().equals(HelixState.OFFLINE_STATE)) {
         // If the replica is in offline state, check if its due to previously disabled replica or not.
         if (callback != null
             && callback.isReplicaDisabled(entry.getKey().getNodeId(), partitionStatus.getPartitionId())) {
-          previouslyDisabledReplica++;
+          previouslyDisabledErrorReplica++;
+          continue; // Dont add disabled replica to status map
         }
       }
       executionStatusMap.merge(currentStatus, 1, Integer::sum);
@@ -302,7 +303,7 @@ public abstract class PushStatusDecider {
     }
 
     if (executionStatusMap.containsKey(ERROR) && (executionStatusMap.get(ERROR)
-        + previouslyDisabledReplica > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors)) {
+        + previouslyDisabledErrorReplica > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors)) {
       return ERROR;
     }
 
