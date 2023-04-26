@@ -69,7 +69,12 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
 
   @Override
   public byte[] get(ByteBuffer key) {
-    throw new UnsupportedOperationException("Method not implemented!!");
+    ByteArray keyArray = new ByteArray(key.array());
+    ByteArray byteArray = partitionDb.get(keyArray);
+    if (byteArray != null) {
+      return byteArray.get();
+    }
+    return null;
   }
 
   @Override

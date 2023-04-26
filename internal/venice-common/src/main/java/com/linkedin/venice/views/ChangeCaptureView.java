@@ -1,5 +1,6 @@
 package com.linkedin.venice.views;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -28,6 +29,17 @@ public class ChangeCaptureView extends VeniceView {
   @Override
   public String getWriterClassName() {
     return CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME;
+  }
+
+  @Override
+  public void validateConfigs() {
+    super.validateConfigs();
+    // change capture requires chunking to be enabled. This is because it's logistically difficult to insist
+    // that all rows be under 50% the chunking threshhold (since we have to publish the before and after image of the
+    // record to the change capture topic). So we make a blanket assertion.
+    if (!store.isChunkingEnabled()) {
+      throw new VeniceException("Change capture view are not supported with stores that don't have chunking enabled!");
+    }
   }
 
 }

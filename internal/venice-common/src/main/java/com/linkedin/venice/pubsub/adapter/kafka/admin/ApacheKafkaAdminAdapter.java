@@ -313,7 +313,9 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     }
     // If not set, Kafka cluster defaults will apply
     pubSubTopicConfiguration.minInSyncReplicas()
-        .ifPresent(minIsrConfig -> topicProperties.put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, minIsrConfig));
+        .ifPresent(
+            minIsrConfig -> topicProperties
+                .put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, Integer.toString(minIsrConfig)));
     // Just in case the Kafka cluster isn't configured as expected.
     topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, "LogAppendTime");
     return topicProperties;

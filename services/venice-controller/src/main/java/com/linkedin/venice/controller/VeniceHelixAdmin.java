@@ -1958,6 +1958,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
         }
 
+        // Update the store object to avoid potential system store flags reversion during repository.updateStore(store).
+        store = repository.getStore(storeName);
         version.setPushType(pushType);
         store.addVersion(version);
         // Apply cluster-level native replication configs
@@ -4468,11 +4470,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(
       Store oldStore,
       Map<String, String> viewParameters) throws VeniceException {
-    // TODO: This should do some kind of merge logic based on what kind of views are being set up.
-    // since we only support one kind of view, we just overwrite the entire map. Merging logic should
-    // be some heuristic based on the type of view. For example, we may want multiple different kinds
-    // of projecting views, but only 1 change capture view potentially.
-    return StoreViewUtils.convertStringMapViewToStoreViewConfigRecord(viewParameters);
+    // Merge the existing configs with the incoming configs. The new configs will override existing ones which share the
+    // same key.
+    Map<String, ViewConfig> oldViewConfigMap = oldStore.getViewConfigs();
+    if (oldViewConfigMap == null) {
+      oldViewConfigMap = new HashMap<>();
+    }
+    Map<String, StoreViewConfigRecord> mergedConfigs =
+        StoreViewUtils.convertViewConfigToStoreViewConfig(oldViewConfigMap);
+    mergedConfigs.putAll(StoreViewUtils.convertStringMapViewToStoreViewConfigRecord(viewParameters));
+    return mergedConfigs;
   }
 
   /**

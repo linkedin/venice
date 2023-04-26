@@ -41,6 +41,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -75,12 +76,36 @@ public abstract class NativeMetadataRepository
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
 
+  private final long refreshIntervalInSeconds;
+
+  private AtomicBoolean started = new AtomicBoolean(false);
+
   protected NativeMetadataRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
-    long refreshIntervalInSeconds = backendConfig.getLong(
+    refreshIntervalInSeconds = backendConfig.getLong(
         CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
         NativeMetadataRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS);
-    this.scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
     this.clientConfig = clientConfig;
+  }
+
+  public synchronized void start() {
+    if (started.get() && scheduler.isShutdown()) {
+      // The only way the started flag would be true and the scheduler shutdown would be if we already
+      // started and called 'clear' on this object. So here we abort the call to prevent it being restarted again
+      throw new VeniceException(
+          "Calling start() failed! NativeMetadataRepository has already been cleared and shutdown!");
+    }
+    if (!started.get()) {
+      this.scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
+      started.set(true);
+    }
+  }
+
+  private void throwIfNotStartedOrCleared() {
+    if (!started.get()) {
+      throw new VeniceException("NativeMetadataRepository isn't started yet! Call start() before use.");
+    } else if (scheduler.isShutdown()) {
+      throw new VeniceException("NativeMetadataRepository has already been cleared and shutdown!");
+    }
   }
 
   public static NativeMetadataRepository getInstance(ClientConfig clientConfig, VeniceProperties backendConfig) {
@@ -100,6 +125,7 @@ public abstract class NativeMetadataRepository
 
   @Override
   public void subscribe(String storeName) throws InterruptedException {
+    throwIfNotStartedOrCleared();
     if (!subscribedStoreMap.containsKey(storeName)) {
       refreshOneStore(storeName);
     }
@@ -338,7 +364,7 @@ public abstract class NativeMetadataRepository
    * This method will be triggered periodically to keep the store/schema information up-to-date.
    */
   @Override
-  public final void refresh() {
+  public void refresh() {
     LOGGER.debug("Refresh started for {}", getClass().getSimpleName());
     for (String storeName: subscribedStoreMap.keySet()) {
       try {

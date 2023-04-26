@@ -342,6 +342,7 @@ public class MetaSystemStoreTest {
           .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
           .build();
       nativeMetadataRepository = NativeMetadataRepository.getInstance(clientConfig, backendConfig);
+      nativeMetadataRepository.start();
       // ThinClientMetaStoreBasedRepository implementation should be used since CLIENT_USE_META_SYSTEM_STORE_REPOSITORY
       // is set to true without enabling other feature flags.
       Assert.assertTrue(nativeMetadataRepository instanceof ThinClientMetaStoreBasedRepository);
@@ -383,6 +384,7 @@ public class MetaSystemStoreTest {
       // ThinClientMetaStoreBasedRepository implementation should be used since CLIENT_USE_META_SYSTEM_STORE_REPOSITORY
       // is set to true without enabling other feature flags.
       Assert.assertTrue(nativeMetadataRepository instanceof ThinClientMetaStoreBasedRepository);
+      nativeMetadataRepository.start();
       nativeMetadataRepository.subscribe(regularVeniceStoreName);
       Collection<SchemaEntry> metaStoreSchemaEntries = nativeMetadataRepository.getValueSchemas(regularVeniceStoreName);
       assertEquals(
