@@ -21,7 +21,9 @@ public interface StoreSchemaFetcher extends Closeable {
   Schema getKeySchema();
 
   /**
-   * Returns the latest available Value schema of the store.
+   * Returns the latest available Value schema of the store. The latest superset schema is:
+   * 1. If a superset schema exists for the store, return the superset schema
+   * 2. If no superset schema exists for the store, return the value schema with the largest schema id
    */
   Schema getLatestValueSchema();
 

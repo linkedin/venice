@@ -88,7 +88,7 @@ public class TestStoreMigration {
   private String parentControllerUrl;
   private String childControllerUrl0;
 
-  @BeforeClass(timeOut = TEST_TIMEOUT)
+  @BeforeClass
   public void setUp() {
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
@@ -137,7 +137,7 @@ public class TestStoreMigration {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    twoLayerMultiRegionMultiClusterWrapper.close();
+    Utils.closeQuietlyWithErrorLogged(twoLayerMultiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -332,6 +332,16 @@ public class TestStoreMigration {
     } finally {
       Utils.closeQuietlyWithErrorLogged(pushStatusStoreReader);
       D2ClientUtils.shutdownClient(d2Client);
+    }
+
+    // Verify that meta and da vinci push status system store flags in parent region are set to true
+    try (ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = destParentControllerClient.getStore(storeName);
+        Assert.assertFalse(storeResponse.isError());
+        Assert.assertTrue(storeResponse.getStore().isStoreMetaSystemStoreEnabled());
+        Assert.assertTrue(storeResponse.getStore().isDaVinciPushStatusStoreEnabled());
+      });
     }
   }
 

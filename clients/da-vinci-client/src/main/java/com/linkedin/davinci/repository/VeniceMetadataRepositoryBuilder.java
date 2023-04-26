@@ -106,6 +106,7 @@ public class VeniceMetadataRepositoryBuilder {
           NativeMetadataRepository.class.getSimpleName());
       NativeMetadataRepository systemStoreBasedRepository =
           NativeMetadataRepository.getInstance(clientConfig, veniceProperties, icProvider);
+      systemStoreBasedRepository.start();
       systemStoreBasedRepository.refresh();
       clusterInfoProvider = systemStoreBasedRepository;
       storeRepo = systemStoreBasedRepository;

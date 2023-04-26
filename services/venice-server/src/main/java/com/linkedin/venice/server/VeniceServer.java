@@ -693,7 +693,17 @@ public class VeniceServer {
     } catch (Exception e) {
       LOGGER.error("Error starting Venice Server ", e);
       Utils.exit("Error while loading configuration: " + e.getMessage());
+      return;
     }
+    run(veniceConfigService, true);
+  }
+
+  public static void run(String configDirectory, boolean joinThread) throws Exception {
+    VeniceConfigLoader veniceConfigService = VeniceConfigLoader.loadFromConfigDirectory(configDirectory);
+    run(veniceConfigService, joinThread);
+  }
+
+  public static void run(VeniceConfigLoader veniceConfigService, boolean joinThread) throws Exception {
 
     VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService)
         .setPubSubClientsFactory(new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()))
@@ -703,15 +713,17 @@ public class VeniceServer {
       server.start();
     }
     addShutdownHook(server);
+
+    if (joinThread) {
+      try {
+        Thread.currentThread().join();
+      } catch (InterruptedException e) {
+        LOGGER.error("Unable to join thread in shutdown hook. ", e);
+      }
+    }
   }
 
   private static void addShutdownHook(VeniceServer server) {
     Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown));
-
-    try {
-      Thread.currentThread().join();
-    } catch (InterruptedException e) {
-      LOGGER.error("Unable to join thread in shutdown hook. ", e);
-    }
   }
 }

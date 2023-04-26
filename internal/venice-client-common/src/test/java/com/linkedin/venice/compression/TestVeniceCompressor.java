@@ -137,6 +137,13 @@ public class TestVeniceCompressor {
   }
 
   @Test
+  public void testZSTDThrowsExceptionOnNullDictionary() {
+    Assert.assertThrows(
+        () -> new CompressorFactory()
+            .createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, "foo_v1", null));
+  }
+
+  @Test
   public void testCompressorEqual() {
     VeniceCompressor[] compressors1 = new VeniceCompressor[] { new NoopCompressor(), new GzipCompressor(),
         new ZstdWithDictCompressor("abc".getBytes(), Zstd.maxCompressionLevel()),

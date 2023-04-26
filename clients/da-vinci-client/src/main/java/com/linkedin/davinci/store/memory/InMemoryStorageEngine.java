@@ -15,8 +15,12 @@ import java.util.Set;
  */
 public class InMemoryStorageEngine extends AbstractStorageEngine<InMemoryStoragePartition> {
   public InMemoryStorageEngine(VeniceStoreVersionConfig storeDef) {
+    this(storeDef.getStoreVersionName());
+  }
+
+  public InMemoryStorageEngine(String versionName) {
     super(
-        storeDef.getStoreVersionName(),
+        versionName,
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     restoreStoragePartitions();

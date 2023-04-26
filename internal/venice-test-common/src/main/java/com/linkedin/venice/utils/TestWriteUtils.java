@@ -146,6 +146,10 @@ public class TestWriteUtils {
     return writeSimpleAvroFileWithUserSchema(parentDir, true);
   }
 
+  public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, int recordLength) throws IOException {
+    return writeSimpleAvroFileWithUserSchema(parentDir, true, DEFAULT_USER_DATA_RECORD_COUNT, recordLength);
+  }
+
   public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix)
       throws IOException {
     return writeSimpleAvroFileWithUserSchema(parentDir, fileNameWithAvroSuffix, DEFAULT_USER_DATA_RECORD_COUNT);
@@ -177,9 +181,32 @@ public class TestWriteUtils {
     });
   }
 
+  public static Schema writeSimpleAvroFileWithUserSchema(
+      File parentDir,
+      boolean fileNameWithAvroSuffix,
+      int recordCount,
+      int recordSizeMin) throws IOException {
+    String fileName;
+    if (fileNameWithAvroSuffix) {
+      fileName = "simple_user.avro";
+    } else {
+      fileName = "simple_user";
+    }
+    char[] chars = new char[recordSizeMin];
+    return writeAvroFile(parentDir, fileName, USER_SCHEMA_STRING, (recordSchema, writer) -> {
+      for (int i = 1; i <= recordCount; ++i) {
+        GenericRecord user = new GenericData.Record(recordSchema);
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        Arrays.fill(chars, String.valueOf(i).charAt(0));
+        user.put(DEFAULT_VALUE_FIELD_PROP, String.copyValueOf(chars));
+        user.put("age", i);
+        writer.append(user);
+      }
+    });
+  }
+
   public static void writeMultipleAvroFilesWithUserSchema(File parentDir, int fileCount, int recordCount)
       throws IOException {
-
     for (int i = 0; i < fileCount; i++) {
       writeSimpleAvroFileWithUserSchema(parentDir, recordCount, "testInput" + i + ".avro");
     }
