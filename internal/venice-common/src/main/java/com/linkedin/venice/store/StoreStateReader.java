@@ -1,4 +1,4 @@
-package com.linkedin.davinci.client;
+package com.linkedin.venice.store;
 
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -34,9 +34,11 @@ public class StoreStateReader implements Closeable {
   private final String exceptionMessageFooter;
   private final VeniceSystemStoreType veniceSystemStoreType;
   private final AbstractAvroStoreClient storeClient;
+  private final boolean externalClient;
 
-  private StoreStateReader(AbstractAvroStoreClient client) {
+  private StoreStateReader(AbstractAvroStoreClient client, boolean externalClient) {
     this.storeClient = client;
+    this.externalClient = externalClient;
     this.storeName = client.getStoreName();
     requestPath = VeniceConstants.TYPE_STORE_STATE + "/" + storeName;
     exceptionMessageFooter = "while trying to fetch store: " + storeName + " with path: " + requestPath;
@@ -47,7 +49,11 @@ public class StoreStateReader implements Closeable {
     AvroGenericStoreClientImpl client =
         new AvroGenericStoreClientImpl<>(ClientFactory.getTransportClient(clientConfig), false, clientConfig);
     client.start();
-    return new StoreStateReader(client);
+    return new StoreStateReader(client, false);
+  }
+
+  public static StoreStateReader getInstance(AbstractAvroStoreClient storeClient) {
+    return new StoreStateReader(storeClient, true);
   }
 
   public Store getStore() {
@@ -76,6 +82,8 @@ public class StoreStateReader implements Closeable {
 
   @Override
   public void close() {
-    Utils.closeQuietlyWithErrorLogged(storeClient);
+    if (!externalClient) {
+      Utils.closeQuietlyWithErrorLogged(storeClient);
+    }
   }
 }
