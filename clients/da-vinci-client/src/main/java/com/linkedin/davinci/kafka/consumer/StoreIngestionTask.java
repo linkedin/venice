@@ -2452,11 +2452,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             leaderProducedRecordContext,
             currentTimeMs);
         if (isHybridMode() && partitionConsumptionState.hasLagCaughtUp()) {
+          long afterProcessingRecordTimestampNs = System.currentTimeMillis();
+          long brokerProducedTimeStamp = (leaderProducedRecordContext == null)
+              ? kafkaValue.producerMetadata.messageTimestamp
+              : leaderProducedRecordContext.getProducedTimestampMs();
           versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
               storeName,
               versionNumber,
-              LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestampNs),
-              currentTimeMs);
+              afterProcessingRecordTimestampNs - brokerProducedTimeStamp,
+              afterProcessingRecordTimestampNs);
         }
       }
       versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(

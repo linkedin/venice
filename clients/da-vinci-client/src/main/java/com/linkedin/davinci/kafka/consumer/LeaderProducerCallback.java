@@ -113,6 +113,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       }
 
       long currentTimeForMetricsMs = System.currentTimeMillis();
+      // record the timestamp when the writer has finished writing to the version topic
+      leaderProducedRecordContext.setProducedTimestampMs(currentTimeForMetricsMs);
 
       // record just the time it took for this callback to be invoked before we do further processing here such as
       // queuing to drainer.
@@ -130,7 +132,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               .recordNearlineProducerToLocalBrokerLatency(
                   ingestionTask.getStoreName(),
                   ingestionTask.versionNumber,
-                  LatencyUtils.getLatencyInMS(sourceConsumerRecord.getValue().producerMetadata.messageTimestamp),
+                  currentTimeForMetricsMs - sourceConsumerRecord.getValue().producerMetadata.messageTimestamp,
                   currentTimeForMetricsMs);
         }
       }
