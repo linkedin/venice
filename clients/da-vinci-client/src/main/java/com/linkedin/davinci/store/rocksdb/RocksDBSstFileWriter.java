@@ -355,7 +355,7 @@ public class RocksDBSstFileWriter {
     LOGGER.info(
         "Start ingesting to store: " + storeName + ", partition id: " + partitionId + " from files: " + sstFilePaths);
     try (IngestExternalFileOptions ingestOptions = new IngestExternalFileOptions()) {
-      // ingestOptions.setMoveFiles(true);
+      // TODO: Further explore re-ingestion of these files if SN crashes before EOP can be synced to disk
       rocksDBIngestThrottler.throttledIngest(
           dbDir,
           () -> rocksDB.ingestExternalFile(

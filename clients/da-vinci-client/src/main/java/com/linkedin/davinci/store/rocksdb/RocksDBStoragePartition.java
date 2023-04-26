@@ -239,7 +239,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats,
       RocksDBOpenThrottler rocksDbOpenThrottler,
-      RocksDBIngestThrottler rocksDbIngestThrottler,
+      RocksDBIngestThrottler rocksDBIngestThrottler,
       RocksDBServerConfig rocksDBServerConfig) {
     // If not specified, RocksDB inserts values into DEFAULT_COLUMN_FAMILY.
     this(
@@ -248,7 +248,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         dbDir,
         rocksDBMemoryStats,
         rocksDbOpenThrottler,
-        rocksDbIngestThrottler,
+        rocksDBIngestThrottler,
         rocksDBServerConfig,
         Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY));
   }
@@ -379,6 +379,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     rocksDBSstFileWritter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
   }
 
+  /**
+   *  After persisting EOP, delete the temp sst files that were copied to RocksDB
+   */
   @Override
   public void cleanupAfterBatchWrite() {
     deleteSSTFiles(fullPathForTempSSTFileDir);

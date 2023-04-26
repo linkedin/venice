@@ -39,7 +39,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats,
       RocksDBOpenThrottler rocksDbOpenThrottler,
-      RocksDBIngestThrottler rocksDbIngestThrottler,
+      RocksDBIngestThrottler rocksDBIngestThrottler,
       RocksDBServerConfig rocksDBServerConfig) {
     super(
         storagePartitionConfig,
@@ -47,7 +47,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
         dbDir,
         rocksDBMemoryStats,
         rocksDbOpenThrottler,
-        rocksDbIngestThrottler,
+        rocksDBIngestThrottler,
         rocksDBServerConfig,
         Arrays.asList(RocksDB.DEFAULT_COLUMN_FAMILY, REPLICATION_METADATA_COLUMN_FAMILY));
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempRMDSSTFileDir(dbDir, storeName, partitionId);
@@ -61,7 +61,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
           fullPathForTempSSTFileDir,
           true,
           rocksDBServerConfig,
-          rocksDbIngestThrottler);
+          rocksDBIngestThrottler);
     }
   }
 

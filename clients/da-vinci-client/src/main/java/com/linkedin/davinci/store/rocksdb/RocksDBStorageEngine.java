@@ -34,7 +34,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   private final String storeDbPath;
   private final RocksDBMemoryStats memoryStats;
   private final RocksDBOpenThrottler rocksDbOpenThrottler;
-  private final RocksDBIngestThrottler rocksDbIngestThrottler;
+  private final RocksDBIngestThrottler rocksDBIngestThrottler;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
   private final VeniceStoreVersionConfig storeConfig;
@@ -55,7 +55,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
       String rocksDbPath,
       RocksDBMemoryStats rocksDBMemoryStats,
       RocksDBOpenThrottler rocksDbOpenThrottler,
-      RocksDBIngestThrottler rocksDbIngestThrottler,
+      RocksDBIngestThrottler rocksDBIngestThrottler,
       RocksDBServerConfig rocksDBServerConfig,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
@@ -65,7 +65,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     this.rocksDbPath = rocksDbPath;
     this.memoryStats = rocksDBMemoryStats;
     this.rocksDbOpenThrottler = rocksDbOpenThrottler;
-    this.rocksDbIngestThrottler = rocksDbIngestThrottler;
+    this.rocksDBIngestThrottler = rocksDBIngestThrottler;
     this.rocksDBServerConfig = rocksDBServerConfig;
     this.factory = factory;
     this.replicationMetadataEnabled = replicationMetadataEnabled;
@@ -135,7 +135,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
           rocksDbPath,
           memoryStats,
           rocksDbOpenThrottler,
-          rocksDbIngestThrottler,
+          rocksDBIngestThrottler,
           rocksDBServerConfig);
     } else {
       return new ReplicationMetadataRocksDBStoragePartition(
@@ -144,7 +144,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
           rocksDbPath,
           memoryStats,
           rocksDbOpenThrottler,
-          rocksDbIngestThrottler,
+          rocksDBIngestThrottler,
           rocksDBServerConfig);
     }
   }

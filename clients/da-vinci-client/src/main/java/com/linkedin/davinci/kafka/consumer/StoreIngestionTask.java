@@ -1967,7 +1967,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
       syncOffset(kafkaVersionTopic, partitionConsumptionState);
       if (isEOPReceivedBefore == false && offsetRecord.isEndOfPushReceived() == true) {
-        // if this msg is EOP
+        /**
+         * After persisting EOP, delete the temp sst files that were copied to RocksDB.
+         * This doesn't happen within {@link RocksDBIngestThrottler} even though this is
+         * part of the copy-persistEOP-delete flow as throttling copy will slow down the
+         * buildup of extra disk space and to keep the flow simple.
+         */
         cleanupAfterEndOfPush(partitionConsumptionState);
       }
     }
