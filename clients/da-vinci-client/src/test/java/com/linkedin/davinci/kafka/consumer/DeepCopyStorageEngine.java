@@ -106,6 +106,10 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
     this.delegate.endBatchWrite(storagePartitionConfig);
   }
 
+  public synchronized void cleanupAfterBatchWrite(StoragePartitionConfig storagePartitionConfig) {
+    this.delegate.cleanupAfterBatchWrite(storagePartitionConfig);
+  }
+
   @Override
   public void put(int logicalPartitionId, byte[] key, byte[] value) {
     this.delegate.put(logicalPartitionId, key, value);

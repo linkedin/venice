@@ -33,7 +33,8 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   private final String rocksDbPath;
   private final String storeDbPath;
   private final RocksDBMemoryStats memoryStats;
-  private final RocksDBThrottler rocksDbThrottler;
+  private final RocksDBOpenThrottler rocksDbOpenThrottler;
+  private final RocksDBIngestThrottler rocksDbIngestThrottler;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
   private final VeniceStoreVersionConfig storeConfig;
@@ -53,7 +54,8 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
       RocksDBStorageEngineFactory factory,
       String rocksDbPath,
       RocksDBMemoryStats rocksDBMemoryStats,
-      RocksDBThrottler rocksDbThrottler,
+      RocksDBOpenThrottler rocksDbOpenThrottler,
+      RocksDBIngestThrottler rocksDbIngestThrottler,
       RocksDBServerConfig rocksDBServerConfig,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
@@ -62,7 +64,8 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
     this.storeConfig = storeConfig;
     this.rocksDbPath = rocksDbPath;
     this.memoryStats = rocksDBMemoryStats;
-    this.rocksDbThrottler = rocksDbThrottler;
+    this.rocksDbOpenThrottler = rocksDbOpenThrottler;
+    this.rocksDbIngestThrottler = rocksDbIngestThrottler;
     this.rocksDBServerConfig = rocksDBServerConfig;
     this.factory = factory;
     this.replicationMetadataEnabled = replicationMetadataEnabled;
@@ -131,7 +134,8 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
           factory,
           rocksDbPath,
           memoryStats,
-          rocksDbThrottler,
+          rocksDbOpenThrottler,
+          rocksDbIngestThrottler,
           rocksDBServerConfig);
     } else {
       return new ReplicationMetadataRocksDBStoragePartition(
@@ -139,7 +143,8 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
           factory,
           rocksDbPath,
           memoryStats,
-          rocksDbThrottler,
+          rocksDbOpenThrottler,
+          rocksDbIngestThrottler,
           rocksDBServerConfig);
     }
   }

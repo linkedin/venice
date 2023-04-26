@@ -43,7 +43,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
 
   @AfterClass
   void cleanUp() throws Exception {
-    TestUtils.shutdownExecutor(executorService);
+    TestUtils.shutdownExecutorNow(executorService);
   }
 
   @BeforeMethod

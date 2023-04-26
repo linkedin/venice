@@ -104,7 +104,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected RocksDB rocksDB;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
-  private final RocksDBThrottler rocksDBThrottler;
+  private final RocksDBOpenThrottler rocksDBOpenThrottler;
   /**
    * Whether the input is sorted or not.
    */
@@ -138,7 +138,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       RocksDBStorageEngineFactory factory,
       String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats,
-      RocksDBThrottler rocksDbThrottler,
+      RocksDBOpenThrottler rocksDbOpenThrottler,
+      RocksDBIngestThrottler rocksDBIngestThrottler,
       RocksDBServerConfig rocksDBServerConfig,
       List<byte[]> columnFamilyNameList) {
     super(storagePartitionConfig.getPartitionId());
@@ -179,7 +180,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.envOptions.setUseDirectWrites(false);
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     this.expectedChecksumSupplier = Optional.empty();
-    this.rocksDBThrottler = rocksDbThrottler;
+    this.rocksDBOpenThrottler = rocksDbOpenThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
     if (deferredWrite) {
       this.rocksDBSstFileWritter = new RocksDBSstFileWriter(
@@ -190,7 +191,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           options,
           fullPathForTempSSTFileDir,
           false,
-          rocksDBServerConfig);
+          rocksDBServerConfig,
+          rocksDBIngestThrottler);
     }
 
     try {
@@ -212,11 +214,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
        * In the default case, we will only open DEFAULT_COLUMN_FAMILY, which is what old API does internally.
        */
       if (this.readOnly) {
-        this.rocksDB = rocksDbThrottler
+        this.rocksDB = rocksDbOpenThrottler
             .openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       } else {
         this.rocksDB =
-            rocksDbThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+            rocksDbOpenThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       }
     } catch (RocksDBException | InterruptedException e) {
       throw new VeniceException("Failed to open RocksDB for store: " + storeName + ", partition id: " + partitionId, e);
@@ -236,7 +238,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       RocksDBStorageEngineFactory factory,
       String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats,
-      RocksDBThrottler rocksDbThrottler,
+      RocksDBOpenThrottler rocksDbOpenThrottler,
+      RocksDBIngestThrottler rocksDbIngestThrottler,
       RocksDBServerConfig rocksDBServerConfig) {
     // If not specified, RocksDB inserts values into DEFAULT_COLUMN_FAMILY.
     this(
@@ -244,7 +247,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         factory,
         dbDir,
         rocksDBMemoryStats,
-        rocksDbThrottler,
+        rocksDbOpenThrottler,
+        rocksDbIngestThrottler,
         rocksDBServerConfig,
         Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY));
   }
@@ -376,6 +380,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
+  public void cleanupAfterBatchWrite() {
+    deleteSSTFiles(fullPathForTempSSTFileDir);
+  }
+
+  @Override
   public synchronized void put(byte[] key, byte[] value) {
     put(key, ByteBuffer.wrap(value));
   }
@@ -496,13 +505,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       readCloseRWLock.readLock().unlock();
       callback.onCompletion();
     }
-  }
-
-  public synchronized boolean validateBatchIngestion() {
-    if (!deferredWrite) {
-      return true;
-    }
-    return rocksDBSstFileWritter.validateBatchIngestion();
   }
 
   private ReadOptions getReadOptionsForIteration(byte[] keyPrefix) {
@@ -688,11 +690,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           LatencyUtils.getElapsedTimeInMs(startTimeInMs));
 
       if (this.readOnly) {
-        this.rocksDB = rocksDBThrottler
+        this.rocksDB = rocksDBOpenThrottler
             .openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       } else {
         this.rocksDB =
-            rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+            rocksDBOpenThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       }
       LOGGER.info("Reopened RocksDB for store: {}, partition: {}", storeName, partitionId);
     } catch (Exception e) {

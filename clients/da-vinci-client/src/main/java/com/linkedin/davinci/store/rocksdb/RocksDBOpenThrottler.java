@@ -19,8 +19,8 @@ import org.rocksdb.RocksDBException;
  * So far, it only supports throttling open operations.
  * check {@link RocksDBServerConfig#ROCKSDB_DB_OPEN_OPERATION_THROTTLE} to find more details.
  */
-public class RocksDBThrottler {
-  private static final Logger LOGGER = LogManager.getLogger(RocksDBThrottler.class);
+public class RocksDBOpenThrottler {
+  private static final Logger LOGGER = LogManager.getLogger(RocksDBOpenThrottler.class);
 
   private final int allowedMaxOpenOperationsInParallel;
   private int currentOngoingOpenOperations = 0;
@@ -28,7 +28,7 @@ public class RocksDBThrottler {
   private final Lock throttlerLock = new ReentrantLock();
   private final Condition hasBandwidth = throttlerLock.newCondition();
 
-  public RocksDBThrottler(int allowedMaxOpenOperationsInParallel) {
+  public RocksDBOpenThrottler(int allowedMaxOpenOperationsInParallel) {
     if (allowedMaxOpenOperationsInParallel <= 0) {
       throw new IllegalArgumentException(
           "Param: allowedMaxOpenOperationsInParallel should be positive, but is: "

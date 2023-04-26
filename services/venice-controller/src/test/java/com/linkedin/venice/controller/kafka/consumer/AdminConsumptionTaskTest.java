@@ -183,7 +183,7 @@ public class AdminConsumptionTaskTest {
 
   @AfterMethod
   public void cleanUp() throws InterruptedException {
-    TestUtils.shutdownExecutor(executor);
+    TestUtils.shutdownExecutorNow(executor);
     veniceWriter.close();
   }
 

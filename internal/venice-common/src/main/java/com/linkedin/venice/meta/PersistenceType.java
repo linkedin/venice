@@ -18,6 +18,7 @@ public enum PersistenceType {
   /**
    * Persistent storage engine that writes to durable media and maintains a B+ tree in the Java heap.
    */
+  @Deprecated
   BDB(1),
 
   /**

@@ -64,6 +64,7 @@ public class RocksDBSstFileWriter {
    */
   protected static final String ROCKSDB_LAST_FINISHED_SST_FILE_NO = "rocksdb_last_finished_sst_file_no";
   protected static final String ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO = "rocksdb_last_finished_rmd_sst_file_no";
+  protected static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
   protected static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
   private int lastFinishedSSTFileNo = -1;
   /**
@@ -81,6 +82,8 @@ public class RocksDBSstFileWriter {
   private final boolean isRMD;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final String lastCheckPointedSSTFileNum;
+  private final RocksDBIngestThrottler rocksDBIngestThrottler;
+  private final String dbDir;
 
   public RocksDBSstFileWriter(
       String storeName,
@@ -90,15 +93,18 @@ public class RocksDBSstFileWriter {
       Options options,
       String fullPathForTempSSTFileDir,
       boolean isRMD,
-      RocksDBServerConfig rocksDBServerConfig) {
+      RocksDBServerConfig rocksDBServerConfig,
+      RocksDBIngestThrottler rocksDBIngestThrottler) {
     this.storeName = storeName;
     this.partitionId = partitionId;
+    this.dbDir = dbDir;
     this.envOptions = envOptions;
     this.options = options;
     this.fullPathForTempSSTFileDir = fullPathForTempSSTFileDir;
     this.isRMD = isRMD;
     this.lastCheckPointedSSTFileNum = isRMD ? ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO : ROCKSDB_LAST_FINISHED_SST_FILE_NO;
     this.rocksDBServerConfig = rocksDBServerConfig;
+    this.rocksDBIngestThrottler = rocksDBIngestThrottler;
   }
 
   public void put(byte[] key, ByteBuffer valueBuffer) throws RocksDBException {
@@ -337,21 +343,6 @@ public class RocksDBSstFileWriter {
     }
   }
 
-  public boolean validateBatchIngestion() {
-    List<String> files = getTemporarySSTFilePaths();
-    if (files.isEmpty()) {
-      return true;
-    }
-    for (String path: files) {
-      File file = new File(path);
-      if (file.length() != 0) {
-        LOGGER.error("Non-empty sst found when validating batch ingestion: {}", path);
-        return false;
-      }
-    }
-    return true;
-  }
-
   public void ingestSSTFiles(RocksDB rocksDB, List<ColumnFamilyHandle> columnFamilyHandleList) {
     List<String> sstFilePaths = getTemporarySSTFilePaths();
     if (sstFilePaths.isEmpty()) {
@@ -364,19 +355,20 @@ public class RocksDBSstFileWriter {
     LOGGER.info(
         "Start ingesting to store: " + storeName + ", partition id: " + partitionId + " from files: " + sstFilePaths);
     try (IngestExternalFileOptions ingestOptions = new IngestExternalFileOptions()) {
-      ingestOptions.setMoveFiles(true);
-      if (isRMD) {
-        rocksDB.ingestExternalFile(
-            columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
-            sstFilePaths,
-            ingestOptions);
-      } else {
-        rocksDB.ingestExternalFile(sstFilePaths, ingestOptions);
-      }
+      // ingestOptions.setMoveFiles(true);
+      rocksDBIngestThrottler.throttledIngest(
+          dbDir,
+          () -> rocksDB.ingestExternalFile(
+              isRMD
+                  ? columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX)
+                  : columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX),
+              sstFilePaths,
+              ingestOptions));
+
       LOGGER.info(
           "Finished ingestion to store: " + storeName + ", partition id: " + partitionId + " from files: "
               + sstFilePaths);
-    } catch (RocksDBException e) {
+    } catch (RocksDBException | InterruptedException e) {
       throw new VeniceException("Received exception during RocksDB#ingestExternalFile", e);
     }
   }

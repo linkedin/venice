@@ -44,11 +44,11 @@ import org.apache.logging.log4j.Logger;
  * 1.2 One store uses multiple databases, i.e. one partition per database.
  * 2. Each store handled by one storage engine
  * 2.1 All partitions of the store will be handled in one database (current Voldemort implementation)
- * 2.2 One partition per database (Sudha suggests)
- * 3. Each partition handled by one storage engine (original proposal before today’s discussion, super high overhead)
+ * 2.2 One partition per database
+ * 3. Each partition handled by one storage engine
  * <p/>
- * The point of having one storage engine(environment) or one database for one partition, is to simplify the complexity of rebalancing/partition migration/host swap.
- * The team agreed to take (2.2) as default storage-partition model for now, and run performance tests to see if it goes well.
+ * The current implementation is based on 3. The point of having one storage engine(environment) or one
+ * database for one partition, is to simplify the complexity of rebalancing/partition migration/host swap.
  */
 public abstract class AbstractStorageEngine<Partition extends AbstractStoragePartition> implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(AbstractStorageEngine.class);
@@ -376,20 +376,24 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   /**
-   * @return true if the storage engine successfully returned to normal mode
+   * Finalize the underlying storage partition states, adjust them for future ingestion
+   * (eg from streaming writes).
    */
   public synchronized void endBatchWrite(StoragePartitionConfig storagePartitionConfig) {
     LOGGER.info("End batch write for storage partition config: {}", storagePartitionConfig);
     AbstractStoragePartition partition = getPartitionOrThrow(storagePartitionConfig.getPartitionId());
     partition.endBatchWrite();
     /**
-     * After end of batch push, we would like to adjust the underlying database for the future ingestion, such as from streaming.
+     * After end of batch push, we would like to adjust the underlying database for the future
+     * ingestion, such as from streaming.
      */
     adjustStoragePartition(storagePartitionConfig);
+  }
 
-    if (!partition.validateBatchIngestion()) {
-      throw new VeniceException("Storage temp files not fully ingested for store: " + storeName);
-    }
+  public synchronized void cleanupAfterBatchWrite(StoragePartitionConfig storagePartitionConfig) {
+    LOGGER.info("Clean up after End batch write for storage partition config: {}", storagePartitionConfig);
+    AbstractStoragePartition partition = getPartitionOrThrow(storagePartitionConfig.getPartitionId());
+    partition.cleanupAfterBatchWrite();
   }
 
   private void executeWithSafeGuard(int partitionId, Runnable runnable) {

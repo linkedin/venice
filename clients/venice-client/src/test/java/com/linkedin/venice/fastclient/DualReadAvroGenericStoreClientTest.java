@@ -33,7 +33,7 @@ public class DualReadAvroGenericStoreClientTest {
 
   @AfterClass
   public void tearDown() throws InterruptedException {
-    TestUtils.shutdownExecutor(scheduledExecutor);
+    TestUtils.shutdownExecutorNow(scheduledExecutor);
   }
 
   private DualReadAvroGenericStoreClient<String, String> prepareClients(

@@ -370,7 +370,7 @@ public abstract class StoreIngestionTaskTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() throws Exception {
-    TestUtils.shutdownExecutor(taskPollingService);
+    TestUtils.shutdownExecutorNow(taskPollingService);
     storeBufferService.stop();
   }
 
@@ -1407,7 +1407,6 @@ public abstract class StoreIngestionTaskTest {
     mockAbstractStorageEngine.addStoragePartition(PARTITION_FOO);
     AbstractStoragePartition mockPartition = mock(AbstractStoragePartition.class);
     doReturn(mockPartition).when(mockAbstractStorageEngine).getPartitionOrThrow(PARTITION_FOO);
-    doReturn(true).when(mockPartition).validateBatchIngestion();
     new StoragePartitionConfig(topic, PARTITION_FOO);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {

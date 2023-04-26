@@ -153,7 +153,7 @@ public class StorageReadRequestsHandlerTest {
       Assert.assertEquals(response, valueString.getBytes());
       Assert.assertEquals(obj.getValueRecord().getSchemaId(), schemaId);
     } finally {
-      TestUtils.shutdownExecutor(threadPoolExecutor);
+      TestUtils.shutdownExecutorNow(threadPoolExecutor);
     }
   }
 
@@ -204,7 +204,7 @@ public class StorageReadRequestsHandlerTest {
       HttpShortcutResponse healthCheckResponse = (HttpShortcutResponse) outputs.get(0);
       Assert.assertEquals(healthCheckResponse.getStatus(), HttpResponseStatus.OK);
     } finally {
-      TestUtils.shutdownExecutor(threadPoolExecutor);
+      TestUtils.shutdownExecutorNow(threadPoolExecutor);
     }
   }
 
@@ -335,7 +335,7 @@ public class StorageReadRequestsHandlerTest {
         Assert.assertEquals(results.get(i), allValueStrings.get(i));
       }
     } finally {
-      TestUtils.shutdownExecutor(threadPoolExecutor);
+      TestUtils.shutdownExecutorNow(threadPoolExecutor);
     }
   }
 
@@ -427,7 +427,7 @@ public class StorageReadRequestsHandlerTest {
       // Asserting that the exception got logged
       Assert.assertTrue(errorLogCount.get() > 0);
     } finally {
-      TestUtils.shutdownExecutor(threadPoolExecutor);
+      TestUtils.shutdownExecutorNow(threadPoolExecutor);
     }
   }
 
@@ -503,7 +503,7 @@ public class StorageReadRequestsHandlerTest {
           obj.getResponseSchemaIdHeader(),
           AvroProtocolDefinition.SERVER_ADMIN_RESPONSE_V1.getCurrentProtocolVersion());
     } finally {
-      TestUtils.shutdownExecutor(threadPoolExecutor);
+      TestUtils.shutdownExecutorNow(threadPoolExecutor);
     }
   }
 
@@ -582,7 +582,7 @@ public class StorageReadRequestsHandlerTest {
       Assert.assertEquals(obj.getResponseRecord().getKeySchema(), keySchema);
       Assert.assertEquals(obj.getResponseRecord().getValueSchemas(), valueSchemas);
     } finally {
-      TestUtils.shutdownExecutor(threadPoolExecutor);
+      TestUtils.shutdownExecutorNow(threadPoolExecutor);
     }
   }
 
@@ -635,7 +635,7 @@ public class StorageReadRequestsHandlerTest {
       Assert.assertEquals(obj.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
       Assert.assertEquals(obj.getMessage(), "Unrecognized object in StorageExecutionHandler");
     } finally {
-      TestUtils.shutdownExecutor(threadPoolExecutor);
+      TestUtils.shutdownExecutorNow(threadPoolExecutor);
     }
   }
 }

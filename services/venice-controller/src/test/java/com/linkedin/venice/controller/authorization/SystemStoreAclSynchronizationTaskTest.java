@@ -63,7 +63,7 @@ public class SystemStoreAclSynchronizationTaskTest {
 
   @AfterClass
   public void cleanUp() throws InterruptedException {
-    TestUtils.shutdownExecutor(executorService);
+    TestUtils.shutdownExecutorNow(executorService);
   }
 
   @Test

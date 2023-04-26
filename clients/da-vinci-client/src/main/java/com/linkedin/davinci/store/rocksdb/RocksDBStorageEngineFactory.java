@@ -82,7 +82,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   /**
    * Throttler for RocksDB open operations.
    */
-  private final RocksDBThrottler rocksDBThrottler;
+  private final RocksDBOpenThrottler rocksDBOpenThrottler;
+  private final RocksDBIngestThrottler rocksDBIngestThrottler;
 
   /**
    * Rate limiter for flush and compaction.
@@ -165,7 +166,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to create the shared SstFileManager", e);
     }
-    this.rocksDBThrottler = new RocksDBThrottler(rocksDBServerConfig.getDatabaseOpenOperationThrottle());
+    this.rocksDBOpenThrottler = new RocksDBOpenThrottler(rocksDBServerConfig.getDatabaseOpenOperationThrottle());
+    this.rocksDBIngestThrottler = new RocksDBIngestThrottler(rocksDBServerConfig.getDatabaseIngestOperationThrottle());
     this.rateLimiter = new RateLimiter(
         rocksDBServerConfig.getWriteQuotaBytesPerSecond(),
         DEFAULT_REFILL_PERIOD_MICROS,
@@ -218,7 +220,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
               this,
               rocksDBPath,
               rocksDBMemoryStats,
-              rocksDBThrottler,
+              rocksDBOpenThrottler,
+              rocksDBIngestThrottler,
               rocksDBServerConfig,
               storeVersionStateSerializer,
               partitionStateSerializer,

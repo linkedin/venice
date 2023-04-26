@@ -194,6 +194,16 @@ public class RocksDBServerConfig {
    * The following config is used to throttle the RocksDB open operations.
    */
   public static final String ROCKSDB_DB_OPEN_OPERATION_THROTTLE = "rocksdb.db.open.operation.throttle";
+  public static final int ROCKSDB_DB_OPEN_OPERATION_THROTTLE_DEFAULT = 3;
+  /**
+   * When local sst files are ingested, we copy the local sst files to rocksDB and delete them once
+   * EOP is persisted, to allow for the files to be still present if a storage Node crashes before
+   * EOP is persisted. But doing copy instead of moving might spike disk usage especially if more writes
+   * are happening in parallel, so adding a throttler to limit the number of copies in parallel. This
+   * is within one SN, so we still ingest in parallel among different SNs.
+   */
+  public static final String ROCKSDB_DB_INGEST_OPERATION_THROTTLE = "rocksdb.db.ingest.operation.throttle";
+  public static final int ROCKSDB_DB_INGEST_OPERATION_THROTTLE_DEFAULT = 1;
 
   /**
    * Check the following link for more details:
@@ -248,6 +258,7 @@ public class RocksDBServerConfig {
 
   private final int maxFileOpeningThreads;
   private final int databaseOpenOperationThrottle;
+  private final int databaseIngestOperationThrottle;
   private final int cappedPrefixExtractorLength;
 
   private final long writeQuotaBytesPerSecond;
@@ -350,7 +361,10 @@ public class RocksDBServerConfig {
     this.targetFileSizeInBytes = props.getInt(ROCKSDB_TARGET_FILE_SIZE_IN_BYTES, 64 * 1024 * 1024); // default: 64MB
 
     this.maxFileOpeningThreads = props.getInt(ROCKSDB_MAX_FILE_OPENING_THREADS, 16);
-    this.databaseOpenOperationThrottle = props.getInt(ROCKSDB_DB_OPEN_OPERATION_THROTTLE, 3);
+    this.databaseOpenOperationThrottle =
+        props.getInt(ROCKSDB_DB_OPEN_OPERATION_THROTTLE, ROCKSDB_DB_OPEN_OPERATION_THROTTLE_DEFAULT);
+    this.databaseIngestOperationThrottle =
+        props.getInt(ROCKSDB_DB_INGEST_OPERATION_THROTTLE, ROCKSDB_DB_INGEST_OPERATION_THROTTLE_DEFAULT);
     this.cappedPrefixExtractorLength = props.getInt(CAPPED_PREFIX_EXTRACTOR_LENGTH, 16);
     this.writeQuotaBytesPerSecond = props.getSizeInBytes(ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND, 100L * 1024 * 1024); // 100MB
                                                                                                                     // by
@@ -518,6 +532,10 @@ public class RocksDBServerConfig {
 
   public int getDatabaseOpenOperationThrottle() {
     return databaseOpenOperationThrottle;
+  }
+
+  public int getDatabaseIngestOperationThrottle() {
+    return databaseIngestOperationThrottle;
   }
 
   public int getCappedPrefixExtractorLength() {

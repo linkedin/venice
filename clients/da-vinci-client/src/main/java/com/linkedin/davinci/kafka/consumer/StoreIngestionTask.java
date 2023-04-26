@@ -1869,6 +1869,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     int recordSize = 0;
+    boolean isEOPReceivedBefore = partitionConsumptionState.getOffsetRecord().isEndOfPushReceived();
     try {
       recordSize = internalProcessConsumerRecord(
           record,
@@ -1965,6 +1966,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // update the offset metadata in the OffsetRecord
       updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
       syncOffset(kafkaVersionTopic, partitionConsumptionState);
+      if (isEOPReceivedBefore == false && offsetRecord.isEndOfPushReceived() == true) {
+        // if this msg is EOP
+        cleanupAfterEndOfPush(partitionConsumptionState);
+      }
     }
   }
 
@@ -2054,6 +2059,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
       LOGGER.info(msg + offsetRecord.getLocalVersionTopicOffset());
     }
+  }
+
+  private void cleanupAfterEndOfPush(PartitionConsumptionState partitionConsumptionState) {
+    int partition = partitionConsumptionState.getPartition();
+    StoragePartitionConfig storagePartitionConfig =
+        getStoragePartitionConfig(partition, false, partitionConsumptionState);
+    storageEngine.cleanupAfterBatchWrite(storagePartitionConfig);
   }
 
   private void updateOffsetLagInMetadata(PartitionConsumptionState ps) {

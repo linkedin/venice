@@ -1,5 +1,8 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.DEFAULT_COLUMN_FAMILY_INDEX;
+import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.REPLICATION_METADATA_COLUMN_FAMILY_INDEX;
+
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -30,22 +33,21 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   private RocksDBSstFileWriter rocksDBSstFileWriter = null;
   private final String fullPathForTempSSTFileDir;
 
-  private static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
-  private static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
-
   public ReplicationMetadataRocksDBStoragePartition(
       StoragePartitionConfig storagePartitionConfig,
       RocksDBStorageEngineFactory factory,
       String dbDir,
       RocksDBMemoryStats rocksDBMemoryStats,
-      RocksDBThrottler rocksDbThrottler,
+      RocksDBOpenThrottler rocksDbOpenThrottler,
+      RocksDBIngestThrottler rocksDbIngestThrottler,
       RocksDBServerConfig rocksDBServerConfig) {
     super(
         storagePartitionConfig,
         factory,
         dbDir,
         rocksDBMemoryStats,
-        rocksDbThrottler,
+        rocksDbOpenThrottler,
+        rocksDbIngestThrottler,
         rocksDBServerConfig,
         Arrays.asList(RocksDB.DEFAULT_COLUMN_FAMILY, REPLICATION_METADATA_COLUMN_FAMILY));
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempRMDSSTFileDir(dbDir, storeName, partitionId);
@@ -58,7 +60,8 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
           super.getOptions(),
           fullPathForTempSSTFileDir,
           true,
-          rocksDBServerConfig);
+          rocksDBServerConfig,
+          rocksDbIngestThrottler);
     }
   }
 
@@ -214,17 +217,6 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     if (deferredWrite) {
       rocksDBSstFileWriter.close();
     }
-  }
-
-  @Override
-  public synchronized boolean validateBatchIngestion() {
-    if (!deferredWrite) {
-      return true;
-    }
-    if (!super.validateBatchIngestion()) {
-      return false;
-    }
-    return rocksDBSstFileWriter.validateBatchIngestion();
   }
 
   @Override

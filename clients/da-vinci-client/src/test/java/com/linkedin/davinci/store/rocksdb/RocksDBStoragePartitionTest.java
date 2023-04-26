@@ -1,6 +1,8 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_IMPLEMENTATION;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_DB_INGEST_OPERATION_THROTTLE_DEFAULT;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_DB_OPEN_OPERATION_THROTTLE_DEFAULT;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER;
@@ -29,8 +31,6 @@ import java.util.Properties;
 import java.util.TreeMap;
 import java.util.function.Supplier;
 import org.apache.commons.lang.RandomStringUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDBException;
@@ -41,13 +41,19 @@ import org.testng.annotations.Test;
 
 
 public class RocksDBStoragePartitionTest {
-  private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartitionTest.class);
   private static final String DATA_BASE_DIR = Utils.getUniqueTempPath();
   private static final String KEY_PREFIX = "key_";
   private static final String VALUE_PREFIX = "value_";
-  private static final RocksDBThrottler ROCKSDB_THROTTLER = new RocksDBThrottler(3);
+  private static final RocksDBOpenThrottler ROCKSDB_OPEN_THROTTLER =
+      new RocksDBOpenThrottler(ROCKSDB_DB_OPEN_OPERATION_THROTTLE_DEFAULT);
+  private static final RocksDBIngestThrottler ROCKSDB_INGEST_THROTTLER =
+      new RocksDBIngestThrottler(ROCKSDB_DB_INGEST_OPERATION_THROTTLE_DEFAULT);
 
   private Map<String, String> generateInput(int recordCnt, boolean sorted, int padLength) {
+    return generateInput(recordCnt, 0, sorted, padLength);
+  }
+
+  private Map<String, String> generateInput(int recordCnt, int recordStart, boolean sorted, int padLength) {
     Map<String, String> records;
     if (sorted) {
       BytewiseComparator comparator = new BytewiseComparator(new ComparatorOptions());
@@ -59,7 +65,7 @@ public class RocksDBStoragePartitionTest {
     } else {
       records = new HashMap<>();
     }
-    for (int i = 0; i < recordCnt; ++i) {
+    for (int i = recordStart; i < recordCnt + recordStart; ++i) {
       String value = VALUE_PREFIX + i;
       if (padLength > 0) {
         value += RandomStringUtils.random(padLength, true, true);
@@ -124,7 +130,8 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
@@ -172,7 +179,8 @@ public class RocksDBStoragePartitionTest {
                 factory,
                 DATA_BASE_DIR,
                 null,
-                ROCKSDB_THROTTLER,
+                ROCKSDB_OPEN_THROTTLER,
+                ROCKSDB_INGEST_THROTTLER,
                 rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
@@ -206,9 +214,7 @@ public class RocksDBStoragePartitionTest {
     }
 
     if (sorted) {
-      Assert.assertFalse(storagePartition.validateBatchIngestion());
       storagePartition.endBatchWrite();
-      Assert.assertTrue(storagePartition.validateBatchIngestion());
     }
 
     // Verify all the key/value pairs
@@ -228,7 +234,8 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
 
     // Test deletion
@@ -265,7 +272,8 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord1 = 345;
@@ -306,7 +314,8 @@ public class RocksDBStoragePartitionTest {
             factory,
             DATA_BASE_DIR,
             null,
-            ROCKSDB_THROTTLER,
+            ROCKSDB_OPEN_THROTTLER,
+            ROCKSDB_INGEST_THROTTLER,
             rocksDBServerConfig);
         Options storeOptions = storagePartition.getOptions();
         Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
@@ -335,9 +344,7 @@ public class RocksDBStoragePartitionTest {
     }
 
     if (sorted) {
-      Assert.assertFalse(storagePartition.validateBatchIngestion());
       storagePartition.endBatchWrite();
-      Assert.assertTrue(storagePartition.validateBatchIngestion());
     }
 
     // Verify all the key/value pairs
@@ -360,7 +367,8 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
 
     storagePartition.rocksDB.compactRange();
@@ -411,7 +419,8 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
@@ -458,7 +467,8 @@ public class RocksDBStoragePartitionTest {
                 factory,
                 DATA_BASE_DIR,
                 null,
-                ROCKSDB_THROTTLER,
+                ROCKSDB_OPEN_THROTTLER,
+                ROCKSDB_INGEST_THROTTLER,
                 rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
@@ -492,9 +502,7 @@ public class RocksDBStoragePartitionTest {
     }
 
     if (sorted) {
-      Assert.assertFalse(storagePartition.validateBatchIngestion());
       storagePartition.endBatchWrite();
-      Assert.assertTrue(storagePartition.validateBatchIngestion());
     }
 
     // Verify all the key/value pairs
@@ -514,7 +522,8 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
@@ -546,7 +555,8 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
 
     Optional<Supplier<byte[]>> checksumSupplier = Optional.of(() -> new byte[16]);
@@ -580,7 +590,8 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
 
     storagePartition.close();
@@ -621,7 +632,8 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
 
     // By default, it is write only
@@ -642,7 +654,8 @@ public class RocksDBStoragePartitionTest {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
     Options readWriteOptions = storagePartition.getOptions();
     Assert.assertEquals(readWriteOptions.level0FileNumCompactionTrigger(), 10);

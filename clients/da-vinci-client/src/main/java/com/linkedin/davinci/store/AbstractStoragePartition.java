@@ -10,8 +10,8 @@ import java.util.function.Supplier;
 
 
 /**
- * An abstract implementation of a storage partition. This could be a database in BDB
- * environment or a concurrent hashmap in the case of an in-memory implementation depending
+ * An abstract implementation of a storage partition. This could be a RocksDB database
+ * or a concurrent hashmap in the case of an in-memory implementation depending
  * on the storage-partition model.
  */
 public abstract class AbstractStoragePartition {
@@ -109,15 +109,14 @@ public abstract class AbstractStoragePartition {
   public void endBatchWrite() {
   }
 
+  public void cleanupAfterBatchWrite() {
+  }
+
   /**
    * Get the partition database size in bytes
    * @return partition database size
    */
   public abstract long getPartitionSizeInBytes();
-
-  public boolean validateBatchIngestion() {
-    return true;
-  }
 
   /**
    * This API takes in value and metadata as ByteBuffer format and put it into RocksDB.

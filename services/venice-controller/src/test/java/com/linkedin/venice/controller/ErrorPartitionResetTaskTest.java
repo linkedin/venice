@@ -63,7 +63,7 @@ public class ErrorPartitionResetTaskTest {
 
   @AfterClass
   public void cleanUp() throws InterruptedException {
-    TestUtils.shutdownExecutor(errorPartitionResetExecutorService);
+    TestUtils.shutdownExecutorNow(errorPartitionResetExecutorService);
   }
 
   @Test

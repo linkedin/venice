@@ -1,5 +1,7 @@
 package com.linkedin.venice.benchmark;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_DB_INGEST_OPERATION_THROTTLE_DEFAULT;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_DB_OPEN_OPERATION_THROTTLE_DEFAULT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -11,9 +13,10 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
+import com.linkedin.davinci.store.rocksdb.RocksDBIngestThrottler;
+import com.linkedin.davinci.store.rocksdb.RocksDBOpenThrottler;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
-import com.linkedin.davinci.store.rocksdb.RocksDBThrottler;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -65,7 +68,10 @@ public class ReplicationConsumptionBenchmark {
   private static final String KEY_PREFIX = "key_";
   private static final String VALUE_PREFIX = "value_";
   private static final String METADATA_PREFIX = "metadata_";
-  private static final RocksDBThrottler ROCKSDB_THROTTLER = new RocksDBThrottler(3);
+  private static final RocksDBOpenThrottler ROCKSDB_OPEN_THROTTLER =
+      new RocksDBOpenThrottler(ROCKSDB_DB_OPEN_OPERATION_THROTTLE_DEFAULT);
+  private static final RocksDBIngestThrottler ROCKSDB_INGEST_THROTTLER =
+      new RocksDBIngestThrottler(ROCKSDB_DB_INGEST_OPERATION_THROTTLE_DEFAULT);
   private String storeDir;
   private Map<String, Pair<String, String>> inputRecords;
   private Optional<CheckSum> runningChecksum;
@@ -98,7 +104,8 @@ public class ReplicationConsumptionBenchmark {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
     syncPerRecords = 10000;
 
@@ -160,7 +167,8 @@ public class ReplicationConsumptionBenchmark {
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;

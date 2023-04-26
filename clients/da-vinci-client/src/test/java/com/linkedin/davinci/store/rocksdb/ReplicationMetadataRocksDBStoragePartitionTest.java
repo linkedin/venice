@@ -1,5 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_DB_INGEST_OPERATION_THROTTLE_DEFAULT;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_DB_OPEN_OPERATION_THROTTLE_DEFAULT;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -59,7 +61,10 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
   private static final String KEY_PREFIX = "key_";
   private static final String VALUE_PREFIX = "value_";
   private static final String METADATA_PREFIX = "metadata_";
-  private static final RocksDBThrottler ROCKSDB_THROTTLER = new RocksDBThrottler(3);
+  private static final RocksDBOpenThrottler ROCKSDB_OPEN_THROTTLER =
+      new RocksDBOpenThrottler(ROCKSDB_DB_OPEN_OPERATION_THROTTLE_DEFAULT);
+  private static final RocksDBIngestThrottler ROCKSDB_INGEST_THROTTLER =
+      new RocksDBIngestThrottler(ROCKSDB_DB_INGEST_OPERATION_THROTTLE_DEFAULT);
   private StorageService storageService;
   private VeniceStoreVersionConfig storeConfig;
 
@@ -177,7 +182,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
 
     Map<String, Pair<String, String>> inputRecords = generateInputWithMetadata(100);
@@ -308,7 +314,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
 
     final int syncPerRecords = 100;
@@ -366,7 +373,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
                 factory,
                 DATA_BASE_DIR,
                 null,
-                ROCKSDB_THROTTLER,
+                ROCKSDB_OPEN_THROTTLER,
+                ROCKSDB_INGEST_THROTTLER,
                 rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
@@ -410,9 +418,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     }
 
     if (sorted) {
-      Assert.assertFalse(storagePartition.validateBatchIngestion());
       storagePartition.endBatchWrite();
-      Assert.assertTrue(storagePartition.validateBatchIngestion());
     }
 
     // Verify all the key/value pairs
@@ -438,7 +444,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         factory,
         DATA_BASE_DIR,
         null,
-        ROCKSDB_THROTTLER,
+        ROCKSDB_OPEN_THROTTLER,
+        ROCKSDB_INGEST_THROTTLER,
         rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;

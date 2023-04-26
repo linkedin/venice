@@ -774,18 +774,45 @@ public class TestUtils {
     Assert.assertFalse(thread.isAlive());
   }
 
+  /**
+   * calls {@link ExecutorService#shutdownNow} which stops accepting new tasks and interrupts the running tasks
+   */
+  public static void shutdownExecutorNow(ExecutorService executor) throws InterruptedException {
+    shutdownExecutorNow(executor, 5, TimeUnit.SECONDS);
+  }
+
+  public static void shutdownExecutorNow(ExecutorService executor, long timeout, TimeUnit unit)
+      throws InterruptedException {
+    if (executor == null) {
+      return;
+    }
+    executor.shutdownNow();
+    Assert.assertTrue(executor.awaitTermination(timeout, unit));
+  }
+
+  /**
+   * calls {@link ExecutorService#shutdown} which stops accepting new tasks
+   */
   public static void shutdownExecutor(ExecutorService executor) throws InterruptedException {
-    shutdownExecutor(executor, 5, TimeUnit.SECONDS);
+    shutdownExecutorNow(executor, 5, TimeUnit.SECONDS);
   }
 
   public static void shutdownExecutor(ExecutorService executor, long timeout, TimeUnit unit)
+      throws InterruptedException {
+    shutdownExecutor(executor, timeout, unit, true);
+  }
+
+  public static void shutdownExecutor(ExecutorService executor, long timeout, TimeUnit unit, boolean assertFinishAll)
       throws InterruptedException {
     if (executor == null) {
       return;
     }
     executor.shutdown();
-    executor.shutdownNow();
-    Assert.assertTrue(executor.awaitTermination(timeout, unit));
+    if (assertFinishAll) {
+      Assert.assertTrue(executor.awaitTermination(timeout, unit));
+    } else {
+      Assert.assertFalse(executor.awaitTermination(timeout, unit));
+    }
   }
 
   public static void createMetaSystemStore(
