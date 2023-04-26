@@ -194,7 +194,7 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
   }
 
   @Override
-  public int getLargestValueSchemaId() {
+  public int getMaxValueSchemaId() {
     return schemas.get().getMaxValueSchemaId();
   }
 

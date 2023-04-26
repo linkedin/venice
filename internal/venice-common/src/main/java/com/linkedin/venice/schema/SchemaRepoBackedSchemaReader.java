@@ -49,7 +49,7 @@ public class SchemaRepoBackedSchemaReader implements SchemaReader {
   }
 
   @Override
-  public int getLargestValueSchemaId() {
+  public int getMaxValueSchemaId() {
     return schemaRepository.getValueSchemas(storeName)
         .stream()
         .map(SchemaEntry::getId)

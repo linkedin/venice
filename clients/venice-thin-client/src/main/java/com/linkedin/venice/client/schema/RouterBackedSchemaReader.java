@@ -16,10 +16,11 @@ import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
@@ -48,11 +49,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
   private final String storeName;
   private final AbstractAvroStoreClient storeClient;
-  private final Optional<Predicate<Schema>> preferredSchemaFilter;
-  private final long valueSchemaRefreshPeriodMs;
+  private final Predicate<Schema> preferredSchemaFilter;
+  private final Duration valueSchemaRefreshPeriod;
   private final ICProvider icProvider;
-  private int largestValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
-  private long lastValueSchemaRefreshTimeMs = 0;
+  private int maxValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+  private Instant lastValueSchemaRefreshTime = Instant.EPOCH;
 
   RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
     this(clientSupplier, Optional.empty(), Optional.empty());
@@ -77,7 +78,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
       Supplier<AbstractAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
-      long valueSchemaRefreshPeriodInSec) {
+      int valueSchemaRefreshPeriodInSec) {
     this(clientSupplier, readerSchema, preferredSchemaFilter, valueSchemaRefreshPeriodInSec, null);
   }
 
@@ -85,14 +86,14 @@ public class RouterBackedSchemaReader implements SchemaReader {
       Supplier<AbstractAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
-      long valueSchemaRefreshPeriodInSec,
+      int valueSchemaRefreshPeriodInSec,
       ICProvider icProvider) {
     this.storeClient = clientSupplier.get();
     this.storeName = this.storeClient.getStoreName();
     this.readerSchema = readerSchema;
-    this.preferredSchemaFilter = preferredSchemaFilter;
+    this.preferredSchemaFilter = preferredSchemaFilter.orElse(schema -> true);
     readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
-    this.valueSchemaRefreshPeriodMs = valueSchemaRefreshPeriodInSec * Time.MS_PER_SECOND;
+    this.valueSchemaRefreshPeriod = Duration.of(valueSchemaRefreshPeriodInSec, ChronoUnit.SECONDS);
     this.icProvider = icProvider;
   }
 
@@ -172,13 +173,13 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   @Override
-  public int getLargestValueSchemaId() {
-    if (System.currentTimeMillis() - lastValueSchemaRefreshTimeMs >= valueSchemaRefreshPeriodMs) {
+  public int getMaxValueSchemaId() {
+    if (Duration.between(lastValueSchemaRefreshTime, Instant.now()).compareTo(valueSchemaRefreshPeriod) > 0) {
       synchronized (this) {
         refreshAllValueSchema();
       }
     }
-    return largestValueSchemaId;
+    return maxValueSchemaId;
   }
 
   @Override
@@ -273,8 +274,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
                 + schemaResponse.getError());
       }
 
-      int latestSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
-      int latestPreferredSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+      int supersetSchemaId = schemaResponse.getSuperSetSchemaId();
+
+      int maxSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+      int maxPreferredSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+      boolean supersetSchemaIsPreferredSchema = false;
       for (MultiSchemaResponse.Schema schema: schemaResponse.getSchemas()) {
         int schemaId = schema.getId();
         String schemaStr = schema.getSchemaStr();
@@ -286,36 +290,39 @@ public class RouterBackedSchemaReader implements SchemaReader {
             schemaId);
         valueSchemaMap.put(schemaId, writerSchema);
         valueSchemaMapR.put(writerSchema, schemaId);
-        if (latestSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID || latestSchemaId < schemaId) {
-          latestSchemaId = schemaId;
+        if (maxSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID || maxSchemaId < schemaId) {
+          maxSchemaId = schemaId;
         }
-        if (preferredSchemaFilter.isPresent() && preferredSchemaFilter.get().test(writerSchema)
-            && (latestPreferredSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID || latestPreferredSchemaId < schemaId)) {
-          latestPreferredSchemaId = schemaId;
-        }
+        if (preferredSchemaFilter.test(writerSchema)) {
+          if (schemaId == supersetSchemaId) {
+            supersetSchemaIsPreferredSchema = true;
+          }
 
-        if (schemaId > largestValueSchemaId) {
-          largestValueSchemaId = schemaId;
+          if (maxPreferredSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID || maxPreferredSchemaId < schemaId) {
+            maxPreferredSchemaId = schemaId;
+          }
         }
+      }
+
+      if (maxSchemaId > maxValueSchemaId) {
+        maxValueSchemaId = maxSchemaId;
       }
 
       synchronized (this) {
-        if (latestPreferredSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-          latestSchemaId = latestPreferredSchemaId;
-          if (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < latestSchemaId) {
-            latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
+        if (maxPreferredSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID && !supersetSchemaIsPreferredSchema) {
+          if (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < maxPreferredSchemaId) {
+            latestValueSchemaEntry.set(new SchemaEntry(maxPreferredSchemaId, valueSchemaMap.get(maxPreferredSchemaId)));
           }
-        } else if (schemaResponse.getSuperSetSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-          latestSchemaId = schemaResponse.getSuperSetSchemaId();
-          latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
-        } else if (latestSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-          if (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < latestSchemaId) {
-            latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
+        } else if (supersetSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+          latestValueSchemaEntry.set(new SchemaEntry(supersetSchemaId, valueSchemaMap.get(supersetSchemaId)));
+        } else if (maxSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+          if (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < maxSchemaId) {
+            latestValueSchemaEntry.set(new SchemaEntry(maxSchemaId, valueSchemaMap.get(maxSchemaId)));
           }
         }
       }
 
-      lastValueSchemaRefreshTimeMs = System.currentTimeMillis();
+      lastValueSchemaRefreshTime = Instant.now();
     } catch (Exception e) {
       throw new VeniceClientException(
           "Got exception while trying to fetch single schema. " + getExceptionDetails(requestPath),

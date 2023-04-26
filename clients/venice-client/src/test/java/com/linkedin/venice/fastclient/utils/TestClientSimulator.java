@@ -599,7 +599,7 @@ public class TestClientSimulator implements Client {
       }
 
       @Override
-      public int getLargestValueSchemaId() {
+      public int getMaxValueSchemaId() {
         return 0;
       }
     };
