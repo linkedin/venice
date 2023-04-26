@@ -172,8 +172,6 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
 
         key.offset = pubSubMessage.getOffset();
-        LOGGER.info(
-            "DEBUGGING CHECK FLAG" + pubSubTopicPartition.getPubSubTopic() + " " + isSourceVersionChunkingEnabled);
         if (isSourceVersionChunkingEnabled) {
           RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
               splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));

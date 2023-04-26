@@ -64,7 +64,6 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -2845,10 +2844,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         // to der-se of keys a couple of times.
         updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
       }
-      LogManager.getLogger()
-          .info(
-              "DEBUGGING: UPDATE " + Arrays.toString(keyBytes) + " " + Arrays.toString(updatedKeyBytes) + " "
-                  + isChunked);
       LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
           .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
 
