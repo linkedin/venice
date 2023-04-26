@@ -5,11 +5,15 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
 import static com.linkedin.venice.utils.TestWriteUtils.*;
 
 import com.linkedin.davinci.stats.IngestionStats;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -149,13 +153,6 @@ public class NearlineE2ELatencyTest {
         Assert.assertFalse(detail.getPartitionDetails().isEmpty());
         Assert.assertFalse(detail.getPartitionDetails().get(0).getReplicaDetails().isEmpty());
       }
-
-    }
-
-    try {
-      Thread.sleep(30000);
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
     }
 
     VeniceClusterWrapper cluster0 = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
@@ -165,15 +162,25 @@ public class NearlineE2ELatencyTest {
     for (int i = 10; i < 20; i++) {
       sendStreamingRecord(dc0Producer, storeName, i);
     }
-
-    try {
-      Thread.sleep(30000);
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
+    try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster0.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        try {
+          for (int i = 10; i < 20; i++) {
+            String key = Integer.toString(i);
+            Object value = client.get(key).get();
+            Assert.assertNotNull(value, "Did not find key " + i + " in store before restarting SN.");
+            Assert.assertEquals(value.toString(), "stream_" + key);
+          }
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
     }
 
     AtomicBoolean producerToLocalBroker = new AtomicBoolean(false);
     AtomicBoolean localBrokerToReadyToServe = new AtomicBoolean(false);
+
     cluster0.getVeniceServers().forEach(s -> {
       VeniceServer veniceServer = s.getVeniceServer();
       MetricsRepository metricsRepository = veniceServer.getMetricsRepository();
@@ -181,7 +188,6 @@ public class NearlineE2ELatencyTest {
         if (k.contains(IngestionStats.NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY)) {
           LOGGER.info("Server: {} , Metric: {}, Value: {}", s.getAddressForLogging(), k, v.value());
           producerToLocalBroker.set(true);
-          // Assert.assertTrue(v.value() > 0);
         } else if (k.contains(IngestionStats.NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY)) {
           LOGGER.info("Server: {} , Metric: {}, Value: {}", s.getAddressForLogging(), k, v.value());
           localBrokerToReadyToServe.set(true);
@@ -189,15 +195,8 @@ public class NearlineE2ELatencyTest {
         }
       });
     });
-
-    // Assert.assertTrue(metricFound.get());
-
-    // Primary servers receive from broker
-    // Secondary servers receive from primary servers
-    // Check if nearline timestamp is preserved
-
-    // In each server inspect the state of tasks
-    // DebugUtils.logStats();
+    Assert.assertTrue(producerToLocalBroker.get());
+    Assert.assertTrue(localBrokerToReadyToServe.get());
   }
 
   @AfterClass(alwaysRun = true)
