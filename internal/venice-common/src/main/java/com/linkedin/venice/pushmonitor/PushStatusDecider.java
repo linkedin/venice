@@ -290,7 +290,7 @@ public abstract class PushStatusDecider {
         // If the replica is in offline state, check if its due to previously disabled replica or not.
         if (callback != null
             && callback.isReplicaDisabled(entry.getKey().getNodeId(), partitionStatus.getPartitionId())) {
-          if (!currentStatus.equals(ERROR)) { // Dont count previous replica if it is error status.
+          if (!currentStatus.equals(ERROR)) { // Dont count previous replica if it is not error status.
             previouslyDisabledErrorReplica++;
           }
         }
