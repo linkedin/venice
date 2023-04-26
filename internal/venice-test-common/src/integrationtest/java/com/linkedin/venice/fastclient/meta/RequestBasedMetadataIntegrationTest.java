@@ -1,7 +1,10 @@
 package com.linkedin.venice.fastclient.meta;
 
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
@@ -29,14 +32,20 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.AbstractMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -55,6 +64,21 @@ public class RequestBasedMetadataIntegrationTest {
   private D2Client d2Client;
   private ClientConfig clientConfig;
 
+  private final String KEY_SCHEMA = "\"int\"";
+
+  private final String VALUE_SCHEMA =
+      "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"KeyRecord\",\n" + "  \"fields\": [\n" + "    {\n"
+          + "      \"name\": \"id\",\n" + "      \"type\": \"int\"\n" + "    }\n" + "  ]\n" + "}";
+
+  private final String EVOLVED_VALUE_SCHEMA = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"KeyRecord\",\n"
+      + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"id\",\n" + "      \"type\": \"int\"\n" + "    },\n"
+      + "    {\n" + "      \"name\": \"age\",\n" + "      \"type\": \"int\",\n" + "      \"default\": 18\n" + "    }\n"
+      + "  ]\n" + "}";
+
+  private Schema formatSchema(String schema) {
+    return new Schema.Parser().parse(schema);
+  }
+
   @BeforeClass
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
@@ -63,7 +87,14 @@ public class RequestBasedMetadataIntegrationTest {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, props);
     r2Client = ClientTestUtils.getR2Client();
     d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
-    storeName = veniceCluster.createStore(KEY_COUNT);
+
+    Stream<Map.Entry> genericRecordStream = IntStream.range(0, KEY_COUNT).mapToObj(i -> {
+      GenericRecord record = new GenericData.Record(formatSchema(VALUE_SCHEMA));
+      record.put("id", i);
+      return new AbstractMap.SimpleEntry<>(i, record);
+    });
+
+    storeName = veniceCluster.createStore(KEY_SCHEMA, VALUE_SCHEMA, genericRecordStream);
 
     keySerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
@@ -112,6 +143,32 @@ public class RequestBasedMetadataIntegrationTest {
     for (Version version: versions) {
       verifyMetadata(onlineInstanceFinder, version.getNumber(), version.getPartitionCount(), keyBytes);
     }
+  }
+
+  @Test()
+  public void testMetadataSchemaEvolution() {
+    ReadOnlySchemaRepository schemaRepository = veniceCluster.getRandomVeniceRouter().getSchemaRepository();
+
+    veniceCluster
+        .useControllerClient(controllerClient -> controllerClient.addValueSchema(storeName, EVOLVED_VALUE_SCHEMA));
+
+    Stream<Map.Entry> genericRecordStream = IntStream.range(0, KEY_COUNT).mapToObj(i -> {
+      GenericRecord record = new GenericData.Record(formatSchema(EVOLVED_VALUE_SCHEMA));
+      record.put("id", i);
+      record.put("age", i);
+      return new AbstractMap.SimpleEntry<>(i, record);
+    });
+
+    veniceCluster.createVersion(storeName, KEY_SCHEMA, EVOLVED_VALUE_SCHEMA, genericRecordStream);
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertEquals(
+          formatSchema(EVOLVED_VALUE_SCHEMA),
+          schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema());
+      assertEquals(
+          requestBasedMetadata.getLatestValueSchema(),
+          schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema());
+    });
   }
 
   @Test(timeOut = TIME_OUT)
