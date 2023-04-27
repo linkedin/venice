@@ -8,6 +8,7 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.function.Predicate;
@@ -24,7 +25,7 @@ public class ClientConfig<T extends SpecificRecord> {
   public static final int DEFAULT_ZK_TIMEOUT_MS = 5000;
   public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
   public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
-  public static final int DEFAULT_SCHEMA_REFRESH_PERIOD_SEC = Integer.MAX_VALUE;
+  public static final Duration DEFAULT_SCHEMA_REFRESH_PERIOD = Duration.ofSeconds(Integer.MAX_VALUE);
 
   // Basic settings
   private String storeName;
@@ -53,7 +54,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private boolean reuseObjectsForSerialization = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
   private boolean projectionFieldValidation = true;
-  private int schemaRefreshPeriodSec = DEFAULT_SCHEMA_REFRESH_PERIOD_SEC;
+  private Duration schemaRefreshPeriod = DEFAULT_SCHEMA_REFRESH_PERIOD;
   private Optional<Predicate<Schema>> preferredSchemaFilter = Optional.empty();
 
   // Security settings
@@ -111,7 +112,7 @@ public class ClientConfig<T extends SpecificRecord> {
         .setForceClusterDiscoveryAtStartTime(config.isForceClusterDiscoveryAtStartTime())
         .setProjectionFieldValidationEnabled(config.isProjectionFieldValidationEnabled())
         .setPreferredSchemaFilter(config.getPreferredSchemaFilter().orElse(null))
-        .setSchemaRefreshPeriodSec(config.getSchemaRefreshPeriodSec())
+        .setSchemaRefreshPeriod(config.getSchemaRefreshPeriod())
 
         // Test settings
         .setTime(config.getTime());
@@ -414,12 +415,12 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  public int getSchemaRefreshPeriodSec() {
-    return schemaRefreshPeriodSec;
+  public Duration getSchemaRefreshPeriod() {
+    return schemaRefreshPeriod;
   }
 
-  public ClientConfig<T> setSchemaRefreshPeriodSec(int schemaRefreshPeriodSec) {
-    this.schemaRefreshPeriodSec = schemaRefreshPeriodSec;
+  public ClientConfig<T> setSchemaRefreshPeriod(Duration schemaRefreshPeriod) {
+    this.schemaRefreshPeriod = schemaRefreshPeriod;
     return this;
   }
 

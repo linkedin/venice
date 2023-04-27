@@ -1,6 +1,6 @@
 package com.linkedin.venice.client.schema;
 
-import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD_SEC;
+import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,7 +20,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
@@ -52,8 +51,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final Predicate<Schema> preferredSchemaFilter;
   private final Duration valueSchemaRefreshPeriod;
   private final ICProvider icProvider;
-  private int maxValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
-  private Instant lastValueSchemaRefreshTime = Instant.EPOCH;
+  private final AtomicReference<Integer> maxValueSchemaId = new AtomicReference<>(SchemaData.INVALID_VALUE_SCHEMA_ID);
+  private final AtomicReference<Instant> lastValueSchemaRefreshTime = new AtomicReference<>(Instant.EPOCH);
 
   RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
     this(clientSupplier, Optional.empty(), Optional.empty());
@@ -63,7 +62,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
       Supplier<AbstractAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter) {
-    this(clientSupplier, readerSchema, preferredSchemaFilter, null);
+    this(clientSupplier, readerSchema, preferredSchemaFilter, (ICProvider) null);
   }
 
   public RouterBackedSchemaReader(
@@ -71,29 +70,29 @@ public class RouterBackedSchemaReader implements SchemaReader {
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
       ICProvider icProvider) {
-    this(clientSupplier, readerSchema, preferredSchemaFilter, DEFAULT_SCHEMA_REFRESH_PERIOD_SEC, icProvider);
+    this(clientSupplier, readerSchema, preferredSchemaFilter, DEFAULT_SCHEMA_REFRESH_PERIOD, icProvider);
   }
 
   public RouterBackedSchemaReader(
       Supplier<AbstractAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
-      int valueSchemaRefreshPeriodInSec) {
-    this(clientSupplier, readerSchema, preferredSchemaFilter, valueSchemaRefreshPeriodInSec, null);
+      Duration valueSchemaRefreshPeriod) {
+    this(clientSupplier, readerSchema, preferredSchemaFilter, valueSchemaRefreshPeriod, null);
   }
 
   public RouterBackedSchemaReader(
       Supplier<AbstractAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
-      int valueSchemaRefreshPeriodInSec,
+      Duration valueSchemaRefreshPeriod,
       ICProvider icProvider) {
     this.storeClient = clientSupplier.get();
     this.storeName = this.storeClient.getStoreName();
     this.readerSchema = readerSchema;
-    this.preferredSchemaFilter = preferredSchemaFilter.orElse(schema -> true);
+    this.preferredSchemaFilter = preferredSchemaFilter.orElse(schema -> false);
     readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
-    this.valueSchemaRefreshPeriod = Duration.of(valueSchemaRefreshPeriodInSec, ChronoUnit.SECONDS);
+    this.valueSchemaRefreshPeriod = valueSchemaRefreshPeriod;
     this.icProvider = icProvider;
   }
 
@@ -174,12 +173,14 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public int getMaxValueSchemaId() {
-    if (Duration.between(lastValueSchemaRefreshTime, Instant.now()).compareTo(valueSchemaRefreshPeriod) > 0) {
+    if (Duration.between(lastValueSchemaRefreshTime.get(), Instant.now()).compareTo(valueSchemaRefreshPeriod) > 0) {
       synchronized (this) {
-        refreshAllValueSchema();
+        if (Duration.between(lastValueSchemaRefreshTime.get(), Instant.now()).compareTo(valueSchemaRefreshPeriod) > 0) {
+          refreshAllValueSchema();
+        }
       }
     }
-    return maxValueSchemaId;
+    return maxValueSchemaId.get();
   }
 
   @Override
@@ -304,11 +305,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
         }
       }
 
-      if (maxSchemaId > maxValueSchemaId) {
-        maxValueSchemaId = maxSchemaId;
-      }
-
       synchronized (this) {
+        if (maxSchemaId > maxValueSchemaId.get()) {
+          maxValueSchemaId.set(maxSchemaId);
+        }
+
         if (maxPreferredSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID && !supersetSchemaIsPreferredSchema) {
           if (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < maxPreferredSchemaId) {
             latestValueSchemaEntry.set(new SchemaEntry(maxPreferredSchemaId, valueSchemaMap.get(maxPreferredSchemaId)));
@@ -320,9 +321,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
             latestValueSchemaEntry.set(new SchemaEntry(maxSchemaId, valueSchemaMap.get(maxSchemaId)));
           }
         }
-      }
 
-      lastValueSchemaRefreshTime = Instant.now();
+        lastValueSchemaRefreshTime.set(Instant.now());
+      }
     } catch (Exception e) {
       throw new VeniceClientException(
           "Got exception while trying to fetch single schema. " + getExceptionDetails(requestPath),

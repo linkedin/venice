@@ -10,6 +10,7 @@ import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -44,14 +45,15 @@ public class RouterBackedSchemaReaderTest {
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
 
-    SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
-    Schema schema = schemaReader.getKeySchema();
-    Assert.assertEquals(schema.toString(), keySchemaStr);
-    Schema cachedSchema = schemaReader.getKeySchema();
-    Assert.assertEquals(cachedSchema, schema);
-    // Must be the same Schema instance
-    Assert.assertTrue(schema == cachedSchema);
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
+      Schema schema = schemaReader.getKeySchema();
+      Assert.assertEquals(schema.toString(), keySchemaStr);
+      Schema cachedSchema = schemaReader.getKeySchema();
+      Assert.assertEquals(cachedSchema, schema);
+      // Must be the same Schema instance
+      Assert.assertTrue(schema == cachedSchema);
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+    }
   }
 
   @Test(expectedExceptions = VeniceClientException.class)
@@ -63,20 +65,23 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(null).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
-    schemaReader.getKeySchema();
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
+      schemaReader.getKeySchema();
+    }
   }
 
   @Test(expectedExceptions = VeniceClientException.class)
-  public void testGetKeySchemaWhenServerError() throws ExecutionException, InterruptedException, VeniceClientException {
+  public void testGetKeySchemaWhenServerError()
+      throws ExecutionException, InterruptedException, VeniceClientException, IOException {
     String storeName = "test_store";
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doThrow(new ExecutionException(new VeniceClientException("Server error"))).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
-    schemaReader.getKeySchema();
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
+      schemaReader.getKeySchema();
+    }
   }
 
   @Test
@@ -108,21 +113,21 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
+      Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
+      Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
+      int valueSchemaId = 1;
+      String valueSchemaStr = "\"string\"";
 
-    Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
-    Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
-    int valueSchemaId = 1;
-    String valueSchemaStr = "\"string\"";
-
-    Schema schema = schemaReader.getValueSchema(valueSchemaId);
-    Assert.assertEquals(schema.toString(), valueSchemaStr);
-    Schema cachedSchema = schemaReader.getValueSchema(valueSchemaId);
-    Assert.assertEquals(cachedSchema, schema);
-    // Must be the same Schema instance
-    Assert.assertTrue(schema == cachedSchema);
-    Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr2);
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+      Schema schema = schemaReader.getValueSchema(valueSchemaId);
+      Assert.assertEquals(schema.toString(), valueSchemaStr);
+      Schema cachedSchema = schemaReader.getValueSchema(valueSchemaId);
+      Assert.assertEquals(cachedSchema, schema);
+      // Must be the same Schema instance
+      Assert.assertTrue(schema == cachedSchema);
+      Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr2);
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+    }
   }
 
   @Test
@@ -142,28 +147,29 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
 
-    SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
-    Mockito.doReturn(null).when(mockFuture).get();
-    Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
-    Schema schema = schemaReader.getValueSchema(valueSchemaId);
-    Assert.assertNull(schema);
-    Schema cachedSchema = schemaReader.getValueSchema(valueSchemaId);
-    Assert.assertNull(cachedSchema);
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
+      Mockito.doReturn(null).when(mockFuture).get();
+      Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
+      Schema schema = schemaReader.getValueSchema(valueSchemaId);
+      Assert.assertNull(schema);
+      Schema cachedSchema = schemaReader.getValueSchema(valueSchemaId);
+      Assert.assertNull(cachedSchema);
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
 
-    MultiSchemaResponse multiSchemaResponse = new MultiSchemaResponse();
-    MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[1];
-    MultiSchemaResponse.Schema schema1 = new MultiSchemaResponse.Schema();
-    schema1.setId(valueSchemaId);
-    schema1.setSchemaStr(valueSchemaStr);
-    schemas[0] = schema1;
-    multiSchemaResponse.setSchemas(schemas);
+      MultiSchemaResponse multiSchemaResponse = new MultiSchemaResponse();
+      MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[1];
+      MultiSchemaResponse.Schema schema1 = new MultiSchemaResponse.Schema();
+      schema1.setId(valueSchemaId);
+      schema1.setSchemaStr(valueSchemaStr);
+      schemas[0] = schema1;
+      multiSchemaResponse.setSchemas(schemas);
 
-    Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
+      Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
 
-    Schema newSchema = schemaReader.getValueSchema(valueSchemaId);
-    Assert.assertEquals(newSchema.toString(), valueSchemaStr);
-    Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr);
+      Schema newSchema = schemaReader.getValueSchema(valueSchemaId);
+      Assert.assertEquals(newSchema.toString(), valueSchemaStr);
+      Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr);
+    }
   }
 
   @Test(expectedExceptions = RuntimeException.class)
@@ -181,10 +187,11 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
-    Mockito.doThrow(new ExecutionException(new VeniceClientException("Server error"))).when(mockFuture).get();
-    Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName + "/" + valueSchemaId);
-    schemaReader.getValueSchema(valueSchemaId);
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
+      Mockito.doThrow(new ExecutionException(new VeniceClientException("Server error"))).when(mockFuture).get();
+      Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName + "/" + valueSchemaId);
+      schemaReader.getValueSchema(valueSchemaId);
+    }
 
   }
 
@@ -217,19 +224,19 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
-
-    Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
-    Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
-    Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr2);
-    Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
-    Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
-    schemaReader.getLatestValueSchema();
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
+      Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
+      Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
+      Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr2);
+      Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
+      Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
+      schemaReader.getLatestValueSchema();
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+    }
   }
 
   @Test
-  public void testGetLargestValueSchemaId()
+  public void testGetMaxValueSchemaId()
       throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     String storeName = "test_store";
     String keySchemaStr = "\"string\"";
@@ -257,20 +264,21 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient, Optional.empty(), Optional.empty(), 1);
-
-    Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
-    Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
-    Assert.assertEquals(schemaReader.getMaxValueSchemaId(), 2);
-    Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
-    Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
-    schemaReader.getMaxValueSchemaId();
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
-
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    try (SchemaReader schemaReader =
+        new RouterBackedSchemaReader(() -> mockClient, Optional.empty(), Optional.empty(), Duration.ofSeconds(1))) {
+      Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
+      Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
+      Assert.assertEquals(schemaReader.getMaxValueSchemaId(), 2);
+      Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
+      Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
       schemaReader.getMaxValueSchemaId();
-      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
-    });
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        schemaReader.getMaxValueSchemaId();
+        Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
+      });
+    }
   }
 
   @Test
@@ -280,6 +288,8 @@ public class RouterBackedSchemaReaderTest {
     String valueSchemaStr1 = "\"string\"";
     int valueSchemaId2 = 2;
     String valueSchemaStr2 = "\"long\"";
+    int valueSchemaId3 = 3;
+    String valueSchemaStr3 = "\"int\"";
 
     MultiSchemaResponse.Schema schema1 = new MultiSchemaResponse.Schema();
     schema1.setId(valueSchemaId1);
@@ -289,9 +299,13 @@ public class RouterBackedSchemaReaderTest {
     schema2.setId(valueSchemaId2);
     schema2.setSchemaStr(valueSchemaStr2);
 
+    MultiSchemaResponse.Schema schema3 = new MultiSchemaResponse.Schema();
+    schema3.setId(valueSchemaId3);
+    schema3.setSchemaStr(valueSchemaStr3);
+
     MultiSchemaResponse schemaResponse = new MultiSchemaResponse();
     schemaResponse.setSuperSetSchemaId(valueSchemaId1);
-    schemaResponse.setSchemas(new MultiSchemaResponse.Schema[] { schema1, schema2 });
+    schemaResponse.setSchemas(new MultiSchemaResponse.Schema[] { schema1, schema2, schema3 });
 
     AbstractAvroStoreClient<?, ?> clientMock = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(clientMock).getStoreName();
@@ -306,7 +320,8 @@ public class RouterBackedSchemaReaderTest {
         mockICProvider)) {
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
-      // If a preferredSchemaFilter is specified, the latest schema must be a preferred schema
+      // If a preferredSchemaFilter is specified, the latest schema must be a preferred schema; even if it is not the
+      // superset schema or the one with the max id
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr2);
       schemaReader.getLatestValueSchema();
       Mockito.verify(clientMock, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
@@ -347,14 +362,14 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
+      Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
+      Mockito.doReturn(storeName).when(mockClient).getStoreName();
+      Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
 
-    Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
-    Mockito.doReturn(storeName).when(mockClient).getStoreName();
-    Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
-
-    Assert.assertNull(schemaReader.getLatestValueSchema());
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+      Assert.assertNull(schemaReader.getLatestValueSchema());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+    }
   }
 
   @Test(expectedExceptions = VeniceClientException.class)
@@ -371,11 +386,11 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
-
-    Mockito.doThrow(new ExecutionException(new VeniceClientException("Server error"))).when(mockFuture).get();
-    Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
-    schemaReader.getLatestValueSchema();
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
+      Mockito.doThrow(new ExecutionException(new VeniceClientException("Server error"))).when(mockFuture).get();
+      Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
+      schemaReader.getLatestValueSchema();
+    }
   }
 
   @Test
@@ -393,8 +408,7 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw(Mockito.anyString());
-    try {
-      new RouterBackedSchemaReader(() -> mockClient);
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
     } catch (VeniceClientException e) {
       Assert.fail("The unrecognized field should be ignored.");
     }
@@ -428,8 +442,7 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw(Mockito.anyString());
-    try {
-      SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
       Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
       Assert.assertNotNull(schemaReader.getValueSchema(2));
     } catch (VeniceClientException e) {
