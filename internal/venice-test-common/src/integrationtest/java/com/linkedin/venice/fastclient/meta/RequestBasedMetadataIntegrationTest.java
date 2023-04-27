@@ -55,13 +55,13 @@ public class RequestBasedMetadataIntegrationTest {
   private static final int KEY_COUNT = 100;
   private static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
 
-  private final static String KEY_SCHEMA = "\"int\"";
+  private static final String KEY_SCHEMA = "\"int\"";
 
-  private final static String VALUE_SCHEMA =
+  private static final String VALUE_SCHEMA =
       "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"KeyRecord\",\n" + "  \"fields\": [\n" + "    {\n"
           + "      \"name\": \"id\",\n" + "      \"type\": \"int\"\n" + "    }\n" + "  ]\n" + "}";
 
-  private final static String EVOLVED_VALUE_SCHEMA = "{\n" + "  \"type\": \"record\",\n"
+  private static final String EVOLVED_VALUE_SCHEMA = "{\n" + "  \"type\": \"record\",\n"
       + "  \"name\": \"KeyRecord\",\n" + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"id\",\n"
       + "      \"type\": \"int\"\n" + "    },\n" + "    {\n" + "      \"name\": \"age\",\n"
       + "      \"type\": \"int\",\n" + "      \"default\": 18\n" + "    }\n" + "  ]\n" + "}";
