@@ -390,7 +390,6 @@ public class VeniceReducer extends AbstractMapReduceTask
     VeniceWriterFactory veniceWriterFactoryFactory = new VeniceWriterFactory(writerProps);
     boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
     boolean rmdChunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, false);
-    LOGGER.info("DEBUGGING REDUCER: " + chunkingEnabled + " " + rmdChunkingEnabled + " " + mapReduceJobId.toString());
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
 
     VeniceWriterOptions options =

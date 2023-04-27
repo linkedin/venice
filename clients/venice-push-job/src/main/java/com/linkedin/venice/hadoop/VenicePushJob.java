@@ -1712,13 +1712,13 @@ public class VenicePushJob implements AutoCloseable {
        * Currently KIF repush will always build a dict in Azkaban Job driver if necessary.
        */
       boolean rebuildDict = pushJobSetting.kafkaInputBuildNewDictEnabled;
+      paramBuilder.setSourceVersionChunkingEnabled(storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled());
       // Repush
       if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
         if (rebuildDict) {
           LOGGER.info("Rebuild a new Zstd dictionary from the input topic: {}", pushJobSetting.kafkaInputTopic);
           paramBuilder.setKafkaInputBroker(pushJobSetting.kafkaInputBrokerUrl)
               .setTopicName(pushJobSetting.kafkaInputTopic)
-              .setSourceVersionChunkingEnabled(storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled())
               .setSourceVersionCompressionStrategy(storeSetting.sourceKafkaInputVersionInfo.getCompressionStrategy());
           KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
           compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
@@ -1764,7 +1764,6 @@ public class VenicePushJob implements AutoCloseable {
               sourceKafkaUrl);
           paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
               .setTopicName(sourceTopicName)
-              .setSourceVersionChunkingEnabled(repushInfoResponse.getRepushInfo().getVersion().isChunkingEnabled())
               .setSourceVersionCompressionStrategy(
                   repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
           KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
@@ -2765,6 +2764,9 @@ public class VenicePushJob implements AutoCloseable {
       conf.set(
           KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY,
           storeSetting.sourceKafkaInputVersionInfo.getCompressionStrategy().name());
+      conf.set(
+          KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED,
+          Boolean.toString(storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()));
 
     } else {
       conf.setInt(VALUE_SCHEMA_ID_PROP, pushJobSchemaInfo.getValueSchemaId());

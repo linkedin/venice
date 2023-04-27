@@ -410,7 +410,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
 
     AbstractStorageEngine storageEngine = getStorageEngine(topic);
     boolean isChunked = storageEngine.isChunked();
-    LOGGER.info("DEBUGGING GET: IS CHUNKED: " + isChunked);
     StorageResponseObject response = new StorageResponseObject();
     response.setCompressionStrategy(storageEngine.getCompressionStrategy());
     response.setDatabaseLookupLatency(0);
