@@ -236,6 +236,8 @@ public class VenicePushJob implements AutoCloseable {
   // compression.
   public static final String KAFKA_INPUT_COMPRESSION_BUILD_NEW_DICT_ENABLED =
       "kafka.input.compression.build.new.dict.enabled";
+
+  public static final String KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED = "kafka.input.source.topic.chunking.enabled";
   /**
    * Optional.
    * If we want to use a different rewind time from the default store-level rewind time config for Kafka Input re-push,
@@ -1710,6 +1712,7 @@ public class VenicePushJob implements AutoCloseable {
        * Currently KIF repush will always build a dict in Azkaban Job driver if necessary.
        */
       boolean rebuildDict = pushJobSetting.kafkaInputBuildNewDictEnabled;
+      paramBuilder.setSourceVersionChunkingEnabled(storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled());
       // Repush
       if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
         if (rebuildDict) {
@@ -2298,8 +2301,9 @@ public class VenicePushJob implements AutoCloseable {
       storeSetting.sourceKafkaInputVersionInfo = sourceVersion.get();
       // Skip quota check
       storeSetting.storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
-
-      storeSetting.isChunkingEnabled = sourceVersion.get().isChunkingEnabled();
+      if (sourceVersion.get().isChunkingEnabled() && !storeResponse.getStore().isChunkingEnabled()) {
+        throw new VeniceException("Source version has chunking enabled while chunking is disabled in store config.");
+      }
     }
     return storeSetting;
   }
@@ -2760,6 +2764,9 @@ public class VenicePushJob implements AutoCloseable {
       conf.set(
           KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY,
           storeSetting.sourceKafkaInputVersionInfo.getCompressionStrategy().name());
+      conf.set(
+          KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED,
+          Boolean.toString(storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled()));
 
     } else {
       conf.setInt(VALUE_SCHEMA_ID_PROP, pushJobSchemaInfo.getValueSchemaId());

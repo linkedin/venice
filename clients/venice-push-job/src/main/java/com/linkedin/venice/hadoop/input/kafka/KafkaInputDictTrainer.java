@@ -32,13 +32,15 @@ import org.apache.logging.log4j.Logger;
  */
 public class KafkaInputDictTrainer {
   public static class Param {
-    private String kafkaInputBroker;
-    private String topicName;
-    private String keySchema;
-    private Properties sslProperties;
-    private int compressionDictSize;
-    private int dictSampleSize;
-    private CompressionStrategy sourceVersionCompressionStrategy;
+    private final String kafkaInputBroker;
+    private final String topicName;
+    private final String keySchema;
+    private final Properties sslProperties;
+    private final int compressionDictSize;
+    private final int dictSampleSize;
+    private final CompressionStrategy sourceVersionCompressionStrategy;
+
+    private final boolean sourceVersionChunkingEnabled;
 
     Param(ParamBuilder builder) {
       this.kafkaInputBroker = builder.kafkaInputBroker;
@@ -48,6 +50,7 @@ public class KafkaInputDictTrainer {
       this.compressionDictSize = builder.compressionDictSize;
       this.dictSampleSize = builder.dictSampleSize;
       this.sourceVersionCompressionStrategy = builder.sourceVersionCompressionStrategy;
+      this.sourceVersionChunkingEnabled = builder.sourceVersionChunkingEnabled;
     }
   }
 
@@ -59,6 +62,7 @@ public class KafkaInputDictTrainer {
     private int compressionDictSize;
     private int dictSampleSize;
     private CompressionStrategy sourceVersionCompressionStrategy;
+    private boolean sourceVersionChunkingEnabled;
 
     public ParamBuilder setKafkaInputBroker(String kafkaInputBroker) {
       this.kafkaInputBroker = kafkaInputBroker;
@@ -95,6 +99,11 @@ public class KafkaInputDictTrainer {
       return this;
     }
 
+    public ParamBuilder setSourceVersionChunkingEnabled(boolean chunkingEnabled) {
+      this.sourceVersionChunkingEnabled = chunkingEnabled;
+      return this;
+    }
+
     public Param build() {
       return new Param(this);
     }
@@ -111,12 +120,7 @@ public class KafkaInputDictTrainer {
   private final CompressorBuilder compressorBuilder;
 
   public KafkaInputDictTrainer(Param param) {
-    this(
-        new KafkaInputFormat(),
-        Optional.empty(),
-        param,
-        (compressorFactory, compressionStrategy, kafkaUrl, topic, props) -> KafkaInputUtils
-            .getCompressor(compressorFactory, compressionStrategy, kafkaUrl, topic, props));
+    this(new KafkaInputFormat(), Optional.empty(), param, KafkaInputUtils::getCompressor);
   }
 
   interface CompressorBuilder {
@@ -145,6 +149,8 @@ public class KafkaInputDictTrainer {
     properties.putAll(param.sslProperties);
     properties.setProperty(COMPRESSION_DICTIONARY_SIZE_LIMIT, Integer.toString(param.compressionDictSize));
     properties.setProperty(COMPRESSION_DICTIONARY_SAMPLE_SIZE, Integer.toString(param.dictSampleSize));
+    properties
+        .setProperty(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, Boolean.toString(param.sourceVersionChunkingEnabled));
 
     props = new VeniceProperties(properties);
     jobConf = new JobConf();
@@ -165,7 +171,7 @@ public class KafkaInputDictTrainer {
     Arrays.sort(splits, Comparator.comparingInt(o -> o.getTopicPartition().partition()));
     // Try to gather some records from each partition
     PushJobZstdConfig zstdConfig = new PushJobZstdConfig(props, splits.length);
-    ZstdDictTrainer trainer = trainerSupplier.isPresent() ? trainerSupplier.get() : zstdConfig.getZstdDictTrainer();
+    ZstdDictTrainer trainer = trainerSupplier.orElseGet(zstdConfig::getZstdDictTrainer);
     int maxBytesPerPartition = zstdConfig.getMaxBytesPerFile();
 
     // Get the compressor for source version

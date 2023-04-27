@@ -1,0 +1,17 @@
+{
+  "doc": "Value schema for the Venice Store learning-search-blocked-contents which stores contents dismissed by learners for given queries.",
+  "fields": [
+    {
+      "default": [],
+      "doc": "A list of contentUrns which represent contents blocked by the learner for a given query. Default to an empty array for the Venice partial update prerequisite.",
+      "name": "blockedContentsUrns",
+      "type": {
+        "items": "string",
+        "type": "array"
+      }
+    }
+  ],
+  "name": "LearningSearchLearnerBlockedContentsValue",
+  "namespace": "com.linkedin.learning.venice",
+  "type": "record"
+}
