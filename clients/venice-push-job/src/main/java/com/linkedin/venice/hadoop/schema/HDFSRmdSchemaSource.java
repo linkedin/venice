@@ -20,6 +20,7 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -46,6 +47,7 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
     this.schemaDir = new Path(schemaDir);
     if (!fs.exists(this.schemaDir)) {
       fs.mkdirs(this.schemaDir);
+      fs.setPermission(this.schemaDir, new FsPermission("777"));
     }
     this.storeName = storeName;
   }

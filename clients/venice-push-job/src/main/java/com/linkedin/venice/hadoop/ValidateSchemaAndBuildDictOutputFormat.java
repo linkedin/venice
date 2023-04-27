@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.MAPPER_OUTPUT_DIRECTORY;
-import static com.linkedin.venice.hadoop.VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY;
 import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension;
 import static org.apache.hadoop.mapreduce.MRJobConfig.ID;
@@ -31,15 +30,12 @@ import org.apache.logging.log4j.Logger;
 public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
   private static final Logger LOGGER = LogManager.getLogger(ValidateSchemaAndBuildDictOutputFormat.class);
 
-  private static void createAndSetDirectoryPermission(FileSystem fs, Path path, String permission) throws IOException {
-    createAndSetDirectoryPermission(fs, path, permission, false);
+  private static void createDirectoryWithPermission(FileSystem fs, Path path, String permission) throws IOException {
+    createDirectoryWithPermission(fs, path, permission, false);
   }
 
-  private static void createAndSetDirectoryPermission(
-      FileSystem fs,
-      Path path,
-      String permission,
-      boolean deleteIfExists) throws IOException {
+  private static void createDirectoryWithPermission(FileSystem fs, Path path, String permission, boolean deleteIfExists)
+      throws IOException {
     LOGGER.info("Trying to create path {} with permission {}", path.getName(), permission);
     boolean createPath = false;
     // check if the path needs to be created
@@ -57,14 +53,12 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
 
     // create if needed
     if (createPath) {
-      LOGGER.info("Creating path {}", path.getName());
+      LOGGER.info("Creating path {} with permission {}", path.getName(), permission);
       fs.mkdirs(path);
+      // mkdirs(path,permission) didn't set the right permission when
+      // tested in hdfs, so splitting it like this, it works!
+      fs.setPermission(path, new FsPermission(permission));
     }
-
-    FsPermission perm = new FsPermission(permission);
-
-    LOGGER.info("Setting permission {}", permission);
-    fs.setPermission(path, perm);
   }
 
   /**
@@ -78,19 +72,15 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
    */
   protected static void setValidateSchemaAndBuildDictionaryOutputDirPath(JobConf job) throws IOException {
     // parent directory
+    FileSystem fs = FileSystem.get(job);
     String parentOutputDir = job.get(MAPPER_OUTPUT_DIRECTORY);
-    if (!parentOutputDir.equalsIgnoreCase(VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT)) {
-      // '/tmp' is default parent folder
-      Path outputPath = new Path(parentOutputDir);
-      FileSystem fs = outputPath.getFileSystem(job);
-      createAndSetDirectoryPermission(fs, outputPath, "777");
-    }
+    Path outputPath = new Path(parentOutputDir);
+    createDirectoryWithPermission(fs, outputPath, "777");
 
     // store specific directory under parent directory: already derived in VPJ driver and passed along.
     String fullOutputDir = job.get(VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY);
-    Path outputPath = new Path(fullOutputDir);
-    FileSystem fs = outputPath.getFileSystem(job);
-    createAndSetDirectoryPermission(fs, outputPath, "700");
+    outputPath = new Path(fullOutputDir);
+    createDirectoryWithPermission(fs, outputPath, "700");
 
     LOGGER.info(
         "{} Output will be stored in path: {}",
