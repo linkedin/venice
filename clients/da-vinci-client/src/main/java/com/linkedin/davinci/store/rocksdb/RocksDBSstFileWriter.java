@@ -154,6 +154,9 @@ public class RocksDBSstFileWriter {
           partitionId);
       lastFinishedSSTFileNo = -1;
       currentSSTFileNo = 0;
+      // if this is from restart of storage Node which synced OffsetRecord with EOP received,
+      // but crashed before it could completely delete the local sst files, delete it all
+      removeSSTFilesAfterCheckpointing(-1);
     } else {
       lastFinishedSSTFileNo = Integer.parseInt(checkpointedInfo.get(lastCheckPointedSSTFileNum));
       LOGGER.info(
@@ -165,7 +168,7 @@ public class RocksDBSstFileWriter {
         throw new VeniceException("Last finished sst file no: " + lastFinishedSSTFileNo + " shouldn't be negative");
       }
       makeSureAllPreviousSSTFilesBeforeCheckpointingExist();
-      removeSSTFilesAfterCheckpointing();
+      removeSSTFilesAfterCheckpointing(this.lastFinishedSSTFileNo);
       currentSSTFileNo = lastFinishedSSTFileNo + 1;
     }
     String fullPathForCurrentSSTFile = composeFullPathForSSTFile(currentSSTFileNo);
@@ -237,7 +240,7 @@ public class RocksDBSstFileWriter {
     return checkpointingInfo;
   }
 
-  private void removeSSTFilesAfterCheckpointing() {
+  private void removeSSTFilesAfterCheckpointing(int lastFinishedSSTFileNo) {
     File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
     String[] sstFiles = tempSSTFileDir.list((File dir, String name) -> RocksDBUtils.isTempSSTFile(name));
     if (sstFiles == null) {
@@ -356,14 +359,15 @@ public class RocksDBSstFileWriter {
         "Start ingesting to store: " + storeName + ", partition id: " + partitionId + " from files: " + sstFilePaths);
     try (IngestExternalFileOptions ingestOptions = new IngestExternalFileOptions()) {
       // TODO: Further explore re-ingestion of these files if SN crashes before EOP can be synced to disk
-      rocksDBIngestThrottler.throttledIngest(
-          dbDir,
-          () -> rocksDB.ingestExternalFile(
-              isRMD
-                  ? columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX)
-                  : columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX),
-              sstFilePaths,
-              ingestOptions));
+      rocksDBIngestThrottler.throttledIngest(dbDir, () -> {
+        rocksDB.ingestExternalFile(
+            isRMD
+                ? columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX)
+                : columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX),
+            sstFilePaths,
+            ingestOptions);
+        return null;
+      });
 
       LOGGER.info(
           "Finished ingestion to store: " + storeName + ", partition id: " + partitionId + " from files: "

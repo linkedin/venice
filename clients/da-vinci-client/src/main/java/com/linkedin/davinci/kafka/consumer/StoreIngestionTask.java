@@ -1972,6 +1972,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * This doesn't happen within {@link RocksDBIngestThrottler} even though this is
          * part of the copy-persistEOP-delete flow as throttling copy will slow down the
          * buildup of extra disk space and to keep the flow simple.
+         *
+         * If SN crashes after syncing EOP but before completely deleting the sst files,
+         * it will be handled during the SN restart in {@link RocksDBSstFileWriter#open}
+         * via {@link RocksDBSstFileWriter#removeSSTFilesAfterCheckpointing}
          */
         cleanupAfterEndOfPush(partitionConsumptionState);
       }

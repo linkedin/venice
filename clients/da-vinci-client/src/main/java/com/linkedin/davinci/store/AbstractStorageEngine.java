@@ -35,20 +35,11 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * A base storage abstract class which is actually responsible for data persistence. This
- * abstract class implies all the usual responsibilities of a Store implementation,
+ * abstract class implies all the usual responsibilities of a Store implementation.
  * <p/>
- * There are several proposals for storage-partition model:
- * <p/>
- * 1. One storage engine for all stores
- * 1.1 One store uses one database, i.e. all partitions of the store will be in one database.
- * 1.2 One store uses multiple databases, i.e. one partition per database.
- * 2. Each store handled by one storage engine
- * 2.1 All partitions of the store will be handled in one database (current Voldemort implementation)
- * 2.2 One partition per database
- * 3. Each partition handled by one storage engine
- * <p/>
- * The current implementation is based on 3. The point of having one storage engine(environment) or one
- * database for one partition, is to simplify the complexity of rebalancing/partition migration/host swap.
+ * Current implementation strategy: Each partition handled by one storage engine.
+ * The point of having one storage engine(environment) or one database for one partition,
+ * is to simplify the complexity of rebalancing/partition migration/host swap.
  */
 public abstract class AbstractStorageEngine<Partition extends AbstractStoragePartition> implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(AbstractStorageEngine.class);

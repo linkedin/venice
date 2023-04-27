@@ -803,20 +803,11 @@ public class TestUtils {
 
   public static void shutdownExecutor(ExecutorService executor, long timeout, TimeUnit unit)
       throws InterruptedException {
-    shutdownExecutor(executor, timeout, unit, true);
-  }
-
-  public static void shutdownExecutor(ExecutorService executor, long timeout, TimeUnit unit, boolean assertFinishAll)
-      throws InterruptedException {
     if (executor == null) {
       return;
     }
     executor.shutdown();
-    if (assertFinishAll) {
-      Assert.assertTrue(executor.awaitTermination(timeout, unit));
-    } else {
-      Assert.assertFalse(executor.awaitTermination(timeout, unit));
-    }
+    Assert.assertTrue(executor.awaitTermination(timeout, unit));
   }
 
   public static void createMetaSystemStore(
