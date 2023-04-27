@@ -26,7 +26,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -78,7 +77,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private final long startingOffset;
   private long currentOffset;
   private final long endingOffset;
-  private final boolean isChunkingEnabled;
+  private final boolean isSourceVersionChunkingEnabled;
   private final Schema keySchema;
   private ChunkKeyValueTransformer chunkKeyValueTransformer;
   /**
@@ -122,7 +121,8 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     this.startingOffset = inputSplit.getStartingOffset();
     this.currentOffset = inputSplit.getStartingOffset() - 1;
     this.endingOffset = inputSplit.getEndingOffset();
-    this.isChunkingEnabled = job.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
+    this.isSourceVersionChunkingEnabled =
+        job.getBoolean(VenicePushJob.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, false);
     String keySchemaString = job.get(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
     if (keySchemaString == null) {
       throw new VeniceException(
@@ -171,7 +171,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
 
         key.offset = pubSubMessage.getOffset();
-        if (isChunkingEnabled) {
+        if (isSourceVersionChunkingEnabled) {
           RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
               splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
           key.key = rawKeyAndChunkedKeySuffix.getRawKeyBytes();

@@ -79,6 +79,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,6 +95,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.LogManager;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -138,6 +140,131 @@ public class PartialUpdateTest {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
     }
     this.parentController = parentControllers.get(0);
+  }
+
+  @Test
+  public void testRepushWithChunkingFlagChanged() throws IOException {
+    final String storeName = Utils.getUniqueString("reproduce");
+    String parentControllerUrl = parentController.getControllerUrl();
+    Schema keySchema = AvroCompatibilityHelper.parse(loadFileAsString("UserKey.avsc"));
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("UserValue.avsc"));
+    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchema.toString(), valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setHybridRewindSeconds(86400L)
+              .setHybridOffsetLagThreshold(10L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+      AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()));
+      SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+      GenericRecord keyRecord = new GenericData.Record(keySchema);
+      keyRecord.put("learnerUrn", "urn:li:member:682787898");
+      keyRecord.put("query", "python");
+      GenericRecord checkpointKeyRecord = new GenericData.Record(keySchema);
+      checkpointKeyRecord.put("learnerUrn", "urn:li:member:123");
+      checkpointKeyRecord.put("query", "python");
+
+      GenericRecord partialUpdateRecord = new UpdateBuilderImpl(writeComputeSchema)
+          .setElementsToAddToListField("blockedContentsUrns", Collections.singletonList("urn:li:lyndaCourse:751323"))
+          .build();
+      sendStreamingRecord(veniceProducer, storeName, keyRecord, partialUpdateRecord);
+
+      // Perform one time repush to make sure repush can handle RMD chunks data correctly.
+      Properties props =
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
+      props.setProperty(SOURCE_KAFKA, "true");
+      props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+      props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      // intentionally stop re-consuming from RT so stale records don't affect the testing results
+      // props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+      TestWriteUtils.runPushJob("Run repush job 1", props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        try {
+          GenericRecord value = (GenericRecord) storeReader.get(keyRecord).get();
+          assertNotNull(value, "key " + keyRecord + " should not be missing!");
+          LogManager.getLogger().info("DEBUGGING: " + value);
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+      // Enable chunking
+      UpdateStoreQueryParams newUpdateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setChunkingEnabled(true);
+      updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, newUpdateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      // Perform one time repush to make sure repush can handle chunks data correctly.
+      // intentionally stop re-consuming from RT so stale records don't affect the testing results
+      props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+      TestWriteUtils.runPushJob("Run repush job 2", props);
+
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 3),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        try {
+          GenericRecord value = (GenericRecord) storeReader.get(keyRecord).get();
+          assertNotNull(value, "key " + keyRecord + " should not be missing!");
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+      partialUpdateRecord = new UpdateBuilderImpl(writeComputeSchema)
+          .setElementsToAddToListField("blockedContentsUrns", Collections.singletonList("urn:li:lyndaCourse:1"))
+          .build();
+      sendStreamingRecord(veniceProducer, storeName, keyRecord, partialUpdateRecord);
+      partialUpdateRecord = new UpdateBuilderImpl(writeComputeSchema)
+          .setElementsToAddToListField("blockedContentsUrns", Collections.singletonList("urn:li:lyndaCourse:2"))
+          .build();
+      sendStreamingRecord(veniceProducer, storeName, keyRecord, partialUpdateRecord);
+      sendStreamingRecord(veniceProducer, storeName, checkpointKeyRecord, partialUpdateRecord);
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        try {
+          GenericRecord value = (GenericRecord) storeReader.get(checkpointKeyRecord).get();
+          assertNotNull(value, "key " + checkpointKeyRecord + " should not be missing!");
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        try {
+          GenericRecord value = (GenericRecord) storeReader.get(keyRecord).get();
+          assertNotNull(value, "key " + keyRecord + " should not be missing!");
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
   }
 
   /**
