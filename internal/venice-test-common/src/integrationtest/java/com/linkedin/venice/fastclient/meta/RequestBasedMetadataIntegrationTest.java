@@ -54,17 +54,7 @@ import org.testng.annotations.Test;
 public class RequestBasedMetadataIntegrationTest {
   private static final int KEY_COUNT = 100;
   private static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
-
   private static final String KEY_SCHEMA = "\"int\"";
-
-  private static final String VALUE_SCHEMA =
-      "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"KeyRecord\",\n" + "  \"fields\": [\n" + "    {\n"
-          + "      \"name\": \"id\",\n" + "      \"type\": \"int\"\n" + "    }\n" + "  ]\n" + "}";
-
-  private static final String EVOLVED_VALUE_SCHEMA = "{\n" + "  \"type\": \"record\",\n"
-      + "  \"name\": \"KeyRecord\",\n" + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"id\",\n"
-      + "      \"type\": \"int\"\n" + "    },\n" + "    {\n" + "      \"name\": \"age\",\n"
-      + "      \"type\": \"int\",\n" + "      \"default\": 18\n" + "    }\n" + "  ]\n" + "}";
 
   private final VenicePartitioner defaultPartitioner = new DefaultVenicePartitioner();
   private VeniceClusterWrapper veniceCluster;
@@ -75,9 +65,10 @@ public class RequestBasedMetadataIntegrationTest {
   private D2Client d2Client;
   private ClientConfig clientConfig;
 
-  private Schema formatSchema(String schema) {
-    return new Schema.Parser().parse(schema);
-  }
+  private int defaultId = 0;
+  private String VALUE_SCHEMA = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"KeyRecord\",\n"
+      + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"id\",\n" + "      \"type\": \"int\",\n"
+      + "      \"default\": 0\n" + "    }\n" + "  ]\n" + "}";
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -114,7 +105,7 @@ public class RequestBasedMetadataIntegrationTest {
     requestBasedMetadata.start();
   }
 
-  @Test(timeOut = TIME_OUT)
+  @Test(timeOut = TIME_OUT, invocationCount = 5)
   public void testMetadata() {
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
     ReadOnlyStoreRepository storeRepository = routerWrapper.getMetaDataRepository();
@@ -133,7 +124,7 @@ public class RequestBasedMetadataIntegrationTest {
     veniceCluster.createVersion(storeName, KEY_COUNT);
 
     TestUtils.waitForNonDeterministicAssertion(
-        30,
+        3,
         TimeUnit.SECONDS,
         () -> assertEquals(
             requestBasedMetadata.getCurrentStoreVersion(),
@@ -145,26 +136,23 @@ public class RequestBasedMetadataIntegrationTest {
     }
   }
 
-  @Test(timeOut = TIME_OUT)
+  @Test(timeOut = TIME_OUT, invocationCount = 5)
   public void testMetadataSchemaEvolution() {
     ReadOnlySchemaRepository schemaRepository = veniceCluster.getRandomVeniceRouter().getSchemaRepository();
+    evolveSchema();
 
-    veniceCluster
-        .useControllerClient(controllerClient -> controllerClient.addValueSchema(storeName, EVOLVED_VALUE_SCHEMA));
+    veniceCluster.useControllerClient(controllerClient -> controllerClient.addValueSchema(storeName, VALUE_SCHEMA));
 
     Stream<Map.Entry> genericRecordStream = IntStream.range(0, KEY_COUNT).mapToObj(i -> {
-      GenericRecord record = new GenericData.Record(formatSchema(EVOLVED_VALUE_SCHEMA));
+      GenericRecord record = new GenericData.Record(formatSchema(VALUE_SCHEMA));
       record.put("id", i);
-      record.put("age", i);
       return new AbstractMap.SimpleEntry<>(i, record);
     });
 
-    veniceCluster.createVersion(storeName, KEY_SCHEMA, EVOLVED_VALUE_SCHEMA, genericRecordStream);
+    veniceCluster.createVersion(storeName, KEY_SCHEMA, VALUE_SCHEMA, genericRecordStream);
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      assertEquals(
-          formatSchema(EVOLVED_VALUE_SCHEMA),
-          schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema());
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      assertEquals(formatSchema(VALUE_SCHEMA), schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema());
       assertEquals(
           requestBasedMetadata.getLatestValueSchema(),
           schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema());
@@ -202,7 +190,7 @@ public class RequestBasedMetadataIntegrationTest {
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
     ReadOnlyStoreRepository storeRepository = routerWrapper.getMetaDataRepository();
     TestUtils.waitForNonDeterministicAssertion(
-        30,
+        3,
         TimeUnit.SECONDS,
         () -> assertEquals(
             zstdRequestBasedMetadata.getCurrentStoreVersion(),
@@ -226,7 +214,7 @@ public class RequestBasedMetadataIntegrationTest {
       byte[] key) {
     final String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
     final int partitionId = ThreadLocalRandom.current().nextInt(0, partitionCount);
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
       assertEquals(
           defaultPartitioner.getPartitionId(key, partitionCount),
           requestBasedMetadata.getPartitionId(versionNumber, key));
@@ -243,6 +231,17 @@ public class RequestBasedMetadataIntegrationTest {
         assertTrue(metadataView.contains(instance), "Instance: " + instance + " is missing from StoreMetadata.");
       }
     });
+  }
+
+  private Schema formatSchema(String schema) {
+    return new Schema.Parser().parse(schema);
+  }
+
+  private void evolveSchema() {
+    VALUE_SCHEMA = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"KeyRecord\",\n" + "  \"fields\": [\n"
+        + "    {\n" + "      \"name\": \"id\",\n" + "      \"type\": \"int\",\n" + "      \"default\": " + ++defaultId
+        + "\n" + "    }\n" + "  ]\n" + "}";
+
   }
 
   @AfterClass
