@@ -1,5 +1,6 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import java.io.Closeable;
 import org.apache.avro.Schema;
 
@@ -23,8 +24,7 @@ public interface SchemaReader extends Closeable {
    */
   Integer getLatestValueSchemaId();
 
-  /**
-   * Get the largest used value schema id
-   */
-  int getMaxValueSchemaId();
+  Schema getUpdateSchema(int valueSchemaId);
+
+  DerivedSchemaEntry getLatestUpdateSchema();
 }

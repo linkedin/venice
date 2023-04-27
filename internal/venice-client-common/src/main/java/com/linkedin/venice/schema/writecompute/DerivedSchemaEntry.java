@@ -5,7 +5,7 @@ import org.apache.avro.Schema;
 
 
 /**
- * schemas are designed for write compute operations. The schema contains
+ * Derived schemas are designed for write compute operations. The schema contains
  * available operations that SN could apply on top of the record. Derived
  * schemas can be generated automatically from value schemas and each value
  * schema can have multiple derived schemas.Check out

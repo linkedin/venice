@@ -1,26 +1,32 @@
 package com.linkedin.venice.client.schema;
 
+import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
+import static com.linkedin.venice.client.schema.RouterBasedStoreSchemaFetcher.TYPE_UPDATE_SCHEMA;
 import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
+import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -46,13 +52,17 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
   private final Map<Schema, Integer> valueSchemaMapR = new VeniceConcurrentHashMap<>();
   private final AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
+  private final AtomicReference<Boolean> loadUpdateSchemas = new AtomicReference<>(false);
+
+  private final Map<Integer, DerivedSchemaEntry> valueSchemaIdToUpdateSchemaMap = new VeniceConcurrentHashMap<>();
+
   private final String storeName;
   private final AbstractAvroStoreClient storeClient;
   private final Predicate<Schema> preferredSchemaFilter;
   private final Duration valueSchemaRefreshPeriod;
   private final ICProvider icProvider;
   private final AtomicReference<Integer> maxValueSchemaId = new AtomicReference<>(SchemaData.INVALID_VALUE_SCHEMA_ID);
-  private final AtomicReference<Instant> lastValueSchemaRefreshTime = new AtomicReference<>(Instant.EPOCH);
+  private final AtomicReference<Instant> lastValueSchemaRefreshTime = new AtomicReference<>();
 
   RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
     this(clientSupplier, Optional.empty(), Optional.empty());
@@ -121,18 +131,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
       return valueSchema;
     }
 
-    try {
-      // try to refresh all value schema and latestValueSchemaEntry field.
-      synchronized (this) {
-        valueSchema = valueSchemaMap.get(id);
-        if (valueSchema == null) {
-          refreshAllValueSchema();
-        }
-      }
-    } catch (VeniceException e) {
-      throw new RuntimeException(e);
-    }
-
+    ensureSchemasAreRefreshed(false);
     valueSchema = valueSchemaMap.get(id);
     if (valueSchema == null) {
       LOGGER.warn("Got null value schema from Venice for store: {} and id: {}", storeName, id);
@@ -144,27 +143,23 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public Schema getLatestValueSchema() throws VeniceClientException {
-    return ensureLatestValueSchemaIsFetched(SCHEMA_EXTRACTOR);
+    ensureSchemasAreRefreshed(false);
+    SchemaEntry latest = latestValueSchemaEntry.get();
+    return latest == null ? null : SCHEMA_EXTRACTOR.apply(latest);
   }
 
   private static final Function<SchemaEntry, Integer> SCHEMA_ID_EXTRACTOR = schemaEntry -> schemaEntry.getId();
 
   @Override
   public Integer getLatestValueSchemaId() throws VeniceClientException {
-    return ensureLatestValueSchemaIsFetched(SCHEMA_ID_EXTRACTOR);
+    ensureSchemasAreRefreshed(false);
+    SchemaEntry latest = latestValueSchemaEntry.get();
+    return latest == null ? null : SCHEMA_ID_EXTRACTOR.apply(latest);
   }
 
   @Override
   public int getValueSchemaId(Schema schema) {
-    if (valueSchemaMapR.containsKey(schema)) {
-      return valueSchemaMapR.get(schema);
-    } else {
-      synchronized (this) {
-        if (!valueSchemaMapR.containsKey(schema)) {
-          refreshAllValueSchema();
-        }
-      }
-    }
+    ensureSchemasAreRefreshed(false);
     if (!valueSchemaMapR.containsKey(schema)) {
       throw new VeniceClientException("Could not find schema: " + schema + ". for store " + storeName);
     }
@@ -172,15 +167,30 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   @Override
-  public int getMaxValueSchemaId() {
-    if (Duration.between(lastValueSchemaRefreshTime.get(), Instant.now()).compareTo(valueSchemaRefreshPeriod) > 0) {
-      synchronized (this) {
-        if (Duration.between(lastValueSchemaRefreshTime.get(), Instant.now()).compareTo(valueSchemaRefreshPeriod) > 0) {
-          refreshAllValueSchema();
-        }
-      }
+  public Schema getUpdateSchema(int valueSchemaId) {
+    DerivedSchemaEntry updateSchema = valueSchemaIdToUpdateSchemaMap.get(valueSchemaId);
+    if (updateSchema != null) {
+      return updateSchema.getSchema();
     }
-    return maxValueSchemaId.get();
+
+    ensureSchemasAreRefreshed(true);
+    updateSchema = valueSchemaIdToUpdateSchemaMap.get(valueSchemaId);
+    if (updateSchema == null) {
+      LOGGER.warn("Got null update schema from Venice for store: {} and value schema id: {}", storeName, valueSchemaId);
+      return null;
+    }
+    return updateSchema.getSchema();
+  }
+
+  @Override
+  public DerivedSchemaEntry getLatestUpdateSchema() {
+    ensureSchemasAreRefreshed(true);
+    SchemaEntry latestValueSchema = latestValueSchemaEntry.get();
+    if (latestValueSchema == null) {
+      return null;
+    }
+
+    return valueSchemaIdToUpdateSchemaMap.get(latestValueSchema.getId());
   }
 
   @Override
@@ -188,21 +198,73 @@ public class RouterBackedSchemaReader implements SchemaReader {
     IOUtils.closeQuietly(storeClient, LOGGER::error);
   }
 
-  private <T> T ensureLatestValueSchemaIsFetched(Function<SchemaEntry, T> schemaEntryConsumer) {
-    if (latestValueSchemaEntry.get() == null) {
-      synchronized (this) {
-        // Check it again
-        if (latestValueSchemaEntry.get() == null) {
-          refreshAllValueSchema();
-        }
-      }
-    }
-    SchemaEntry latest = latestValueSchemaEntry.get();
-    return latest == null ? null : schemaEntryConsumer.apply(latest);
+  /**
+   * This function fetches schemas if:
+   * 1. Schemas haven't been fetched previously
+   * 2. The configured duration to check for new schemas has passed
+   * 3. This is the first time that derived schemas are needed
+   * @param needsDerivedSchemas If the caller of the function needs derived schemas
+   */
+  private void ensureSchemasAreRefreshed(boolean needsDerivedSchemas) {
+    ConcurrencyUtils.executeUnderConditionalLock(() -> {
+      loadUpdateSchemas.compareAndSet(false, needsDerivedSchemas);
+      this.refreshAllSchemas();
+    },
+        () -> latestValueSchemaEntry.get() == null || lastValueSchemaRefreshTime.get() == null
+            || Duration.between(lastValueSchemaRefreshTime.get(), Instant.now()).compareTo(valueSchemaRefreshPeriod) > 0
+            || (needsDerivedSchemas && !loadUpdateSchemas.get()),
+        this);
   }
 
   private SchemaEntry fetchSingleSchema(String requestPath, boolean isValueSchema) throws VeniceClientException {
-    SchemaEntry schemaEntry = null;
+    SchemaResponse schemaResponse = fetchSingleSchemaResponse(requestPath);
+    Schema writerSchema = isValueSchema
+        ? preemptiveSchemaVerification(
+            AvroCompatibilityHelper.parse(schemaResponse.getSchemaStr()),
+            schemaResponse.getSchemaStr(),
+            schemaResponse.getId())
+        : AvroCompatibilityHelper.parse(schemaResponse.getSchemaStr());
+
+    return new SchemaEntry(schemaResponse.getId(), writerSchema);
+  }
+
+  private SchemaResponse fetchSingleSchemaResponse(String requestPath) throws VeniceClientException {
+    SchemaResponse schemaResponse;
+    byte[] response = executeRouterRequest(requestPath);
+    try {
+      schemaResponse = OBJECT_MAPPER.readValue(response, SchemaResponse.class);
+    } catch (Exception e) {
+      throw new VeniceClientException("Got exception while deserializing response", e);
+    }
+    if (schemaResponse.isError()) {
+      throw new VeniceClientException(
+          "Received an error while fetching schema from path: " + requestPath + ", error message: "
+              + schemaResponse.getError());
+    }
+    if (schemaResponse.getSchemaStr() == null) {
+      throw new VeniceClientException("Received bad schema response with null schema string");
+    }
+    return schemaResponse;
+  }
+
+  private MultiSchemaResponse fetchMultiSchemaResponse(String requestPath) throws VeniceClientException {
+    MultiSchemaResponse multiSchemaResponse;
+    byte[] response = executeRouterRequest(requestPath);
+    try {
+      multiSchemaResponse = OBJECT_MAPPER.readValue(response, MultiSchemaResponse.class);
+    } catch (Exception e) {
+      throw new VeniceClientException("Got exception while deserializing response", e);
+    }
+    if (multiSchemaResponse.isError()) {
+      throw new VeniceClientException(
+          "Received an error while fetching schemas from path: " + requestPath + ", error message: "
+              + multiSchemaResponse.getError());
+    }
+    return multiSchemaResponse;
+  }
+
+  private byte[] executeRouterRequest(String requestPath) {
+    byte[] response;
     try {
       CompletableFuture<byte[]> responseFuture;
       if (icProvider != null) {
@@ -211,39 +273,21 @@ public class RouterBackedSchemaReader implements SchemaReader {
         responseFuture = (CompletableFuture<byte[]>) storeClient.getRaw(requestPath);
       }
 
-      byte[] response = RetryUtils.executeWithMaxAttempt(
+      response = RetryUtils.executeWithMaxAttempt(
           () -> (responseFuture.get()),
           3,
           Duration.ofNanos(1),
-          Arrays.asList(ExecutionException.class));
-      if (response == null) {
-        LOGGER.warn("Requested schema doesn't exist for request path: {}", requestPath);
-        return null;
-      }
-
-      SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response, SchemaResponse.class);
-      if (!schemaResponse.isError()) {
-        Schema writerSchema = isValueSchema
-            ? preemptiveSchemaVerification(
-                Schema.parse(schemaResponse.getSchemaStr()),
-                schemaResponse.getSchemaStr(),
-                schemaResponse.getId())
-            : Schema.parse(schemaResponse.getSchemaStr());
-        schemaEntry = new SchemaEntry(schemaResponse.getId(), writerSchema);
-      } else {
-        throw new VeniceClientException(
-            "Received an error while fetching schema. " + getExceptionDetails(requestPath) + ", error message: "
-                + schemaResponse.getError());
-      }
-    } catch (VeniceClientException e) {
-      throw e;
+          Collections.singletonList(ExecutionException.class));
     } catch (Exception e) {
-      throw new VeniceClientException(
-          "Got exception while trying to fetch single schema. " + getExceptionDetails(requestPath),
-          e);
+      throw new VeniceClientException("Failed to execute request from path " + requestPath, e);
     }
 
-    return schemaEntry;
+    if (response == null) {
+      LOGGER.warn("Requested schema doesn't exist for request path: {}", requestPath);
+      return null;
+    }
+
+    return response;
   }
 
   private String getExceptionDetails(String requestPath) {
@@ -255,26 +299,17 @@ public class RouterBackedSchemaReader implements SchemaReader {
     return fetchSingleSchema(requestPath, false);
   }
 
-  private void refreshAllValueSchema() throws VeniceClientException {
+  private void refreshAllSchemas() throws VeniceClientException {
+    refreshAllValueSchemas();
+    if (loadUpdateSchemas.get() && storeHasPartialUpdateEnabled()) {
+      refreshAllUpdateSchemas();
+    }
+  }
+
+  private void refreshAllValueSchemas() throws VeniceClientException {
     String requestPath = TYPE_VALUE_SCHEMA + "/" + storeName;
     try {
-      byte[] response = RetryUtils.executeWithMaxAttempt(
-          () -> ((CompletableFuture<byte[]>) storeClient.getRaw(requestPath)).get(),
-          3,
-          Duration.ofNanos(1),
-          Arrays.asList(ExecutionException.class));
-      if (response == null) {
-        LOGGER.info("Got null for request path: {}", requestPath);
-        return;
-      }
-
-      MultiSchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response, MultiSchemaResponse.class);
-      if (schemaResponse.isError()) {
-        throw new VeniceClientException(
-            "Received an error while fetching schema. " + getExceptionDetails(requestPath) + ", error message: "
-                + schemaResponse.getError());
-      }
-
+      MultiSchemaResponse schemaResponse = fetchMultiSchemaResponse(requestPath);
       int supersetSchemaId = schemaResponse.getSuperSetSchemaId();
 
       int maxSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
@@ -331,6 +366,56 @@ public class RouterBackedSchemaReader implements SchemaReader {
     }
   }
 
+  private void refreshAllUpdateSchemas() throws VeniceClientException {
+    valueSchemaMap.keySet()
+        .forEach(
+            valueSchemaId -> valueSchemaIdToUpdateSchemaMap
+                .computeIfAbsent(valueSchemaId, this::fetchUpdateSchemaEntry));
+  }
+
+  private DerivedSchemaEntry fetchUpdateSchemaEntry(int valueSchemaId) throws VeniceClientException {
+    String requestPath = TYPE_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
+    SchemaResponse schemaResponse = fetchSingleSchemaResponse(requestPath);
+    DerivedSchemaEntry updateSchemaEntry =
+        new DerivedSchemaEntry(valueSchemaId, schemaResponse.getDerivedSchemaId(), schemaResponse.getSchemaStr());
+    if (!updateSchemaEntry.getSchema().getType().equals(Schema.Type.RECORD)) {
+      throw new InvalidVeniceSchemaException("Update schema can only be record schema.");
+    }
+
+    LOGGER.info(
+        "[Store: {}] Got update schema id: {}-{}; schema: {}",
+        storeName,
+        valueSchemaId,
+        updateSchemaEntry.getId(),
+        updateSchemaEntry.getSchema());
+
+    return updateSchemaEntry;
+  }
+
+  // It would be better to use StoreStateReader and return a Store object, but it needs a lot of refactoring due to the
+  // module structure and dependencies of StoreJSONSerializer.
+  private boolean storeHasPartialUpdateEnabled() {
+    JsonNode storeState = fetchStoreState();
+    return storeState.get("writeComputationEnabled").asBoolean(false);
+  }
+
+  private JsonNode fetchStoreState() throws VeniceClientException {
+    String requestPath = TYPE_STORE_STATE + "/" + storeClient.getStoreName();
+    byte[] response = executeRouterRequest(requestPath);
+    if (response == null) {
+      throw new VeniceClientException(
+          "Unexpected null response while trying to fetch store: " + storeName + " with path: " + requestPath);
+    }
+    JsonNode storeState;
+    try {
+      storeState = OBJECT_MAPPER.readTree(response);
+    } catch (Exception e) {
+      throw new VeniceClientException("Got exception while deserializing response", e);
+    }
+
+    return storeState;
+  }
+
   /**
    * Check for any resolver errors with the writer and reader schema if reader schema exists (for specific records).
    * Attempt to fix the resolver error by replacing/adding the writer schema's namespace with the reader's. If the fix
@@ -340,7 +425,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
    * @param schemaId is the corresponding id for the writer schema.
    * @return either a fixed writer schema or the original writer schema.
    */
-  Schema preemptiveSchemaVerification(Schema writerSchema, String writerSchemaStr, int schemaId) {
+  private Schema preemptiveSchemaVerification(Schema writerSchema, String writerSchemaStr, int schemaId) {
     if (!readerSchema.isPresent()) {
       return writerSchema;
     }
