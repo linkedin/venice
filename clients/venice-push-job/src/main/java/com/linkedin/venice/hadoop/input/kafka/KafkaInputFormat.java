@@ -95,7 +95,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
       }
     });
 
-    return splits.toArray(new InputSplit[0]);
+    return splits.toArray(new KafkaInputSplit[splits.size()]);
   }
 
   @Override

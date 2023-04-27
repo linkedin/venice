@@ -143,7 +143,7 @@ public class PartialUpdateTest {
   }
 
   @Test
-  public void testReproduceError() throws IOException {
+  public void testRepushWithChunkingFlagChanged() throws IOException {
     final String storeName = Utils.getUniqueString("reproduce");
     String parentControllerUrl = parentController.getControllerUrl();
     Schema keySchema = AvroCompatibilityHelper.parse(loadFileAsString("UserKey.avsc"));
@@ -155,12 +155,8 @@ public class PartialUpdateTest {
           parentControllerClient.createNewStore(storeName, "test_owner", keySchema.toString(), valueSchema.toString()));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              // .setPartitionCount(4)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
               .setWriteComputationEnabled(true)
-              // .setActiveActiveReplicationEnabled(true)
-              // .setChunkingEnabled(true)
-              // .setRmdChunkingEnabled(true)
               .setHybridRewindSeconds(86400L)
               .setHybridOffsetLagThreshold(10L);
       ControllerResponse updateStoreResponse =
@@ -217,13 +213,9 @@ public class PartialUpdateTest {
         }
       });
 
-      // ENABLE A/A
-
+      // Enable chunking
       UpdateStoreQueryParams newUpdateStoreParams =
-          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              // .setActiveActiveReplicationEnabled(true)
-              .setChunkingEnabled(true);
-      // .setRmdChunkingEnabled(true);
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setChunkingEnabled(true);
       updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, newUpdateStoreParams));
       assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
