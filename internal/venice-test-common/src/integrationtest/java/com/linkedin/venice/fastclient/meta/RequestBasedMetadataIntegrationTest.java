@@ -55,6 +55,17 @@ public class RequestBasedMetadataIntegrationTest {
   private static final int KEY_COUNT = 100;
   private static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
 
+  private final static String KEY_SCHEMA = "\"int\"";
+
+  private final static String VALUE_SCHEMA =
+      "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"KeyRecord\",\n" + "  \"fields\": [\n" + "    {\n"
+          + "      \"name\": \"id\",\n" + "      \"type\": \"int\"\n" + "    }\n" + "  ]\n" + "}";
+
+  private final static String EVOLVED_VALUE_SCHEMA = "{\n" + "  \"type\": \"record\",\n"
+      + "  \"name\": \"KeyRecord\",\n" + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"id\",\n"
+      + "      \"type\": \"int\"\n" + "    },\n" + "    {\n" + "      \"name\": \"age\",\n"
+      + "      \"type\": \"int\",\n" + "      \"default\": 18\n" + "    }\n" + "  ]\n" + "}";
+
   private final VenicePartitioner defaultPartitioner = new DefaultVenicePartitioner();
   private VeniceClusterWrapper veniceCluster;
   private String storeName;
@@ -63,17 +74,6 @@ public class RequestBasedMetadataIntegrationTest {
   private Client r2Client;
   private D2Client d2Client;
   private ClientConfig clientConfig;
-
-  private final String KEY_SCHEMA = "\"int\"";
-
-  private final String VALUE_SCHEMA =
-      "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"KeyRecord\",\n" + "  \"fields\": [\n" + "    {\n"
-          + "      \"name\": \"id\",\n" + "      \"type\": \"int\"\n" + "    }\n" + "  ]\n" + "}";
-
-  private final String EVOLVED_VALUE_SCHEMA = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"KeyRecord\",\n"
-      + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"id\",\n" + "      \"type\": \"int\"\n" + "    },\n"
-      + "    {\n" + "      \"name\": \"age\",\n" + "      \"type\": \"int\",\n" + "      \"default\": 18\n" + "    }\n"
-      + "  ]\n" + "}";
 
   private Schema formatSchema(String schema) {
     return new Schema.Parser().parse(schema);
@@ -145,7 +145,7 @@ public class RequestBasedMetadataIntegrationTest {
     }
   }
 
-  @Test()
+  @Test(timeOut = TIME_OUT)
   public void testMetadataSchemaEvolution() {
     ReadOnlySchemaRepository schemaRepository = veniceCluster.getRandomVeniceRouter().getSchemaRepository();
 
