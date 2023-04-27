@@ -121,7 +121,6 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     this.startingOffset = inputSplit.getStartingOffset();
     this.currentOffset = inputSplit.getStartingOffset() - 1;
     this.endingOffset = inputSplit.getEndingOffset();
-    // this.isChunkingEnabled = job.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
     this.isSourceVersionChunkingEnabled =
         job.getBoolean(VenicePushJob.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, false);
     String keySchemaString = job.get(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
