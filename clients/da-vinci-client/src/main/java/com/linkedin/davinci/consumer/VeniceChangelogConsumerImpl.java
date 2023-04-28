@@ -20,7 +20,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -29,7 +28,6 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -39,12 +37,14 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -53,6 +53,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -70,9 +71,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
 
-  protected VeniceCompressor currentCompressor = NO_OP_COMPRESSOR;
-
   protected final CompressorFactory compressorFactory = new CompressorFactory();
+
+  protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
 
   protected ThinClientMetaStoreBasedRepository storeRepository;
 
@@ -85,7 +86,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final SchemaReader schemaReader;
   private final String viewClassName;
-  private final Set<Integer> subscribedPartitions;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   protected final RecordDeserializer<K> keyDeserializer;
@@ -97,9 +97,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository;
 
   protected final String storeName;
-  protected final int storeCurrentVersion;
-
-  protected final boolean storeChunkingEnabled;
 
   // This storage engine serves as a buffer for records which are chunked and have to be buffered before they can
   // be returned to the client. We leverage the storageEngine interface here in order to take better advantage
@@ -111,10 +108,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   // to control and guarantee the behavior we're expecting.
   protected final InMemoryStorageEngine inMemoryStorageEngine;
   protected final Consumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
-  protected String currentTopic;
-  protected Map<Integer, List<Long>> currentVersionTempHighWatermarks = new HashMap<>();
   protected final Map<Integer, List<Long>> currentVersionHighWatermarks = new HashMap<>();
-  protected final int[] currentValuePayloadSize; // This is for recording current value payload.
+  protected final int[] currentValuePayloadSize;
+
+  protected final ChangelogClientConfig changelogClientConfig;
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -128,15 +125,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           "Failed to get store info for store: " + storeName + " with error: " + storeResponse.getError());
     }
     StoreInfo store = storeResponse.getStore();
-    this.storeCurrentVersion = store.getCurrentVersion();
+    this.changelogClientConfig = ChangelogClientConfig.cloneConfig(changelogClientConfig);
     this.partitionCount = store.getPartitionCount();
-    this.storeChunkingEnabled = store.isChunkingEnabled();
     this.currentValuePayloadSize = new int[partitionCount];
     this.viewClassName = changelogClientConfig.getViewName();
-    this.currentTopic = Version.composeKafkaTopic(storeName, storeCurrentVersion);
     this.replicationMetadataSchemaRepository = new ReplicationMetadataSchemaRepository(d2ControllerClient);
     this.schemaReader = changelogClientConfig.getSchemaReader();
-    this.subscribedPartitions = new HashSet<>();
     Schema keySchema = schemaReader.getKeySchema();
     this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
     // The in memory storage engine only relies on the name of store and nothing else. We use an unversioned store name
@@ -155,15 +149,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       userEventChunkingAdapter = GenericChunkingAdapter.INSTANCE;
     }
     LOGGER.info(
-        "Start a change log consumer client for store: {}, current version: {}, with partition count: {} and view class: {} ",
+        "Start a change log consumer client for store: {}, with partition count: {} and view class: {} ",
         storeName,
-        storeCurrentVersion,
         partitionCount,
         viewClassName);
   }
 
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
+    return internalSubscribe(partitions, null);
+  }
+
+  public CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, String topic) {
     return CompletableFuture.supplyAsync(() -> {
       try {
         storeRepository.start();
@@ -172,55 +169,121 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         throw new RuntimeException(e);
       }
       storeRepository.refresh();
+
+      String topicToSubscribe;
+      if (topic == null) {
+        topicToSubscribe = getCurrentServingVersionTopic();
+      } else {
+        topicToSubscribe = topic;
+      }
       Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
-      List<TopicPartition> topicPartitionList = getPartitionListToSubscribe(partitions, topicPartitionSet);
+      List<TopicPartition> topicPartitionList =
+          getPartitionListToSubscribe(partitions, topicPartitionSet, topicToSubscribe);
       kafkaConsumer.assign(topicPartitionList);
+      for (TopicPartition topicPartition: topicPartitionList) {
+        if (!topicPartition.topic().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
+          compressorMap.put(topicPartition.partition(), getVersionCompressor(topicPartition));
+        }
+      }
       kafkaConsumer.seekToBeginning(topicPartitionList);
-      subscribedPartitions.addAll(partitions);
       return null;
     });
   }
 
+  protected VeniceCompressor getVersionCompressor(TopicPartition topicPartition) {
+    Store store = storeRepository.getStore(storeName);
+    Version version = store.getVersion(Version.parseVersionFromVersionTopicName(topicPartition.topic())).get();
+    VeniceCompressor compressor;
+    if (CompressionStrategy.ZSTD_WITH_DICT.equals(version.getCompressionStrategy())) {
+      compressor = compressorFactory.getVersionSpecificCompressor(topicPartition.topic());
+      if (compressor == null) {
+        // we need to retrieve the dictionary from the kafka topic
+        ByteBuffer dictionary = DictionaryUtils.readDictionaryFromKafka(
+            topicPartition.topic(),
+            new VeniceProperties(changelogClientConfig.getConsumerProperties()));
+        compressor = compressorFactory.createVersionSpecificCompressorIfNotExist(
+            version.getCompressionStrategy(),
+            topicPartition.topic(),
+            dictionary.array());
+      }
+    } else {
+      compressor = compressorFactory.getCompressor(version.getCompressionStrategy());
+    }
+    return compressor;
+  }
+
   @Override
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
+    // Get latest version topic
+    storeRepository.refresh();
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
     String topic = Version.composeKafkaTopic(storeName, currentVersion);
-
-    // Unsub pending subscriptions
-    // Sub with version topic and the partitions
-
-    return null;
+    return internalSeek(partitions, topic, kafkaConsumer::seekToBeginning);
   }
 
   @Override
   public CompletableFuture<Void> seekToBeginningOfPush() {
-    return null;
+    return seekToBeginningOfPush(
+        kafkaConsumer.assignment()
+            .stream()
+            .map(topicPartition -> topicPartition.partition())
+            .collect(Collectors.toSet()));
   }
 
   @Override
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
-    return null;
+    // Get latest change capture topic
+    storeRepository.refresh();
+    Store store = storeRepository.getStore(storeName);
+    int currentVersion = store.getCurrentVersion();
+    String topic = Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+    return internalSeek(partitions, topic, kafkaConsumer::seekToBeginning);
   }
 
   @Override
   public CompletableFuture<Void> seekToEndOfPush() {
-    return null;
+    return seekToEndOfPush(
+        kafkaConsumer.assignment()
+            .stream()
+            .map(topicPartition -> topicPartition.partition())
+            .collect(Collectors.toSet()));
   }
 
   @Override
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
-    return null;
+    // Get latest change capture topic
+    String topic = getCurrentServingVersionTopic() + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+    return internalSeek(partitions, topic, kafkaConsumer::seekToEnd);
+  }
+
+  private String getCurrentServingVersionTopic() {
+    storeRepository.refresh();
+    Store store = storeRepository.getStore(storeName);
+    int currentVersion = store.getCurrentVersion();
+    return Version.composeKafkaTopic(storeName, currentVersion);
   }
 
   @Override
   public CompletableFuture<Void> seekToTail() {
-    return null;
+    return seekToTail(
+        kafkaConsumer.assignment()
+            .stream()
+            .map(topicPartition -> topicPartition.partition())
+            .collect(Collectors.toSet()));
   }
 
   @Override
-  public CompletableFuture<Void> seekToCheckpoint(Map<Integer, byte[]> checkpoints) {
-    return null;
+  public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
+    return CompletableFuture.supplyAsync(() -> {
+      for (VeniceChangeCoordinate coordinate: checkpoints) {
+        internalSeek(Collections.singleton(coordinate.getPartition()), coordinate.getTopic(), foo -> {
+          kafkaConsumer
+              .seek(new TopicPartition(coordinate.getTopic(), coordinate.getPartition()), coordinate.getOffset());
+        }).join();
+      }
+      return null;
+    });
   }
 
   @Override
@@ -232,12 +295,44 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return this.subscribe(allPartitions);
   }
 
+  public CompletableFuture<Void> internalSeek(Set<Integer> partitions, String targetTopic, SeekFunction seekAction) {
+    return CompletableFuture.supplyAsync(() -> {
+      Set<TopicPartition> topicPartitionSet = new HashSet<>(kafkaConsumer.assignment());
+      // Prune out current subscriptions
+      for (TopicPartition topicPartition: topicPartitionSet) {
+        currentVersionHighWatermarks.remove(topicPartition.partition());
+        if (partitions.contains(topicPartition.partition())) {
+          topicPartitionSet.remove(topicPartition);
+        }
+      }
+
+      List<TopicPartition> topicPartitionListToAssign =
+          getPartitionListToSubscribe(partitions, topicPartitionSet, targetTopic);
+      List<TopicPartition> topicPartitionListToSeek =
+          getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
+      for (TopicPartition topicPartition: topicPartitionListToSeek) {
+        if (!topicPartition.topic().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
+          compressorMap.put(topicPartition.partition(), getVersionCompressor(topicPartition));
+        }
+      }
+      kafkaConsumer.assign(topicPartitionListToAssign);
+      seekAction.apply(topicPartitionListToSeek);
+      return null;
+    });
+  }
+
+  @FunctionalInterface
+  interface SeekFunction {
+    void apply(Collection<TopicPartition> partitionsToSeek);
+  }
+
   private List<TopicPartition> getPartitionListToSubscribe(
       Set<Integer> partitions,
-      Set<TopicPartition> topicPartitionSet) {
-    List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet.size());
+      Set<TopicPartition> topicPartitionSet,
+      String topic) {
+    List<TopicPartition> topicPartitionList = new ArrayList<>();
     for (Integer partition: partitions) {
-      TopicPartition topicPartition = new TopicPartition(currentTopic, partition);
+      TopicPartition topicPartition = new TopicPartition(topic, partition);
       if (!topicPartitionSet.contains(topicPartition)) {
         topicPartitionList.add(topicPartition);
       }
@@ -247,17 +342,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public void unsubscribe(Set<Integer> partitions) {
-    for (Integer partition: partitions) {
-      TopicPartition topicPartition = new TopicPartition(currentTopic, partition);
-      Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
-      if (topicPartitionSet.contains(topicPartition)) {
-        List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
-        if (topicPartitionList.remove(topicPartition)) {
-          kafkaConsumer.assign(topicPartitionList);
-        }
+    Set<TopicPartition> topicPartitionSet = new HashSet<>(kafkaConsumer.assignment());
+    for (TopicPartition topicPartition: topicPartitionSet) {
+      if (partitions.contains(topicPartition.partition())) {
+        topicPartitionSet.remove(topicPartition);
       }
-      subscribedPartitions.remove(topicPartition.partition());
     }
+    kafkaConsumer.assign(topicPartitionSet);
   }
 
   @Override
@@ -270,12 +361,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   @Override
-  public Collection<PubSubMessage<K, ChangeEvent<V>, Long>> poll(long timeoutInMs) {
+  public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     return internalPoll(timeoutInMs, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
   }
 
-  protected Collection<PubSubMessage<K, ChangeEvent<V>, Long>> internalPoll(long timeoutInMs, String topicSuffix) {
-    List<PubSubMessage<K, ChangeEvent<V>, Long>> pubSubMessages = new ArrayList<>();
+  protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
+      long timeoutInMs,
+      String topicSuffix) {
+    List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = kafkaConsumer.poll(timeoutInMs);
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord: consumerRecords) {
       PubSubTopicPartition pubSubTopicPartition = getPubSubTopicPartitionFromConsumerRecord(consumerRecord);
@@ -285,7 +378,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           return pubSubMessages;
         }
       } else {
-        Optional<PubSubMessage<K, ChangeEvent<V>, Long>> pubSubMessage =
+        Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
             convertConsumerRecordToPubSubChangeEventMessage(consumerRecord, pubSubTopicPartition);
         pubSubMessage.ifPresent(pubSubMessages::add);
       }
@@ -306,35 +399,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       String topicSuffix) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     // TODO: Find a better way to avoid data gap between version topic and change capture topic due to log compaction.
-    if (controlMessageType.equals(ControlMessageType.START_OF_PUSH)) {
-      StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
-      byte[] dictionary = null;
-      if (startOfPush.compressionDictionary != null) {
-        dictionary = startOfPush.compressionDictionary.array();
-      }
-      // TODO: This relies on consuming the beginning of the version topic. This is what some libraries do anyway under
-      // the hood, but it seems clumsy here. Should refactor
-      // TODO: This factory maintains a cache of ZSTD compression strategies. We'll need to clean this out as we remove
-      // subscriptions. Will add this in the checkpointing feature.
-      currentCompressor = compressorFactory.createVersionSpecificCompressorIfNotExist(
-          CompressionStrategy.valueOf(startOfPush.compressionStrategy),
-          pubSubTopicPartition.getPubSubTopic().getName(),
-          dictionary);
-    }
     if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
-      int partitionId = pubSubTopicPartition.getPartitionNumber();
       LOGGER.info(
-          "Obtain End of Push message and current local high watermarks: {}",
-          currentVersionTempHighWatermarks.get(partitionId));
-      if (currentVersionTempHighWatermarks.containsKey(partitionId)) {
-        currentVersionHighWatermarks.put(partitionId, currentVersionTempHighWatermarks.get(partitionId));
-      }
+          "End of Push message received for version {} for store {}",
+          Version.parseVersionFromKafkaTopicName(pubSubTopicPartition.getPubSubTopic().getName()),
+          storeName);
       // Jump to next topic
       // TODO: Today we don't publish the version swap message to the version topic. This necessitates relying on the
       // change capture topic in order to navigate version pushes. We should pass the topicSuffix argument here once
       // that
       // support lands.
-      switchToNewTopic(currentTopic, ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+      switchToNewTopic(
+          pubSubTopicPartition.getPubSubTopic().getName(),
+          ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX,
+          pubSubTopicPartition.getPartitionNumber());
       return true;
     }
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
@@ -365,81 +443,72 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     // events from change capture. This is fine as today they are not compressed.
     VeniceCompressor compressor;
     if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
-      compressor = currentCompressor;
+      compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
     } else {
       compressor = NO_OP_COMPRESSOR;
     }
 
-    // If chunking is enabled prepare an in memory storage engine for buffering record chunks
-    if (storeChunkingEnabled) {
-      if (!inMemoryStorageEngine.containsPartition(pubSubTopicPartition.getPartitionNumber())) {
-        inMemoryStorageEngine.addStoragePartition(pubSubTopicPartition.getPartitionNumber());
-      }
-      // If this is a record chunk, store the chunk and return null for processing this record
-      if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
-        inMemoryStorageEngine.put(
+    if (!inMemoryStorageEngine.containsPartition(pubSubTopicPartition.getPartitionNumber())) {
+      inMemoryStorageEngine.addStoragePartition(pubSubTopicPartition.getPartitionNumber());
+    }
+    // If this is a record chunk, store the chunk and return null for processing this record
+    if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
+      inMemoryStorageEngine.put(
+          pubSubTopicPartition.getPartitionNumber(),
+          keyBytes,
+          ValueRecord.create(schemaId, valueBytes.array()).serialize());
+      return null;
+    } else if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+      // This is the last value. Store it, and now read it from the in memory store as a fully assembled value
+      inMemoryStorageEngine.put(
+          pubSubTopicPartition.getPartitionNumber(),
+          keyBytes,
+          ValueRecord.create(schemaId, valueBytes.array()).serialize());
+      try {
+        assembledRecord = chunkingAdapter.get(
+            inMemoryStorageEngine,
+            readerSchemaId,
             pubSubTopicPartition.getPartitionNumber(),
-            keyBytes,
-            ValueRecord.create(schemaId, valueBytes.array()).serialize());
-        return null;
-      } else if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-        // This is the last value. Store it, and now read it from the in memory store as a fully assembled value
-        inMemoryStorageEngine.put(
-            pubSubTopicPartition.getPartitionNumber(),
-            keyBytes,
-            ValueRecord.create(schemaId, valueBytes.array()).serialize());
-        try {
-          assembledRecord = chunkingAdapter.get(
-              inMemoryStorageEngine,
-              readerSchemaId,
-              pubSubTopicPartition.getPartitionNumber(),
-              ByteBuffer.wrap(keyBytes),
-              false,
-              null,
-              null,
-              null,
-              compressor.getCompressionStrategy(),
-              true,
-              schemaRepository,
-              storeName,
-              compressor);
-        } catch (Exception ex) {
-          // We might get an exception if we haven't persisted all the chunks for a given key. This
-          // can actually happen if the client seeks to the middle of a chunked record either by
-          // only tailing the records or through direct offset management. This is ok, we just won't
-          // return this record since this is a course grained approach we can drop it.
-          LOGGER.warn(
-              "Encountered error assembling chunked record, this can happen when seeking between chunked records. Skipping offset {} on topic {}",
-              recordOffset,
-              pubSubTopicPartition.getPubSubTopic().getName());
-        }
-      } else {
-        // this is a fully specified record, no need to buffer and assemble it, just decompress and deserialize it
-        try {
-          assembledRecord = recordDeserializer.get().deserialize(compressor.decompress(valueBytes));
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        }
+            ByteBuffer.wrap(keyBytes),
+            false,
+            null,
+            null,
+            null,
+            compressor.getCompressionStrategy(),
+            true,
+            schemaRepository,
+            storeName,
+            compressor);
+      } catch (Exception ex) {
+        // We might get an exception if we haven't persisted all the chunks for a given key. This
+        // can actually happen if the client seeks to the middle of a chunked record either by
+        // only tailing the records or through direct offset management. This is ok, we just won't
+        // return this record since this is a course grained approach we can drop it.
+        LOGGER.warn(
+            "Encountered error assembling chunked record, this can happen when seeking between chunked records. Skipping offset {} on topic {}",
+            recordOffset,
+            pubSubTopicPartition.getPubSubTopic().getName());
       }
-      // We only buffer one record at a time for a given partition. If we've made it this far
-      // we either just finished assembling a large record, or, didn't specify anything. So we'll clear
-      // the cache. Kafka might give duplicate delivery, but it won't give out of order delivery, so
-      // this is safe to do in all such contexts.
-      inMemoryStorageEngine.dropPartition(pubSubTopicPartition.getPartitionNumber());
     } else {
+      // this is a fully specified record, no need to buffer and assemble it, just decompress and deserialize it
       try {
         assembledRecord = recordDeserializer.get().deserialize(compressor.decompress(valueBytes));
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
     }
+    // We only buffer one record at a time for a given partition. If we've made it this far
+    // we either just finished assembling a large record, or, didn't specify anything. So we'll clear
+    // the cache. Kafka might give duplicate delivery, but it won't give out of order delivery, so
+    // this is safe to do in all such contexts.
+    inMemoryStorageEngine.dropPartition(pubSubTopicPartition.getPartitionNumber());
     return assembledRecord;
   }
 
-  protected Optional<PubSubMessage<K, ChangeEvent<V>, Long>> convertConsumerRecordToPubSubChangeEventMessage(
+  protected Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> convertConsumerRecordToPubSubChangeEventMessage(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       PubSubTopicPartition pubSubTopicPartition) {
-    Optional<PubSubMessage<K, ChangeEvent<V>, Long>> pubSubMessage = Optional.empty();
+    Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage = Optional.empty();
     byte[] keyBytes = consumerRecord.key().getKey();
     MessageType messageType = MessageType.valueOf(consumerRecord.value());
     RecordChangeEvent recordChangeEvent;
@@ -502,7 +571,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             extractOffsetVectorFromMessage(put.getReplicationMetadataVersionId(), put.getReplicationMetadataPayload());
         ChangeEvent<V> changeEvent = new ChangeEvent<>(null, (V) assembledObject);
         pubSubMessage = Optional.of(
-            new ImmutablePubSubMessage<>(
+            new ImmutableChangeCapturePubSubMessage<>(
                 keyDeserializer.deserialize(keyBytes),
                 changeEvent,
                 pubSubTopicPartition,
@@ -552,14 +621,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           versionSwap.getLocalHighWatermarks());
       String newServingVersionTopic = versionSwap.newServingVersionTopic.toString();
       currentVersionHighWatermarks.put(pubSubTopicPartition.getPartitionNumber(), versionSwap.getLocalHighWatermarks());
-      switchToNewTopic(newServingVersionTopic, topicSuffix);
+      switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
       inMemoryStorageEngine.drop();
       return true;
     }
     return false;
   }
 
-  private PubSubMessage<K, ChangeEvent<V>, Long> convertChangeEventToPubSubMessage(
+  private PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> convertChangeEventToPubSubMessage(
       RecordChangeEvent recordChangeEvent,
       K currentKey,
       PubSubTopicPartition pubSubTopicPartition,
@@ -581,7 +650,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           recordChangeEvent.previousValue.getSchemaId());
     }
     ChangeEvent<V> changeEvent = new ChangeEvent<>(previousValue, currentValue);
-    return new ImmutablePubSubMessage<>(currentKey, changeEvent, pubSubTopicPartition, offset, timestamp, payloadSize);
+    return new ImmutableChangeCapturePubSubMessage<>(
+        currentKey,
+        changeEvent,
+        pubSubTopicPartition,
+        offset,
+        timestamp,
+        payloadSize);
   }
 
   private V deserializeValueFromBytes(ByteBuffer byteBuffer, int valueSchemaId) {
@@ -615,13 +690,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return false;
   }
 
-  protected void switchToNewTopic(String newTopic, String topicSuffix) {
+  protected void switchToNewTopic(String newTopic, String topicSuffix, Integer partition) {
     String mergedTopicName = newTopic + topicSuffix;
-    Set<Integer> partitions = new HashSet<>(subscribedPartitions);
-    unsubscribe(subscribedPartitions);
-    currentTopic = mergedTopicName;
+    Set<Integer> partitions = Collections.singleton(partition);
+    unsubscribe(partitions);
     try {
-      subscribe(partitions).get();
+      internalSubscribe(partitions, mergedTopicName).get();
     } catch (InterruptedException | ExecutionException e) {
       throw new VeniceException("Subscribe to new topic:" + mergedTopicName + " is not successful, error: " + e);
     }

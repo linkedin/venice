@@ -3,7 +3,6 @@ package com.linkedin.davinci.consumer;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import java.util.Collection;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -89,14 +88,14 @@ public interface VeniceChangelogConsumer<K, V> {
    * Checkpoints have the following properties and should be considered:
    *    -Checkpoints are NOT comparable or valid across partitions.
    *    -Checkpoints are NOT comparable or valid across colos
-   *    -Checkpoints ARE valid and comparable across store versions, but only a causal comparison can be made.
+   *    -Checkpoints are NOT comparable across store versions
    *    -It is not possible to determine the number of events between two checkpoints
    *    -It is possible that a checkpoint is no longer on retention. In such case, we will return an exception to the caller.
    * @param checkpoints
    * @return a future which completes when seek has completed for all partitions
    * @throws VeniceException if seek operation failed for any of the partitions
    */
-  CompletableFuture<Void> seekToCheckpoint(Map<Integer, byte[]> checkpoints);
+  CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints);
 
   /**
    * Subscribe all partitions belonging to a specific store.
@@ -129,7 +128,7 @@ public interface VeniceChangelogConsumer<K, V> {
    * @return a collection of messages since the last fetch for the subscribed list of topic partitions
    * @throws a VeniceException if polling operation fails
    */
-  Collection<PubSubMessage<K, ChangeEvent<V>, Long>> poll(long timeoutInMs);
+  Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs);
 
   /**
    * Release the internal resources.
