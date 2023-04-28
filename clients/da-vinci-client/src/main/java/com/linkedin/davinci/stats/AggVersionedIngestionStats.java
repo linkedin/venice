@@ -145,4 +145,22 @@ public class AggVersionedIngestionStats
   public void recordVersionTopicEndOffsetRewind(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, IngestionStats::recordVersionTopicEndOffsetRewind);
   }
+
+  public void recordNearlineProducerToLocalBrokerLatency(String storeName, int version, double value, long timestamp) {
+    recordVersionedAndTotalStat(
+        storeName,
+        version,
+        stat -> stat.recordNearlineProducerToLocalBrokerLatency(value, timestamp));
+  }
+
+  public void recordNearlineLocalBrokerToReadyToServeLatency(
+      String storeName,
+      int version,
+      double value,
+      long timestamp) {
+    recordVersionedAndTotalStat(
+        storeName,
+        version,
+        stat -> stat.recordNearlineLocalBrokerToReadyToServeLatency(value, timestamp));
+  }
 }
