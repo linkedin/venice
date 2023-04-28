@@ -223,6 +223,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   private SchemaEntry fetchSingleSchema(String requestPath, boolean isValueSchema) throws VeniceClientException {
     SchemaResponse schemaResponse = fetchSingleSchemaResponse(requestPath);
+
+    if (schemaResponse == null) {
+      return null;
+    }
+
     Schema writerSchema = isValueSchema
         ? preemptiveSchemaVerification(
             AvroCompatibilityHelper.parse(schemaResponse.getSchemaStr()),
