@@ -30,7 +30,7 @@ public abstract class RocksDBThrottler {
   }
 
   protected interface RocksDBOperationRunnable<T> {
-    T execute() throws RocksDBException;
+    T execute() throws RocksDBException, InterruptedException;
   }
 
   protected <T> T throttledOperation(String dbPath, RocksDBOperationRunnable<T> rocksDBOperationRunnable)
@@ -60,6 +60,7 @@ public abstract class RocksDBThrottler {
         throttlerLock.unlock();
       }
     }
+    LOGGER.info("Finished RocksDB database {} for db path {}", operation, dbPath);
     return result;
   }
 }

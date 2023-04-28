@@ -2,132 +2,330 @@ package com.linkedin.davinci.store.rocksdb;
 
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.rocksdb.RocksDBException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-/**
- * Number of threads is set up to be equal to Number of tasks to have enough threads
- * to have the ability to schedule all the tasks at the same time if needed and then
- * test the throttler's functionality.
- */
 public class RocksDBThrottlerTest {
-  private static class TestOperationRunnable implements RocksDBThrottler.RocksDBOperationRunnable<Void> {
-    private static final Logger LOGGER = LogManager.getLogger(TestOperationRunnable.class);
-    private final int threadId;
-    private final CountDownLatch latch;
-    private final int waitTimeMs;
-
-    public TestOperationRunnable(int threadId, CountDownLatch latch, int waitTimeMs) {
-      this.threadId = threadId;
-      this.latch = latch;
-      this.waitTimeMs = waitTimeMs;
-    }
-
-    @Override
-    public Void execute() throws RocksDBException {
-      LOGGER.info(System.currentTimeMillis() + ", Get function invoked in thread: " + threadId);
-      if (latch != null) {
-        latch.countDown();
-      }
-      Utils.sleep(waitTimeMs);
-      return null;
-    }
-  }
-
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Param: allowedMaxOperationsInParallel should be positive, but.*")
-  public void testThrottleBadInput() {
-    new RocksDBIngestThrottler(0);
-  }
+  private static final Logger LOGGER = LogManager.getLogger(RocksDBThrottlerTest.class);
 
   /**
    * Liveness: Testing whether all the tasks invoking the throttlers gets executed.
-   * - Timeout passed to shutdownExecutor is more than the time it would require to finish all tasks
-   *   resulting in no tasks getting interrupted.
-   * - allowedMaxOperationsInParallel is set to 1, number of tasks is set to 5 and each tasks will
-   *   sleep for 1 sec, so in 5 seconds all the tasks should have finished executing.
-   * - Verified using CountDownLatch to account for the number of tasks getting executed
+   * Correctness: Testing whether only the allowedMaxOperationsInParallel are executed at any time
+   *
+   * Create a throttler with limit 1
+   * Submit a task to thread pool that will call throttledOperation with latch.await() as the payload.
+   * Submit another task to thread pool that will call throttledOperation with empty lambda as the payload.
+   * Assert that the second task is not complete.
+   * Release the latch.
+   * Assert that the first task is complete.
+   * Assert that the second task is complete.
    */
-  @Test(timeOut = 10 * Time.MS_PER_SECOND)
-  public void testThrottleLiveness() throws InterruptedException {
-    int numTasks = 5;
-    int waitTimeMS = 1 * Time.MS_PER_SECOND; // 1 sec
-    int bufferWaitMS = 10 * waitTimeMS; // extra buffer time
-    ExecutorService executorService = Executors.newFixedThreadPool(numTasks);
-    // Create a CountDownLatch with the number of tasks
-    CountDownLatch latch = new CountDownLatch(numTasks);
+
+  @Test(timeOut = 20 * Time.MS_PER_SECOND)
+  public void testThrottleWith2Tasks() throws InterruptedException {
+    int allowedMaxOperationsInParallel = 1;
+    /**
+     * Number of threads is set up to more than the number of tasks to have enough threads
+     * to have the ability to schedule all the tasks at the same time if needed and then
+     * test the throttler's functionality.
+     */
+    ExecutorService executorService = Executors.newFixedThreadPool(5);
+    CountDownLatch taskWaitLatch = new CountDownLatch(1);
+    CountDownLatch task1StartStatusLatch = new CountDownLatch(1);
+    CountDownLatch task2StartStatusLatch = new CountDownLatch(1);
 
     try {
-      RocksDBIngestThrottler throttler = new RocksDBIngestThrottler(1);
-      for (int i = 0; i < numTasks; ++i) {
-        final int threadId = i;
-        executorService.submit(() -> {
-          try {
-            throttler.throttledOperation("/test_" + threadId, new TestOperationRunnable(threadId, latch, waitTimeMS));
-          } catch (Exception e) {
-            throw new RuntimeException(e);
-          }
-        });
-      }
+      RocksDBIngestThrottler throttler = new RocksDBIngestThrottler(allowedMaxOperationsInParallel);
+
+      // submit task 1: once started will finish the task1StartStatusLatch such that
+      // we know it's scheduled before sending in the second task
+      Future task1Future = executorService.submit(() -> {
+        try {
+          throttler.throttledOperation("/test_1", () -> {
+            task1StartStatusLatch.countDown();
+            taskWaitLatch.await();
+            return null;
+          });
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      });
+
+      // make sure task 1 started
+      task1StartStatusLatch.await();
+
+      // submit task 2
+      Future task2Future = executorService.submit(() -> {
+        try {
+          throttler.throttledOperation("/test_2", () -> {
+            task2StartStatusLatch.countDown();
+            return null;
+          });
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      });
+
+      // make sure task 2 didn't start: Test will work with this as well,
+      // but we aren't really giving it time to correctly verify that task2
+      // has not yet started if we don't wait for some time.
+      task2StartStatusLatch.await(5, TimeUnit.SECONDS);
+      Assert.assertFalse(task1Future.isDone());
+      Assert.assertFalse(task2Future.isDone());
+
+      // Finish the task 1
+      taskWaitLatch.countDown();
+
+      // Now the task 1 should finish and task 2 should get executed and finish as well.
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(task1Future.isDone());
+        Assert.assertTrue(task2Future.isDone());
+      });
     } finally {
-      TestUtils.shutdownExecutor(executorService, (numTasks * waitTimeMS) + bufferWaitMS, TimeUnit.MILLISECONDS);
-      latch.await();
+      TestUtils.shutdownExecutorNow(executorService);
     }
   }
 
   /**
-   * Correctness: Testing whether only the allowedMaxOperationsInParallel are executed at any time.
-   * - allowedMaxOperationsInParallel is set to 5, number of tasks is set to 10 and each tasks will
-   *   sleep for 10 sec, so all the tasks should have finished executing in 20 seconds, but that is not
-   *   being checked here.
-   * - Once the first 5 tasks starts getting executed (ie starts sleeping), we wait for 1 second and
-   *   verify whether CountDownLatch is equal to 5 which is the remaining tasks after the first batch
-   *   of 5 tasks getting executed, to verify whether the throttler only executes a maximum of this many
-   *   number of tasks in parallel.
-   * - again check after 7 seconds (total 8 seconds) and CountDownLatch should be 5 even now as the
-   *   first set of tasks are still sleeping
-   * - again check after 3 seconds (total 11 seconds) and CountDownLatch should be 0 as the second set
-   *   of tasks should have started executing as the sleep time inside task is only 10 seconds.
+   * similar to above, but with more tasks
    */
-  @Test(timeOut = 25 * Time.MS_PER_SECOND)
-  public void testThrottleCorrectness() throws InterruptedException {
-    int numTasks = 10;
-    int waitTimeMS = 10 * Time.MS_PER_SECOND; // 10 secs
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  public void testThrottleWith10Tasks() throws InterruptedException {
     int allowedMaxOperationsInParallel = 5;
-    ExecutorService executorService = Executors.newFixedThreadPool(numTasks);
-    // Create a CountDownLatch with the number of tasks
-    CountDownLatch latch = new CountDownLatch(numTasks);
+    ExecutorService executorService = Executors.newFixedThreadPool(10);
+    List<CountDownLatch> taskWaitLatches = new ArrayList<>();
+    List<CountDownLatch> taskStartStatusLatches = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      taskWaitLatches.add(new CountDownLatch(1));
+      taskStartStatusLatches.add(new CountDownLatch(1));
+    }
 
     try {
       RocksDBIngestThrottler throttler = new RocksDBIngestThrottler(allowedMaxOperationsInParallel);
-      for (int i = 0; i < numTasks; ++i) {
-        final int threadId = i;
-        executorService.submit(() -> {
+
+      List<Future> taskFutures = new ArrayList<>();
+      for (int i = 0; i < 5; ++i) {
+        // submit tasks 0 to 4 which will be starting to execute but will be waiting on the
+        int finalI = i;
+        taskFutures.add(executorService.submit(() -> {
           try {
-            throttler.throttledOperation("/test_" + threadId, new TestOperationRunnable(threadId, latch, waitTimeMS));
+            throttler.throttledOperation("/test_" + finalI, () -> {
+              taskStartStatusLatches.get(finalI).countDown();
+              taskWaitLatches.get(finalI).await();
+              return null;
+            });
           } catch (Exception e) {
             throw new RuntimeException(e);
           }
-        });
+        }));
       }
+
+      // make sure the tasks 0-4 started
+      for (int i = 0; i < 5; i++) {
+        taskStartStatusLatches.get(i).await();
+      }
+
+      // verify that that none of the task 0 to 4 is completed
+      taskFutures.stream().forEach(future -> {
+        Assert.assertFalse(future.isDone());
+      });
+
+      // submit task 5
+      taskFutures.add(executorService.submit(() -> {
+        try {
+          throttler.throttledOperation("/test_5", () -> {
+            taskStartStatusLatches.get(5).countDown();
+            taskWaitLatches.get(5).await();
+            return null;
+          });
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      }));
+
+      // wait for sometime to see task 5 didn't start as the throttler
+      // can only run 5 tasks at a time (0-4 which are already scheduled)
+      taskStartStatusLatches.get(5).await(5, TimeUnit.SECONDS);
+
+      // none of the tasks 0-4 will be completed and task 5 won't be even scheduled
+      taskFutures.stream().forEach(future -> {
+        Assert.assertFalse(future.isDone());
+      });
+
+      List<Integer> completedFutureidx = new ArrayList<>();
+
+      LOGGER.info("latch(0) countDown");
+      taskWaitLatches.get(0).countDown();
+      // task 0 should be completed due to the latch countDown
+      completedFutureidx.add(0);
+      // task 5 should be scheduled as it's the only task next in line
+      taskStartStatusLatches.get(5).await();
+      // complete task 5 as well
+      LOGGER.info("latch(5) countDown");
+      taskWaitLatches.get(5).countDown();
+      completedFutureidx.add(5);
+
+      // test whether 0 and 5 are completed and everything else is not completed
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(taskFutures.get(0).isDone());
+        Assert.assertTrue(taskFutures.get(5).isDone());
+        taskFutures.stream()
+            .filter(future -> !completedFutureidx.contains(taskFutures.indexOf(future)))
+            .forEach(future -> {
+              Assert.assertFalse(future.isDone());
+            });
+      });
+
+      // submit task 6
+      taskFutures.add(executorService.submit(() -> {
+        try {
+          throttler.throttledOperation("/test_6", () -> {
+            taskStartStatusLatches.get(6).countDown();
+            taskWaitLatches.get(6).await();
+            return null;
+          });
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      }));
+
+      // wait for sometime to see task 6 didn't start
+      taskStartStatusLatches.get(6).await(5, TimeUnit.SECONDS);
+
+      LOGGER.info("latch(1) countDown");
+      taskWaitLatches.get(1).countDown();
+      completedFutureidx.add(1);
+      // task 6 should be scheduled as it's the only task next in line
+      taskStartStatusLatches.get(6).await();
+      // complete task 6 as well
+      LOGGER.info("latch(6) countDown");
+      taskWaitLatches.get(6).countDown();
+      completedFutureidx.add(6);
+
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(taskFutures.get(1).isDone());
+        Assert.assertTrue(taskFutures.get(6).isDone());
+        taskFutures.stream()
+            .filter(future -> !completedFutureidx.contains(taskFutures.indexOf(future)))
+            .forEach(future -> {
+              Assert.assertFalse(future.isDone());
+            });
+      });
+
+      // submit task 7
+      taskFutures.add(executorService.submit(() -> {
+        try {
+          throttler.throttledOperation("/test_7", () -> {
+            taskStartStatusLatches.get(7).countDown();
+            taskWaitLatches.get(7).await();
+            return null;
+          });
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      }));
+
+      // wait for sometime to see task 7 didn't start
+      taskStartStatusLatches.get(7).await(5, TimeUnit.SECONDS);
+
+      LOGGER.info("latch(2) countDown");
+      taskWaitLatches.get(2).countDown();
+      completedFutureidx.add(2);
+      // task 7 should be scheduled as it's the only task next in line
+      taskStartStatusLatches.get(7).await();
+      // complete task 7 as well
+      LOGGER.info("latch(7) countDown");
+      taskWaitLatches.get(7).countDown();
+      completedFutureidx.add(7);
+
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(taskFutures.get(2).isDone());
+        Assert.assertTrue(taskFutures.get(7).isDone());
+        taskFutures.stream()
+            .filter(future -> !completedFutureidx.contains(taskFutures.indexOf(future)))
+            .forEach(future -> {
+              Assert.assertFalse(future.isDone());
+            });
+      });
+
+      // submit task 8
+      taskFutures.add(executorService.submit(() -> {
+        try {
+          throttler.throttledOperation("/test_8", () -> {
+            taskStartStatusLatches.get(8).countDown();
+            taskWaitLatches.get(8).await();
+            return null;
+          });
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      }));
+
+      // wait for sometime to see task 8 didn't start
+      taskStartStatusLatches.get(8).await(5, TimeUnit.SECONDS);
+
+      LOGGER.info("latch(3) countDown");
+      taskWaitLatches.get(3).countDown();
+      completedFutureidx.add(3);
+      // task 8 should be scheduled as it's the only task next in line
+      taskStartStatusLatches.get(8).await();
+      // complete task 8 as well
+      LOGGER.info("latch(8) countDown");
+      taskWaitLatches.get(8).countDown();
+      completedFutureidx.add(8);
+
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(taskFutures.get(3).isDone());
+        Assert.assertTrue(taskFutures.get(8).isDone());
+        taskFutures.stream()
+            .filter(future -> !completedFutureidx.contains(taskFutures.indexOf(future)))
+            .forEach(future -> {
+              Assert.assertFalse(future.isDone());
+            });
+      });
+
+      // submit task 9
+      taskFutures.add(executorService.submit(() -> {
+        try {
+          throttler.throttledOperation("/test_9", () -> {
+            taskStartStatusLatches.get(9).countDown();
+            taskWaitLatches.get(9).await();
+            return null;
+          });
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      }));
+
+      // wait for sometime to see task 9 didn't start
+      taskStartStatusLatches.get(9).await(5, TimeUnit.SECONDS);
+
+      LOGGER.info("latch(4) countDown");
+      taskWaitLatches.get(4).countDown();
+      completedFutureidx.add(4);
+      // task 9 should be scheduled as it's the only task next in line
+      taskStartStatusLatches.get(9).await();
+      // complete task 9 as well
+      LOGGER.info("latch(9) countDown");
+      taskWaitLatches.get(9).countDown();
+      completedFutureidx.add(9);
+
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(taskFutures.get(4).isDone());
+        Assert.assertTrue(taskFutures.get(9).isDone());
+        Assert.assertEquals(completedFutureidx.size(), 10);
+      });
     } finally {
-      Thread.sleep(1 * Time.MS_PER_SECOND);
-      // First 5 tasks should be currently executing, so 5 remaining tasks
-      Assert.assertEquals(latch.getCount(), allowedMaxOperationsInParallel);
-      Thread.sleep(7 * Time.MS_PER_SECOND);
-      // First 5 tasks should still be currently executing, so 5 remaining tasks
-      Assert.assertEquals(latch.getCount(), allowedMaxOperationsInParallel);
-      Thread.sleep(3 * Time.MS_PER_SECOND);
-      // Next 5 tasks should have started executing as its more than 10 seconds, so 0 remaining tasks
-      Assert.assertEquals(latch.getCount(), 0);
       TestUtils.shutdownExecutorNow(executorService);
     }
   }

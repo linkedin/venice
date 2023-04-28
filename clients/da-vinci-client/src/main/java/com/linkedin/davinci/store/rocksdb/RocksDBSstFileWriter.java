@@ -24,6 +24,7 @@ import org.apache.logging.log4j.Logger;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.IngestExternalFileOptions;
+import org.rocksdb.LiveFileMetaData;
 import org.rocksdb.Options;
 import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
@@ -346,6 +347,45 @@ public class RocksDBSstFileWriter {
     }
   }
 
+  /**
+   * If there are files already ingested in DB and we get here, then it means that the ingestion started but faced issues
+   * before completion or the SN crashed before the status of EOP was synced to OffsetRecord. In both these cases,
+   * let's delete these files and start a fresh ingestion as the new files will hold the complete data anyway.
+   */
+  private void deleteOldIngestion(RocksDB rocksDB, ColumnFamilyHandle columnFamilyHandle) throws RocksDBException {
+    List<LiveFileMetaData> oldIngestedSSTFiles = rocksDB.getLiveFilesMetaData();
+    if (oldIngestedSSTFiles.size() != 0) {
+      for (LiveFileMetaData file: oldIngestedSSTFiles) {
+        if (Arrays.equals(file.columnFamilyName(), columnFamilyHandle.getName())) {
+          LOGGER.info("Deleting ingested sst file {} in rocksDB", file.fileName());
+          rocksDB.deleteFile(file.fileName());
+        }
+      }
+    }
+  }
+
+  /**
+   * {@link RocksDB#ingestExternalFile(List, IngestExternalFileOptions)} should throw an exception if ingestion fails.
+   * But due to some past issues wrt incomplete ingestion with no exception, adding an extra check to validate whether
+   * the ingestion is successful by comparing the number of sst files ingested and temp sst files.
+   */
+  private void validateIngestion(RocksDB rocksDB, ColumnFamilyHandle columnFamilyHandle, int tempSSTFileCount)
+      throws RocksDBException {
+    List<LiveFileMetaData> newlyIngestedSSTFiles = rocksDB.getLiveFilesMetaData();
+    int numberOfIngestedFiles = 0;
+    for (LiveFileMetaData file: newlyIngestedSSTFiles) {
+      if (Arrays.equals(file.columnFamilyName(), columnFamilyHandle.getName())) {
+        numberOfIngestedFiles++;
+      }
+    }
+
+    if (numberOfIngestedFiles != tempSSTFileCount) {
+      throw new VeniceException(
+          "Number of temp sst files (" + tempSSTFileCount + ") and ingested sst files (" + newlyIngestedSSTFiles.size()
+              + ") doesn't match." + "There might be some problems with the ingestion");
+    }
+  }
+
   public void ingestSSTFiles(RocksDB rocksDB, List<ColumnFamilyHandle> columnFamilyHandleList) {
     List<String> sstFilePaths = getTemporarySSTFilePaths();
     if (sstFilePaths.isEmpty()) {
@@ -357,17 +397,17 @@ public class RocksDBSstFileWriter {
     }
     LOGGER.info(
         "Start ingesting to store: " + storeName + ", partition id: " + partitionId + " from files: " + sstFilePaths);
+
     try (IngestExternalFileOptions ingestOptions = new IngestExternalFileOptions()) {
-      // TODO: Further explore re-ingestion of these files if SN crashes before EOP can be synced to disk
+      ColumnFamilyHandle columnFamilyHandle = isRMD
+          ? columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX)
+          : columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX);
+      deleteOldIngestion(rocksDB, columnFamilyHandle);
       rocksDBIngestThrottler.throttledIngest(dbDir, () -> {
-        rocksDB.ingestExternalFile(
-            isRMD
-                ? columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX)
-                : columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX),
-            sstFilePaths,
-            ingestOptions);
+        rocksDB.ingestExternalFile(columnFamilyHandle, sstFilePaths, ingestOptions);
         return null;
       });
+      validateIngestion(rocksDB, columnFamilyHandle, sstFilePaths.size());
 
       LOGGER.info(
           "Finished ingestion to store: " + storeName + ", partition id: " + partitionId + " from files: "
