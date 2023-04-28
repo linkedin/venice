@@ -1,7 +1,5 @@
 package com.linkedin.venice.client.schema;
 
-import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
-import static com.linkedin.venice.client.schema.RouterBasedStoreSchemaFetcher.TYPE_UPDATE_SCHEMA;
 import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 
@@ -44,9 +42,11 @@ import org.apache.logging.log4j.Logger;
 public class RouterBackedSchemaReader implements SchemaReader {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
-
+  public static final String TYPE_UPDATE_SCHEMA = "update_schema";
+  public static final String TYPE_STORE_STATE = "store_state";
   private static final Logger LOGGER = LogManager.getLogger(RouterBackedSchemaReader.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+
   private final Optional<Schema> readerSchema;
   private volatile Schema keySchema;
   private final Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
@@ -236,6 +236,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private SchemaResponse fetchSingleSchemaResponse(String requestPath) throws VeniceClientException {
     SchemaResponse schemaResponse;
     byte[] response = executeRouterRequest(requestPath);
+
+    if (response == null) {
+      return null;
+    }
+
     try {
       schemaResponse = OBJECT_MAPPER.readValue(response, SchemaResponse.class);
     } catch (Exception e) {
@@ -255,6 +260,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private MultiSchemaResponse fetchMultiSchemaResponse(String requestPath) throws VeniceClientException {
     MultiSchemaResponse multiSchemaResponse;
     byte[] response = executeRouterRequest(requestPath);
+
+    if (response == null) {
+      return null;
+    }
+
     try {
       multiSchemaResponse = OBJECT_MAPPER.readValue(response, MultiSchemaResponse.class);
     } catch (Exception e) {
@@ -288,7 +298,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
     }
 
     if (response == null) {
-      LOGGER.warn("Requested schema doesn't exist for request path: {}", requestPath);
+      LOGGER.warn("Requested data doesn't exist for request path: {}", requestPath);
       return null;
     }
 
@@ -315,6 +325,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
     String requestPath = TYPE_VALUE_SCHEMA + "/" + storeName;
     try {
       MultiSchemaResponse schemaResponse = fetchMultiSchemaResponse(requestPath);
+
+      if (schemaResponse == null) {
+        return;
+      }
+
       int supersetSchemaId = schemaResponse.getSuperSetSchemaId();
 
       int maxSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
@@ -381,6 +396,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private DerivedSchemaEntry fetchUpdateSchemaEntry(int valueSchemaId) throws VeniceClientException {
     String requestPath = TYPE_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
     SchemaResponse schemaResponse = fetchSingleSchemaResponse(requestPath);
+
+    if (schemaResponse == null) {
+      return null;
+    }
+
     DerivedSchemaEntry updateSchemaEntry =
         new DerivedSchemaEntry(valueSchemaId, schemaResponse.getDerivedSchemaId(), schemaResponse.getSchemaStr());
     if (!updateSchemaEntry.getSchema().getType().equals(Schema.Type.RECORD)) {
@@ -401,16 +421,20 @@ public class RouterBackedSchemaReader implements SchemaReader {
   // module structure and dependencies of StoreJSONSerializer.
   private boolean storeHasPartialUpdateEnabled() {
     JsonNode storeState = fetchStoreState();
+    if (storeState == null) {
+      return false;
+    }
     return storeState.get("writeComputationEnabled").asBoolean(false);
   }
 
   private JsonNode fetchStoreState() throws VeniceClientException {
     String requestPath = TYPE_STORE_STATE + "/" + storeClient.getStoreName();
     byte[] response = executeRouterRequest(requestPath);
+
     if (response == null) {
-      throw new VeniceClientException(
-          "Unexpected null response while trying to fetch store: " + storeName + " with path: " + requestPath);
+      return null;
     }
+
     JsonNode storeState;
     try {
       storeState = OBJECT_MAPPER.readTree(response);
