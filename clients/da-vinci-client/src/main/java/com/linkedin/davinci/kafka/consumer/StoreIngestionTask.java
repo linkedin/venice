@@ -2451,6 +2451,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState,
             leaderProducedRecordContext,
             currentTimeMs);
+        if (!isUserSystemStore() && isHybridMode() && partitionConsumptionState.hasLagCaughtUp()) {
+          long afterProcessingRecordTimestampMs = System.currentTimeMillis();
+          long brokerProducedTimeStamp = (leaderProducedRecordContext == null)
+              ? kafkaValue.producerMetadata.messageTimestamp
+              : leaderProducedRecordContext.getProducedTimestampMs();
+          /** This metric is used in combination with the nearlineProducerToLocalBrokerLatency metric to measure the
+           * end to end latency of a record from the time it is produced to the time it is ready to serve. If we add
+           * them together we get the approx end to end latency of a message. Though the time taken to receive broker
+           * acknowledgement will be double counted for followers. This is estimated to be very small (1%)
+           * TODO: We plan to upgrade the KME to include the producer timestamp after the KME prrotocol upgrade
+           * enhancements and that will give us more accurate E2E latency.
+           */
+          versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
+              storeName,
+              versionNumber,
+              afterProcessingRecordTimestampMs - brokerProducedTimeStamp,
+              afterProcessingRecordTimestampMs);
+        }
       }
       versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
           storeName,

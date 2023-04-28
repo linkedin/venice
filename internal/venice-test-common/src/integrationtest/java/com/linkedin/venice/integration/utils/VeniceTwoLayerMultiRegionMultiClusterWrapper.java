@@ -29,6 +29,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -407,5 +408,55 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     return getParentControllers().stream()
         .map(controller -> controller.getControllerUrl())
         .collect(Collectors.joining(","));
+  }
+
+  public void logMultiCluster() {
+    LOGGER.info(
+        "--> Multiregion cluster created : parentRegion: {}, childRegions: {},"
+            + " clusters: {}, zk: {}, broker: {}, controllers: {}",
+        getParentRegionName(),
+        getChildRegionNames(),
+        Arrays.toString(getClusterNames()),
+        getZkServerWrapper(),
+        getParentKafkaBrokerWrapper(),
+        getParentControllers().stream()
+            .map(VeniceControllerWrapper::getControllerUrl)
+            .collect(Collectors.joining(",")));
+
+    for (VeniceMultiClusterWrapper childDatacenter: getChildRegions()) {
+      LOGGER.info(
+          "--> ChildDataCenter : name: {}, controllers: {} clusters: {}, zk: {}, broker: {}",
+          childDatacenter.getRegionName(),
+          childDatacenter.getControllers()
+              .entrySet()
+              .stream()
+              .map(e -> e.getKey() + ":" + e.getValue().getControllerUrl())
+              .collect(Collectors.joining(",")),
+          Arrays.toString(childDatacenter.getClusterNames()),
+          childDatacenter.getZkServerWrapper(),
+          childDatacenter.getKafkaBrokerWrapper());
+      Map<String, VeniceClusterWrapper> clusters = childDatacenter.getClusters();
+      for (Map.Entry<String, VeniceClusterWrapper> clusterEntry: clusters.entrySet()) {
+        VeniceClusterWrapper clusterWrapper = clusterEntry.getValue();
+        LOGGER.info(
+            "--> Cluster -> cluster: {}, region: {} , controller: {}, zk: {}, broker: {} ",
+            clusterEntry.getKey(),
+            clusterWrapper.getRegionName(),
+            clusterWrapper.getAllControllersURLs(),
+            clusterWrapper.getZk(),
+            clusterWrapper.getKafka());
+        LOGGER.info("--> broker: {}", clusterWrapper.getKafka());
+        for (VeniceControllerWrapper controller: clusterWrapper.getVeniceControllers()) {
+          LOGGER.info("--> Controller: {}", controller.getControllerUrl());
+        }
+        for (int i = 0; i < clusterWrapper.getVeniceServers().size(); i++) {
+          VeniceServerWrapper server = clusterWrapper.getVeniceServers().get(i);
+          LOGGER.info("--> Server: {}", server.getAddressForLogging());
+        }
+        for (VeniceRouterWrapper router: clusterWrapper.getVeniceRouters()) {
+          LOGGER.info("--> Router: {}", router.getAddressForLogging());
+        }
+      }
+    }
   }
 }
