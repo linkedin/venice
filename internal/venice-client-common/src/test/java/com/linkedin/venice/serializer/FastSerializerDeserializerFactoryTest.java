@@ -34,7 +34,7 @@ public class FastSerializerDeserializerFactoryTest {
       Assert.assertEquals(fastClassGenCountForGeneric.get(), 1);
       Assert.assertEquals(fastClassGenCountForSpecific.get(), 1);
     } finally {
-      TestUtils.shutdownExecutorNow(executor);
+      TestUtils.shutdownExecutor(executor);
     }
   }
 }

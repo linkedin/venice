@@ -254,7 +254,7 @@ public class TestHAASController {
         result.get();
       }
     } finally {
-      TestUtils.shutdownExecutorNow(executorService);
+      TestUtils.shutdownExecutor(executorService);
     }
   }
 

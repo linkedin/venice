@@ -64,7 +64,7 @@ public class RetriableAvroGenericStoreClientTest {
   public void tearDown() throws InterruptedException {
     timeoutProcessor.shutdownNow();
     timeoutProcessor.awaitTermination(10, TimeUnit.SECONDS);
-    TestUtils.shutdownExecutorNow(scheduledExecutor);
+    TestUtils.shutdownExecutor(scheduledExecutor);
 
   }
 

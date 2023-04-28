@@ -122,7 +122,7 @@ public class VeniceWriterTest {
         vwFutures[i].get();
       }
     } finally {
-      TestUtils.shutdownExecutorNow(executorService);
+      TestUtils.shutdownExecutor(executorService);
     }
     KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
     KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(

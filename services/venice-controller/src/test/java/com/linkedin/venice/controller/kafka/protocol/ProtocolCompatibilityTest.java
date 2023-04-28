@@ -73,7 +73,7 @@ public abstract class ProtocolCompatibilityTest {
         }
       });
     } finally {
-      TestUtils.shutdownExecutorNow(executor);
+      TestUtils.shutdownExecutor(executor);
     }
   }
 }

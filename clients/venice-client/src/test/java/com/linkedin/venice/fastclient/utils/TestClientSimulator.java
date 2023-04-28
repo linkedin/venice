@@ -422,7 +422,7 @@ public class TestClientSimulator implements Client {
     executor.schedule(() -> executeTimedEvents(0), timeIntervalBetweenEventsInMs, TimeUnit.MILLISECONDS);
     getSimulatorCompleteFuture().whenComplete((v, t) -> {
       try {
-        TestUtils.shutdownExecutorNow(executor);
+        TestUtils.shutdownExecutor(executor);
       } catch (InterruptedException e) {
         Assert.fail("Executor shutdown interrupted", e);
       }

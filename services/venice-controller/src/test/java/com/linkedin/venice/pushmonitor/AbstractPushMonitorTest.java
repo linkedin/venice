@@ -856,7 +856,7 @@ public abstract class AbstractPushMonitorTest {
       pushMonitor.onExternalViewChange(completedPartitionAssignment);
       System.out.println("T2 released cluster level read lock and store level write lock");
     } finally {
-      TestUtils.shutdownExecutorNow(asyncExecutor);
+      TestUtils.shutdownExecutor(asyncExecutor);
     }
   }
 
@@ -899,7 +899,7 @@ public abstract class AbstractPushMonitorTest {
       }
       System.out.println("T2 released cluster level write lock");
     } finally {
-      TestUtils.shutdownExecutorNow(asyncExecutor);
+      TestUtils.shutdownExecutor(asyncExecutor);
     }
   }
 

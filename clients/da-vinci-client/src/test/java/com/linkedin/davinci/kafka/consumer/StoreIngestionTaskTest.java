@@ -370,7 +370,7 @@ public abstract class StoreIngestionTaskTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() throws Exception {
-    TestUtils.shutdownExecutorNow(taskPollingService);
+    TestUtils.shutdownExecutor(taskPollingService);
     storeBufferService.stop();
   }
 

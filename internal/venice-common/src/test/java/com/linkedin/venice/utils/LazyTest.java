@@ -136,7 +136,7 @@ public class LazyTest {
             "The identity of the returned objects should all be the same.");
       }
     } finally {
-      TestUtils.shutdownExecutorNow(executor);
+      TestUtils.shutdownExecutor(executor);
     }
   }
 

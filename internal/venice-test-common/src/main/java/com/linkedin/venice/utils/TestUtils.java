@@ -779,26 +779,11 @@ public class TestUtils {
   }
 
   /**
-   * calls {@link ExecutorService#shutdownNow} which stops accepting new tasks and interrupts the running tasks
-   */
-  public static void shutdownExecutorNow(ExecutorService executor) throws InterruptedException {
-    shutdownExecutorNow(executor, 5, TimeUnit.SECONDS);
-  }
-
-  public static void shutdownExecutorNow(ExecutorService executor, long timeout, TimeUnit unit)
-      throws InterruptedException {
-    if (executor == null) {
-      return;
-    }
-    executor.shutdownNow();
-    Assert.assertTrue(executor.awaitTermination(timeout, unit));
-  }
-
-  /**
-   * calls {@link ExecutorService#shutdown} which stops accepting new tasks
+   * Note that this calls {@link ExecutorService#shutdownNow} which stops accepting new tasks
+   * and interrupts the currently running tasks
    */
   public static void shutdownExecutor(ExecutorService executor) throws InterruptedException {
-    shutdownExecutorNow(executor, 5, TimeUnit.SECONDS);
+    shutdownExecutor(executor, 5, TimeUnit.SECONDS);
   }
 
   public static void shutdownExecutor(ExecutorService executor, long timeout, TimeUnit unit)
@@ -807,6 +792,7 @@ public class TestUtils {
       return;
     }
     executor.shutdown();
+    executor.shutdownNow();
     Assert.assertTrue(executor.awaitTermination(timeout, unit));
   }
 

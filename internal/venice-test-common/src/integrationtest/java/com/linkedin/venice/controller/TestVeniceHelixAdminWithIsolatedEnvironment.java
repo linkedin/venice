@@ -371,7 +371,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       // Should not be blocked even though another thread is holding cluster-level read lock.
       veniceAdmin.getFutureVersion(clusterName, storeName);
     } finally {
-      TestUtils.shutdownExecutorNow(asyncExecutor);
+      TestUtils.shutdownExecutor(asyncExecutor);
     }
   }
 
@@ -405,7 +405,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
           () -> Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 1));
     } finally {
       // Kill the running thread so remove the deadlock so that the controller can shut down properly for clean up.
-      TestUtils.shutdownExecutorNow(asyncExecutor);
+      TestUtils.shutdownExecutor(asyncExecutor);
     }
   }
 
