@@ -131,7 +131,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
       return valueSchema;
     }
 
-    ensureSchemasAreRefreshed(false);
+    ensureSchemasAreRefreshed(false, true);
     valueSchema = valueSchemaMap.get(id);
     if (valueSchema == null) {
       LOGGER.warn("Got null value schema from Venice for store: {} and id: {}", storeName, id);
@@ -143,7 +143,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public Schema getLatestValueSchema() throws VeniceClientException {
-    ensureSchemasAreRefreshed(false);
+    ensureSchemasAreRefreshed(false, false);
     SchemaEntry latest = latestValueSchemaEntry.get();
     return latest == null ? null : SCHEMA_EXTRACTOR.apply(latest);
   }
@@ -152,14 +152,19 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public Integer getLatestValueSchemaId() throws VeniceClientException {
-    ensureSchemasAreRefreshed(false);
+    ensureSchemasAreRefreshed(false, false);
     SchemaEntry latest = latestValueSchemaEntry.get();
     return latest == null ? null : SCHEMA_ID_EXTRACTOR.apply(latest);
   }
 
   @Override
   public int getValueSchemaId(Schema schema) {
-    ensureSchemasAreRefreshed(false);
+    Integer valueSchemaId = valueSchemaMapR.get(schema);
+    if (valueSchemaId != null) {
+      return valueSchemaId;
+    }
+
+    ensureSchemasAreRefreshed(false, true);
     if (!valueSchemaMapR.containsKey(schema)) {
       throw new VeniceClientException("Could not find schema: " + schema + ". for store " + storeName);
     }
@@ -173,7 +178,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
       return updateSchema.getSchema();
     }
 
-    ensureSchemasAreRefreshed(true);
+    ensureSchemasAreRefreshed(true, true);
     updateSchema = valueSchemaIdToUpdateSchemaMap.get(valueSchemaId);
     if (updateSchema == null) {
       LOGGER.warn("Got null update schema from Venice for store: {} and value schema id: {}", storeName, valueSchemaId);
@@ -184,7 +189,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public DerivedSchemaEntry getLatestUpdateSchema() {
-    ensureSchemasAreRefreshed(true);
+    ensureSchemasAreRefreshed(true, false);
     SchemaEntry latestValueSchema = latestValueSchemaEntry.get();
     if (latestValueSchema == null) {
       return null;
@@ -205,12 +210,12 @@ public class RouterBackedSchemaReader implements SchemaReader {
    * 3. This is the first time that derived schemas are needed
    * @param needsDerivedSchemas If the caller of the function needs derived schemas
    */
-  private void ensureSchemasAreRefreshed(boolean needsDerivedSchemas) {
+  private void ensureSchemasAreRefreshed(boolean needsDerivedSchemas, boolean forceSchemaRefresh) {
     ConcurrencyUtils.executeUnderConditionalLock(() -> {
       loadUpdateSchemas.compareAndSet(false, needsDerivedSchemas);
       this.refreshAllSchemas();
     },
-        () -> latestValueSchemaEntry.get() == null || lastValueSchemaRefreshTime.get() == null
+        () -> forceSchemaRefresh || latestValueSchemaEntry.get() == null || lastValueSchemaRefreshTime.get() == null
             || Duration.between(lastValueSchemaRefreshTime.get(), Instant.now()).compareTo(valueSchemaRefreshPeriod) > 0
             || (needsDerivedSchemas && !loadUpdateSchemas.get()),
         this);

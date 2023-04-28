@@ -142,30 +142,23 @@ public class RouterBackedSchemaReaderTest {
   public void testGetValueSchemaWhenNotExists()
       throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     AbstractAvroStoreClient mockClient = getMockStoreClient(false);
-    configureSchemaResponseMocks(
-        mockClient,
-        Collections.emptyList(),
-        SchemaData.INVALID_VALUE_SCHEMA_ID,
-        Collections.emptyList(),
-        false);
 
     try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient)) {
-      Schema schema = schemaReader.getValueSchema(1);
-      Assert.assertNull(schema);
-      Schema cachedSchema = schemaReader.getValueSchema(1);
-      Assert.assertNull(cachedSchema);
-      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
+      Schema schema1 = schemaReader.getValueSchema(1);
+      Assert.assertEquals(schema1.toString(), VALUE_SCHEMA_1.toString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
 
-      configureSchemaResponseMocks(
-          mockClient,
-          Collections.singletonList(VALUE_SCHEMA_1),
-          SchemaData.INVALID_VALUE_SCHEMA_ID,
-          Collections.emptyList(),
-          false);
+      // If a missing schema is requested, always query routers to try to get it
+      Schema schema = schemaReader.getValueSchema(3);
+      Assert.assertNull(schema);
+      Schema cachedSchema = schemaReader.getValueSchema(3);
+      Assert.assertNull(cachedSchema);
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
 
       Schema newSchema = schemaReader.getValueSchema(1);
       Assert.assertEquals(newSchema.toString(), VALUE_SCHEMA_1.toString());
-      Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), VALUE_SCHEMA_1.toString());
+      Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), VALUE_SCHEMA_2.toString());
+      Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
     }
   }
 
