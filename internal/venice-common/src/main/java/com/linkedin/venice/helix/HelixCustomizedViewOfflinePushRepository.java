@@ -207,16 +207,6 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
     }
   }
 
-  // public void refresh() {
-  // manager.addControllerListener(this);
-  // super.refresh();
-  // }
-
-  // public void clear() {
-  // manager.removeListener(keyBuilder.controller(), this);
-  // super.clear();
-  // }
-
   @Override
   public void refreshRoutingDataForResource(String kafkaTopic) {
     throw new VeniceException("The function of refreshRoutingDataForResource is not implemented");

@@ -91,7 +91,6 @@ public abstract class HelixBaseRoutingRepository
       // After adding the listener, helix will initialize the callback which will get the entire external view
       // and trigger the external view change event. In other words, venice will read the newest external view
       // immediately.
-      // manager.addIdealStateChangeListener(this);
       manager.addControllerListener(this);
       // Use routing table provider to get the notification of the external view change, customized view change,
       // and live instances change.
@@ -122,7 +121,6 @@ public abstract class HelixBaseRoutingRepository
   public void clear() {
     // removeListener method is a thread safe method, we don't need to lock here again.
     manager.removeListener(keyBuilder.controller(), this);
-    // manager.removeListener(keyBuilder.idealStates(), this);
     if (routingTableProvider != null) {
       routingTableProvider.removeRoutingTableChangeListener(this);
       try {
