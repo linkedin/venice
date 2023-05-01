@@ -369,7 +369,7 @@ public class RocksDBSstFileWriter {
    * But due to some past issues wrt incomplete ingestion with no exception, adding an extra check to validate whether
    * the ingestion is successful by comparing the number of sst files ingested and temp sst files.
    */
-  private void validateIngestion(RocksDB rocksDB, ColumnFamilyHandle columnFamilyHandle, int tempSSTFileCount)
+  private void validateBatchIngestion(RocksDB rocksDB, ColumnFamilyHandle columnFamilyHandle, int tempSSTFileCount)
       throws RocksDBException {
     List<LiveFileMetaData> newlyIngestedSSTFiles = rocksDB.getLiveFilesMetaData();
     int numberOfIngestedFiles = 0;
@@ -407,7 +407,7 @@ public class RocksDBSstFileWriter {
         rocksDB.ingestExternalFile(columnFamilyHandle, sstFilePaths, ingestOptions);
         return null;
       });
-      validateIngestion(rocksDB, columnFamilyHandle, sstFilePaths.size());
+      validateBatchIngestion(rocksDB, columnFamilyHandle, sstFilePaths.size());
 
       LOGGER.info(
           "Finished ingestion to store: " + storeName + ", partition id: " + partitionId + " from files: "
