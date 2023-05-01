@@ -29,6 +29,7 @@ import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -65,7 +66,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     admin.addCluster(clusterName);
     HelixConfigScope configScope =
         new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
-    Map<String, String> helixClusterProperties = new HashMap<String, String>();
+    Map<String, String> helixClusterProperties = new HashMap<>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
     admin.addStateModelDef(clusterName, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
@@ -120,7 +121,10 @@ public class TestHelixCustomizedViewOfflinePushRepository {
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress));
     readManager.connect();
     hybridStoreQuotaOnlyRepository = new HelixHybridStoreQuotaRepository(readManager);
-    offlinePushOnlyRepository = new HelixCustomizedViewOfflinePushRepository(readManager);
+    ZkClient zkClient = ZkClientFactory.newZkClient(zkAddress);
+    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+    HelixReadOnlyStoreRepository repository = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName, 1, 1000);
+    offlinePushOnlyRepository = new HelixCustomizedViewOfflinePushRepository(readManager, repository);
     hybridStoreQuotaOnlyRepository.refresh();
     offlinePushOnlyRepository.refresh();
     // Update customized state for each partition on each instance
@@ -361,10 +365,10 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     offlinePushOnlyRepository.unSubscribeRoutingDataChange(resourceName, listener);
     // Wait notification.
     Thread.sleep(WAIT_TIME);
-    Assert.assertEquals(isNoticed[0], false, "Should not get notification after un-registering.");
-    Assert.assertEquals(isNoticed[1], false, "Should not get notification after un-registering.");
-    Assert.assertEquals(isNoticed[2], false, "Should not get notification after un-registering.");
-    Assert.assertEquals(isNoticed[3], false, "Should not get notification after un-registering.");
+    Assert.assertFalse(isNoticed[0], "Should not get notification after un-registering.");
+    Assert.assertFalse(isNoticed[1], "Should not get notification after un-registering.");
+    Assert.assertFalse(isNoticed[2], "Should not get notification after un-registering.");
+    Assert.assertFalse(isNoticed[3], "Should not get notification after un-registering.");
 
     offlinePushOnlyRepository.subscribeRoutingDataChange(resourceName, listener);
 
@@ -375,9 +379,9 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     // Wait notification.
     Thread.sleep(WAIT_TIME);
 
-    Assert.assertEquals(isNoticed[0], false, "Should not get notification after resource is deleted.");
-    Assert.assertEquals(isNoticed[1], false, "Should not get notification after resource is deleted.");
-    Assert.assertEquals(isNoticed[2], false, "Should not get notification after resource is deleted.");
-    Assert.assertEquals(isNoticed[3], true, "There is a resource deleted.");
+    Assert.assertFalse(isNoticed[0], "Should not get notification after resource is deleted.");
+    Assert.assertFalse(isNoticed[1], "Should not get notification after resource is deleted.");
+    Assert.assertFalse(isNoticed[2], "Should not get notification after resource is deleted.");
+    Assert.assertTrue(isNoticed[3], "There is a resource deleted.");
   }
 }

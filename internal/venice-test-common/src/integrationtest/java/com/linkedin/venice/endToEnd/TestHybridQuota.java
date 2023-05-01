@@ -161,7 +161,7 @@ public class TestHybridQuota {
               InstanceType.SPECTATOR,
               sharedVenice.getZk().getAddress()));
       readManager.connect();
-      offlinePushRepository = new HelixCustomizedViewOfflinePushRepository(readManager);
+      offlinePushRepository = new HelixCustomizedViewOfflinePushRepository(readManager, null);
       hybridStoreQuotaOnlyRepository = new HelixHybridStoreQuotaRepository(readManager);
       offlinePushRepository.refresh();
       hybridStoreQuotaOnlyRepository.refresh();

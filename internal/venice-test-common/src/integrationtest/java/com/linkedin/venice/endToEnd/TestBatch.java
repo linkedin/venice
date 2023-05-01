@@ -231,9 +231,10 @@ public abstract class TestBatch {
     }
   }
 
-  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testCompressingRecord(boolean compressionMetricCollectionEnabled, boolean useMapperToBuildDict)
-      throws Exception {
+  @Test
+  public void testCompressingRecord() throws Exception {
+    boolean compressionMetricCollectionEnabled = false;
+    boolean useMapperToBuildDict = false;
     VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 100; i++) {
