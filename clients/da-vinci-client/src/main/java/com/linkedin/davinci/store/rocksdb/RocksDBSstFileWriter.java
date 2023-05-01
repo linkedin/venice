@@ -155,9 +155,6 @@ public class RocksDBSstFileWriter {
           partitionId);
       lastFinishedSSTFileNo = -1;
       currentSSTFileNo = 0;
-      // if this is from restart of storage Node which synced OffsetRecord with EOP received,
-      // but crashed before it could completely delete the local sst files, delete it all
-      removeSSTFilesAfterCheckpointing(-1);
     } else {
       lastFinishedSSTFileNo = Integer.parseInt(checkpointedInfo.get(lastCheckPointedSSTFileNum));
       LOGGER.info(
@@ -169,7 +166,7 @@ public class RocksDBSstFileWriter {
         throw new VeniceException("Last finished sst file no: " + lastFinishedSSTFileNo + " shouldn't be negative");
       }
       makeSureAllPreviousSSTFilesBeforeCheckpointingExist();
-      removeSSTFilesAfterCheckpointing(this.lastFinishedSSTFileNo);
+      removeSSTFilesAfterCheckpointing();
       currentSSTFileNo = lastFinishedSSTFileNo + 1;
     }
     String fullPathForCurrentSSTFile = composeFullPathForSSTFile(currentSSTFileNo);
@@ -241,7 +238,7 @@ public class RocksDBSstFileWriter {
     return checkpointingInfo;
   }
 
-  private void removeSSTFilesAfterCheckpointing(int lastFinishedSSTFileNo) {
+  private void removeSSTFilesAfterCheckpointing() {
     File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
     String[] sstFiles = tempSSTFileDir.list((File dir, String name) -> RocksDBUtils.isTempSSTFile(name));
     if (sstFiles == null) {
@@ -350,7 +347,7 @@ public class RocksDBSstFileWriter {
   /**
    * If there are files already ingested in DB and we get here, then it means that the ingestion started but faced issues
    * before completion or the SN crashed before the status of EOP was synced to OffsetRecord. In both these cases,
-   * let's delete these files and start a fresh ingestion as the new files will hold the complete data anyway.
+   * let's delete these files from the database and start a fresh ingestion as the new files will hold the complete data anyway.
    */
   private void deleteOldIngestion(RocksDB rocksDB, ColumnFamilyHandle columnFamilyHandle) throws RocksDBException {
     List<LiveFileMetaData> oldIngestedSSTFiles = rocksDB.getLiveFilesMetaData();

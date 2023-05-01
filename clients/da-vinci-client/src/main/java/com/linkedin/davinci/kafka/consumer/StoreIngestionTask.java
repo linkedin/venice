@@ -1403,6 +1403,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                     resolvedTopicSwitch,
                     pubSubTopicRepository.getTopic(resolvedTopicSwitch.sourceTopicName.toString())));
 
+        if (newPartitionConsumptionState.isEndOfPushReceived()) {
+          cleanupAfterEndOfPush(newPartitionConsumptionState);
+        }
+
         /**
          * Notify the underlying store engine about starting batch push.
          */
@@ -1967,16 +1971,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
       syncOffset(kafkaVersionTopic, partitionConsumptionState);
       if (isEOPReceivedBefore == false && offsetRecord.isEndOfPushReceived() == true) {
-        /**
-         * After persisting EOP, delete the temp sst files that were copied to RocksDB.
-         * This doesn't happen within {@link RocksDBIngestThrottler} even though this is
-         * part of the copy-persistEOP-delete flow as throttling copy will slow down the
-         * buildup of extra disk space and to keep the flow simple.
-         *
-         * If SN crashes after syncing EOP but before completely deleting the sst files,
-         * it will be handled during the SN restart in {@link RocksDBSstFileWriter#open}
-         * via {@link RocksDBSstFileWriter#removeSSTFilesAfterCheckpointing}
-         */
         cleanupAfterEndOfPush(partitionConsumptionState);
       }
     }
@@ -2070,6 +2064,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  /**
+   * After persisting EOP, delete the temp sst files that were copied to RocksDB
+   * by calling this method from {@link StoreIngestionTask#processConsumerRecord}.
+   * {@link RocksDBIngestThrottler} was introduced to enable copying (instead of
+   * moving) the temp sst files to rocksDB but prevent spiking the disk usage at
+   * any time. But deleting of these temp sst files after copying doesn't happen
+   * within the throttler even though this is part of the copyLocalSSTFilesToRocksDB->
+   * persistEOPInOffsetRecord->deleteTempSSTFiles flow as throttling copy will slow
+   * down the buildup of extra disk space and to keep the flow simple.
+   *
+   * If SN crashes after syncing EOP but before this method is called or during the
+   * execution of this method, {@link StoreIngestionTask#checkConsumptionStateWhenStart}
+   * will call this method again during the SN restart.
+   *
+   * If SN crashes after Ingestion but before EOP is synced, we should do a fresh
+   * ingestion by deleting the destination files in RocksDB database. This will be
+   * handled by a different method {@link RocksDBSstFileWriter#deleteOldIngestion}
+   */
   private void cleanupAfterEndOfPush(PartitionConsumptionState partitionConsumptionState) {
     int partition = partitionConsumptionState.getPartition();
     StoragePartitionConfig storagePartitionConfig =
