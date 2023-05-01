@@ -328,4 +328,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
     }
     return alternativeWriterSchema;
   }
+
+  public void getSomeValueForTest() {
+    // No Op. Only for testing
+  }
 }
