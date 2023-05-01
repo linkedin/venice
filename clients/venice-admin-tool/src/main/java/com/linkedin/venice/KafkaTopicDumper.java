@@ -1,5 +1,7 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl.DEFAULT_KAFKA_OFFSET_API_TIMEOUT;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -15,18 +17,22 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -36,11 +42,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.record.TimestampType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -64,7 +65,7 @@ public class KafkaTopicDumper implements AutoCloseable {
   private final String latestValueSchemaStr;
   private final Schema[] allValueSchemas;
   private final String parentDirectory;
-  private final KafkaConsumer consumer;
+  private final PubSubConsumerAdapter consumer;
   private final long messageCount;
   private final long endOffset;
   private final int maxConsumeAttempts;
@@ -79,7 +80,7 @@ public class KafkaTopicDumper implements AutoCloseable {
 
   public KafkaTopicDumper(
       ControllerClient controllerClient,
-      Properties consumerProps,
+      PubSubConsumerAdapter consumer,
       String topic,
       int partitionNumber,
       long startingOffset,
@@ -87,6 +88,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       String parentDir,
       int maxConsumeAttempts,
       boolean logMetadataOnly) {
+    this.consumer = consumer;
     this.maxConsumeAttempts = maxConsumeAttempts;
     if (Version.isVersionTopic(topic)) {
       this.storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -113,18 +115,16 @@ public class KafkaTopicDumper implements AutoCloseable {
         i++;
       }
     }
-    this.consumer = new KafkaConsumer(consumerProps);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopicPartition partition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), partitionNumber);
 
-    TopicPartition partition = new TopicPartition(topic, partitionNumber);
-    List<TopicPartition> partitions = Collections.singletonList(partition);
-    consumer.assign(partitions);
-    Map<TopicPartition, Long> partitionToBeginningOffset = consumer.beginningOffsets(partitions);
-    long computedStartingOffset = Math.max(partitionToBeginningOffset.get(partition), startingOffset);
+    Long partitionBeginningOffset = consumer.beginningOffset(partition, DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
+    long computedStartingOffset = Math.max(partitionBeginningOffset, startingOffset);
     LOGGER.info("Starting from offset: {}", computedStartingOffset);
-    consumer.seek(partition, computedStartingOffset);
-    Map<TopicPartition, Long> partitionToEndOffset = consumer.endOffsets(partitions);
-    this.endOffset = partitionToEndOffset.get(partition);
-    LOGGER.info("End offset for partition {} is {}", partition.partition(), this.endOffset);
+    consumer.subscribe(partition, computedStartingOffset - 1);
+    this.endOffset = consumer.endOffset(partition);
+    LOGGER.info("End offset for partition {} is {}", partition, this.endOffset);
     if (messageCount < 0) {
       this.messageCount = this.endOffset;
     } else {
@@ -140,18 +140,20 @@ public class KafkaTopicDumper implements AutoCloseable {
    * 1. Fetch up to {@link KafkaTopicDumper#messageCount} messages in this partition.
    * 2. Discard non-control messages.
    */
-  public void fetchAndProcess() {
+  public int fetchAndProcess() {
     int countdownBeforeStop = maxConsumeAttempts;
     int currentMessageCount = 0;
 
     int lastReportedConsumedCount = 0;
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> lastProcessRecord = null;
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> lastProcessRecord = null;
     do {
-      ConsumerRecords records = consumer.poll(5000); // up to 5 seconds
-      Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> iter = records.iterator();
-      while (iter.hasNext() && currentMessageCount < messageCount) {
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
+          consumer.poll(5000); // up to 5 seconds
+      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator =
+          Utils.iterateOnMapOfLists(records);
+      while (recordsIterator.hasNext() && currentMessageCount < messageCount) {
         currentMessageCount++;
-        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = iter.next();
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordsIterator.next();
         lastProcessRecord = record;
         processRecord(record);
       }
@@ -160,12 +162,13 @@ public class KafkaTopicDumper implements AutoCloseable {
         LOGGER.info(
             "Consumed {} messages; last consumed message offset:{}",
             currentMessageCount,
-            lastProcessRecord.offset());
+            lastProcessRecord.getOffset());
         lastReportedConsumedCount = currentMessageCount;
       }
-      countdownBeforeStop = records.count() == 0 ? countdownBeforeStop - 1 : maxConsumeAttempts;
-    } while ((lastProcessRecord != null && lastProcessRecord.offset() < (this.endOffset - 2))
+      countdownBeforeStop = records.isEmpty() ? countdownBeforeStop - 1 : maxConsumeAttempts;
+    } while ((lastProcessRecord != null && lastProcessRecord.getOffset() < (this.endOffset - 2))
         && currentMessageCount < messageCount && countdownBeforeStop > 0);
+    return currentMessageCount;
   }
 
   public final void setupDumpFile() {
@@ -217,10 +220,10 @@ public class KafkaTopicDumper implements AutoCloseable {
   /**
    * Log the metadata for each kafka message.
    */
-  public void logRecordMetadata(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+  public void logRecordMetadata(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
     try {
-      KafkaKey kafkaKey = record.key();
-      KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
+      KafkaKey kafkaKey = record.getKey();
+      KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
       ProducerMetadata producerMetadata = kafkaMessageEnvelope.producerMetadata;
 
       String msgType = kafkaKey.isControlMessage()
@@ -233,7 +236,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           "{} {} Offset:{} ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}) LeaderMd=(host:{},uo:{},ukcId:{})",
           kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
           msgType,
-          record.offset(),
+          record.getOffset(),
           GuidUtils.getHexFromGuid(producerMetadata.producerGUID),
           producerMetadata.segmentNumber,
           producerMetadata.messageSequenceNumber,
@@ -243,11 +246,11 @@ public class KafkaTopicDumper implements AutoCloseable {
           leaderMetadata == null ? "-" : leaderMetadata.upstreamOffset,
           leaderMetadata == null ? "-" : leaderMetadata.upstreamKafkaClusterId);
     } catch (Exception e) {
-      LOGGER.error("Failed when building record for offset {}", record.offset(), e);
+      LOGGER.error("Failed when building record for offset {}", record.getOffset(), e);
     }
   }
 
-  private void processRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+  private void processRecord(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
     if (logMetadataOnly) {
       logRecordMetadata(record);
       return;
@@ -255,17 +258,17 @@ public class KafkaTopicDumper implements AutoCloseable {
     writeToFile(record);
   }
 
-  private void writeToFile(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+  private void writeToFile(PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record) {
     try {
-      KafkaKey kafkaKey = record.key();
-      KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
+      KafkaKey kafkaKey = record.getKey();
+      KafkaMessageEnvelope kafkaMessageEnvelope = record.getValue();
       if (kafkaKey.isControlMessage()) {
         LOGGER.info("Found a control message, continue");
         return;
       }
       // build the record
       GenericRecord convertedRecord = new GenericData.Record(outputSchema);
-      convertedRecord.put(VENICE_ETL_OFFSET_FIELD, record.offset());
+      convertedRecord.put(VENICE_ETL_OFFSET_FIELD, record.getOffset());
 
       byte[] keyBytes = kafkaKey.getKey();
       Decoder keyDecoder = decoderFactory.binaryDecoder(keyBytes, null);
@@ -273,13 +276,11 @@ public class KafkaTopicDumper implements AutoCloseable {
       convertedRecord.put(VENICE_ETL_KEY_FIELD, keyRecord);
       Map<CharSequence, CharSequence> metadataMap = new HashMap<>();
 
-      metadataMap.put(VENICE_ETL_PARTITION_FIELD, String.valueOf(record.partition()));
+      metadataMap.put(VENICE_ETL_PARTITION_FIELD, String.valueOf(record.getPartition()));
       metadataMap.put(
           VENICE_ETL_PRODUCER_TIMESTAMP_FIELD,
           String.valueOf(kafkaMessageEnvelope.producerMetadata.messageTimestamp));
-      metadataMap.put(
-          VENICE_ETL_BROKER_TIMESTAMP_FIELD,
-          String.valueOf(TimestampType.LOG_APPEND_TIME.equals(record.timestampType()) ? record.timestamp() : 0));
+      metadataMap.put(VENICE_ETL_BROKER_TIMESTAMP_FIELD, String.valueOf(record.getPubSubMessageTime()));
 
       convertedRecord.put(VENICE_ETL_METADATA_FIELD, metadataMap);
 
@@ -294,7 +295,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           convertedRecord.put(VENICE_ETL_VALUE_FIELD, valueRecord);
           break;
         case DELETE:
-          convertedRecord.put(VENICE_ETL_DELETED_TS_FIELD, record.offset());
+          convertedRecord.put(VENICE_ETL_DELETED_TS_FIELD, record.getOffset());
           break;
         case UPDATE:
           LOGGER.info("Found update message! continue");
@@ -304,7 +305,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       }
       dataFileWriter.append(convertedRecord);
     } catch (Exception e) {
-      LOGGER.error("Failed when building record for offset {}", record.offset(), e);
+      LOGGER.error("Failed when building record for offset {}", record.getOffset(), e);
     }
   }
 
