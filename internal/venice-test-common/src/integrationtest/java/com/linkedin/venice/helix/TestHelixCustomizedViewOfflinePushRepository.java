@@ -6,6 +6,9 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
@@ -14,11 +17,13 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
@@ -47,7 +52,8 @@ public class TestHelixCustomizedViewOfflinePushRepository {
   private SafeHelixManager controller;
   private HelixAdmin admin;
   private String clusterName = "UnitTestCLuster";
-  private String resourceName = "UnitTest";
+  private String resourceName = "storeName_v1";
+  private String storeName = "storeName";
   private String zkAddress;
   private int httpPort0, httpPort1;
   private int adminPort;
@@ -123,8 +129,19 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     hybridStoreQuotaOnlyRepository = new HelixHybridStoreQuotaRepository(readManager);
     ZkClient zkClient = ZkClientFactory.newZkClient(zkAddress);
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    HelixReadOnlyStoreRepository repository = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName, 1, 1000);
-    offlinePushOnlyRepository = new HelixCustomizedViewOfflinePushRepository(readManager, repository);
+    HelixReadWriteStoreRepository writeStoreRepository = new HelixReadWriteStoreRepository(
+        zkClient,
+        adapter,
+        clusterName,
+        Optional.empty(),
+        new ClusterLockManager(clusterName));
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setPartitionCount(3);
+    Version version = new VersionImpl(storeName, 1, "pushId");
+    version.setPartitionCount(3);
+    store.addVersion(version);
+    writeStoreRepository.addStore(store);
+    offlinePushOnlyRepository = new HelixCustomizedViewOfflinePushRepository(readManager, writeStoreRepository);
     hybridStoreQuotaOnlyRepository.refresh();
     offlinePushOnlyRepository.refresh();
     // Update customized state for each partition on each instance
