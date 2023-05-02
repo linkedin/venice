@@ -103,6 +103,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
@@ -1009,8 +1010,16 @@ public class VenicePushJob implements AutoCloseable {
           }
           if (pushJobSetting.repushTTLEnabled) {
             pushJobSetting.repushTTLInSeconds = storeSetting.storeRewindTimeInSeconds;
-            // the schema path will be suffixed by the store name and time, e.g.
-            // /tmp/veniceRmdSchemas/<store_name>/<timestamp>
+            // make the base directory TEMP_DIR_PREFIX with 777 permissions
+            Path baseSchemaDir = new Path(TEMP_DIR_PREFIX);
+            FileSystem fs = FileSystem.get(new Configuration());
+            if (!fs.exists(baseSchemaDir)) {
+              fs.mkdirs(baseSchemaDir);
+              fs.setPermission(baseSchemaDir, new FsPermission("777"));
+            }
+
+            // build the full path for HDFSRmdSchemaSource: the schema path will be suffixed
+            // by the store name and time like: <TEMP_DIR_PREFIX>/<store_name>/<timestamp>
             StringBuilder schemaDirBuilder = new StringBuilder();
             schemaDirBuilder.append(TEMP_DIR_PREFIX)
                 .append(pushJobSetting.storeName)
