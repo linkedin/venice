@@ -23,12 +23,15 @@ import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -58,11 +61,20 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   private final String storeName;
   private final AbstractAvroStoreClient storeClient;
+  /**
+   * In Venice, schemas are Avro schemas that allow setting arbitrary field-level attributes.
+   * Internally, Venice may choose to add new schemas (e.g. superset schema) to support some features. However, Venice
+   * cannot handle attributes cleanly since they could have some semantic meaning.
+   *
+   * The @{code preferredSchemaFilter} allows users to specify a predicate that clients will use when deciding which
+   * schema are the latest value and update schemas.
+   */
   private final Predicate<Schema> preferredSchemaFilter;
   private final Duration valueSchemaRefreshPeriod;
+  private final ScheduledExecutorService refreshSchemaExecutor;
+  private final ScheduledFuture schemaRefreshFuture;
   private final ICProvider icProvider;
   private final AtomicReference<Integer> maxValueSchemaId = new AtomicReference<>(SchemaData.INVALID_VALUE_SCHEMA_ID);
-  private final AtomicReference<Instant> lastValueSchemaRefreshTime = new AtomicReference<>();
 
   RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
     this(clientSupplier, Optional.empty(), Optional.empty());
@@ -104,6 +116,13 @@ public class RouterBackedSchemaReader implements SchemaReader {
     readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
     this.valueSchemaRefreshPeriod = valueSchemaRefreshPeriod;
     this.icProvider = icProvider;
+
+    this.refreshSchemaExecutor = Executors.newSingleThreadScheduledExecutor();
+    schemaRefreshFuture = refreshSchemaExecutor.scheduleAtFixedRate(
+        () -> this.ensureSchemasAreRefreshed(loadUpdateSchemas.get(), true),
+        valueSchemaRefreshPeriod.getSeconds(),
+        valueSchemaRefreshPeriod.getSeconds(),
+        TimeUnit.SECONDS);
   }
 
   @Override
@@ -200,23 +219,30 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public void close() throws IOException {
+    schemaRefreshFuture.cancel(true);
+    refreshSchemaExecutor.shutdownNow();
+    try {
+      refreshSchemaExecutor.awaitTermination(60, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
+    }
     IOUtils.closeQuietly(storeClient, LOGGER::error);
   }
 
   /**
    * This function fetches schemas if:
    * 1. Schemas haven't been fetched previously
-   * 2. The configured duration to check for new schemas has passed
-   * 3. This is the first time that derived schemas are needed
+   * 2. This is the first time that derived schemas are needed
    * @param needsDerivedSchemas If the caller of the function needs derived schemas
+   * @param forceSchemaRefresh If the caller of the function detects a missing schema and needs to immediately fetch
+   *                           updated schemas
    */
   private void ensureSchemasAreRefreshed(boolean needsDerivedSchemas, boolean forceSchemaRefresh) {
     ConcurrencyUtils.executeUnderConditionalLock(() -> {
       loadUpdateSchemas.compareAndSet(false, needsDerivedSchemas);
       this.refreshAllSchemas();
     },
-        () -> forceSchemaRefresh || latestValueSchemaEntry.get() == null || lastValueSchemaRefreshTime.get() == null
-            || Duration.between(lastValueSchemaRefreshTime.get(), Instant.now()).compareTo(valueSchemaRefreshPeriod) > 0
+        () -> forceSchemaRefresh || latestValueSchemaEntry.get() == null
             || (needsDerivedSchemas && !loadUpdateSchemas.get()),
         this);
   }
@@ -391,8 +417,6 @@ public class RouterBackedSchemaReader implements SchemaReader {
             || latestValueSchemaEntry.get() == null || latestSchemaId > latestValueSchemaEntry.get().getId())) {
           latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
         }
-
-        lastValueSchemaRefreshTime.set(Instant.now());
       }
     } catch (Exception e) {
       throw new VeniceClientException(
