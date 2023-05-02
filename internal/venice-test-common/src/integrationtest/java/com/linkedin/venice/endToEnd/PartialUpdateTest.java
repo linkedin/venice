@@ -174,7 +174,7 @@ public class PartialUpdateTest {
       VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()));
-      SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+      NearlineProducer veniceProducer = getNearlineProducer(veniceCluster, storeName, Version.PushType.STREAM);
       GenericRecord keyRecord = new GenericData.Record(keySchema);
       keyRecord.put("learnerUrn", "urn:li:member:682787898");
       keyRecord.put("query", "python");
@@ -318,7 +318,7 @@ public class PartialUpdateTest {
         runVPJ(vpjProperties, 1, childControllerClient);
       }
       // Produce partial updates on batch pushed keys
-      SystemProducer veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
+      NearlineProducer veniceProducer = getNearlineProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
       for (int i = 1; i < 100; i++) {
         GenericRecord partialUpdateRecord =
             new UpdateBuilderImpl(writeComputeSchema).setNewFieldValue("firstName", "new_name_" + i).build();

@@ -1,5 +1,5 @@
 dependencies {
-  compile project(':internal:venice-nearline-producer')
+  api project(':internal:venice-nearline-producer')
 
   // Schema related dependencies
   implementation (project(':internal:venice-common')) {

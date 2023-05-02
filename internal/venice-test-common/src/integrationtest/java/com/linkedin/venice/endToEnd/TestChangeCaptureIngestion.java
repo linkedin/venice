@@ -1,13 +1,33 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.*;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
+import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
@@ -32,9 +52,9 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemFactory;
-import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -67,7 +87,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -200,8 +219,9 @@ public class TestChangeCaptureIngestion {
     VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
     veniceChangelogConsumer.subscribeAll().get();
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    Properties samzaProps = new Properties();
+    samzaProps.putAll(samzaConfig);
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
@@ -291,8 +311,7 @@ public class TestChangeCaptureIngestion {
         }
       });
     }
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
       veniceProducer.start();
       // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
       // larger
@@ -346,8 +365,7 @@ public class TestChangeCaptureIngestion {
     Instant past = now.minus(1, ChronoUnit.HOURS);
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
       veniceProducer.start();
       // run samza to stream put and delete
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
@@ -534,7 +552,7 @@ public class TestChangeCaptureIngestion {
   }
 
   private void runSamzaStreamJob(
-      VeniceSystemProducer veniceProducer,
+      NearlineProducer veniceProducer,
       String storeName,
       Time mockedTime,
       int numPuts,
@@ -560,7 +578,7 @@ public class TestChangeCaptureIngestion {
   }
 
   private void produceRecordWithLogicalTimestamp(
-      VeniceSystemProducer veniceProducer,
+      NearlineProducer veniceProducer,
       String storeName,
       int index,
       long logicalTimestamp,

@@ -57,7 +57,6 @@ import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemFactory;
-import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -97,7 +96,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -210,6 +208,8 @@ public class TestActiveActiveIngestion {
     TestWriteUtils.runPushJob("Run push job", props);
 
     Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    Properties samzaProps = new Properties();
+    samzaProps.putAll(samzaConfig);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // set up mocked time for Samza records so some records can be stale intentionally.
     List<Long> mockTimestampInMs = new LinkedList<>();
@@ -225,8 +225,7 @@ public class TestActiveActiveIngestion {
     Time mockTime = new MockCircularTime(mockTimestampInMs);
     Time mockPastime = new MockCircularTime(mockTimestampInMsInThePast);
 
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests with a mix of records that will land and some which won't.
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 0, 20);
@@ -294,11 +293,13 @@ public class TestActiveActiveIngestion {
     TestWriteUtils.runPushJob("Run push job", props);
 
     Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    Properties samzaProps = new Properties();
+    samzaProps.putAll(samzaConfig);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
 
-    try (NearlineProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
@@ -358,8 +359,7 @@ public class TestActiveActiveIngestion {
         }
       });
     }
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
       veniceProducer.start();
       // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
       // larger
@@ -399,8 +399,7 @@ public class TestActiveActiveIngestion {
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
 
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
       veniceProducer.start();
       // run samza to stream put and delete
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
@@ -572,6 +571,8 @@ public class TestActiveActiveIngestion {
     // controllerClient.updateStore(storeName, storeParms);
     TestWriteUtils.runPushJob("Run push job", props);
     Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    Properties samzaProps = new Properties();
+    samzaProps.putAll(samzaConfig);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
@@ -603,8 +604,7 @@ public class TestActiveActiveIngestion {
     VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
     veniceChangelogConsumer.subscribeAll().get();
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
@@ -695,8 +695,7 @@ public class TestActiveActiveIngestion {
         }
       });
     }
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
       veniceProducer.start();
       // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
       // larger
@@ -750,8 +749,7 @@ public class TestActiveActiveIngestion {
     Instant past = now.minus(1, ChronoUnit.HOURS);
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
       veniceProducer.start();
       // run samza to stream put and delete
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);

@@ -1416,7 +1416,7 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testOffsetRecordSyncedForIngestionIsolationHandover() throws Exception {
-    SystemProducer veniceProducer = null;
+    NearlineProducer veniceProducer = null;
 
     VeniceClusterWrapper venice = ingestionIsolationEnabledSharedVenice;
     try {
@@ -1457,7 +1457,7 @@ public class TestHybrid {
         });
 
         // write streaming records
-        veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+        veniceProducer = getNearlineProducer(venice, storeName, Version.PushType.STREAM);
         for (int i = 1; i <= 10; i++) {
           // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
           // the server's max configured chunk size). In the scenario where chunking is disabled, the server's

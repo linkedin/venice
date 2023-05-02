@@ -1,8 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getNearlineProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.davinci.stats.IngestionStats;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -20,6 +21,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -38,7 +40,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -141,7 +142,7 @@ public class NearlineE2ELatencyTest {
     }
 
     VeniceClusterWrapper cluster0 = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-    SystemProducer dc0Producer = getSamzaProducer(cluster0, storeName, Version.PushType.STREAM);
+    NearlineProducer dc0Producer = getNearlineProducer(cluster0, storeName, Version.PushType.STREAM);
 
     for (int i = 10; i < 20; i++) {
       sendStreamingRecord(dc0Producer, storeName, i);

@@ -67,11 +67,11 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.producer.NearlineProducer;
+import com.linkedin.venice.producer.NearlineProducerFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.samza.VeniceSystemFactory;
-import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.server.VeniceServer;
@@ -107,7 +107,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -380,9 +379,10 @@ public class TestPushJobWithNativeReplication {
           samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
           samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
           samzaConfig.put(SSL_ENABLED, "false");
-          VeniceSystemFactory factory = new VeniceSystemFactory();
-          try (VeniceSystemProducer veniceProducer =
-              factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+          NearlineProducerFactory factory = new NearlineProducerFactory();
+          Properties samzaProps = new Properties();
+          samzaProps.putAll(samzaConfig);
+          try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
             veniceProducer.start();
 
             // Verify the kafka URL being returned to Samza is the same as parent region kafka url.
