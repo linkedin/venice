@@ -120,9 +120,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
     this.refreshSchemaExecutor = Executors.newSingleThreadScheduledExecutor();
     schemaRefreshFuture = refreshSchemaExecutor.scheduleAtFixedRate(
         () -> this.ensureSchemasAreRefreshed(loadUpdateSchemas.get(), true),
-        valueSchemaRefreshPeriod.getSeconds(),
-        valueSchemaRefreshPeriod.getSeconds(),
-        TimeUnit.SECONDS);
+        1,
+        valueSchemaRefreshPeriod.getNano(),
+        TimeUnit.NANOSECONDS);
   }
 
   @Override
