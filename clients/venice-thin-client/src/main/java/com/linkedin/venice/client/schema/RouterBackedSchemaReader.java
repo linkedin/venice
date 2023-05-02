@@ -42,7 +42,7 @@ import org.apache.logging.log4j.Logger;
 public class RouterBackedSchemaReader implements SchemaReader {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
-  public static final String TYPE_UPDATE_SCHEMA = "update_schema";
+  public static final String TYPE_GET_UPDATE_SCHEMA = "update_schema";
   public static final String TYPE_STORE_STATE = "store_state";
   private static final Logger LOGGER = LogManager.getLogger(RouterBackedSchemaReader.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
@@ -370,16 +370,26 @@ public class RouterBackedSchemaReader implements SchemaReader {
           maxValueSchemaId.set(maxSchemaId);
         }
 
-        if (maxPreferredSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID && !supersetSchemaIsPreferredSchema) {
-          if (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < maxPreferredSchemaId) {
-            latestValueSchemaEntry.set(new SchemaEntry(maxPreferredSchemaId, valueSchemaMap.get(maxPreferredSchemaId)));
+        boolean hasSupersetSchema = supersetSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID;
+        boolean hasPreferredSchema = maxPreferredSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID;
+        final int latestSchemaId;
+        if (hasPreferredSchema) {
+          if (supersetSchemaIsPreferredSchema) {
+            latestSchemaId = supersetSchemaId;
+          } else {
+            latestSchemaId = maxPreferredSchemaId;
           }
-        } else if (supersetSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-          latestValueSchemaEntry.set(new SchemaEntry(supersetSchemaId, valueSchemaMap.get(supersetSchemaId)));
-        } else if (maxSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-          if (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < maxSchemaId) {
-            latestValueSchemaEntry.set(new SchemaEntry(maxSchemaId, valueSchemaMap.get(maxSchemaId)));
+        } else {
+          if (hasSupersetSchema) {
+            latestSchemaId = supersetSchemaId;
+          } else {
+            latestSchemaId = maxSchemaId;
           }
+        }
+
+        if (latestSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID && (latestSchemaId == supersetSchemaId
+            || latestValueSchemaEntry.get() == null || latestSchemaId > latestValueSchemaEntry.get().getId())) {
+          latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
         }
 
         lastValueSchemaRefreshTime.set(Instant.now());
@@ -399,7 +409,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   private DerivedSchemaEntry fetchUpdateSchemaEntry(int valueSchemaId) throws VeniceClientException {
-    String requestPath = TYPE_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
+    String requestPath = TYPE_GET_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
     SchemaResponse schemaResponse = fetchSingleSchemaResponse(requestPath);
 
     if (schemaResponse == null) {

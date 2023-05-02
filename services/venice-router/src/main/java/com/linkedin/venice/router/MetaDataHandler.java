@@ -8,8 +8,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_GET_UPDATE_SCHEMA;
 import static com.linkedin.venice.router.api.RouterResourceType.TYPE_LATEST_VALUE_SCHEMA;
-import static com.linkedin.venice.router.api.RouterResourceType.TYPE_UPDATE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CLUSTER_DISCOVERY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
@@ -179,7 +179,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         // URI: /latest_value_schema/{$storeName} - Get the latest value schema
         handleLatestValueSchemaLookup(ctx, helper);
         break;
-      case TYPE_UPDATE_SCHEMA:
+      case TYPE_GET_UPDATE_SCHEMA:
         // URI: /update_schema/{$storeName}/{$valueSchemaId}
         // The request could fetch the latest derived update schema of a specific value schema
         handleUpdateSchemaLookup(ctx, helper);
@@ -321,7 +321,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void handleUpdateSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    checkResourceName(storeName, "/" + TYPE_UPDATE_SCHEMA + "/${storeName}/${valueSchemaId}");
+    checkResourceName(storeName, "/" + TYPE_GET_UPDATE_SCHEMA + "/${storeName}/${valueSchemaId}");
     String valueSchemaIdStr = helper.getKey();
     if (valueSchemaIdStr == null || valueSchemaIdStr.isEmpty()) {
       byte[] errBody = ("Value schema ID not found in this request").getBytes();

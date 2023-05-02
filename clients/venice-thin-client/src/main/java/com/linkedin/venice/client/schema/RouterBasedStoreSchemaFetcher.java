@@ -33,7 +33,7 @@ import org.apache.commons.lang.Validate;
 public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
-  public static final String TYPE_UPDATE_SCHEMA = "update_schema";
+  public static final String TYPE_GET_UPDATE_SCHEMA = "update_schema";
   public static final String TYPE_LATEST_VALUE_SCHEMA = "latest_value_schema";
   private final AbstractAvroStoreClient storeClient;
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
@@ -121,7 +121,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   public Schema getUpdateSchema(Schema valueSchema) throws VeniceException {
     int valueSchemaId = getValueSchemaId(valueSchema);
     // Fetch the latest update schema for the specified value schema.
-    String updateSchemaRequestPath = TYPE_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
+    String updateSchemaRequestPath = TYPE_GET_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
     String updateSchemaStr = fetchSingleSchemaString(updateSchemaRequestPath);
     Schema updateSchema;
     try {
