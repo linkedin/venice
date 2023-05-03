@@ -358,7 +358,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       LOGGER.info("{}: {}", VENICE_CONTROLLER_DISCOVERY_URL, discoveryUrl.get());
 
       return new VeniceSystemProducer(
-          discoveryUrl,
+          discoveryUrl.get(),
           storeName,
           venicePushType,
           samzaJobId,

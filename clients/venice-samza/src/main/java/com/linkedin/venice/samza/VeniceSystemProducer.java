@@ -286,7 +286,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   public VeniceSystemProducer(
-      Optional<String> discoveryUrl,
+      String discoveryUrl,
       String storeName,
       Version.PushType pushType,
       String samzaJobId,
@@ -296,10 +296,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       Optional<SSLFactory> sslFactory,
       Optional<String> partitioners,
       Time time) {
-    this.discoveryUrl = discoveryUrl;
-    if (!discoveryUrl.isPresent()) {
+
+    if (discoveryUrl == null || discoveryUrl.trim().isEmpty()) {
       throw new IllegalStateException("Discovery URL is not present");
     }
+
+    this.discoveryUrl = Optional.of(discoveryUrl);
+
     this.veniceChildD2ZkHost = null;
     this.primaryControllerColoD2ZKHost = null;
     this.primaryControllerD2ServiceName = null;
@@ -346,6 +349,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
     }
     throw new SamzaException("Failed to send request to Controller, error: " + errorMsg, lastException);
+  }
+
+  public String getTopicName() {
+    return topicName;
   }
 
   /**
@@ -405,6 +412,36 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     if (discoveryUrl.isPresent()) {
       this.controllerClient =
           ControllerClient.discoverAndConstructControllerClient(storeName, discoveryUrl.get(), sslFactory, 1);
+
+      /**
+       * Verify that the latest {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#KAFKA_MESSAGE_ENVELOPE}
+       * version in the code base is registered in Venice backend; if not, fail fast in start phase before start writing
+       * Kafka messages that Venice backend couldn't deserialize.
+       */
+      /* TODO: find a way to discover router url
+      if (verifyLatestProtocolPresent) {
+        LOGGER.info("Start verifying the latest protocols at runtime are valid in Venice backend.");
+        // Discover the D2 service name for the system store
+        // does not return anything useful in case of discoveryUrl
+        // e.g. cannot get venice router url
+      
+        //D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
+        //        () -> ControllerClient.discoverCluster(discoveryUrl.get(), storeName, sslFactory, 1),
+        //        2);
+      
+        String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
+        ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
+                ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
+        clientConfigForKafkaMessageEnvelopeSchemaReader.setVeniceURL("http://venice-router:7777");
+      
+        SchemaReader kafkaMessageEnvelopeSchemaReader =
+                ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader, null);
+        new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
+                .verifySchemaVersionPresentOrExit();
+        LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
+      }
+       */
+
       transportClient = new HttpTransportClient(discoveryUrl.get());
     } else {
       this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);

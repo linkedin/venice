@@ -13,7 +13,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -30,13 +29,21 @@ import org.apache.pulsar.io.core.SinkContext;
 import org.apache.samza.config.MapConfig;
 
 
+/**
+ * A Pulsar Sink that sends messages to Venice.
+ *
+ * Please refer to Apache Pulsar's documentation for more information on Pulsar connectors:
+ * https://pulsar.apache.org/docs/2.10.x/io-use/
+ *
+ * Available configuration parameters: see VeniceSinkConfig class.
+ */
 public class VeniceSink implements Sink<GenericObject> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSink.class);
 
   VeniceSinkConfig config;
   VeniceSystemProducer producer;
 
-  // thread safe, fast access to count()
+  /** thread safe, fast access to count() **/
   private ArrayBlockingQueue<Record<GenericObject>> pendingFlushQueue;
   private final ScheduledExecutorService scheduledExecutor =
       Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "pulsar-venice-sink-flush-thread"));
@@ -61,9 +68,7 @@ public class VeniceSink implements Sink<GenericObject> {
     String kafkaBootstrapServers = this.producer.getKafkaBootstrapServers();
     LOGGER.info("Kafka bootstrap for Venice producer {}", kafkaBootstrapServers);
 
-    VeniceWriter<byte[], byte[], byte[]> veniceWriter = this.producer.getInternalProducer();
-    String topicName = veniceWriter.getTopicName();
-    LOGGER.info("Kafka topic name is {}", topicName);
+    LOGGER.info("Kafka topic name is {}", this.producer.getTopicName());
 
     maxNumberUnflushedRecords = this.config.getMaxNumberUnflushedRecords();
     final int capacityMutliplier = 3;
