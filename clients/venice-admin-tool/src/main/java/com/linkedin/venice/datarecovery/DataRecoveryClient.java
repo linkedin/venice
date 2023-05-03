@@ -2,7 +2,11 @@ package com.linkedin.venice.datarecovery;
 
 import static com.linkedin.venice.datarecovery.DataRecoveryWorker.INTERVAL_UNSET;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
 import com.linkedin.venice.utils.Utils;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Scanner;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
@@ -45,8 +49,29 @@ public class DataRecoveryClient {
     return monitor;
   }
 
+  public void filterStoresWithOngoingRepush(Set<String> storesList, ControllerClient cli, LocalDateTime timestamp) {
+    for (String s: storesList) {
+      try {
+        RegionPushDetailsResponse regionPushDetailsResponse = cli.getRegionPushDetails(s, false);
+        String latestTimestamp = regionPushDetailsResponse.getRegionPushDetails().getPushStartTimestamp();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+        LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, formatter);
+        if (latestPushStartTime.compareTo(timestamp) > 0) {
+          LOGGER.warn(
+              "Removing store " + s
+                  + " from stores list, as the has a push job started more recently than the input timestamp.");
+          storesList.remove(s);
+        }
+      } catch (Exception e) {
+        LOGGER.warn("Removing store " + s + "from stores list due to exception " + e);
+        storesList.remove(s);
+      }
+    }
+  }
+
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
+    filterStoresWithOngoingRepush(storeNames, cmdParams.getPCtrlCliWithoutCluster(), cmdParams.getTimestamp());
     if (storeNames == null || storeNames.isEmpty()) {
       LOGGER.warn("store list is empty, exit.");
       return;

@@ -618,6 +618,8 @@ public class AdminTool {
     String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
     String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
     String stores = getRequiredArgument(cmd, Arg.STORES);
+    String timestamp = getRequiredArgument(cmd, Arg.DATETIME);
+    String url = getRequiredArgument(cmd, Arg.URL);
 
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
@@ -626,6 +628,9 @@ public class AdminTool {
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
     cmdParams.setCommand(recoveryCommand);
     cmdParams.setSourceFabric(sourceFabric);
+    cmdParams.setTimestamp(timestamp);
+    cmdParams.setParentUrl(url);
+    cmdParams.setSslFactory(sslFactory);
     if (extraCommandArgs != null) {
       cmdParams.setExtraCommandArgs(extraCommandArgs);
     }
@@ -634,7 +639,11 @@ public class AdminTool {
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
     params.setNonInteractive(isNonInteractive);
-    dataRecoveryClient.execute(params, cmdParams);
+
+    try (ControllerClient cli = new ControllerClient("*", url, sslFactory)) {
+      cmdParams.setPCtrlCliWithoutCluster(cli);
+      dataRecoveryClient.execute(params, cmdParams);
+    }
   }
 
   private static void estimateDataRecoveryTime(CommandLine cmd) {

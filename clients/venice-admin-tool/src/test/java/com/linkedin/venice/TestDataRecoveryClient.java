@@ -134,9 +134,16 @@ public class TestDataRecoveryClient {
   }
 
   private void executeRecovery(boolean isSuccess) {
+    ControllerClient controllerClient = mock(ControllerClient.class);
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
     cmdParams.setCommand("cmd");
     cmdParams.setExtraCommandArgs("args");
+    cmdParams.setParentUrl("http://localhost:7036/");
+    cmdParams.setPCtrlCliWithoutCluster(controllerClient);
+
+    D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
+    r.setCluster("test");
+    doReturn(r).when(controllerClient).discoverCluster(anyString());
 
     // Partial mock of Module class to take password from console input.
     executor = spy(DataRecoveryExecutor.class);
@@ -154,6 +161,7 @@ public class TestDataRecoveryClient {
     StoreRepushCommand mockStoreRepushCmd = spy(StoreRepushCommand.class);
     mockStoreRepushCmd.setParams(cmdParams);
     doReturn(mockCmd).when(mockStoreRepushCmd).getShellCmd();
+    doReturn(controllerClient).when(mockStoreRepushCmd).buildControllerClient(any(), any(), any());
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));

@@ -1,10 +1,15 @@
 package com.linkedin.venice.datarecovery;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.security.SSLFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
@@ -52,6 +57,13 @@ public class StoreRepushCommand extends Command {
   @Override
   public boolean needWaitForFirstTaskToComplete() {
     return true;
+  }
+
+  public ControllerClient buildControllerClient(
+      String clusterName,
+      String discoveryUrls,
+      Optional<SSLFactory> sslFactory) {
+    return new ControllerClient(clusterName, discoveryUrls, sslFactory);
   }
 
   private List<String> generateRepushCommand() {
@@ -140,8 +152,35 @@ public class StoreRepushCommand extends Command {
     private String sourceFabric;
     // extra arguments to command.
     private String extraCommandArgs;
+    // expected completion timestamp
+    private LocalDateTime timestamp;
     // Debug run.
     private boolean debug = false;
+
+    private ControllerClient pCtrlCliWithoutCluster;
+
+    public void setParentUrl(String parentUrl) {
+      this.parentUrl = parentUrl;
+    }
+
+    public void setPCtrlCliWithoutCluster(ControllerClient cli) {
+      this.pCtrlCliWithoutCluster = cli;
+    }
+
+    public ControllerClient getPCtrlCliWithoutCluster() {
+      return this.pCtrlCliWithoutCluster;
+    }
+
+    public LocalDateTime getTimestamp() {
+      return this.timestamp;
+    }
+
+    public void setSslFactory(Optional<SSLFactory> factory) {
+      this.sslFactory = factory;
+    }
+
+    private String parentUrl;
+    private Optional<SSLFactory> sslFactory;
 
     public void setDebug(boolean debug) {
       this.debug = debug;
@@ -157,6 +196,16 @@ public class StoreRepushCommand extends Command {
 
     public void setSourceFabric(String fabric) {
       this.sourceFabric = fabric;
+    }
+
+    public void setTimestamp(String timestamp) {
+      DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+      LocalDateTime time = LocalDateTime.parse(timestamp, formatter);
+      this.timestamp = time;
+    }
+
+    public void setTimestamp(LocalDateTime time) {
+      this.timestamp = time;
     }
   }
 
