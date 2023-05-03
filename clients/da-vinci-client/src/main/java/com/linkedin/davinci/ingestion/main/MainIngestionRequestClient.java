@@ -164,7 +164,7 @@ public class MainIngestionRequestClient implements Closeable {
     sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT);
   }
 
-  public boolean unsubscribeTopicPartition(String topicName, int partitionId) {
+  public boolean removeTopicPartition(String topicName, int partitionId) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.REMOVE_PARTITION.getValue();
     ingestionTaskCommand.topicName = topicName;
