@@ -154,17 +154,22 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
-    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
-    executeCommandWithRetry(
-        topicName,
-        partition,
-        REMOVE_PARTITION,
-        () -> mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition),
-        () -> {
-          super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
-          // Clean up the topic partition ingestion status.
-          mainIngestionRequestClient.resetTopicPartition(topicName, partition);
-        });
+    try {
+      executeCommandWithRetry(
+          topicName,
+          partition,
+          REMOVE_PARTITION,
+          () -> mainIngestionRequestClient.removeTopicPartition(topicName, partition),
+          () -> super.dropStoragePartitionGracefully(
+              storeConfig,
+              partition,
+              timeoutInSeconds,
+              removeEmptyStorageEngine));
+    } finally {
+      // Make sure we reset the topic partition info in both processes together even if exception is thrown.
+      mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
+      mainIngestionRequestClient.resetTopicPartition(topicName, partition);
+    }
     if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
       LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
       mainIngestionRequestClient.removeStorageEngine(topicName);
