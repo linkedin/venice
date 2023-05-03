@@ -155,23 +155,23 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
     executeCommandWithRetry(topicName, partition, REMOVE_PARTITION, () -> {
-      boolean result = mainIngestionRequestClient.removeTopicPartition(topicName, partition);
+      boolean result = getMainIngestionRequestClient().removeTopicPartition(topicName, partition);
       // We will only clean up topic partition status if the remote execution is successful.
       if (result) {
-        mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
-        mainIngestionRequestClient.resetTopicPartition(topicName, partition);
+        getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
+        getMainIngestionRequestClient().resetTopicPartition(topicName, partition);
       }
       return result;
     }, () -> {
-      super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
+      removeTopicPartitionLocally(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
       // We will only clean up topic partition status if the local execution is successful.
-      mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
-      mainIngestionRequestClient.resetTopicPartition(topicName, partition);
+      getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
+      getMainIngestionRequestClient().resetTopicPartition(topicName, partition);
     });
-    if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
+    if (getMainIngestionMonitorService().getTopicPartitionCount(topicName) == 0) {
       LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
-      mainIngestionRequestClient.removeStorageEngine(topicName);
-      mainIngestionMonitorService.cleanupTopicState(topicName);
+      getMainIngestionMonitorService().cleanupTopicState(topicName);
+      getMainIngestionRequestClient().removeStorageEngine(topicName);
     }
   }
 
@@ -240,6 +240,18 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     return mainIngestionMonitorService;
   }
 
+  public MainIngestionRequestClient getMainIngestionRequestClient() {
+    return mainIngestionRequestClient;
+  }
+
+  void removeTopicPartitionLocally(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      int timeoutInSeconds,
+      boolean removeEmptyStorageEngine) {
+    super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
+  }
+
   public void close() {
     try {
       completionReportHandlingExecutor.shutdownNow();
@@ -254,7 +266,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     }
   }
 
-  private boolean isTopicPartitionHostedInMainProcess(String topicName, int partition) {
+  boolean isTopicPartitionHostedInMainProcess(String topicName, int partition) {
     return getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.MAIN);
   }
