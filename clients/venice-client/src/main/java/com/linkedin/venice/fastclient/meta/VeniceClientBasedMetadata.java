@@ -160,7 +160,7 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
         Thread.currentThread().interrupt();
       }
     }
-    scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
+    scheduler.scheduleAtFixedRate(this::refresh, refreshIntervalInSeconds, refreshIntervalInSeconds, TimeUnit.SECONDS);
   }
 
   @Override
