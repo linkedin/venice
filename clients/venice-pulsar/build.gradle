@@ -8,12 +8,6 @@ dependencies {
         exclude module: 'kafka_2.10'
         exclude group: 'org.scala-lang'
     }
-    // https://projectlombok.org
-    compileOnly 'org.projectlombok:lombok:1.18.26'
-    annotationProcessor 'org.projectlombok:lombok:1.18.26'
-    testCompileOnly 'org.projectlombok:lombok:1.18.26'
-    testAnnotationProcessor 'org.projectlombok:lombok:1.18.26'
-
     implementation project(':clients:venice-thin-client')
     implementation project(':clients:venice-samza')
 

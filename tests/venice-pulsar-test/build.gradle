@@ -17,12 +17,6 @@ sourceSets {
 }
 
 dependencies {
-    // https://projectlombok.org
-    compileOnly 'org.projectlombok:lombok:1.18.26'
-    annotationProcessor 'org.projectlombok:lombok:1.18.26'
-    testCompileOnly 'org.projectlombok:lombok:1.18.26'
-    testAnnotationProcessor 'org.projectlombok:lombok:1.18.26'
-
     testImplementation project(':clients:venice-pulsar')
 
     testImplementation libraries.log4j2api
@@ -37,9 +31,6 @@ def pulsarIntegrationTestConfigs = {
 
     classpath = sourceSets.pulsarIntegrationTest.runtimeClasspath
     testClassesDirs = sourceSets.pulsarIntegrationTest.output.classesDirs
-
-    //forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
-    //maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
 }
 
 task pulsarIntegrationTest(type: Test) {
