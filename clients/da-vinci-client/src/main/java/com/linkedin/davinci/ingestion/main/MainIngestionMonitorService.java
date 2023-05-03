@@ -228,11 +228,13 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     if (partitionLeaderStatus != null) {
       partitionLeaderStatus.remove(partitionId);
     }
+    LOGGER.info("Ingestion status removed from main process for topic: {}, partition: {}", topicName, partitionId);
   }
 
   public void cleanupTopicState(String topicName) {
     getTopicIngestionStatusMap().remove(topicName);
     getTopicPartitionLeaderStatusMap().remove(topicName);
+    LOGGER.info("Ingestion status removed from main process for topic: {}", topicName);
   }
 
   public long getTopicPartitionCount(String topicName) {
