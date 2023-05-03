@@ -33,6 +33,13 @@ public class DaVinciConfig {
    */
   private ObjectCacheConfig cacheConfig;
 
+  /**
+   * Whether to enable read-path metrics.
+   * Metrics are expensive compared with the DaVinci performance and this feature should be disabled for
+   * the high throughput use cases.
+   */
+  private boolean readMetricsEnabled = false;
+
   public DaVinciConfig() {
   }
 
@@ -97,5 +104,13 @@ public class DaVinciConfig {
   public DaVinciConfig setCacheConfig(ObjectCacheConfig cacheConfig) {
     this.cacheConfig = cacheConfig;
     return this;
+  }
+
+  public boolean isReadMetricsEnabled() {
+    return readMetricsEnabled;
+  }
+
+  public void setReadMetricsEnabled(boolean readMetricsEnabled) {
+    this.readMetricsEnabled = readMetricsEnabled;
   }
 }
