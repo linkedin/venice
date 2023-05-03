@@ -72,9 +72,10 @@ public class IsolatedIngestionBackendTest {
       doCallRealMethod().when(monitorService).setVersionPartitionToLocalIngestion(topic, partition);
       doCallRealMethod().when(monitorService).setVersionPartitionToIsolatedIngestion(topic, partition);
       when(monitorService.getTopicPartitionIngestionStatus(topic, partition)).thenCallRealMethod();
-
       when(monitorService.getTopicIngestionStatusMap()).thenReturn(topicIngestionStatusMap);
       when(monitorService.getForkProcessActionLock()).thenReturn(readWriteLock);
+      when(backend.isTopicPartitionIngesting(topic, partition)).thenCallRealMethod();
+      when(backend.isTopicPartitionHostedInMainProcess(topic, partition)).thenCallRealMethod();
 
       // Resource does not exist. Consumption request should be executed in remote.
       executionFlag.set(0);
@@ -230,14 +231,14 @@ public class IsolatedIngestionBackendTest {
       ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
       when(monitorService.getForkProcessActionLock()).thenReturn(readWriteLock);
 
-      // Case 1
+      // Case 1: Local remove topic partition executed successfully.
       backend.dropStoragePartitionGracefully(storeVersionConfig, partition, 180, false);
       verify(backend, times(1)).removeTopicPartitionLocally(any(), anyInt(), anyInt(), anyBoolean());
       verify(ingestionRequestClient, times(1)).resetTopicPartition(topic, partition);
       verify(monitorService, times(1)).cleanupTopicPartitionState(topic, partition);
       Assert.assertEquals(topicIngestionStatusMap.get(topic).getPartitionIngestionStatus(partition), NOT_EXIST);
 
-      // Case 2
+      // Case 2: Local remove topic partition executed throws exception.
       topicIngestionStatusMap.get(topic).setPartitionIngestionStatusToLocalIngestion(partition);
       doThrow(new VeniceException("test")).when(backend)
           .removeTopicPartitionLocally(any(), anyInt(), anyInt(), anyBoolean());
@@ -247,7 +248,7 @@ public class IsolatedIngestionBackendTest {
       verify(monitorService, times(1)).cleanupTopicPartitionState(topic, partition);
       Assert.assertEquals(topicIngestionStatusMap.get(topic).getPartitionIngestionStatus(partition), MAIN);
 
-      // Case 3
+      // Case 3: Remote remove topic partition executed successfully.
       topicIngestionStatusMap.get(topic).setPartitionIngestionStatusToIsolatedIngestion(partition);
       when(ingestionRequestClient.removeTopicPartition(topic, partition)).thenReturn(true);
       backend.dropStoragePartitionGracefully(storeVersionConfig, partition, 180, false);
