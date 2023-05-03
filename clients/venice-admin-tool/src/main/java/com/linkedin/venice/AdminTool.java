@@ -41,6 +41,7 @@ import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
+import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -457,6 +458,9 @@ public class AdminTool {
           break;
         case LIST_STORE_PUSH_INFO:
           listStorePushInfo(cmd);
+          break;
+        case GET_KAFKA_TOPIC_CONFIGS:
+          getKafkaTopicConfigs(cmd);
           break;
         case UPDATE_KAFKA_TOPIC_LOG_COMPACTION:
           updateKafkaTopicLogCompaction(cmd);
@@ -2392,6 +2396,22 @@ public class AdminTool {
     String storeName = getRequiredArgument(cmd, Arg.STORE);
     StoreResponse response = controllerClient.copyOverStoreMetadata(sourceFabric, destFabric, storeName);
     printObject(response);
+  }
+
+  private static void getKafkaTopicConfigs(CommandLine cmd) {
+    String veniceControllerUrls = getRequiredArgument(cmd, Arg.URL);
+    String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+    if (storeName.isEmpty()) {
+      throw new VeniceException("Please either provide a valid topic name.");
+    }
+    D2ServiceDiscoveryResponse clusterDiscovery =
+        ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+    String clusterName = clusterDiscovery.getCluster();
+    try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
+      PubSubTopicConfigResponse response = tmpControllerClient.getKafkaTopicConfigs(kafkaTopicName);
+      printObject(response);
+    }
   }
 
   private static void updateKafkaTopicLogCompaction(CommandLine cmd) {
