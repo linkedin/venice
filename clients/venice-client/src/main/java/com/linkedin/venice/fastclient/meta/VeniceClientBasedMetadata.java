@@ -160,6 +160,8 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
         Thread.currentThread().interrupt();
       }
     }
+    // It might be helpful to add a random delay to offset the schema-refresh. However, this might be a premature
+    // optimization since given a large-enough fleet, the requests should get distributed inherently
     scheduler.scheduleAtFixedRate(this::refresh, refreshIntervalInSeconds, refreshIntervalInSeconds, TimeUnit.SECONDS);
   }
 

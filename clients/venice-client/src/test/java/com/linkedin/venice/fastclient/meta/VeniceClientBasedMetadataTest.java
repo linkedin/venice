@@ -200,15 +200,6 @@ public class VeniceClientBasedMetadataTest {
             }));
       }
     }
-    // doReturn(replicaStatusFuture).when(metaStoreThinClient)
-    // .get(MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
-    // {
-    // put(KEY_STRING_STORE_NAME, storeName);
-    // put(KEY_STRING_CLUSTER_NAME, CLUSTER_NAME);
-    // put(KEY_STRING_VERSION_NUMBER, Integer.toString(1));
-    // put(KEY_STRING_PARTITION_ID, Integer.toString(0));
-    // }
-    // }));
     return metaStoreThinClient;
   }
 }
