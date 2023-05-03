@@ -6,9 +6,11 @@ import static com.linkedin.davinci.ingestion.main.MainPartitionIngestionStatus.N
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.START_CONSUMPTION;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.STOP_CONSUMPTION;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,6 +19,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
+import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.main.MainTopicIngestionStatus;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -69,9 +72,10 @@ public class IsolatedIngestionBackendTest {
       doCallRealMethod().when(monitorService).setVersionPartitionToLocalIngestion(topic, partition);
       doCallRealMethod().when(monitorService).setVersionPartitionToIsolatedIngestion(topic, partition);
       when(monitorService.getTopicPartitionIngestionStatus(topic, partition)).thenCallRealMethod();
-
       when(monitorService.getTopicIngestionStatusMap()).thenReturn(topicIngestionStatusMap);
       when(monitorService.getForkProcessActionLock()).thenReturn(readWriteLock);
+      when(backend.isTopicPartitionIngesting(topic, partition)).thenCallRealMethod();
+      when(backend.isTopicPartitionHostedInMainProcess(topic, partition)).thenCallRealMethod();
 
       // Resource does not exist. Consumption request should be executed in remote.
       executionFlag.set(0);
@@ -199,5 +203,59 @@ public class IsolatedIngestionBackendTest {
     verify(backend, times(0)).getCompletionHandlingExecutor();
     backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 1, 123L, "", Optional.empty());
     verify(backend, times(1)).getCompletionHandlingExecutor();
+  }
+
+  @Test
+  public void testBackendCanMaintainMetadataCorrectlyForDroppingPartition() {
+    try (MainIngestionMonitorService monitorService = mock(MainIngestionMonitorService.class);
+        IsolatedIngestionBackend backend = mock(IsolatedIngestionBackend.class)) {
+      String topic = "testTopic_v1";
+      int partition = 0;
+      VeniceStoreVersionConfig storeVersionConfig = mock(VeniceStoreVersionConfig.class);
+      when(storeVersionConfig.getStoreVersionName()).thenReturn(topic);
+      MainIngestionRequestClient ingestionRequestClient = mock(MainIngestionRequestClient.class);
+      when(backend.getMainIngestionRequestClient()).thenReturn(ingestionRequestClient);
+      when(backend.getMainIngestionMonitorService()).thenReturn(monitorService);
+      Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = new VeniceConcurrentHashMap<>();
+      MainTopicIngestionStatus topicIngestionStatus = new MainTopicIngestionStatus(topic);
+      topicIngestionStatus.setPartitionIngestionStatusToLocalIngestion(partition);
+      topicIngestionStatusMap.put(topic, topicIngestionStatus);
+      doCallRealMethod().when(monitorService).cleanupTopicPartitionState(topic, partition);
+      when(monitorService.getTopicPartitionIngestionStatus(topic, partition)).thenCallRealMethod();
+      when(monitorService.getTopicIngestionStatusMap()).thenReturn(topicIngestionStatusMap);
+      when(backend.isTopicPartitionHostedInMainProcess(anyString(), anyInt())).thenCallRealMethod();
+      when(backend.isTopicPartitionIngesting(anyString(), anyInt())).thenCallRealMethod();
+      doCallRealMethod().when(backend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyBoolean());
+      doCallRealMethod().when(backend).executeCommandWithRetry(anyString(), anyInt(), any(), any(), any());
+      when(monitorService.getTopicPartitionCount(topic)).thenReturn(2L);
+      ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+      when(monitorService.getForkProcessActionLock()).thenReturn(readWriteLock);
+
+      // Case 1: Local remove topic partition executed successfully.
+      backend.dropStoragePartitionGracefully(storeVersionConfig, partition, 180, false);
+      verify(backend, times(1)).removeTopicPartitionLocally(any(), anyInt(), anyInt(), anyBoolean());
+      verify(ingestionRequestClient, times(1)).resetTopicPartition(topic, partition);
+      verify(monitorService, times(1)).cleanupTopicPartitionState(topic, partition);
+      Assert.assertEquals(topicIngestionStatusMap.get(topic).getPartitionIngestionStatus(partition), NOT_EXIST);
+
+      // Case 2: Local remove topic partition executed throws exception.
+      topicIngestionStatusMap.get(topic).setPartitionIngestionStatusToLocalIngestion(partition);
+      doThrow(new VeniceException("test")).when(backend)
+          .removeTopicPartitionLocally(any(), anyInt(), anyInt(), anyBoolean());
+      Assert.assertThrows(() -> backend.dropStoragePartitionGracefully(storeVersionConfig, partition, 180, false));
+      verify(backend, times(2)).removeTopicPartitionLocally(any(), anyInt(), anyInt(), anyBoolean());
+      verify(ingestionRequestClient, times(1)).resetTopicPartition(topic, partition);
+      verify(monitorService, times(1)).cleanupTopicPartitionState(topic, partition);
+      Assert.assertEquals(topicIngestionStatusMap.get(topic).getPartitionIngestionStatus(partition), MAIN);
+
+      // Case 3: Remote remove topic partition executed successfully.
+      topicIngestionStatusMap.get(topic).setPartitionIngestionStatusToIsolatedIngestion(partition);
+      when(ingestionRequestClient.removeTopicPartition(topic, partition)).thenReturn(true);
+      backend.dropStoragePartitionGracefully(storeVersionConfig, partition, 180, false);
+      verify(ingestionRequestClient, times(1)).removeTopicPartition(topic, partition);
+      verify(ingestionRequestClient, times(2)).resetTopicPartition(topic, partition);
+      verify(monitorService, times(2)).cleanupTopicPartitionState(topic, partition);
+      Assert.assertEquals(topicIngestionStatusMap.get(topic).getPartitionIngestionStatus(partition), NOT_EXIST);
+    }
   }
 }
