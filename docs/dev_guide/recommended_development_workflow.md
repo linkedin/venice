@@ -7,6 +7,14 @@ permalink: /docs/dev_guide/recommended_development_workflow
 
 # Venice Recommended Development Workflow
 
+## Create a Design Document
+
+If your change is relatively minor, you can skip this step. If you are adding new major feature, we suggest that 
+you add a design document and solicit comments from the community before submitting any code.
+
+Please follow the [Design Document Guide](../dev_guide/design_doc.md). 
+
+
 ## Creating GitHub issue
 
 Every PR should be preceded by a GitHub issue to explain the problem statement unless it's a trivial bug fixes or a
