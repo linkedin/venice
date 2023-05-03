@@ -1,7 +1,5 @@
 package com.linkedin.venice.fastclient;
 
-import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
-
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -11,7 +9,6 @@ import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -32,7 +29,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -43,11 +39,6 @@ import org.testng.annotations.Test;
  * Da Vinci metadata. Do we need to test with that? What is the use case when we use da vinci metadata
  */
 public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
-  @DataProvider(name = "StoreMetadataFetchModes")
-  public static Object[][] storeMetadataFetchModes() {
-    return DataProviderUtils.allPermutationGenerator(STORE_METADATA_FETCH_MODES);
-  }
-
   // Every test will print all stats if set to true. Should only be used locally
   private static boolean PRINT_STATS = false;
   private static final Logger LOGGER = LogManager.getLogger(BatchGetAvroStoreClientTest.class);

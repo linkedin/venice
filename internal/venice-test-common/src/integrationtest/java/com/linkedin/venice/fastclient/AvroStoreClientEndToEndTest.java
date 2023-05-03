@@ -1,7 +1,5 @@
 package com.linkedin.venice.fastclient;
 
-import static com.linkedin.venice.fastclient.utils.ClientTestUtils.FASTCLIENT_HTTP_VARIANTS;
-import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
 import static org.testng.Assert.assertTrue;
 import static org.testng.AssertJUnit.assertEquals;
 
@@ -15,7 +13,6 @@ import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
@@ -24,7 +21,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -40,11 +36,6 @@ import org.testng.annotations.Test;
  */
 
 public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
-  @DataProvider(name = "fastClientHTTPVariantsAndStoreSchemaFetchModes")
-  public static Object[][] httpVariantsAndStoreSchemaFetchModes() {
-    return DataProviderUtils.allPermutationGenerator(FASTCLIENT_HTTP_VARIANTS, STORE_METADATA_FETCH_MODES);
-  }
-
   protected void runTest(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       boolean batchGet,
@@ -227,7 +218,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "FastClient-Four-Boolean-And-A-Number", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Three-Boolean-Store-Metadata-Fetch-Mode-A-Number", timeOut = TIME_OUT)
   public void testFastClientGet(
       boolean multiGet,
       boolean dualRead,
@@ -347,7 +338,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "fastClientHTTPVariantsAndStoreSchemaFetchModes", timeOut = TIME_OUT)
+  @Test(dataProvider = "fastClientHTTPVariantsAndStoreMetadataFetchModes", timeOut = TIME_OUT)
   public void testFastClientGetWithDifferentHTTPVariants(
       ClientTestUtils.FastClientHTTPVariant fastClientHTTPVariant,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
@@ -364,7 +355,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
 
   // TODO This test fails for the first time and then succeeds when the entire fastclient
   // testsuite is run, but runs successfully when this test is run alone. Need to debug.
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "StoreMetadataFetchModes")
   public void testFastClientSingleGetLongTailRetry(StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)

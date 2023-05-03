@@ -6,6 +6,8 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.fastclient.utils.ClientTestUtils.FASTCLIENT_HTTP_VARIANTS;
+import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
@@ -114,13 +116,13 @@ public abstract class AbstractClientEndToEndSetup {
    */
   public final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
 
-  @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
+  @DataProvider(name = "FastClient-Three-Boolean-Store-Metadata-Fetch-Mode-A-Number")
   public Object[][] fourBooleanAndANumber() {
     return DataProviderUtils.allPermutationGenerator(
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
+        STORE_METADATA_FETCH_MODES,
         BATCH_GET_KEY_SIZE);
   }
 
@@ -131,6 +133,16 @@ public abstract class AbstractClientEndToEndSetup {
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
         BATCH_GET_KEY_SIZE);
+  }
+
+  @DataProvider(name = "fastClientHTTPVariantsAndStoreMetadataFetchModes")
+  public static Object[][] httpVariantsAndStoreMetadataFetchModes() {
+    return DataProviderUtils.allPermutationGenerator(FASTCLIENT_HTTP_VARIANTS, STORE_METADATA_FETCH_MODES);
+  }
+
+  @DataProvider(name = "StoreMetadataFetchModes")
+  public static Object[][] storeMetadataFetchModes() {
+    return DataProviderUtils.allPermutationGenerator(STORE_METADATA_FETCH_MODES);
   }
 
   @BeforeClass(alwaysRun = true)
