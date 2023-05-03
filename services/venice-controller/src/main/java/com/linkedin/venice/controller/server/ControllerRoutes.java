@@ -17,9 +17,11 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
+import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.Utils;
@@ -103,6 +105,29 @@ public class ControllerRoutes extends AbstractRoute {
       TopicManager topicManager = admin.getTopicManager();
       topicManager.updateTopicCompactionPolicy(topicName, kafkaTopicLogCompactionEnabled);
     });
+  }
+
+  /**
+   * No ACL check; any user is allowed to check topic configs.
+   */
+  public Route getKafkaTopicConfigs(Admin admin) {
+    return (request, response) -> {
+      PubSubTopicConfigResponse responseObject = new PubSubTopicConfigResponse();
+      response.type(HttpConstants.JSON);
+
+      try {
+        responseObject.setCluster("");
+        PubSubTopic topicName = pubSubTopicRepository.getTopic(request.queryParams(TOPIC));
+        TopicManager topicManager = admin.getTopicManager();
+        PubSubTopicConfiguration pubSubTopicConfiguration = topicManager.getTopicConfigWithRetry(topicName);
+        responseObject.setTopicConfigsResponse(pubSubTopicConfiguration.toString());
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
   }
 
   /**

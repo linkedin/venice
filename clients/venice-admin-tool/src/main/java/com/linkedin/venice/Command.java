@@ -390,6 +390,9 @@ public enum Command {
       "list-store-push-info", "List information about current pushes and push history for a specific store.",
       new Arg[] { URL, CLUSTER, STORE }, new Arg[] { PARTITION_DETAIL_ENABLED }
   ),
+  GET_KAFKA_TOPIC_CONFIGS(
+      "get-kafka-topic-configs", "Get configs of a topic through controllers", new Arg[] { URL, KAFKA_TOPIC_NAME }
+  ),
   UPDATE_KAFKA_TOPIC_LOG_COMPACTION(
       "update-kafka-topic-log-compaction", "Update log compaction config of a topic through controllers",
       new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_LOG_COMPACTION_ENABLED }, new Arg[] { CLUSTER }
