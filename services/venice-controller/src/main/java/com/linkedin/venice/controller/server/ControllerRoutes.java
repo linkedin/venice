@@ -119,7 +119,7 @@ public class ControllerRoutes extends AbstractRoute {
         responseObject.setCluster("");
         PubSubTopic topicName = pubSubTopicRepository.getTopic(request.queryParams(TOPIC));
         TopicManager topicManager = admin.getTopicManager();
-        PubSubTopicConfiguration pubSubTopicConfiguration = topicManager.getCachedTopicConfig(topicName);
+        PubSubTopicConfiguration pubSubTopicConfiguration = topicManager.getTopicConfigWithRetry(topicName);
         responseObject.setTopicConfigsResponse(pubSubTopicConfiguration.toString());
       } catch (Throwable e) {
         responseObject.setError(e);
