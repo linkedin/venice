@@ -1511,10 +1511,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
         subscribedCount++;
+
+        // Get the last persisted Offset record from metadata service
         OffsetRecord offsetRecord =
             storageMetadataService.getLastOffset(topicPartition.getPubSubTopic().getName(), partition);
 
-        // First let's try to restore the state retrieved from the OffsetManager
+        // Let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState =
             new PartitionConsumptionState(partition, amplificationFactor, offsetRecord, hybridStoreConfig.isPresent());
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
@@ -1529,7 +1531,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
 
         if (newPartitionConsumptionState.isShouldReset()) {
-          // clear and get the offset again
+          // remove the states set above
+          partitionConsumptionStateMap.remove(partition);
+          kafkaDataIntegrityValidator.clearPartition(partition);
+
+          // clear the offset data
           storageMetadataService.clearOffset(topicPartition.getPubSubTopic().getName(), partition);
           offsetRecord = storageMetadataService.getLastOffset(topicPartition.getPubSubTopic().getName(), partition);
 
