@@ -1519,6 +1519,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             new PartitionConsumptionState(partition, amplificationFactor, offsetRecord, hybridStoreConfig.isPresent());
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
+        partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
+        offsetRecord.getProducerPartitionStateMap().entrySet().forEach(entry -> {
+          GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
+          ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
+          producerTracker.setPartitionState(partition, entry.getValue());
+        });
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
 
@@ -1536,15 +1542,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               hybridStoreConfig.isPresent());
 
           // start again
+          partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
+          offsetRecord.getProducerPartitionStateMap().entrySet().forEach(entry -> {
+            GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
+            ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
+            producerTracker.setPartitionState(partition, entry.getValue());
+          });
           checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
         }
-
-        partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-        offsetRecord.getProducerPartitionStateMap().entrySet().forEach(entry -> {
-          GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
-          ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
-          producerTracker.setPartitionState(partition, entry.getValue());
-        });
 
         reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
         versionedIngestionStats.recordSubscribePrepLatency(
