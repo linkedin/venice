@@ -25,15 +25,17 @@ public class PubSubPositionFactory {
       throw new IllegalArgumentException("Cannot deserialize null wire format position");
     }
 
-    if (positionWireFormat.type == PubSubPositionType.APACHE_KAFKA_OFFSET) {
-      try {
-        return new ApacheKafkaOffsetPosition(positionWireFormat.rawBytes);
-      } catch (IOException e) {
-        throw new VeniceException("Failed to deserialize Apache Kafka offset position", e);
-      }
+    switch (positionWireFormat.type) {
+      case PubSubPositionType.APACHE_KAFKA_OFFSET:
+        try {
+          return new ApacheKafkaOffsetPosition(positionWireFormat.rawBytes);
+        } catch (IOException e) {
+          throw new VeniceException("Failed to deserialize Apache Kafka offset position", e);
+        }
+      default:
+        throw new IllegalArgumentException(
+            "Cannot convert to position. Unknown position type: " + positionWireFormat.type);
     }
-
-    throw new IllegalArgumentException("Cannot convert to position. Unknown position type: " + positionWireFormat.type);
   }
 
   PubSubPosition convertToPosition(byte[] positionWireFormatBytes) {
