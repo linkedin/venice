@@ -49,6 +49,19 @@ Please follow [Venice Workspace Setup](./dev_guide/workspace_setup.md) and
    submitting a pull request. Large features which have never been
    discussed are unlikely to be accepted.
 
+## Contributor Sync Meeting 
+
+Venice does Contributor sync meeting for the contributors to come togather in a virtual meeting.
+
+1. Meeting Frequency : Bi-weekly on Tuesday at 8 AM Pacific, 11 AM Eastern, 5 PM Central Europe
+2. Meeting Co-ordination : Please join the #contributor-sync channel in the 
+     [public Venice Slack](https://communityinviter.com/apps/venicedb/venice) 
+3. Meeting Length : One hour 
+4. Agenda : 
+   1. Discuss Venice Improvement Proposals.
+   2. Review and address concerns for any open pull requests.
+   3. Open discussion.
+
 ## Code of Conduct
 
 This project and everyone who participates in it is governed by the [Venice Code of Conduct](./CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior on [Slack](https://venicedb.slack.com/archives/C03SLQWRSLF).

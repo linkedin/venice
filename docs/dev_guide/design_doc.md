@@ -14,10 +14,10 @@ Venice Codebase.
 Not all the changes require a VIP treatment, Please use your commonsense to check if writing this VIP help yourself 
 and the reviewers time instead of just doing it in the pull request itself. Generally, this applies to
 * Large code refactors
-* New features
+* New functionality 
 * Public API changes
 
-In practical terms, the PIP defines a process in which developers can submit a design doc, 
+In practical terms, the VIP defines a process in which developers can submit a design doc, 
 receive feedback and get the "go ahead" to execute.
 
 ## Who can create a VIP?
@@ -49,21 +49,24 @@ The process works in the following way:
 
 1. The author(s) of the proposal will create a file named "VIP-xxx.md" in [proposal](../../docs/proposals) folder cloning 
     from the [template for VIP proposals](../../docs/proposals/VIP_TEMPLATE.md). The "xxx" number should be chosen to 
-    be the next number from the existing PIP issues, listed [here](../../docs/proposals/)
+    be the next number from the existing VIP issues, listed [here](../../docs/proposals/)
 2. The author(s) submit this file as a PR named "VIP-xxx: {short description}".
 3. People discuss using PR comments, each is its own threaded comment. 
-   General comments can be made as general comment in the PR.
+   General comments can be made as general comment in the PR. There are two ways for an interactive
+   discussion. 
+   1. Venice Community [Slack Channel](https://communityinviter.com/apps/venicedb/venice) 
+   2. Venice Contributor Sync Meeting, see details [here](../CONTRIBUTING.md) at Contributor Sync Meeting
 4. Comment was done? They resolve it. This way you see what the pending discussions are at a glance.
-5. PIP comments resolved or no more concerns? Awesome. A Venice maintainer will merge the PR. 
+5. VIP comments resolved or no more concerns? Awesome. A Venice maintainer will merge the PR. 
     Merge == Approved 
 6. Rejected ? Close the PR 
     Closed == Rejected. 
-7. All Pull Requests for this feature, should prefix this "VIP-XXX" number in the title for quick access. 
+7. All Pull Requests for this functionality, should prefix this "VIP-XXX" number in the title for quick access. 
 
 ## Acknowledgements
 
 This guide is inspired from the 
-[Apache Pulsar project proposal](https://github.com/apache/pulsar/blob/master/wiki/proposals/PIP.md) plan. 
+[Apache Pulsar project proposal](https://github.com/apache/pulsar/blob/master/wiki/proposals/VIP.md) plan. 
 
 
 

@@ -39,11 +39,11 @@ _Call out explicitly:_
 
 1. **What is in scope?**
 
-   _For example, this feature will only apply to batch-only stores._
+   _For example, this functionality will only apply to batch-only stores._
 
 2. **What is out of scope?**
 
-    _For example, this feature won’t apply to DaVinci Clients._
+    _For example, this functionality won’t apply to DaVinci Clients._
 
 ## Project Justification
 
@@ -65,7 +65,7 @@ we could think about what will happen if we don’t solve the problem, and we co
 
 ## Functional specification
 
-_If this is a development of a feature/product for users, specify what it should look like from the user's point of view.
+_If this is a development of a functionality/product for users, specify what it should look like from the user's point of view.
 It may include:_
 1. Public API.
 2. Expected public behavior.
@@ -87,7 +87,7 @@ _The following aspects of the design must be covered when applicable:_
 3. _Multi-region implications including Parent/Child Controller communication._
 4. _Alternative designs considered, and brief explanation of tradeoffs and decision versus the chosen design, 
 and important aspects to consider_:
-   1. Security/GDPR.
+   1. Security.
    2. Performance.
    3. Maintainability.
    4. Operability.
@@ -99,11 +99,11 @@ and important aspects to consider_:
    10. Leverageable.
    11. Align with the long-term vision.
 5. Preferred option by the designer/author.
-   1. _Conclusions/Decisions made in the design review sessions.nation on why it’s selected_
+   1. _Conclusions/Decisions made in the design review sessions. Explanation why it’s selected_
 
 ### Test Plan
 
-_Describe in few sentences how the feature will be tested.
+_Describe in few sentences how the functionality will be tested.
  How will we know that the implementation works as expected? How will we know nothing broke?_
 
 1. _What unit tests would be added to cover the critical logic?_
