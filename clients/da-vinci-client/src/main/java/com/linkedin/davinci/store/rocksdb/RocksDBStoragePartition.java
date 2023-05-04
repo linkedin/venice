@@ -3,6 +3,7 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
@@ -346,13 +347,14 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   @Override
   public synchronized void beginBatchWrite(
       Map<String, String> checkpointedInfo,
-      Optional<Supplier<byte[]>> expectedChecksumSupplier) {
+      Optional<Supplier<byte[]>> expectedChecksumSupplier,
+      PartitionConsumptionState partitionConsumptionState) {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
     }
-    rocksDBSstFileWritter.open(checkpointedInfo, expectedChecksumSupplier);
+    rocksDBSstFileWritter.open(checkpointedInfo, expectedChecksumSupplier, partitionConsumptionState);
   }
 
   @Override

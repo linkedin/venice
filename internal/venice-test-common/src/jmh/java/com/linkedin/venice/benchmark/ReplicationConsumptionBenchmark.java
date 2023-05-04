@@ -134,7 +134,7 @@ public class ReplicationConsumptionBenchmark {
       });
     }
     if (sorted) {
-      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
+      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier, null);
     }
 
     for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {

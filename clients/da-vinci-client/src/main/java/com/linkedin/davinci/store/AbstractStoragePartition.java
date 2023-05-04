@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import java.nio.ByteBuffer;
@@ -103,7 +104,10 @@ public abstract class AbstractStoragePartition {
    */
   public abstract boolean verifyConfig(StoragePartitionConfig storagePartitionConfig);
 
-  public void beginBatchWrite(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> checksumSupplier) {
+  public void beginBatchWrite(
+      Map<String, String> checkpointedInfo,
+      Optional<Supplier<byte[]>> checksumSupplier,
+      PartitionConsumptionState partitionConsumptionState) {
   }
 
   public void endBatchWrite() {

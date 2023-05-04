@@ -583,12 +583,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return checksum;
       });
     }
-    storageEngine.beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo, partitionChecksumSupplier);
+    storageEngine.beginBatchWrite(
+        storagePartitionConfig,
+        checkpointedDatabaseInfo,
+        partitionChecksumSupplier,
+        partitionConsumptionState);
     if (cacheBackend.isPresent()) {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
         cacheBackend.get()
             .getStorageEngine(kafkaVersionTopic)
-            .beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo, partitionChecksumSupplier);
+            .beginBatchWrite(
+                storagePartitionConfig,
+                checkpointedDatabaseInfo,
+                partitionChecksumSupplier,
+                partitionConsumptionState);
       }
     }
   }
@@ -1408,6 +1416,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         beginBatchWrite(partition, sorted, newPartitionConsumptionState);
 
+        if (newPartitionConsumptionState.isShouldReset()) {
+          return;
+        }
+
         newPartitionConsumptionState.setStartOfPushTimestamp(storeVersionState.startOfPushTimestamp);
         newPartitionConsumptionState.setEndOfPushTimestamp(storeVersionState.endOfPushTimestamp);
 
@@ -1507,6 +1519,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             new PartitionConsumptionState(partition, amplificationFactor, offsetRecord, hybridStoreConfig.isPresent());
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
+        long consumptionStatePrepTimeStart = System.currentTimeMillis();
+        checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
+
+        // newPartitionConsumptionState.setShouldReset(true);
+        if (newPartitionConsumptionState.isShouldReset()) {
+          // clear and get the offset again
+          storageMetadataService.clearOffset(topicPartition.getPubSubTopic().getName(), partition);
+          offsetRecord = storageMetadataService.getLastOffset(topicPartition.getPubSubTopic().getName(), partition);
+
+          // get new PartitionConsumptionState based on the cleared offset
+          newPartitionConsumptionState = new PartitionConsumptionState(
+              partition,
+              amplificationFactor,
+              offsetRecord,
+              hybridStoreConfig.isPresent());
+
+          // start again
+          checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
+        }
+
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
         offsetRecord.getProducerPartitionStateMap().entrySet().forEach(entry -> {
           GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
@@ -1514,8 +1546,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           producerTracker.setPartitionState(partition, entry.getValue());
         });
 
-        long consumptionStatePrepTimeStart = System.currentTimeMillis();
-        checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
         reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
         versionedIngestionStats.recordSubscribePrepLatency(
             storeName,

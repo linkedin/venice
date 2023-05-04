@@ -97,8 +97,10 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   public void beginBatchWrite(
       StoragePartitionConfig storagePartitionConfig,
       Map<String, String> checkpointedInfo,
-      Optional<Supplier<byte[]>> checksumSupplier) {
-    this.delegate.beginBatchWrite(storagePartitionConfig, checkpointedInfo, checksumSupplier);
+      Optional<Supplier<byte[]>> checksumSupplier,
+      PartitionConsumptionState partitionConsumptionState) {
+    this.delegate
+        .beginBatchWrite(storagePartitionConfig, checkpointedInfo, checksumSupplier, partitionConsumptionState);
   }
 
   @Override

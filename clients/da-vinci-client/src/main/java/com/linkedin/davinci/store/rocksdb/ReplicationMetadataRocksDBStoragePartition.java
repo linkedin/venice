@@ -1,5 +1,9 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.DEFAULT_COLUMN_FAMILY_INDEX;
+import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.REPLICATION_METADATA_COLUMN_FAMILY_INDEX;
+
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -29,9 +33,6 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   // The value still uses "timestamp" for backward compatibility
   private RocksDBSstFileWriter rocksDBSstFileWriter = null;
   private final String fullPathForTempSSTFileDir;
-
-  private static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
-  private static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
 
   public ReplicationMetadataRocksDBStoragePartition(
       StoragePartitionConfig storagePartitionConfig,
@@ -180,13 +181,14 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   @Override
   public synchronized void beginBatchWrite(
       Map<String, String> checkpointedInfo,
-      Optional<Supplier<byte[]>> expectedChecksumSupplier) {
+      Optional<Supplier<byte[]>> expectedChecksumSupplier,
+      PartitionConsumptionState partitionConsumptionState) {
     if (!deferredWrite) {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
     }
-    super.beginBatchWrite(checkpointedInfo, expectedChecksumSupplier);
-    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier);
+    super.beginBatchWrite(checkpointedInfo, expectedChecksumSupplier, partitionConsumptionState);
+    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier, partitionConsumptionState);
   }
 
   @Override

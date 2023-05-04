@@ -3,6 +3,7 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.extractTempSSTFileNo;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.isTempSSTFile;
 
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -24,6 +25,7 @@ import org.apache.logging.log4j.Logger;
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.IngestExternalFileOptions;
+import org.rocksdb.LiveFileMetaData;
 import org.rocksdb.Options;
 import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
@@ -64,6 +66,7 @@ public class RocksDBSstFileWriter {
    */
   protected static final String ROCKSDB_LAST_FINISHED_SST_FILE_NO = "rocksdb_last_finished_sst_file_no";
   protected static final String ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO = "rocksdb_last_finished_rmd_sst_file_no";
+  protected static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
   protected static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
   private int lastFinishedSSTFileNo = -1;
   /**
@@ -130,7 +133,10 @@ public class RocksDBSstFileWriter {
     ++recordNumInCurrentSSTFile;
   }
 
-  public void open(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> expectedChecksumSupplier) {
+  public void open(
+      Map<String, String> checkpointedInfo,
+      Optional<Supplier<byte[]>> expectedChecksumSupplier,
+      PartitionConsumptionState partitionConsumptionState) {
     LOGGER.info(
         "'beginBatchWrite' got invoked for RocksDB store: {}, partition: {} with checkpointed info: {} ",
         storeName,
@@ -141,6 +147,7 @@ public class RocksDBSstFileWriter {
     if (!tempSSTFileDir.exists()) {
       tempSSTFileDir.mkdirs();
     }
+
     if (!checkpointedInfo.containsKey(lastCheckPointedSSTFileNum)) {
       LOGGER.info(
           "No checkpointed info for store: {}, partition id: {} so RocksDB will start building sst file from beginning",
@@ -148,6 +155,8 @@ public class RocksDBSstFileWriter {
           partitionId);
       lastFinishedSSTFileNo = -1;
       currentSSTFileNo = 0;
+      // remove all the temp sst files if found any
+      removeSSTFilesAfterCheckpointing(-1);
     } else {
       lastFinishedSSTFileNo = Integer.parseInt(checkpointedInfo.get(lastCheckPointedSSTFileNum));
       LOGGER.info(
@@ -158,10 +167,20 @@ public class RocksDBSstFileWriter {
       if (lastFinishedSSTFileNo < 0) {
         throw new VeniceException("Last finished sst file no: " + lastFinishedSSTFileNo + " shouldn't be negative");
       }
-      makeSureAllPreviousSSTFilesBeforeCheckpointingExist();
-      removeSSTFilesAfterCheckpointing();
-      currentSSTFileNo = lastFinishedSSTFileNo + 1;
+      if (doesAllPreviousSSTFilesBeforeCheckpointingExist()) {
+        // remove the unwanted sst files, as flow will continue from the checkpointed info
+        removeSSTFilesAfterCheckpointing(this.lastFinishedSSTFileNo);
+        currentSSTFileNo = lastFinishedSSTFileNo + 1;
+      } else {
+        // remove all the temp sst files if found any as we will start fresh
+        removeSSTFilesAfterCheckpointing(-1);
+        if (partitionConsumptionState != null) {
+          partitionConsumptionState.setShouldReset(true);
+        }
+        return;
+      }
     }
+
     String fullPathForCurrentSSTFile = composeFullPathForSSTFile(currentSSTFileNo);
     currentSSTFileWriter = new SstFileWriter(envOptions, options);
     try {
@@ -231,7 +250,7 @@ public class RocksDBSstFileWriter {
     return checkpointingInfo;
   }
 
-  private void removeSSTFilesAfterCheckpointing() {
+  private void removeSSTFilesAfterCheckpointing(int lastFinishedSSTFileNo) {
     File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
     String[] sstFiles = tempSSTFileDir.list((File dir, String name) -> RocksDBUtils.isTempSSTFile(name));
     if (sstFiles == null) {
@@ -250,19 +269,39 @@ public class RocksDBSstFileWriter {
     }
   }
 
-  private void makeSureAllPreviousSSTFilesBeforeCheckpointingExist() {
+  private boolean doesAllPreviousSSTFilesBeforeCheckpointingExist() {
     if (lastFinishedSSTFileNo < 0) {
       LOGGER.info("Since last finished sst file no is negative, there is nothing to verify");
-      return;
+      return true;
     }
-    for (int cur = 0; cur <= lastFinishedSSTFileNo; ++cur) {
-      String sstFilePath = composeFullPathForSSTFile(cur);
+    int currFileNo = 0;
+    for (; currFileNo <= lastFinishedSSTFileNo; ++currFileNo) {
+      String sstFilePath = composeFullPathForSSTFile(currFileNo);
       File sstFile = new File(sstFilePath);
       if (!sstFile.exists()) {
-        throw new VeniceException(
-            "SST File: " + sstFilePath + " doesn't exist, but last finished sst file no is: " + lastFinishedSSTFileNo);
+        break;
       }
     }
+
+    if (currFileNo > lastFinishedSSTFileNo) {
+      LOGGER.info("Number of SST files matches with the checkpoint, continuing");
+      return true;
+    }
+
+    /**
+     * There is a mismatch in the number of created SST files vs the checkpointed
+     * number of SST files: This means that the ingestion started but the storage node
+     * crashed before OffsetRecord with EOP as true being synced.
+     *
+     * This can mean one of the below things:
+     * 1. Crash after ingestion completion: Number of files is 0 in that case
+     * 2. Crash during the ingestion: The current idea of the state of the system
+     *    with this situation is undefined. Some files can be moved to the DB while
+     *    some might not, and some might linger on both the locations depends on how
+     *    RocksDB restores itself after coming up. But we are taking a safer approach
+     *    and starting from scratch.
+     */
+    return false;
   }
 
   private String composeFullPathForSSTFile(int sstFileNo) {
@@ -352,6 +391,23 @@ public class RocksDBSstFileWriter {
     return true;
   }
 
+  /**
+   * If there are files already ingested in DB and we get here, then it means that the ingestion started but faced issues
+   * before completion or the SN crashed before the status of EOP was synced to OffsetRecord. In both these cases,
+   * let's delete these files from the database and start a fresh ingestion as the new files will hold the complete data anyway.
+   */
+  private void deleteOldIngestion(RocksDB rocksDB, ColumnFamilyHandle columnFamilyHandle) throws RocksDBException {
+    List<LiveFileMetaData> oldIngestedSSTFiles = rocksDB.getLiveFilesMetaData();
+    if (oldIngestedSSTFiles.size() != 0) {
+      for (LiveFileMetaData file: oldIngestedSSTFiles) {
+        if (Arrays.equals(file.columnFamilyName(), columnFamilyHandle.getName())) {
+          LOGGER.info("Deleting ingested sst file {} in rocksDB", file.fileName());
+          rocksDB.deleteFile(file.fileName());
+        }
+      }
+    }
+  }
+
   public void ingestSSTFiles(RocksDB rocksDB, List<ColumnFamilyHandle> columnFamilyHandleList) {
     List<String> sstFilePaths = getTemporarySSTFilePaths();
     if (sstFilePaths.isEmpty()) {
@@ -365,14 +421,14 @@ public class RocksDBSstFileWriter {
         "Start ingesting to store: " + storeName + ", partition id: " + partitionId + " from files: " + sstFilePaths);
     try (IngestExternalFileOptions ingestOptions = new IngestExternalFileOptions()) {
       ingestOptions.setMoveFiles(true);
-      if (isRMD) {
-        rocksDB.ingestExternalFile(
-            columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
-            sstFilePaths,
-            ingestOptions);
-      } else {
-        rocksDB.ingestExternalFile(sstFilePaths, ingestOptions);
-      }
+      final ColumnFamilyHandle columnFamilyHandle = isRMD
+          ? columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX)
+          : columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX);
+
+      deleteOldIngestion(rocksDB, columnFamilyHandle);
+
+      rocksDB.ingestExternalFile(columnFamilyHandle, sstFilePaths, ingestOptions);
+
       LOGGER.info(
           "Finished ingestion to store: " + storeName + ", partition id: " + partitionId + " from files: "
               + sstFilePaths);
