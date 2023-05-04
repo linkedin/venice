@@ -12,6 +12,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
+import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -154,6 +155,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private boolean isStarted = false;
 
   private Optional<String> discoveryUrl = Optional.empty();
+  private Optional<String> routerUrl = Optional.empty();
 
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
@@ -318,6 +320,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.time = time;
   }
 
+  public void setRouterUrl(String routerUrl) {
+    this.routerUrl = Optional.of(routerUrl);
+  }
+
   public String getRunningFabric() {
     return this.runningFabric;
   }
@@ -418,31 +424,27 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
        * version in the code base is registered in Venice backend; if not, fail fast in start phase before start writing
        * Kafka messages that Venice backend couldn't deserialize.
        */
-      /* TODO: find a way to discover router url
-      if (verifyLatestProtocolPresent) {
+      if (verifyLatestProtocolPresent && routerUrl.isPresent()) {
         LOGGER.info("Start verifying the latest protocols at runtime are valid in Venice backend.");
-        // Discover the D2 service name for the system store
-        // does not return anything useful in case of discoveryUrl
-        // e.g. cannot get venice router url
-      
-        //D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-        //        () -> ControllerClient.discoverCluster(discoveryUrl.get(), storeName, sslFactory, 1),
-        //        2);
-      
         String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
         ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
-                ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
-        clientConfigForKafkaMessageEnvelopeSchemaReader.setVeniceURL("http://venice-router:7777");
-      
-        SchemaReader kafkaMessageEnvelopeSchemaReader =
-                ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader, null);
-        new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
-                .verifySchemaVersionPresentOrExit();
-        LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
-      }
-       */
+            ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
+        clientConfigForKafkaMessageEnvelopeSchemaReader.setVeniceURL(routerUrl.get());
 
-      transportClient = new HttpTransportClient(discoveryUrl.get());
+        SchemaReader kafkaMessageEnvelopeSchemaReader =
+            ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader, null);
+        new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
+            .verifySchemaVersionPresentOrExit();
+        LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
+      } else {
+        LOGGER.info("Skip verifying the latest protocols at runtime are valid in Venice backend.");
+      }
+
+      if (sslFactory.isPresent()) {
+        transportClient = new HttpsTransportClient(discoveryUrl.get(), sslFactory.get());
+      } else {
+        transportClient = new HttpTransportClient(discoveryUrl.get());
+      }
     } else {
       this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);
       this.childColoD2Client = getStartedD2Client(veniceChildD2ZkHost);

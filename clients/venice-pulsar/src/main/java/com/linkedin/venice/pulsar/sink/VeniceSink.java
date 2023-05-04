@@ -7,6 +7,7 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CONTROLLER_DISCOVERY_URL;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_ROUTER_URL;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 
 import com.linkedin.venice.meta.Version;
@@ -251,6 +252,7 @@ public class VeniceSink implements Sink<GenericObject> {
     config.put(configPrefix + VENICE_AGGREGATE, "false");
     config.put("venice.discover.urls", this.config.getVeniceDiscoveryUrl());
     config.put(VENICE_CONTROLLER_DISCOVERY_URL, this.config.getVeniceDiscoveryUrl());
+    config.put(VENICE_ROUTER_URL, this.config.getVeniceRouterUrl());
     config.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id-pulsar-sink"));
     config.put(SSL_ENABLED, "false");
     if (this.config.getKafkaSaslConfig() != null && !this.config.getKafkaSaslConfig().isEmpty()) {

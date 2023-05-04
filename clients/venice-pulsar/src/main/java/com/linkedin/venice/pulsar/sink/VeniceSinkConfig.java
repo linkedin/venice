@@ -37,7 +37,10 @@ public class VeniceSinkConfig implements Serializable {
   private static final long serialVersionUID = 1L;
 
   @FieldDoc(defaultValue = "", help = "The url of the Venice controller")
-  private String veniceDiscoveryUrl = "http://venice-controller:7777";
+  private String veniceDiscoveryUrl = "http://venice-controller:5555";
+
+  @FieldDoc(defaultValue = "", help = "The url of the Venice router")
+  private String veniceRouterUrl = "http://venice-router:7777";
 
   @FieldDoc(defaultValue = "", help = "SASL configuration for Kafka. See Kafka client documentation for details.")
   private String kafkaSaslConfig = "";
@@ -70,6 +73,11 @@ public class VeniceSinkConfig implements Serializable {
   @java.lang.SuppressWarnings("all")
   public String getVeniceDiscoveryUrl() {
     return this.veniceDiscoveryUrl;
+  }
+
+  @java.lang.SuppressWarnings("all")
+  public String getVeniceRouterUrl() {
+    return this.veniceRouterUrl;
   }
 
   @java.lang.SuppressWarnings("all")
@@ -108,6 +116,15 @@ public class VeniceSinkConfig implements Serializable {
   @java.lang.SuppressWarnings("all")
   public VeniceSinkConfig setVeniceDiscoveryUrl(final String veniceDiscoveryUrl) {
     this.veniceDiscoveryUrl = veniceDiscoveryUrl;
+    return this;
+  }
+
+  /**
+   * @return {@code this}.
+   */
+  @java.lang.SuppressWarnings("all")
+  public VeniceSinkConfig setVeniceRouterUrl(final String veniceRouterUrl) {
+    this.veniceRouterUrl = veniceRouterUrl;
     return this;
   }
 
@@ -185,6 +202,12 @@ public class VeniceSinkConfig implements Serializable {
         ? other$veniceDiscoveryUrl != null
         : !this$veniceDiscoveryUrl.equals(other$veniceDiscoveryUrl))
       return false;
+    final java.lang.Object this$veniceRouterUrl = this.getVeniceRouterUrl();
+    final java.lang.Object other$veniceRouterUrl = other.getVeniceRouterUrl();
+    if (this$veniceRouterUrl == null
+        ? other$veniceRouterUrl != null
+        : !this$veniceRouterUrl.equals(other$veniceRouterUrl))
+      return false;
     final java.lang.Object this$kafkaSaslConfig = this.getKafkaSaslConfig();
     final java.lang.Object other$kafkaSaslConfig = other.getKafkaSaslConfig();
     if (this$kafkaSaslConfig == null
@@ -225,6 +248,8 @@ public class VeniceSinkConfig implements Serializable {
     result = result * PRIME + this.getMaxNumberUnflushedRecords();
     final java.lang.Object $veniceDiscoveryUrl = this.getVeniceDiscoveryUrl();
     result = result * PRIME + ($veniceDiscoveryUrl == null ? 43 : $veniceDiscoveryUrl.hashCode());
+    final java.lang.Object $veniceRouterUrl = this.getVeniceRouterUrl();
+    result = result * PRIME + ($veniceRouterUrl == null ? 43 : $veniceRouterUrl.hashCode());
     final java.lang.Object $kafkaSaslConfig = this.getKafkaSaslConfig();
     result = result * PRIME + ($kafkaSaslConfig == null ? 43 : $kafkaSaslConfig.hashCode());
     final java.lang.Object $kafkaSaslMechanism = this.getKafkaSaslMechanism();
@@ -239,10 +264,10 @@ public class VeniceSinkConfig implements Serializable {
   @java.lang.Override
   @java.lang.SuppressWarnings("all")
   public java.lang.String toString() {
-    return "VeniceSinkConfig(veniceDiscoveryUrl=" + this.getVeniceDiscoveryUrl() + ", kafkaSaslConfig="
-        + this.getKafkaSaslConfig() + ", kafkaSaslMechanism=" + this.getKafkaSaslMechanism()
-        + ", kafkaSecurityProtocol=" + this.getKafkaSecurityProtocol() + ", storeName=" + this.getStoreName()
-        + ", flushIntervalMs=" + this.getFlushIntervalMs() + ", maxNumberUnflushedRecords="
+    return "VeniceSinkConfig(veniceDiscoveryUrl=" + this.getVeniceDiscoveryUrl() + ", veniceRouterUrl="
+        + this.getVeniceRouterUrl() + ", kafkaSaslConfig=" + this.getKafkaSaslConfig() + ", kafkaSaslMechanism="
+        + this.getKafkaSaslMechanism() + ", kafkaSecurityProtocol=" + this.getKafkaSecurityProtocol() + ", storeName="
+        + this.getStoreName() + ", flushIntervalMs=" + this.getFlushIntervalMs() + ", maxNumberUnflushedRecords="
         + this.getMaxNumberUnflushedRecords() + ")";
   }
 

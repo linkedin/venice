@@ -88,6 +88,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public static final String VENICE_CHILD_D2_ZK_HOSTS = "venice.child.d2.zk.hosts";
 
   public static final String VENICE_CONTROLLER_DISCOVERY_URL = "venice.controller.discovery.url";
+  public static final String VENICE_ROUTER_URL = "venice.router.url";
 
   /**
    * D2 ZK hosts for Venice Parent Cluster.
@@ -351,13 +352,16 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
     if (discoveryUrl.isPresent()) {
 
+      String routerUrl = config.get(VENICE_ROUTER_URL);
+
       LOGGER.info("Configs for {} producer: ", systemName);
       LOGGER.info("{}{}: {}", prefix, VENICE_STORE, storeName);
       LOGGER.info("{}{}: {}", prefix, VENICE_AGGREGATE, veniceAggregate);
       LOGGER.info("{}{}: {}", prefix, VENICE_PUSH_TYPE, venicePushType);
       LOGGER.info("{}: {}", VENICE_CONTROLLER_DISCOVERY_URL, discoveryUrl.get());
+      LOGGER.info("{}: {}", VENICE_ROUTER_URL, routerUrl);
 
-      return new VeniceSystemProducer(
+      VeniceSystemProducer p = new VeniceSystemProducer(
           discoveryUrl.get(),
           storeName,
           venicePushType,
@@ -368,6 +372,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
           sslFactory,
           partitioners,
           SystemTime.INSTANCE);
+      p.setRouterUrl(routerUrl);
+      return p;
     }
 
     String veniceParentZKHosts = config.get(VENICE_PARENT_D2_ZK_HOSTS);
