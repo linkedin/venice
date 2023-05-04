@@ -1,7 +1,14 @@
 package com.linkedin.venice.fastclient.utils;
 
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.fastclient.utils.ClientTestUtils.FASTCLIENT_HTTP_VARIANTS;
+import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
+import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
@@ -10,6 +17,9 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.AssertJUnit.assertNotNull;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -19,6 +29,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
+import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -33,10 +44,12 @@ import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
@@ -68,6 +81,12 @@ public abstract class AbstractClientEndToEndSetup {
   private VeniceWriter<Object, Object, Object> veniceWriter;
   protected Client r2Client;
   protected D2Client d2Client;
+
+  // da-vinci client for the da-vinci client based metadata
+  private VeniceProperties daVinciBackendConfig;
+  CachingDaVinciClientFactory daVinciClientFactory = null;
+  protected DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = null;
+
   // thin client for the thin client based metadata
   protected AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore = null;
 
@@ -97,13 +116,13 @@ public abstract class AbstractClientEndToEndSetup {
    */
   public final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
 
-  @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
+  @DataProvider(name = "FastClient-Three-Boolean-Store-Metadata-Fetch-Mode-A-Number")
   public Object[][] fourBooleanAndANumber() {
     return DataProviderUtils.allPermutationGenerator(
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
+        STORE_METADATA_FETCH_MODES,
         BATCH_GET_KEY_SIZE);
   }
 
@@ -114,6 +133,16 @@ public abstract class AbstractClientEndToEndSetup {
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
         BATCH_GET_KEY_SIZE);
+  }
+
+  @DataProvider(name = "fastClientHTTPVariantsAndStoreMetadataFetchModes")
+  public static Object[][] httpVariantsAndStoreMetadataFetchModes() {
+    return DataProviderUtils.allPermutationGenerator(FASTCLIENT_HTTP_VARIANTS, STORE_METADATA_FETCH_MODES);
+  }
+
+  @DataProvider(name = "StoreMetadataFetchModes")
+  public static Object[][] storeMetadataFetchModes() {
+    return DataProviderUtils.allPermutationGenerator(STORE_METADATA_FETCH_MODES);
   }
 
   @BeforeClass(alwaysRun = true)
@@ -195,6 +224,12 @@ public abstract class AbstractClientEndToEndSetup {
           TimeUnit.SECONDS);
     });
 
+    daVinciBackendConfig = new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
+        .build();
+
     // Verify meta system store received the snapshot writes.
     try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> metaClient =
         com.linkedin.venice.client.store.ClientFactory.getAndStartSpecificAvroClient(
@@ -241,9 +276,9 @@ public abstract class AbstractClientEndToEndSetup {
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
       Optional<AvroGenericStoreClient> vsonThinClient,
-      boolean useRequestBasedMetadata) throws IOException {
+      StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
     clientConfigBuilder.setVsonStore(true);
-    setupStoreMetadata(clientConfigBuilder, useRequestBasedMetadata);
+    setupStoreMetadata(clientConfigBuilder, storeMetadataFetchMode);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -262,8 +297,8 @@ public abstract class AbstractClientEndToEndSetup {
   protected AvroGenericStoreClient<String, GenericRecord> getGenericFastClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
-      boolean useRequestBasedMetadata) throws IOException {
-    setupStoreMetadata(clientConfigBuilder, useRequestBasedMetadata);
+      StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, storeMetadataFetchMode);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -278,8 +313,8 @@ public abstract class AbstractClientEndToEndSetup {
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
       Class specificValueClass,
-      boolean useRequestBasedMetadata) throws IOException {
-    setupStoreMetadata(clientConfigBuilder, useRequestBasedMetadata);
+      StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, storeMetadataFetchMode);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -293,15 +328,21 @@ public abstract class AbstractClientEndToEndSetup {
 
   protected void setupStoreMetadata(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      boolean useRequestBasedMetadata) throws IOException {
-    if (useRequestBasedMetadata) {
-      clientConfigBuilder.setRequestBasedMetadata(true);
-      clientConfigBuilder.setD2Client(d2Client);
-      clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
-      clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
-    } else {
-      setupThinClientBasedStoreMetadata();
-      clientConfigBuilder.setThinClientForMetaStore(thinClientForMetaStore);
+      StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
+    clientConfigBuilder.setStoreMetadataFetchMode(storeMetadataFetchMode);
+    switch (storeMetadataFetchMode) {
+      case SERVER_BASED_METADATA:
+        clientConfigBuilder.setD2Client(d2Client);
+        clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+        clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+        break;
+      case THIN_CLIENT_BASED_METADATA:
+        setupThinClientBasedStoreMetadata();
+        clientConfigBuilder.setThinClientForMetaStore(thinClientForMetaStore);
+        break;
+      case DA_VINCI_CLIENT_BASED_METADATA:
+        setupDaVinciClientForMetaStore();
+        clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
     }
   }
 
@@ -314,6 +355,38 @@ public abstract class AbstractClientEndToEndSetup {
                   StoreMetaValue.class)
               .setVeniceURL(veniceCluster.getRandomRouterURL())
               .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+    }
+  }
+
+  private void setupDaVinciClientForMetaStore() {
+    cleanupDaVinciClientForMetaStore();
+    daVinciClientFactory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        daVinciBackendConfig);
+    daVinciClientForMetaStore = daVinciClientFactory.getAndStartSpecificAvroClient(
+        VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
+        new DaVinciConfig(),
+        StoreMetaValue.class);
+  }
+
+  // Helper for runTest()
+  /**
+   * Note that both daVinciClientBasedStoreMetadata and routerBasedStoreMetaData
+   * will be closed when the respective client closes. The below function
+   * needs to clean up the daVinciClient and its client factory alone.
+   *
+   * TODO: Explore to see if we can reuse these for all the tests rather than cleaning it up everytime.
+   * */
+  protected void cleanupDaVinciClientForMetaStore() {
+    if (daVinciClientForMetaStore != null) {
+      daVinciClientForMetaStore.close();
+      daVinciClientForMetaStore = null;
+    }
+    if (daVinciClientFactory != null) {
+      daVinciClientFactory.close();
+      daVinciClientFactory = null;
     }
   }
 

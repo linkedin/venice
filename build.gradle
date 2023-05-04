@@ -630,6 +630,7 @@ ext.createDiffFile = { ->
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceController.java',
         ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',
         ':!services/venice-standalone/*', // exclude the entire standalone project
+        ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
 
         // Other files that have tests but are not executed in the regular unit test task
         ':!internal/alpini/*'

@@ -6,13 +6,12 @@ import com.linkedin.r2.transport.common.bridge.client.TransportClientAdapter;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.transport.HttpClient5BasedR2Client;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.HashMap;
 import java.util.Map;
-import org.testng.annotations.DataProvider;
 
 
 public class ClientTestUtils {
@@ -23,10 +22,8 @@ public class ClientTestUtils {
   public static final Object[] FASTCLIENT_HTTP_VARIANTS = { FastClientHTTPVariant.HTTP_1_1_BASED_R2_CLIENT,
       FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT, FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5 };
 
-  @DataProvider(name = "fastClientHTTPVariantsAndBoolean")
-  public static Object[][] httpVersionsAndBoolean() {
-    return DataProviderUtils.allPermutationGenerator(FASTCLIENT_HTTP_VARIANTS, DataProviderUtils.BOOLEAN);
-  }
+  public static final Object[] STORE_METADATA_FETCH_MODES = { StoreMetadataFetchMode.THIN_CLIENT_BASED_METADATA,
+      StoreMetadataFetchMode.SERVER_BASED_METADATA, StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA };
 
   private static Client setupTransportClientFactory(FastClientHTTPVariant fastClientHTTPVariant) {
     /**
