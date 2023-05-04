@@ -629,8 +629,6 @@ public class AdminTool {
     cmdParams.setCommand(recoveryCommand);
     cmdParams.setSourceFabric(sourceFabric);
     cmdParams.setTimestamp(timestamp);
-    cmdParams.setParentUrl(url);
-    cmdParams.setSslFactory(sslFactory);
     if (extraCommandArgs != null) {
       cmdParams.setExtraCommandArgs(extraCommandArgs);
     }

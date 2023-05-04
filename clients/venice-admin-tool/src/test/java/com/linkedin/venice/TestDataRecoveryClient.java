@@ -138,7 +138,6 @@ public class TestDataRecoveryClient {
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
     cmdParams.setCommand("cmd");
     cmdParams.setExtraCommandArgs("args");
-    cmdParams.setParentUrl("http://localhost:7036/");
     cmdParams.setPCtrlCliWithoutCluster(controllerClient);
 
     D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
@@ -161,7 +160,6 @@ public class TestDataRecoveryClient {
     StoreRepushCommand mockStoreRepushCmd = spy(StoreRepushCommand.class);
     mockStoreRepushCmd.setParams(cmdParams);
     doReturn(mockCmd).when(mockStoreRepushCmd).getShellCmd();
-    doReturn(controllerClient).when(mockStoreRepushCmd).buildControllerClient(any(), any(), any());
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));
