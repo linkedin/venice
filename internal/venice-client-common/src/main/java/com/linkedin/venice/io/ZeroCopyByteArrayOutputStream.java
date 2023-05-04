@@ -15,6 +15,6 @@ public class ZeroCopyByteArrayOutputStream extends ByteArrayOutputStream {
   }
 
   public synchronized ByteBuffer toByteBuffer() {
-    return ByteBuffer.wrap(buf, 0, count);
+    return ByteBuffer.wrap(buf, 0, size());
   }
 }
