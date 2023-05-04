@@ -1,25 +1,38 @@
 package com.linkedin.venice.pubsub.adapter.kafka;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubPositionType;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Objects;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.BinaryEncoder;
 
 
 /**
  * Offset position for Apache Kafka topics
  */
 public class ApacheKafkaOffsetPosition implements PubSubPosition {
+  private static final ThreadLocal<BinaryDecoder> DECODER = new ThreadLocal<>();
+  private static final ThreadLocal<BinaryEncoder> ENCODER = new ThreadLocal<>();
+
   private final long offset;
 
   public ApacheKafkaOffsetPosition(long offset) {
     this.offset = offset;
   }
 
-  public ApacheKafkaOffsetPosition(ByteBuffer buffer) {
-    // read the first 8 bytes as a long
-    this(Objects.requireNonNull(buffer, "Cannot create ApacheKafkaOffsetPosition with null").getLong(0));
+  /**
+   * @param buffer the buffer to read from. The ByteBuffer expected to contain avro serialized long
+   * @throws IOException  if the buffer is not a valid avro serialized long
+   */
+  public ApacheKafkaOffsetPosition(ByteBuffer buffer) throws IOException {
+    this(
+        AvroCompatibilityHelper.newBinaryDecoder(buffer.array(), buffer.position(), buffer.remaining(), DECODER.get())
+            .readLong());
   }
 
   /**
@@ -98,8 +111,14 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
   public PubSubPositionWireFormat getPositionWireFormat() {
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.type = PubSubPositionType.APACHE_KAFKA_OFFSET;
-    wireFormat.rawBytes = (ByteBuffer) ByteBuffer.allocate(Long.BYTES).putLong(offset).flip(); // flip to avoid buffer
-                                                                                               // underflow
+    // write the offset as avro serialized long
+    try {
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      AvroCompatibilityHelper.newBinaryEncoder(baos, false, ENCODER.get()).writeLong(offset);
+      wireFormat.rawBytes = ByteBuffer.wrap(baos.toByteArray());
+    } catch (IOException e) {
+      throw new VeniceException("Failed to serialize ApacheKafkaOffsetPosition", e);
+    }
     return wireFormat;
   }
 }

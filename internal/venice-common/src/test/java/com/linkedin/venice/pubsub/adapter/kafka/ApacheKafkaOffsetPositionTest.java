@@ -9,7 +9,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.pubsub.PubSubPositionType;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
-import java.nio.ByteBuffer;
+import java.io.IOException;
 import org.testng.annotations.Test;
 
 
@@ -96,27 +96,27 @@ public class ApacheKafkaOffsetPositionTest {
   }
 
   @Test
-  public void testGetOffset() {
+  public void testGetOffset() throws IOException {
     ApacheKafkaOffsetPosition position1 = new ApacheKafkaOffsetPosition(1234);
     assertEquals(position1.getOffset(), 1234);
-
-    ApacheKafkaOffsetPosition position2 = new ApacheKafkaOffsetPosition(ByteBuffer.allocate(8).putLong(1234L));
-    assertEquals(position2.getOffset(), 1234);
-
+    PubSubPositionWireFormat wireFormat = position1.getPositionWireFormat();
+    ApacheKafkaOffsetPosition position2 = new ApacheKafkaOffsetPosition(wireFormat.rawBytes);
+    assertEquals(position2.getOffset(), position1.getOffset());
     assertEquals(position1, position2);
   }
 
-  @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "Cannot create ApacheKafkaOffsetPosition with null")
-  public void testGetOffsetWithNull() {
+  @Test(expectedExceptions = NullPointerException.class)
+  public void testGetOffsetWithNull() throws IOException {
     new ApacheKafkaOffsetPosition(null);
   }
 
   @Test
-  public void testGetPositionWireFormat() {
-    ApacheKafkaOffsetPosition kafkaPosition = new ApacheKafkaOffsetPosition(1234);
+  public void testGetPositionWireFormat() throws IOException {
+    ApacheKafkaOffsetPosition kafkaPosition = new ApacheKafkaOffsetPosition(Long.MAX_VALUE);
     PubSubPositionWireFormat wireFormat = kafkaPosition.getPositionWireFormat();
-
     assertEquals(wireFormat.type, PubSubPositionType.APACHE_KAFKA_OFFSET);
-    assertEquals(new ApacheKafkaOffsetPosition(wireFormat.rawBytes), kafkaPosition);
+    ApacheKafkaOffsetPosition kafkaPosition2 = new ApacheKafkaOffsetPosition(wireFormat.rawBytes);
+    assertEquals(kafkaPosition2.getOffset(), kafkaPosition.getOffset());
+    assertEquals(kafkaPosition2, kafkaPosition);
   }
 }
