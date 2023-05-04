@@ -118,6 +118,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private ObjectCacheBackend cacheBackend;
   private static final Map<CharSequence, Schema> computeResultSchemaCache = new VeniceConcurrentHashMap<>();
 
+  private final AbstractAvroChunkingAdapter<V> chunkingAdapter;
+
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig,
@@ -132,12 +134,32 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
       ICProvider icProvider) {
+    this(
+        daVinciConfig,
+        clientConfig,
+        backendConfig,
+        managedClients,
+        icProvider,
+        GenericChunkingAdapter.INSTANCE,
+        () -> {});
+  }
+
+  protected AvroGenericDaVinciClient(
+      DaVinciConfig daVinciConfig,
+      ClientConfig clientConfig,
+      VeniceProperties backendConfig,
+      Optional<Set<String>> managedClients,
+      ICProvider icProvider,
+      AbstractAvroChunkingAdapter<V> chunkingAdapter,
+      Runnable preValidation) {
     logger.info("Creating client, storeName={}, daVinciConfig={}", clientConfig.getStoreName(), daVinciConfig);
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
     this.backendConfig = backendConfig;
     this.managedClients = managedClients;
     this.icProvider = icProvider;
+    this.chunkingAdapter = chunkingAdapter;
+    preValidation.run();
   }
 
   @Override
@@ -583,7 +605,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   protected AbstractAvroChunkingAdapter<V> getAvroChunkingAdapter() {
-    return GenericChunkingAdapter.INSTANCE;
+    return chunkingAdapter;
   }
 
   protected GenericRecordChunkingAdapter getGenericRecordChunkingAdapter() {
@@ -682,7 +704,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public synchronized void start() {
     if (isReady()) {
-      throw new VeniceClientException("Da Vinci client is already started, storeName=" + getStoreName());
+      return;
     }
     logger.info("Starting client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();

@@ -62,6 +62,7 @@ public class DataProviderUtils {
   @DataProvider(name = "dv-client-config-provider")
   public static Object[][] daVinciConfigProvider() {
     DaVinciConfig defaultDaVinciConfig = new DaVinciConfig();
+    defaultDaVinciConfig.setReadMetricsEnabled(true);
 
     DaVinciConfig cachingDaVinciConfig = new DaVinciConfig();
     cachingDaVinciConfig.setCacheConfig(new ObjectCacheConfig());

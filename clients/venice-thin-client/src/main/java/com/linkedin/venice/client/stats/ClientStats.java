@@ -2,7 +2,6 @@ package com.linkedin.venice.client.stats;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -15,19 +14,11 @@ import io.tehuti.metrics.stats.Rate;
 import java.util.Map;
 
 
-public class ClientStats extends AbstractVeniceHttpStats {
-  private final Sensor requestSensor;
-  private final Sensor healthySensor;
-  private final Sensor unhealthySensor;
-  private final Sensor healthyRequestLatencySensor;
+public class ClientStats extends BasicClientStats {
   private final Sensor unhealthyRequestLatencySensor;
   private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
-  private final Sensor requestKeyCountSensor;
   private final Sensor requestRetryCountSensor;
-  private final Sensor successRequestKeyCountSensor;
   private final Sensor successRequestDuplicateKeyCountSensor;
-  private final Sensor successRequestKeyRatioSensor;
-  private final Sensor successRequestRatioSensor;
   private final Sensor requestSerializationTime;
   private final Sensor requestSubmissionToResponseHandlingTime;
   private final Sensor responseDeserializationTime;
@@ -43,8 +34,6 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor retryRequestKeyCountSensor;
   private final Sensor retryRequestSuccessKeyCountSensor;
   private final Sensor retryKeySuccessRatioSensor;
-
-  private final Rate requestRate;
 
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -63,28 +52,11 @@ public class ClientStats extends AbstractVeniceHttpStats {
      * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of
      * {@link io.tehuti.metrics.stats.SampledStat}.
      */
-    requestRate = new OccurrenceRate();
-    Rate healthyRequestRate = new OccurrenceRate();
     Rate requestRetryCountRate = new OccurrenceRate();
 
-    requestSensor = registerSensor("request", requestRate);
-    healthySensor = registerSensor("healthy_request", healthyRequestRate);
     requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCountRate);
-    unhealthySensor = registerSensor("unhealthy_request", new OccurrenceRate());
-    healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg());
     unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
-
-    successRequestRatioSensor =
-        registerSensor("success_request_ratio", new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
-    Rate requestKeyCount = new Rate();
-    Rate successRequestKeyCount = new Rate();
-    requestKeyCountSensor = registerSensor("request_key_count", requestKeyCount, new Avg(), new Max());
-    successRequestKeyCountSensor =
-        registerSensor("success_request_key_count", successRequestKeyCount, new Avg(), new Max());
     successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
-    successRequestKeyRatioSensor = registerSensor(
-        "success_request_key_ratio",
-        new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));
     /**
      * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
      * on the caller's thread.
@@ -136,26 +108,8 @@ public class ClientStats extends AbstractVeniceHttpStats {
         registerSensor("retry_request_success_key_count", retryRequestSuccessKeyCount, new Avg(), new Max());
     retryKeySuccessRatioSensor = registerSensor(
         "retry_key_success_ratio",
-        new TehutiUtils.SimpleRatioStat(retryRequestSuccessKeyCount, successRequestKeyCount));
+        new TehutiUtils.SimpleRatioStat(retryRequestSuccessKeyCount, getSuccessRequestKeyCountRate()));
 
-  }
-
-  protected Rate getRequestRate() {
-    return requestRate;
-  }
-
-  public void recordRequest() {
-    requestSensor.record();
-  }
-
-  public void recordHealthyRequest() {
-    recordRequest();
-    healthySensor.record();
-  }
-
-  public void recordUnhealthyRequest() {
-    recordRequest();
-    unhealthySensor.record();
   }
 
   public void recordHttpRequest(int httpStatus) {
@@ -164,24 +118,12 @@ public class ClientStats extends AbstractVeniceHttpStats {
         .record();
   }
 
-  public void recordHealthyLatency(double latency) {
-    healthyRequestLatencySensor.record(latency);
-  }
-
   public void recordUnhealthyLatency(double latency) {
     unhealthyRequestLatencySensor.record(latency);
   }
 
-  public void recordRequestKeyCount(int keyCount) {
-    requestKeyCountSensor.record(keyCount);
-  }
-
   public void recordRequestRetryCount() {
     requestRetryCountSensor.record();
-  }
-
-  public void recordSuccessRequestKeyCount(int successKeyCount) {
-    successRequestKeyCountSensor.record(successKeyCount);
   }
 
   public void recordSuccessDuplicateRequestKeyCount(int duplicateKeyCount) {
