@@ -1,11 +1,14 @@
 package com.linkedin.venice.pubsub.adapter.kafka;
 
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.pubsub.PubSubPositionType;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import java.nio.ByteBuffer;
 import org.testng.annotations.Test;
 
@@ -53,42 +56,13 @@ public class ApacheKafkaOffsetPositionTest {
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot compare ApacheKafkaOffsetPosition with .*")
   public void testComparePositionWithDifferentType() {
     ApacheKafkaOffsetPosition position1 = new ApacheKafkaOffsetPosition(1);
-    position1.comparePosition(getDifferentTypePosition());
-  }
-
-  private PubSubPosition getDifferentTypePosition() {
-    return new PubSubPosition() {
-      @Override
-      public int comparePosition(PubSubPosition other) {
-        return 0;
-      }
-
-      @Override
-      public long diff(PubSubPosition other) {
-        return 0;
-      }
-
-      @Override
-      public byte[] toBytes() {
-        return new byte[0];
-      }
-    };
+    position1.comparePosition(mock(PubSubPosition.class));
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot compare ApacheKafkaOffsetPosition with .*")
   public void testDiffWithDifferentType() {
     ApacheKafkaOffsetPosition position1 = new ApacheKafkaOffsetPosition(1);
-    position1.diff(getDifferentTypePosition());
-  }
-
-  @Test
-  public void testToBytes() {
-    ApacheKafkaOffsetPosition position1 = new ApacheKafkaOffsetPosition(99);
-    byte[] bytes = position1.toBytes();
-    assertEquals(bytes.length, 12); // 4 bytes for the type, 8 bytes for the offset
-    ByteBuffer buffer = ByteBuffer.wrap(bytes);
-    assertEquals(buffer.getInt(), PubSubPositionType.APACHE_KAFKA_OFFSET);
-    assertEquals(buffer.getLong(), 99);
+    position1.diff(mock(PubSubPosition.class));
   }
 
   @Test
@@ -96,11 +70,13 @@ public class ApacheKafkaOffsetPositionTest {
     ApacheKafkaOffsetPosition position1 = new ApacheKafkaOffsetPosition(1);
     ApacheKafkaOffsetPosition position2 = new ApacheKafkaOffsetPosition(2);
     ApacheKafkaOffsetPosition position3 = new ApacheKafkaOffsetPosition(1);
+
     assertEquals(position1, position1);
     assertEquals(position1, position3);
     assertNotEquals(position1, position2);
-    assertNotEquals(position1, null);
-    assertNotEquals(position1, getDifferentTypePosition());
+
+    assertFalse(position1.equals(null));
+    assertFalse(position1.equals(PubSubPosition.class));
   }
 
   @Test
@@ -121,7 +97,26 @@ public class ApacheKafkaOffsetPositionTest {
 
   @Test
   public void testGetOffset() {
-    ApacheKafkaOffsetPosition position1 = new ApacheKafkaOffsetPosition(1);
-    assertEquals(position1.getOffset(), 1);
+    ApacheKafkaOffsetPosition position1 = new ApacheKafkaOffsetPosition(1234);
+    assertEquals(position1.getOffset(), 1234);
+
+    ApacheKafkaOffsetPosition position2 = new ApacheKafkaOffsetPosition(ByteBuffer.allocate(8).putLong(1234L));
+    assertEquals(position2.getOffset(), 1234);
+
+    assertEquals(position1, position2);
+  }
+
+  @Test(expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = "Cannot create ApacheKafkaOffsetPosition with null")
+  public void testGetOffsetWithNull() {
+    new ApacheKafkaOffsetPosition(null);
+  }
+
+  @Test
+  public void testGetPositionWireFormat() {
+    ApacheKafkaOffsetPosition kafkaPosition = new ApacheKafkaOffsetPosition(1234);
+    PubSubPositionWireFormat wireFormat = kafkaPosition.getPositionWireFormat();
+
+    assertEquals(wireFormat.type, PubSubPositionType.APACHE_KAFKA_OFFSET);
+    assertEquals(new ApacheKafkaOffsetPosition(wireFormat.rawBytes), kafkaPosition);
   }
 }

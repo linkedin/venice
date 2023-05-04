@@ -1,8 +1,13 @@
 package com.linkedin.venice.pubsub;
 
-// Do not change the values of these constants.
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+
+
+/**
+ * Constants for the different types of positions
+ * Do not change the values of these constants. They are used to serialize and deserialize the position object.
+ * @see PubSubPositionWireFormat
+ */
 public class PubSubPositionType {
   public static final int APACHE_KAFKA_OFFSET = 0;
-  public static final int LI_INTERNAL_XC = 1;
-  public static final int LI_INTERNAL_RESERVED = 2;
 }

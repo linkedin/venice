@@ -1,7 +1,10 @@
 package com.linkedin.venice.pubsub.adapter.kafka;
 
-import com.linkedin.venice.pubsub.PubSubPositionUtils;
+import com.linkedin.venice.pubsub.PubSubPositionType;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import java.nio.ByteBuffer;
+import java.util.Objects;
 
 
 /**
@@ -12,6 +15,11 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
 
   public ApacheKafkaOffsetPosition(long offset) {
     this.offset = offset;
+  }
+
+  public ApacheKafkaOffsetPosition(ByteBuffer buffer) {
+    // read the first 8 bytes as a long
+    this(Objects.requireNonNull(buffer, "Cannot create ApacheKafkaOffsetPosition with null").getLong(0));
   }
 
   /**
@@ -52,11 +60,6 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
     }
   }
 
-  @Override
-  public byte[] toBytes() {
-    return PubSubPositionUtils.toBytes(this);
-  }
-
   public long getOffset() {
     return offset;
   }
@@ -83,5 +86,20 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
   @Override
   public int hashCode() {
     return Long.hashCode(offset);
+  }
+
+  /**
+   * Position wrapper is used to wrap the position type and the position value.
+   * This is used to serialize and deserialize the position object when sending and receiving it over the wire.
+   *
+   * @return the position wrapper
+   */
+  @Override
+  public PubSubPositionWireFormat getPositionWireFormat() {
+    PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
+    wireFormat.type = PubSubPositionType.APACHE_KAFKA_OFFSET;
+    wireFormat.rawBytes = (ByteBuffer) ByteBuffer.allocate(Long.BYTES).putLong(offset).flip(); // flip to avoid buffer
+                                                                                               // underflow
+    return wireFormat;
   }
 }
