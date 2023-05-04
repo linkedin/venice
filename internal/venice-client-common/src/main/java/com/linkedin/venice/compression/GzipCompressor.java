@@ -1,5 +1,6 @@
 package com.linkedin.venice.compression;
 
+import com.linkedin.venice.io.ZeroCopyByteArrayOutputStream;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -103,17 +104,6 @@ public class GzipCompressor extends VeniceCompressor {
   @Override
   public int hashCode() {
     return super.hashCode();
-  }
-
-  private static class ZeroCopyByteArrayOutputStream extends ByteArrayOutputStream {
-    public ZeroCopyByteArrayOutputStream(int size) {
-      super(size);
-    }
-
-    @Override
-    public synchronized byte[] toByteArray() {
-      return buf;
-    }
   }
 
   @Override

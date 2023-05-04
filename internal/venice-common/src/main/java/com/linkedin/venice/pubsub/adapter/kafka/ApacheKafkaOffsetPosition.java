@@ -2,10 +2,10 @@ package com.linkedin.venice.pubsub.adapter.kafka;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.io.ZeroCopyByteArrayOutputStream;
 import com.linkedin.venice.pubsub.PubSubPositionType;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import org.apache.avro.io.BinaryDecoder;
@@ -113,9 +113,9 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
     wireFormat.type = PubSubPositionType.APACHE_KAFKA_OFFSET;
     // write the offset as avro serialized long
     try {
-      ByteArrayOutputStream baos = new ByteArrayOutputStream();
-      AvroCompatibilityHelper.newBinaryEncoder(baos, false, ENCODER.get()).writeLong(offset);
-      wireFormat.rawBytes = ByteBuffer.wrap(baos.toByteArray());
+      ZeroCopyByteArrayOutputStream outputStream = new ZeroCopyByteArrayOutputStream(10);
+      AvroCompatibilityHelper.newBinaryEncoder(outputStream, false, ENCODER.get()).writeLong(offset);
+      wireFormat.rawBytes = outputStream.toByteBuffer();
     } catch (IOException e) {
       throw new VeniceException("Failed to serialize ApacheKafkaOffsetPosition", e);
     }
