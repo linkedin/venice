@@ -290,8 +290,8 @@ public class RocksDBSstFileWriter {
 
     /**
      * There is a mismatch in the number of created SST files vs the checkpointed
-     * number of SST files: This means that the ingestion started but the storage node
-     * crashed before OffsetRecord with EOP as true being synced.
+     * number of SST files: This means that the ingestion started but the storage
+     * node crashed before OffsetRecord with EOP as true being synced.
      *
      * This can mean one of the below things:
      * 1. Crash after ingestion completion: Number of files is 0 in that case
