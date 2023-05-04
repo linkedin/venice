@@ -1528,7 +1528,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
 
-        // newPartitionConsumptionState.setShouldReset(true);
         if (newPartitionConsumptionState.isShouldReset()) {
           // clear and get the offset again
           storageMetadataService.clearOffset(topicPartition.getPubSubTopic().getName(), partition);
