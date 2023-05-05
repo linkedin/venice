@@ -40,6 +40,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -312,9 +313,9 @@ public class MetaStoreWriter implements Closeable {
         put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
       }
     });
-    VeniceWriter writer = getOrCreateMetaStoreWriter(metaStoreName);
-    writer.delete(key, null);
-    writer.flush();
+    writeMessageWithRetry(metaStoreName, vw -> {
+      vw.delete(key, null);
+    });
   }
 
   /**
@@ -343,12 +344,12 @@ public class MetaStoreWriter implements Closeable {
       Supplier<Map<String, String>> keyStringSupplier,
       Supplier<StoreMetaValue> valueSupplier) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VeniceWriter writer = getOrCreateMetaStoreWriter(metaStoreName);
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     StoreMetaValue value = valueSupplier.get();
     value.timestamp = System.currentTimeMillis();
-    writer.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get());
-    writer.flush();
+    writeMessageWithRetry(metaStoreName, vw -> {
+      vw.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get());
+    });
   }
 
   private void update(
@@ -372,31 +373,52 @@ public class MetaStoreWriter implements Closeable {
     }
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     SpecificRecord update = updateSupplier.get();
-    ReentrantLock lock = getOrCreateMetaStoreWriterLock(metaStoreName);
-    VeniceWriter writer = null;
-    try {
-      lock.lock();
-      writer = getOrCreateMetaStoreWriter(metaStoreName);
-      writer.update(
+    writeMessageWithRetry(metaStoreName, vw -> {
+      vw.update(
           key,
           update,
           AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get(),
           derivedComputeSchemaId,
           null);
-      writer.flush();
-    } catch (Exception e) {
-      LOGGER.error("Caught exception while trying to update, will respawn a new writer.", e);
-      closeVeniceWriter(metaStoreName, writer, true);
-    } finally {
-      lock.unlock();
+    });
+  }
+
+  void writeMessageWithRetry(String metaStoreName, Consumer<VeniceWriter> writerConsumer) {
+    ReentrantLock lock = getOrCreateMetaStoreWriterLock(metaStoreName);
+    int messageProduceRetryCount = 0;
+    int maxMessageProduceRetryCount = 3;
+    VeniceWriter writer = null;
+    boolean messageProduced = false;
+    while (!messageProduced) {
+      try {
+        lock.lock();
+        writer = getOrCreateMetaStoreWriter(metaStoreName);
+        writerConsumer.accept(writer);
+        writer.flush();
+        messageProduced = true;
+      } catch (Exception e) {
+        messageProduceRetryCount++;
+        if (messageProduceRetryCount < maxMessageProduceRetryCount) {
+          LOGGER.warn(
+              "Caught exception while trying to write message, will retry {}/{}",
+              messageProduceRetryCount,
+              maxMessageProduceRetryCount);
+        } else {
+          LOGGER.error("Caught exception while trying to write message, will shutdown writer.", e);
+          closeVeniceWriter(metaStoreName, writer, true);
+          break;
+        }
+      } finally {
+        lock.unlock();
+      }
     }
   }
 
-  private ReentrantLock getOrCreateMetaStoreWriterLock(String metaStoreName) {
+  ReentrantLock getOrCreateMetaStoreWriterLock(String metaStoreName) {
     return metaStoreWriterLockMap.computeIfAbsent(metaStoreName, k -> new ReentrantLock());
   }
 
-  private VeniceWriter getOrCreateMetaStoreWriter(String metaStoreName) {
+  VeniceWriter getOrCreateMetaStoreWriter(String metaStoreName) {
     return metaStoreWriterMap.computeIfAbsent(metaStoreName, k -> {
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
       if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
