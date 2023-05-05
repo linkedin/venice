@@ -111,21 +111,6 @@ public class ZkRoutersClusterManagerTest {
   }
 
   @Test
-  public void testEnableQuotaRebalance() {
-    int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
-    ZkRoutersClusterManager manager = createManager(zkClient);
-    manager.registerRouter(instanceId);
-    int expectRouterNumber = 200;
-    manager.enableQuotaRebalance(false, expectRouterNumber);
-    Assert
-        .assertFalse(manager.isQuotaRebalanceEnabled(), "Quota re-balance has been disabled in cluster level config.");
-    Assert.assertEquals(manager.getExpectedRoutersCount(), expectRouterNumber);
-    manager.enableQuotaRebalance(true, expectRouterNumber);
-    Assert.assertTrue(manager.isQuotaRebalanceEnabled(), "Quota re-balance has been enabled in cluster level config.");
-  }
-
-  @Test
   public void testUPdateExpectRouterCount() {
     int port = 10555;
     String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
@@ -187,8 +172,7 @@ public class ZkRoutersClusterManagerTest {
     TestUtils.waitForNonDeterministicCompletion(
         1,
         TimeUnit.SECONDS,
-        () -> (!router.isThrottlingEnabled()) && (!router.isMaxCapacityProtectionEnabled())
-            && router.isQuotaRebalanceEnabled());
+        () -> !router.isThrottlingEnabled() && !router.isMaxCapacityProtectionEnabled());
   }
 
   @Test

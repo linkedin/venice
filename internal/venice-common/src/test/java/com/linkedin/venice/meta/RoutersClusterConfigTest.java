@@ -21,14 +21,12 @@ public class RoutersClusterConfigTest {
     int expectedNumber = 10;
     RoutersClusterConfig config = new RoutersClusterConfig();
     Assert.assertTrue(
-        config.isMaxCapacityProtectionEnabled() && config.isQuotaRebalanceEnabled() && config.isThrottlingEnabled(),
+        config.isMaxCapacityProtectionEnabled() && config.isThrottlingEnabled(),
         "By default all feature should be enabled for the cluster.");
 
     config.setMaxCapacityProtectionEnabled(false);
     Assert.assertFalse(config.isMaxCapacityProtectionEnabled());
     config.setThrottlingEnabled(false);
     Assert.assertFalse(config.isThrottlingEnabled());
-    config.setQuotaRebalanceEnabled(false);
-    Assert.assertFalse(config.isQuotaRebalanceEnabled());
   }
 }

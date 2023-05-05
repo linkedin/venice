@@ -1,0 +1,9 @@
+{
+  "name": "PubSubPositionWireFormat",
+  "namespace": "com.linkedin.venice.pubsub.api",
+  "type": "record",
+  "fields": [
+    {"name": "type", "type": "int", "default": 0, "doc": "type of the position; 0 is reserved for Kafka offset (long), positive values are intended to be used for open-source pub-sub systems, and negative values are reserved for internal/proprietary pub-sub systems"},
+    {"name": "rawBytes", "type": "bytes", "doc": "serialized bytes of the position systems"}
+    ]
+}

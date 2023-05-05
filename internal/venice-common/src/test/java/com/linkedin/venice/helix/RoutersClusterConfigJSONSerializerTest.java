@@ -11,7 +11,6 @@ public class RoutersClusterConfigJSONSerializerTest {
   public void testSerializeAndDeserialize() throws IOException {
     RoutersClusterConfig config = new RoutersClusterConfig();
     config.setExpectedRouterCount(10);
-    config.setQuotaRebalanceEnabled(false);
 
     RouterClusterConfigJSONSerializer serializer = new RouterClusterConfigJSONSerializer();
     byte[] data = serializer.serialize(config, "");
@@ -26,7 +25,7 @@ public class RoutersClusterConfigJSONSerializerTest {
     RoutersClusterConfig config = serializer.deserialize(jsonStr.getBytes(), "");
     Assert.assertEquals(config.getExpectedRouterCount(), 10);
     Assert.assertTrue(
-        config.isMaxCapacityProtectionEnabled() && config.isQuotaRebalanceEnabled() && config.isThrottlingEnabled(),
+        config.isMaxCapacityProtectionEnabled() && config.isThrottlingEnabled(),
         "By default all feature should be enabled.");
   }
 }

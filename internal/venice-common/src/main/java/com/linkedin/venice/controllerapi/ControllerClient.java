@@ -541,6 +541,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.SKIP_ADMIN, params, ControllerResponse.class);
   }
 
+  public PubSubTopicConfigResponse getKafkaTopicConfigs(String kafkaTopicName) {
+    QueryParams params = newParams().add(TOPIC, kafkaTopicName);
+    return request(ControllerRoute.GET_KAFKA_TOPIC_CONFIGS, params, PubSubTopicConfigResponse.class);
+  }
+
   public ControllerResponse updateKafkaTopicLogCompaction(String kafkaTopicName, boolean logCompactionEnabled) {
     QueryParams params =
         newParams().add(TOPIC, kafkaTopicName).add(KAFKA_TOPIC_LOG_COMPACTION_ENABLED, logCompactionEnabled);

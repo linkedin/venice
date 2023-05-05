@@ -103,6 +103,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
@@ -208,7 +209,8 @@ public class VenicePushJob implements AutoCloseable {
   public static final String MAPPER_OUTPUT_DIRECTORY = "mapper.output.directory";
 
   // static names used to construct the directory and file name
-  protected static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT = "/tmp/venice";
+  protected static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT =
+      "/tmp/veniceMapperOutput";
   private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX = "mapper-output-";
   private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION = ".avro";
 
@@ -1010,8 +1012,16 @@ public class VenicePushJob implements AutoCloseable {
           }
           if (pushJobSetting.repushTTLEnabled) {
             pushJobSetting.repushTTLInSeconds = storeSetting.storeRewindTimeInSeconds;
-            // the schema path will be suffixed by the store name and time, e.g.
-            // /tmp/veniceRmdSchemas/<store_name>/<timestamp>
+            // make the base directory TEMP_DIR_PREFIX with 777 permissions
+            Path baseSchemaDir = new Path(TEMP_DIR_PREFIX);
+            FileSystem fs = FileSystem.get(new Configuration());
+            if (!fs.exists(baseSchemaDir)) {
+              fs.mkdirs(baseSchemaDir);
+              fs.setPermission(baseSchemaDir, new FsPermission("777"));
+            }
+
+            // build the full path for HDFSRmdSchemaSource: the schema path will be suffixed
+            // by the store name and time like: <TEMP_DIR_PREFIX>/<store_name>/<timestamp>
             StringBuilder schemaDirBuilder = new StringBuilder();
             schemaDirBuilder.append(TEMP_DIR_PREFIX)
                 .append(pushJobSetting.storeName)
@@ -1883,18 +1893,26 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalZstdWithDictCompressedValueBytes =
           MRJobCounterHelper.getTotalZstdWithDictCompressedValueSize(runningJob.getCounters());
       LOGGER.info(
-          "pushJobDetails MR Counters: \n\tTotal number of records: {} \n\tSize of keys: {} Bytes "
-              + "\n\tsize of uncompressed value: {} Bytes \n\tConfigured value Compression Strategy: {} "
+          "pushJobDetails MR Counters: " + "\n\tTotal number of records: {} " + "\n\tSize of keys: {} Bytes "
+              + "\n\tsize of uncompressed value: {} Bytes " + "\n\tConfigured value Compression Strategy: {} "
               + "\n\tFinal data size stored in Venice based on this compression strategy: {} Bytes "
-              + "\n\tData size if compressed using Gzip: {} Bytes \n\tData size if "
-              + "compressed using Zstd with Dictionary: {} Bytes",
+              + "\n\tCompression Metrics collection is: {} ",
           pushJobDetails.totalNumberOfRecords,
           pushJobDetails.totalKeyBytes,
           pushJobDetails.totalRawValueBytes,
           CompressionStrategy.valueOf(pushJobDetails.valueCompressionStrategy).name(),
           pushJobDetails.totalCompressedValueBytes,
-          pushJobDetails.totalGzipCompressedValueBytes,
-          pushJobDetails.totalZstdWithDictCompressedValueBytes);
+          pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled");
+      if (pushJobSetting.compressionMetricCollectionEnabled) {
+        LOGGER.info("\tData size if compressed using Gzip: {} Bytes ", pushJobDetails.totalGzipCompressedValueBytes);
+        if (isZstdDictCreationSuccess) {
+          LOGGER.info(
+              "\tData size if compressed using Zstd with Dictionary: {} Bytes",
+              pushJobDetails.totalZstdWithDictCompressedValueBytes);
+        } else {
+          LOGGER.info("\tZstd Dictionary creation Failed");
+        }
+      }
     } catch (Exception e) {
       LOGGER.warn(
           "Exception caught while updating push job details with map reduce counters. {}",

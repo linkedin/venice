@@ -849,20 +849,6 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void controllerClientCanEnableQuotaRebalance() {
-    int expectedRouterCount = 100;
-    controllerClient.enableQuotaRebalanced(false, expectedRouterCount);
-    Assert.assertFalse(controllerClient.getRoutersClusterConfig().getConfig().isQuotaRebalanceEnabled());
-    Assert.assertEquals(
-        controllerClient.getRoutersClusterConfig().getConfig().getExpectedRouterCount(),
-        expectedRouterCount);
-    // After enable this feature, Venice don't need expected router count, because it will use the live router count, so
-    // could give any expected router count here.
-    controllerClient.enableQuotaRebalanced(true, 0);
-    Assert.assertTrue(controllerClient.getRoutersClusterConfig().getConfig().isQuotaRebalanceEnabled());
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanDiscoverCluster() {
     String storeName = Utils.getUniqueString("controllerClientCanDiscoverCluster");
     controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");

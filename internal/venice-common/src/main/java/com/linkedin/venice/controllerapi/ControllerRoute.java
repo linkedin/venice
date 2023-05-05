@@ -251,7 +251,7 @@ public enum ControllerRoute {
   LIST_STORE_PUSH_INFO("/list_store_push_info", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)),
   GET_REGION_PUSH_DETAILS(
       "/get_region_push_details", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)
-  ),
+  ), GET_KAFKA_TOPIC_CONFIGS("/get_kafka_topic_configs", HttpMethod.GET, Arrays.asList(TOPIC)),
   UPDATE_KAFKA_TOPIC_LOG_COMPACTION(
       "/update_kafka_topic_log_compaction", HttpMethod.POST, Arrays.asList(TOPIC, KAFKA_TOPIC_LOG_COMPACTION_ENABLED)
   ),
