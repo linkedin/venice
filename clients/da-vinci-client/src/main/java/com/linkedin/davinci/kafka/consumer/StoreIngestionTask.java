@@ -1558,7 +1558,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           });
           checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
           if (newPartitionConsumptionState.isRestartIngestion()) {
-            throw new VeniceException("Reset can only happen during the restart once");
+            throw new VeniceException("Restarting ingestion can happen during the SN restart only once");
           }
         }
 

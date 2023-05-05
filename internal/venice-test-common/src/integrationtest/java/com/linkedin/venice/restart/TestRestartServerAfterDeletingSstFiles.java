@@ -104,7 +104,7 @@ public class TestRestartServerAfterDeletingSstFiles {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testWithOutServerRestart() throws Exception {
     // Create new version
-    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, true);
+    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, true, true);
     storeVersionName = creationResponse.getKafkaTopic();
     veniceWriter = veniceCluster.getVeniceWriter(storeVersionName);
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
@@ -149,7 +149,7 @@ public class TestRestartServerAfterDeletingSstFiles {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testWithServerRestart() throws Exception {
     // Create new version
-    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, true);
+    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, true, true);
     storeVersionName = creationResponse.getKafkaTopic();
     veniceWriter = veniceCluster.getVeniceWriter(storeVersionName);
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
@@ -204,7 +204,7 @@ public class TestRestartServerAfterDeletingSstFiles {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testWithServerRestartWithDeletedSSTFiles() throws Exception {
     // Create new version
-    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, true);
+    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, true, true);
     storeVersionName = creationResponse.getKafkaTopic();
     veniceWriter = veniceCluster.getVeniceWriter(storeVersionName);
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);

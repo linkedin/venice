@@ -860,8 +860,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return getNewVersion(storeName, true, false);
   }
 
-  public VersionCreationResponse getNewVersion(String storeName, boolean sorted) {
-    return getNewVersion(storeName, true, sorted);
+  public VersionCreationResponse getNewVersion(String storeName, boolean sendStartOfPush) {
+    return getNewVersion(storeName, sendStartOfPush, false);
   }
 
   public VersionCreationResponse getNewVersion(String storeName, boolean sendStartOfPush, boolean sorted) {
