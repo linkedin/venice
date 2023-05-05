@@ -75,6 +75,7 @@ public class RocksDBSstFileWriter {
   private int currentSSTFileNo = 0;
   private SstFileWriter currentSSTFileWriter;
   private long recordNumInCurrentSSTFile = 0;
+  private long recordNumInAllSSTFiles = 0;
   private String fullPathForTempSSTFileDir;
   private Optional<Supplier<byte[]>> expectedChecksumSupplier;
   private final String storeName;
@@ -131,6 +132,7 @@ public class RocksDBSstFileWriter {
       currentSSTFileWriter.put(key, ByteUtils.extractByteArray(valueBuffer));
     }
     ++recordNumInCurrentSSTFile;
+    ++recordNumInAllSSTFiles;
   }
 
   public void open(
@@ -175,7 +177,7 @@ public class RocksDBSstFileWriter {
         // remove all the temp sst files if found any as we will start fresh
         removeSSTFilesAfterCheckpointing(-1);
         if (partitionConsumptionState != null) {
-          partitionConsumptionState.setShouldReset(true);
+          partitionConsumptionState.setResetPCS(true);
         }
         return;
       }
@@ -301,6 +303,7 @@ public class RocksDBSstFileWriter {
      *    RocksDB restores itself after coming up. But we are taking a safer approach
      *    and starting from scratch.
      */
+    LOGGER.info("Number of SST files does not match with the checkpoint, restarting the ingestion");
     return false;
   }
 
@@ -448,5 +451,9 @@ public class RocksDBSstFileWriter {
       sstFilePaths.add(tempSSTFileDir + File.separator + sstFile);
     }
     return sstFilePaths;
+  }
+
+  public long getRecordNumInAllSSTFiles() {
+    return recordNumInAllSSTFiles;
   }
 }

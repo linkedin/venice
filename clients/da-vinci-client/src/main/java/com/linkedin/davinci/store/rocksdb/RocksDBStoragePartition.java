@@ -132,7 +132,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
   protected final List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
 
-  private RocksDBSstFileWriter rocksDBSstFileWritter;
+  public RocksDBSstFileWriter rocksDBSstFileWritter = null;
 
   protected RocksDBStoragePartition(
       StoragePartitionConfig storagePartitionConfig,
@@ -588,20 +588,36 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return rocksDBSstFileWritter.sync();
   }
 
-  private void removeDirWithTwoLayers(String fullPath) {
+  private void deleteFilesInAGivenDirectory(String fullPath) {
     File dir = new File(fullPath);
     if (dir.exists()) {
       // Remove the files inside first
       Arrays.stream(dir.list()).forEach(file -> {
         if (!(new File(fullPath, file).delete())) {
-          LOGGER.warn("Failed to remove file: {} in dir: {}", file, fullPath);
+          LOGGER.warn("Failed to remove file: {} in dir: {} ", file, fullPath);
         }
       });
+    }
+  }
+
+  private void deleteDirectoryAndItsFiles(String fullPath) {
+    deleteFilesInAGivenDirectory(fullPath);
+    File dir = new File(fullPath);
+    if (dir.exists()) {
       // Remove file directory
       if (!dir.delete()) {
         LOGGER.warn("Failed to remove dir: {}", fullPath);
       }
     }
+  }
+
+  public void deleteSSTFiles(String fullPathForTempSSTFileDir) {
+    deleteFilesInAGivenDirectory(fullPathForTempSSTFileDir);
+    // removeFilesAndTheGivenDirectory(fullPathForTempSSTFileDir);
+  }
+
+  private void deleteDBDirectory(String dBFullPath) {
+    deleteDirectoryAndItsFiles(dBFullPath);
   }
 
   @Override
@@ -620,24 +636,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     // Remove extra SST files first
     deleteSSTFiles(fullPathForTempSSTFileDir);
     // Remove partition directory
-    removeDirWithTwoLayers(fullPathForPartitionDB);
+    deleteDBDirectory(fullPathForPartitionDB);
     LOGGER.info("RocksDB for store: {}, partition: {} was dropped.", storeName, partitionId);
-  }
-
-  public void deleteSSTFiles(String fullPathForTempSSTFile) {
-    File dir = new File(fullPathForTempSSTFile);
-    if (dir.exists()) {
-      // Remove the files inside first
-      Arrays.stream(dir.list()).forEach(file -> {
-        if (!(new File(fullPathForTempSSTFile, file).delete())) {
-          LOGGER.warn("Failed to remove file: {} in dir: {} ", file, fullPathForTempSSTFile);
-        }
-      });
-      // Remove file directory
-      if (!dir.delete()) {
-        LOGGER.warn("Failed to remove dir: {}", fullPathForTempSSTFile);
-      }
-    }
   }
 
   @Override
@@ -775,5 +775,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   protected Options getOptions() {
     return options;
+  }
+
+  public String getFullPathForTempSSTFileDir() {
+    return fullPathForTempSSTFileDir;
   }
 }

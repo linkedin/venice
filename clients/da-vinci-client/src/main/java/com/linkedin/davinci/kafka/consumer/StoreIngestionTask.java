@@ -588,6 +588,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         checkpointedDatabaseInfo,
         partitionChecksumSupplier,
         partitionConsumptionState);
+    if (partitionConsumptionState.isResetPCS()) {
+      return;
+    }
     if (cacheBackend.isPresent()) {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
         cacheBackend.get()
@@ -1416,7 +1419,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         beginBatchWrite(partition, sorted, newPartitionConsumptionState);
 
-        if (newPartitionConsumptionState.isShouldReset()) {
+        if (newPartitionConsumptionState.isResetPCS()) {
           return;
         }
 
@@ -1530,7 +1533,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
 
-        if (newPartitionConsumptionState.isShouldReset()) {
+        if (newPartitionConsumptionState.isResetPCS()) {
           // remove the states set above
           partitionConsumptionStateMap.remove(partition);
           kafkaDataIntegrityValidator.clearPartition(partition);
@@ -1554,6 +1557,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             producerTracker.setPartitionState(partition, entry.getValue());
           });
           checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
+          if (newPartitionConsumptionState.isResetPCS()) {
+            throw new VeniceException("Reset can only happen during the restart once");
+          }
         }
 
         reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
