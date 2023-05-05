@@ -101,7 +101,12 @@ and important aspects to consider_:
 5. Preferred option by the designer/author.
    1. _Conclusions/Decisions made in the design review sessions. Explanation why it’s selected_
 
-### Test Plan
+## Development Milestones
+_This section described milestones for rather large projects so that we can set up intermediate goals for 
+better progress management.
+For small projects, this may not be necessary._
+
+## Test Plan
 
 _Describe in few sentences how the functionality will be tested.
  How will we know that the implementation works as expected? How will we know nothing broke?_

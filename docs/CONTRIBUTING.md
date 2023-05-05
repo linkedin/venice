@@ -53,9 +53,9 @@ Please follow [Venice Workspace Setup](./dev_guide/workspace_setup.md) and
 
 Venice does Contributor sync meeting for the contributors to come togather in a virtual meeting.
 
-1. Meeting Frequency : Bi-weekly on Tuesday at 8 AM Pacific, 11 AM Eastern, 5 PM Central Europe
+1. Meeting Frequency : Bi-weekly on Wednesday at 8 AM Pacific, 11 AM Eastern, 5 PM Central Europe
 2. Meeting Co-ordination : Please join the #contributor-sync channel in the 
-     [public Venice Slack](https://communityinviter.com/apps/venicedb/venice) 
+     [public Venice Slack](http://slack.venicedb.org/) 
 3. Meeting Length : One hour 
 4. Agenda : 
    1. Discuss Venice Improvement Proposals.
