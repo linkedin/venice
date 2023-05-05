@@ -30,6 +30,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
@@ -278,8 +279,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return CompletableFuture.supplyAsync(() -> {
       for (VeniceChangeCoordinate coordinate: checkpoints) {
         internalSeek(Collections.singleton(coordinate.getPartition()), coordinate.getTopic(), foo -> {
-          kafkaConsumer
-              .seek(new TopicPartition(coordinate.getTopic(), coordinate.getPartition()), coordinate.getOffset());
+          // TODO: This is a hack until we refactor out kafkaConsumer, delete this.
+          Long topicOffset = ((ApacheKafkaOffsetPosition) coordinate.getOffset()).getOffset();
+          kafkaConsumer.seek(new TopicPartition(coordinate.getTopic(), coordinate.getPartition()), topicOffset);
         }).join();
       }
       return null;

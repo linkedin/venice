@@ -1,5 +1,6 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.Objects;
@@ -27,7 +28,7 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
     this.payloadSize = payloadSize;
     this.offset = new VeniceChangeCoordinate(
         this.topicPartition.getPubSubTopic().getName(),
-        offset,
+        new ApacheKafkaOffsetPosition(offset),
         this.topicPartition.getPartitionNumber());
   }
 

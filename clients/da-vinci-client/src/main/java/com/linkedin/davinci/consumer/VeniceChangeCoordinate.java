@@ -1,6 +1,7 @@
 package com.linkedin.davinci.consumer;
 
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -11,12 +12,8 @@ public class VeniceChangeCoordinate implements Externalizable {
   private static final long serialVersionUID = 1L;
 
   private String topic;
-
-  // TODO: long works well enough for now, but we'll need to change this at some point in order to accommodate for
-  // plugging in other pub sub implementations.
-  private long offset;
-
   private Integer partition;
+  private PubSubPosition pubSubPosition;
 
   public VeniceChangeCoordinate() {
     // Empty constructor is public
@@ -25,15 +22,15 @@ public class VeniceChangeCoordinate implements Externalizable {
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeUTF(topic);
-    out.writeLong(offset);
     out.writeInt(partition);
+    out.write(pubSubPosition.getPositionWireFormat().getRawBytes().array());
   }
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.topic = in.readUTF();
-    this.offset = in.readLong();
     this.partition = in.readInt();
+    this.pubSubPosition = PubSubPosition.getPositionFromWireFormat((byte[]) in.readObject());
   }
 
   // Partition and store name can be publicly accessible
@@ -50,13 +47,13 @@ public class VeniceChangeCoordinate implements Externalizable {
     return topic;
   }
 
-  protected Long getOffset() {
-    return offset;
+  protected PubSubPosition getOffset() {
+    return pubSubPosition;
   }
 
-  protected VeniceChangeCoordinate(String topic, Long offset, Integer partition) {
+  protected VeniceChangeCoordinate(String topic, PubSubPosition pubSubPosition, Integer partition) {
     this.partition = partition;
     this.topic = topic;
-    this.offset = offset;
+    this.pubSubPosition = pubSubPosition;
   }
 }
