@@ -67,7 +67,6 @@ public class RouterRequestThrottlingTest {
     AggRouterHttpRequestStats stats = mock(AggRouterHttpRequestStats.class);
     ZkRoutersClusterManager zkRoutersClusterManager = mock(ZkRoutersClusterManager.class);
     doReturn(1).when(zkRoutersClusterManager).getLiveRoutersCount();
-    doReturn(true).when(zkRoutersClusterManager).isQuotaRebalanceEnabled();
     doReturn(true).when(zkRoutersClusterManager).isThrottlingEnabled();
     doReturn(true).when(zkRoutersClusterManager).isMaxCapacityProtectionEnabled();
     RoutingDataRepository routingDataRepository = mock(RoutingDataRepository.class);
@@ -78,14 +77,14 @@ public class RouterRequestThrottlingTest {
         2000,
         stats,
         0.0,
-        0.0,
+        1.5,
         1000,
         1000,
         true);
   }
 
   @Test(timeOut = 30000, groups = { "flaky" })
-  public void testSingleGetThrottling() throws Exception {
+  public void testSingleGetThrottling() {
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(Long.MAX_VALUE).when(routerConfig).getMaxPendingRequest();
     doReturn(LEAST_LOADED_ROUTING).when(routerConfig).getMultiKeyRoutingStrategy();
@@ -161,7 +160,7 @@ public class RouterRequestThrottlingTest {
 
     // Router should throttle the single-get requests if QPS exceeds 1000
     boolean singleGetThrottled = false;
-    for (int i = 0; i < totalQuota + 200; i++) {
+    for (int i = 0; i < totalQuota * 2 + 200; i++) {
       try {
         delegateMode.scatter(
             scatter,
@@ -195,7 +194,7 @@ public class RouterRequestThrottlingTest {
   public void testMultiKeyThrottling(RequestType requestType) throws Exception {
     // Allow 10 multi-key requests per second
     int batchGetSize = 100;
-    int allowedQPS = (int) totalQuota / batchGetSize;
+    int allowedQPS = (int) totalQuota / batchGetSize * 2;
 
     // mock a scatter gather helper for multi-key requests
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
