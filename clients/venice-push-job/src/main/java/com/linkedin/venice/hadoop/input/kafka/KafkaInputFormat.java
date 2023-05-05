@@ -82,13 +82,12 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
     Map<TopicPartition, Long> latestOffsets = getLatestOffsets(job);
     List<InputSplit> splits = new LinkedList<>();
     latestOffsets.forEach((topicPartition, end) -> {
-      long start = 0;
 
       /**
        * Chop up any excessively large partitions into multiple splits for more balanced map task durations. This will
        * also exclude any partitions with no records to read (where the start offset equals the end offset).
        */
-      long splitStart = start;
+      long splitStart = 0;
       while (splitStart < end) {
         long splitEnd = Math.min(splitStart + maxRecordsPerSplit, end);
         splits.add(new KafkaInputSplit(topicPartition.topic(), topicPartition.partition(), splitStart, splitEnd));

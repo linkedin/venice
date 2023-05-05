@@ -40,6 +40,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_AN
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KAFKA_TOPIC_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
@@ -418,6 +419,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         IS_STORE_VERSION_READY_FOR_DATA_RECOVERY.getPath(),
         dataRecoveryRoutes.isStoreVersionReadyForDataRecovery(admin));
     httpService.post(DATA_RECOVERY.getPath(), dataRecoveryRoutes.dataRecovery(admin));
+    httpService.get(GET_KAFKA_TOPIC_CONFIGS.getPath(), controllerRoutes.getKafkaTopicConfigs(admin));
     httpService
         .post(UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getPath(), controllerRoutes.updateKafkaTopicLogCompaction(admin));
     httpService.post(UPDATE_KAFKA_TOPIC_RETENTION.getPath(), controllerRoutes.updateKafkaTopicRetention(admin));

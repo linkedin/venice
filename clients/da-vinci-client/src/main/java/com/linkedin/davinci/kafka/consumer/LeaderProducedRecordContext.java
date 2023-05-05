@@ -56,6 +56,12 @@ public class LeaderProducedRecordContext {
   private long producedOffset = -1;
 
   /**
+   * This is the timestamp at which the message was produced in the Version Topic as
+   * observed by the kafka producer callback thread.
+   */
+  private long producedTimestampMs = -1;
+
+  /**
    * This future can be waited on to know when this record has been completely processed and persisted to database by drainer thread.
    * This future may either be created or be passed in through the constructor.
    * For most uses a single ProducedRecord is created in consumer  thread and be passed on to kafka callback thread and then to drainer thread.
@@ -176,6 +182,14 @@ public class LeaderProducedRecordContext {
 
   public long getProducedOffset() {
     return producedOffset;
+  }
+
+  public void setProducedTimestampMs(long timeMs) {
+    this.producedTimestampMs = timeMs;
+  }
+
+  public long getProducedTimestampMs() {
+    return producedTimestampMs;
   }
 
   public CompletableFuture<Void> getPersistedToDBFuture() {

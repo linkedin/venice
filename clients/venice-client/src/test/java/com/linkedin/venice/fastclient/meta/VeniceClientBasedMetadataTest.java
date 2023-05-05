@@ -27,6 +27,7 @@ import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -41,7 +42,8 @@ public class VeniceClientBasedMetadataTest {
   private static final String CLUSTER_NAME = "test-cluster";
   private static final String REPLICA_NAME = "host1";
   private static final String KEY_SCHEMA = "\"string\"";
-  private static final String VALUE_SCHEMA = "\"string\"";
+  private static final String VALUE_SCHEMA1 = "\"string\"";
+  private static final String VALUE_SCHEMA2 = "\"long\"";
 
   @Test
   public void testMetadata() throws ExecutionException, InterruptedException {
@@ -58,9 +60,10 @@ public class VeniceClientBasedMetadataTest {
     Assert.assertEquals(replicas.size(), 1);
     Assert.assertEquals(replicas.iterator().next(), REPLICA_NAME);
     Assert.assertEquals(veniceClientBasedMetadata.getKeySchema().toString(), KEY_SCHEMA);
-    Assert.assertEquals(veniceClientBasedMetadata.getValueSchema(1).toString(), VALUE_SCHEMA);
-    Assert.assertEquals(veniceClientBasedMetadata.getLatestValueSchemaId(), Integer.valueOf(1));
-    Assert.assertEquals(veniceClientBasedMetadata.getLatestValueSchema().toString(), VALUE_SCHEMA);
+    Assert.assertEquals(veniceClientBasedMetadata.getValueSchema(1).toString(), VALUE_SCHEMA1);
+    Assert.assertEquals(veniceClientBasedMetadata.getValueSchema(2).toString(), VALUE_SCHEMA2);
+    Assert.assertEquals(veniceClientBasedMetadata.getLatestValueSchemaId(), Integer.valueOf(2));
+    Assert.assertEquals(veniceClientBasedMetadata.getLatestValueSchema().toString(), VALUE_SCHEMA2);
   }
 
   private ClientConfig getBasicMockClientConfig(String storeName) {
@@ -88,19 +91,31 @@ public class VeniceClientBasedMetadataTest {
     StoreMetaValue storePropValue = new StoreMetaValue();
     StoreProperties storeProperties = new StoreProperties();
     storeProperties.setName(storeName);
-    StoreVersion storeVersion = new StoreVersion();
-    storeVersion.setStoreName(storeName);
-    storeVersion.setNumber(1);
-    storeVersion.setPushJobId("test-push");
-    storeVersion.setReplicationFactor(1);
-    storeVersion.setPartitionCount(1);
+
     StorePartitionerConfig storePartitionerConfig = new StorePartitionerConfig();
     storePartitionerConfig.setPartitionerClass(DefaultVenicePartitioner.class.getName());
     storePartitionerConfig.setAmplificationFactor(1);
     storePartitionerConfig.setPartitionerParams(Collections.emptyMap());
-    storeVersion.setPartitionerConfig(storePartitionerConfig);
-    storeVersion.setCompressionStrategy(CompressionStrategy.NO_OP.getValue());
-    storeProperties.setVersions(Collections.singletonList(storeVersion));
+
+    StoreVersion storeVersion1 = new StoreVersion();
+    storeVersion1.setStoreName(storeName);
+    storeVersion1.setNumber(1);
+    storeVersion1.setPushJobId("test-push-1");
+    storeVersion1.setReplicationFactor(1);
+    storeVersion1.setPartitionCount(100);
+    storeVersion1.setPartitionerConfig(storePartitionerConfig);
+    storeVersion1.setCompressionStrategy(CompressionStrategy.NO_OP.getValue());
+
+    StoreVersion storeVersion2 = new StoreVersion();
+    storeVersion2.setStoreName(storeName);
+    storeVersion2.setNumber(2);
+    storeVersion2.setPushJobId("test-push-2");
+    storeVersion2.setReplicationFactor(1);
+    storeVersion2.setPartitionCount(100);
+    storeVersion2.setPartitionerConfig(storePartitionerConfig);
+    storeVersion2.setCompressionStrategy(CompressionStrategy.NO_OP.getValue());
+
+    storeProperties.setVersions(Arrays.asList(storeVersion1, storeVersion2));
     storeProperties.setCurrentVersion(1);
     storeProperties.setLatestSuperSetValueSchemaId(SchemaData.INVALID_VALUE_SCHEMA_ID);
     storePropValue.setStoreProperties(storeProperties);
@@ -128,6 +143,7 @@ public class VeniceClientBasedMetadataTest {
     StoreMetaValue valueSchemaValue = new StoreMetaValue();
     Map<CharSequence, CharSequence> valueSchemaMap = new HashMap<>();
     valueSchemaMap.put("1", "");
+    valueSchemaMap.put("2", "");
     valueSchemaValue.setStoreValueSchemas(new StoreValueSchemas(valueSchemaMap));
     doReturn(valueSchemaValue).when(valueSchemaFuture).get();
     doReturn(valueSchemaFuture).when(metaStoreThinClient)
@@ -136,7 +152,7 @@ public class VeniceClientBasedMetadataTest {
                 .getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName)));
     CompletableFuture<StoreMetaValue> indiValueSchemaFuture = mock(CompletableFuture.class);
     StoreMetaValue indiSchemaValue = new StoreMetaValue();
-    indiSchemaValue.setStoreValueSchema(new StoreValueSchema(VALUE_SCHEMA));
+    indiSchemaValue.setStoreValueSchema(new StoreValueSchema(VALUE_SCHEMA1));
     doReturn(indiSchemaValue).when(indiValueSchemaFuture).get();
     doReturn(indiValueSchemaFuture).when(metaStoreThinClient)
         .get(MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(new HashMap<String, String>() {
@@ -145,24 +161,45 @@ public class VeniceClientBasedMetadataTest {
             put(KEY_STRING_SCHEMA_ID, "1");
           }
         }));
-    // Ready to serve replica mocks
-    CompletableFuture<StoreMetaValue> replicaStatusFuture = mock(CompletableFuture.class);
-    StoreMetaValue replicaStatusValue = new StoreMetaValue();
-    Map<CharSequence, StoreReplicaStatus> replicaStatusMap = new HashMap<>();
-    StoreReplicaStatus storeReplicaStatus = new StoreReplicaStatus();
-    storeReplicaStatus.setStatus(COMPLETED.getValue());
-    replicaStatusMap.put(REPLICA_NAME, storeReplicaStatus);
-    replicaStatusValue.setStoreReplicaStatuses(replicaStatusMap);
-    doReturn(replicaStatusValue).when(replicaStatusFuture).get();
-    doReturn(replicaStatusFuture).when(metaStoreThinClient)
-        .get(MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
+
+    CompletableFuture<StoreMetaValue> indiValueSchemaFuture2 = mock(CompletableFuture.class);
+    StoreMetaValue indiSchemaValue2 = new StoreMetaValue();
+    indiSchemaValue2.setStoreValueSchema(new StoreValueSchema(VALUE_SCHEMA2));
+    doReturn(indiSchemaValue2).when(indiValueSchemaFuture2).get();
+    doReturn(indiValueSchemaFuture2).when(metaStoreThinClient)
+        .get(MetaStoreDataType.STORE_VALUE_SCHEMA.getStoreMetaKey(new HashMap<String, String>() {
           {
             put(KEY_STRING_STORE_NAME, storeName);
-            put(KEY_STRING_CLUSTER_NAME, CLUSTER_NAME);
-            put(KEY_STRING_VERSION_NUMBER, Integer.toString(1));
-            put(KEY_STRING_PARTITION_ID, Integer.toString(0));
+            put(KEY_STRING_SCHEMA_ID, "2");
           }
         }));
+
+    // Ready to serve replica mocks
+    for (int version = 1; version <= 2; version++) {
+      for (int partition = 0; partition < 100; partition++) {
+        int finalPartition = partition;
+        int finalVersion = version;
+
+        CompletableFuture<StoreMetaValue> replicaStatusFuture = mock(CompletableFuture.class);
+        StoreMetaValue replicaStatusValue = new StoreMetaValue();
+        Map<CharSequence, StoreReplicaStatus> replicaStatusMap = new HashMap<>();
+        StoreReplicaStatus storeReplicaStatus = new StoreReplicaStatus();
+        storeReplicaStatus.setStatus(COMPLETED.getValue());
+        replicaStatusMap.put(REPLICA_NAME, storeReplicaStatus);
+        replicaStatusValue.setStoreReplicaStatuses(replicaStatusMap);
+        doReturn(replicaStatusValue).when(replicaStatusFuture).get();
+
+        doReturn(replicaStatusFuture).when(metaStoreThinClient)
+            .get(MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
+              {
+                put(KEY_STRING_STORE_NAME, storeName);
+                put(KEY_STRING_CLUSTER_NAME, CLUSTER_NAME);
+                put(KEY_STRING_VERSION_NUMBER, Integer.toString(finalVersion));
+                put(KEY_STRING_PARTITION_ID, Integer.toString(finalPartition));
+              }
+            }));
+      }
+    }
     return metaStoreThinClient;
   }
 }

@@ -15,6 +15,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
@@ -120,6 +121,11 @@ public enum AvroProtocolDefinition {
   PROCESS_SHUTDOWN_COMMAND(32, 1, ProcessShutdownCommand.class),
 
   BATCH_JOB_HEARTBEAT(33, 1, BatchJobHeartbeatValue.class),
+
+  /**
+   * Used to encode the position of a PubSub message.
+   */
+  PUBSUB_POSITION_WIRE_FORMAT(34, 1, PubSubPositionWireFormat.class),
 
   /**
    * Key schema for metadata system store.

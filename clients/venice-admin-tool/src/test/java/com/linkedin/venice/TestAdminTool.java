@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -135,5 +136,13 @@ public class TestAdminTool {
       storeInfo.setVersions(Collections.emptyList());
     }
     return storeInfo;
+  }
+
+  @Test
+  public void testGetPubSubTopicConfigsRequiresValidTopicName() {
+    String badTopicName = "badTopicName_v_rt_0";
+    String[] args =
+        { "--get-kafka-topic-configs", "--url", "http://localhost:7036", "--kafka-topic-name", badTopicName };
+    Assert.assertThrows(VeniceException.class, () -> AdminTool.main(args));
   }
 }

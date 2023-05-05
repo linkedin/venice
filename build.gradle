@@ -138,13 +138,20 @@ subprojects {
   group = rootProject.group
   version = rootProject.version
 
+  def isLeafSubModule = project.childProjects.isEmpty()
+
   apply {
     plugin 'idea'
-    plugin 'jacoco'
-    plugin 'com.form.diff-coverage'
     plugin 'java-library'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
+  }
+
+  if (isLeafSubModule) {
+    apply {
+      plugin 'jacoco'
+      plugin 'com.form.diff-coverage'
+    }
   }
 
   if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
@@ -388,59 +395,60 @@ subprojects {
     }
   }
 
-  jacocoTestReport {
-    dependsOn test // tests are required to run before generating the report
+  if (isLeafSubModule) {
+    jacocoTestReport {
+      dependsOn test // tests are required to run before generating the report
 
-    reports {
-      xml.enabled = true
-      html.enabled = true
+      reports {
+        xml.enabled = true
+        html.enabled = true
+      }
+
+      doLast {
+        parseJacocoXml("$buildDir/reports/jacoco/test/jacocoTestReport.xml")
+      }
     }
 
-    doLast {
-      parseJacocoXml("$buildDir/reports/jacoco/test/jacocoTestReport.xml")
-    }
-  }
+    afterEvaluate {
+      jacocoTestCoverageVerification {
+        dependsOn jacocoTestReport
 
-  afterEvaluate {
-    jacocoTestCoverageVerification {
-      dependsOn jacocoTestReport
+        violationRules {
+          rule {
+            def threshold = project.ext.has('jacocoCoverageThreshold') ? project.ext.jacocoCoverageThreshold : 0.6
 
-      violationRules {
-        rule {
-          def threshold = project.ext.has('jacocoCoverageThreshold') ?
-              project.ext.jacocoCoverageThreshold : 0.6
-
-          limit {
-            counter = 'BRANCH'
-            value = 'COVEREDRATIO'
-            minimum = threshold
+            limit {
+              counter = 'BRANCH'
+              value = 'COVEREDRATIO'
+              minimum = threshold
+            }
           }
         }
       }
-    }
 
-    diffCoverageReport {
-      diffSource.file = createDiffFile()
+      diffCoverageReport {
+        diffSource.file = createDiffFile()
 
-      // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
-      reports {
-        html = true
-        xml = true
+        // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
+        reports {
+          html = true
+          xml = true
+        }
+
+        violationRules {
+          minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.33
+          failOnViolation = true
+        }
       }
 
-      violationRules {
-        minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.33
-        failOnViolation = true
+      task logDiffCoverage {
+        doLast {
+          parseJacocoXml("$buildDir/reports/jacoco/diffCoverage/report.xml")
+        }
       }
-    }
 
-    task logDiffCoverage {
-      doLast {
-        parseJacocoXml("$buildDir/reports/jacoco/diffCoverage/report.xml")
-      }
+      diffCoverage.finalizedBy logDiffCoverage
     }
-
-    diffCoverage.finalizedBy logDiffCoverage
   }
 
   task flakyTest(type: Test) {
@@ -483,7 +491,7 @@ subprojects {
   }
 
   // Only publish artifacts for projects that are at the leaf level
-  if (project.childProjects.isEmpty()) {
+  if (isLeafSubModule) {
     publishing.configureArtifactPublishing(project, testJar)
   }
 }
@@ -622,6 +630,7 @@ ext.createDiffFile = { ->
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceController.java',
         ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',
         ':!services/venice-standalone/*', // exclude the entire standalone project
+        ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
 
         // Other files that have tests but are not executed in the regular unit test task
         ':!internal/alpini/*'
