@@ -2,6 +2,7 @@ package com.linkedin.davinci.consumer;
 
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -23,14 +24,14 @@ public class VeniceChangeCoordinate implements Externalizable {
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeUTF(topic);
     out.writeInt(partition);
-    out.write(pubSubPosition.getPositionWireFormat().getRawBytes().array());
+    out.writeObject(pubSubPosition.getPositionWireFormat());
   }
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.topic = in.readUTF();
     this.partition = in.readInt();
-    this.pubSubPosition = PubSubPosition.getPositionFromWireFormat((byte[]) in.readObject());
+    this.pubSubPosition = PubSubPosition.getPositionFromWireFormat((PubSubPositionWireFormat) in.readObject());
   }
 
   // Partition and store name can be publicly accessible
