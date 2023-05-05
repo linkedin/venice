@@ -42,7 +42,7 @@ public class Gauge implements MeasurableStat {
   }
 
   @Override
-  public void record(MetricConfig config, double value, long now) {
+  public void record(double value, long now) {
     this.value = value;
   }
 
