@@ -39,6 +39,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -63,6 +64,7 @@ public class MetaStoreWriter implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(MetaStoreWriter.class);
 
   private final Map<String, VeniceWriter> metaStoreWriterMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, ReentrantLock> metaStoreWriterLockMap = new VeniceConcurrentHashMap<>();
   private final TopicManager topicManager;
   private final VeniceWriterFactory writerFactory;
   private final Schema derivedComputeSchema;
@@ -302,7 +304,6 @@ public class MetaStoreWriter implements Closeable {
    */
   public void deleteStoreReplicaStatus(String clusterName, String storeName, int version, int partitionId) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VeniceWriter writer = prepareToWrite(metaStoreName);
     StoreMetaKey key = MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
       {
         put(KEY_STRING_STORE_NAME, storeName);
@@ -311,6 +312,7 @@ public class MetaStoreWriter implements Closeable {
         put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
       }
     });
+    VeniceWriter writer = getOrCreateMetaStoreWriter(metaStoreName);
     writer.delete(key, null);
     writer.flush();
   }
@@ -341,7 +343,7 @@ public class MetaStoreWriter implements Closeable {
       Supplier<Map<String, String>> keyStringSupplier,
       Supplier<StoreMetaValue> valueSupplier) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VeniceWriter writer = prepareToWrite(metaStoreName);
+    VeniceWriter writer = getOrCreateMetaStoreWriter(metaStoreName);
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     StoreMetaValue value = valueSupplier.get();
     value.timestamp = System.currentTimeMillis();
@@ -355,7 +357,6 @@ public class MetaStoreWriter implements Closeable {
       Supplier<Map<String, String>> keyStringSupplier,
       Supplier<SpecificRecord> updateSupplier) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VeniceWriter writer = prepareToWrite(metaStoreName);
     if (derivedComputeSchemaId == -1) {
       /**
        * Fetch the derived compute schema id on demand for integration test since the meta system store is being created
@@ -371,16 +372,31 @@ public class MetaStoreWriter implements Closeable {
     }
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     SpecificRecord update = updateSupplier.get();
-    writer.update(
-        key,
-        update,
-        AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get(),
-        derivedComputeSchemaId,
-        null);
-    writer.flush();
+    ReentrantLock lock = getOrCreateMetaStoreWriterLock(metaStoreName);
+    VeniceWriter writer = null;
+    try {
+      lock.lock();
+      writer = getOrCreateMetaStoreWriter(metaStoreName);
+      writer.update(
+          key,
+          update,
+          AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get(),
+          derivedComputeSchemaId,
+          null);
+      writer.flush();
+    } catch (Exception e) {
+      LOGGER.error("Caught exception while trying to update, will respawn a new writer.", e);
+      closeVeniceWriter(metaStoreName, writer, true);
+    } finally {
+      lock.unlock();
+    }
   }
 
-  private VeniceWriter prepareToWrite(String metaStoreName) {
+  private ReentrantLock getOrCreateMetaStoreWriterLock(String metaStoreName) {
+    return metaStoreWriterLockMap.computeIfAbsent(metaStoreName, k -> new ReentrantLock());
+  }
+
+  private VeniceWriter getOrCreateMetaStoreWriter(String metaStoreName) {
     return metaStoreWriterMap.computeIfAbsent(metaStoreName, k -> {
       PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
       if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
