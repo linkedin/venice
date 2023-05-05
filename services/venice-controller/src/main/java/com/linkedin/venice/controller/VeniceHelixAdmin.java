@@ -6311,9 +6311,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (isMaxCapacityProtectionEnabled.isPresent()) {
       routersClusterManager.enableMaxCapacityProtection(isMaxCapacityProtectionEnabled.get());
     }
-    if (isQuotaRebalancedEnable.isPresent() && expectedRouterCount.isPresent()) {
-      routersClusterManager.enableQuotaRebalance(isQuotaRebalancedEnable.get(), expectedRouterCount.get());
-    }
   }
 
   /**

@@ -18,6 +18,8 @@ import org.testng.annotations.Test;
 
 
 public class ReadRequestThrottlerTest {
+  private static final double PER_STORE_ROUTER_QUOTA_BUFFER = 1.5;
+
   private ReadOnlyStoreRepository storeRepository;
   private ZkRoutersClusterManager zkRoutersClusterManager;
   private RoutingDataRepository routingDataRepository;
@@ -28,6 +30,8 @@ public class ReadRequestThrottlerTest {
   private ReadRequestThrottler throttler;
   private final static long maxCapacity = 400;
   private VeniceRouterConfig routerConfig;
+
+  private long appliedQuotaBuffer = 1 + (long) PER_STORE_ROUTER_QUOTA_BUFFER;
 
   @BeforeMethod
   public void setUp() {
@@ -44,7 +48,6 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(Arrays.asList(new Store[] { store })).when(storeRepository).getAllStores();
     Mockito.doReturn(totalQuota).when(storeRepository).getTotalStoreReadQuota();
     Mockito.doReturn(routerCount).when(zkRoutersClusterManager).getLiveRoutersCount();
-    Mockito.doReturn(true).when(zkRoutersClusterManager).isQuotaRebalanceEnabled();
     Mockito.doReturn(true).when(zkRoutersClusterManager).isThrottlingEnabled();
     Mockito.doReturn(true).when(zkRoutersClusterManager).isMaxCapacityProtectionEnabled();
     Mockito.doReturn(true).when(routerConfig).isPerRouterStorageNodeThrottlerEnabled();
@@ -56,7 +59,7 @@ public class ReadRequestThrottlerTest {
         maxCapacity,
         stats,
         0.0,
-        0.0,
+        PER_STORE_ROUTER_QUOTA_BUFFER,
         1000,
         1000,
         true);
@@ -64,12 +67,16 @@ public class ReadRequestThrottlerTest {
 
   @Test
   public void testCalculateStoreQuotaPerRouter() {
-    Assert.assertEquals(throttler.calculateStoreQuotaPerRouter(totalQuota), totalQuota / routerCount);
+    Assert.assertEquals(
+        throttler.calculateStoreQuotaPerRouter(totalQuota),
+        totalQuota / routerCount * appliedQuotaBuffer);
     // Mock one router has been crushed.
     routerCount = routerCount - 1;
     Mockito.doReturn(routerCount).when(zkRoutersClusterManager).getLiveRoutersCount();
     throttler.handleRouterCountChanged(routerCount);
-    Assert.assertEquals(throttler.calculateStoreQuotaPerRouter(totalQuota), totalQuota / routerCount);
+    Assert.assertEquals(
+        throttler.calculateStoreQuotaPerRouter(totalQuota),
+        totalQuota / routerCount * appliedQuotaBuffer);
     // Too many router failures, the ideal quota per router exceeds the max capacity
     routerCount = routerCount / 2;
     Mockito.doReturn(routerCount).when(zkRoutersClusterManager).getLiveRoutersCount();
@@ -82,14 +89,17 @@ public class ReadRequestThrottlerTest {
     int numberOfRequests = 10;
     try {
       for (int i = 0; i < numberOfRequests; i++) {
-        throttler.mayThrottleRead(store.getName(), (int) (totalQuota / routerCount / numberOfRequests), "test");
+        throttler.mayThrottleRead(
+            store.getName(),
+            (int) (totalQuota / routerCount / numberOfRequests) * appliedQuotaBuffer,
+            "test");
       }
     } catch (QuotaExceededException e) {
       Assert.fail("Usage has not exceeded the quota.");
     }
 
     try {
-      throttler.mayThrottleRead(store.getName(), 10, "test");
+      throttler.mayThrottleRead(store.getName(), 10 * appliedQuotaBuffer, "test");
       Assert.fail("Usage has exceed the quota. Should get the QuotaExceededException.");
     } catch (QuotaExceededException e) {
       // expected.
@@ -99,7 +109,7 @@ public class ReadRequestThrottlerTest {
   @Test
   public void testOnRouterCountChanged() {
     try {
-      throttler.mayThrottleRead(store.getName(), (int) (totalQuota / (routerCount - 1)), "test");
+      throttler.mayThrottleRead(store.getName(), (int) (totalQuota / (routerCount - 1)) * appliedQuotaBuffer, "test");
       Assert.fail("Usage has exceeded the quota.");
     } catch (QuotaExceededException e) {
       // expected.
@@ -112,7 +122,7 @@ public class ReadRequestThrottlerTest {
       throttler.mayThrottleRead(store.getName(), (int) (totalQuota / (routerCount - 1)), "test");
       Mockito.verify(stats, Mockito.atLeastOnce()).recordTotalQuota((double) totalQuota / (routerCount - 1));
       Mockito.verify(stats, Mockito.atLeastOnce())
-          .recordQuota(store.getName(), (double) totalQuota / (routerCount - 1));
+          .recordQuota(store.getName(), (double) totalQuota / (routerCount - 1) * appliedQuotaBuffer);
     } catch (QuotaExceededException e) {
       Assert.fail("Usage has not exceeded the quota.");
     }
@@ -129,7 +139,7 @@ public class ReadRequestThrottlerTest {
 
     long newQuota = totalQuota + 200;
     try {
-      throttler.mayThrottleRead(store.getName(), (double) newQuota / routerCount, "test");
+      throttler.mayThrottleRead(store.getName(), (double) newQuota / routerCount * appliedQuotaBuffer, "test");
       Assert.fail("Quota has not been updated.");
     } catch (QuotaExceededException e) {
       // expected
@@ -141,7 +151,8 @@ public class ReadRequestThrottlerTest {
 
     throttler.handleStoreChanged(store);
     Mockito.verify(stats, Mockito.atLeastOnce()).recordTotalQuota((double) newQuota / routerCount);
-    Mockito.verify(stats, Mockito.atLeastOnce()).recordQuota(store.getName(), (double) newQuota / routerCount);
+    Mockito.verify(stats, Mockito.atLeastOnce())
+        .recordQuota(store.getName(), (double) newQuota / routerCount * appliedQuotaBuffer);
 
     try {
       throttler.mayThrottleRead(store.getName(), (double) newQuota / routerCount, "test");
@@ -245,7 +256,7 @@ public class ReadRequestThrottlerTest {
     throttler.handleStoreChanged(newStore);
     Assert.assertEquals(
         throttler.getStoreReadThrottler("testOnStoreCreatedAndDeleted").getQuota(),
-        extraQuota / routerCount);
+        extraQuota / routerCount * appliedQuotaBuffer);
     // Mock delete the new store.
     Mockito.doReturn(Arrays.asList(store)).when(storeRepository).getAllStores();
     Mockito.doReturn(totalQuota).when(storeRepository).getTotalStoreReadQuota();
@@ -273,7 +284,9 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(extraQuota).when(storeRepository).getTotalStoreReadQuota();
     throttler.handleStoreDeleted(store.getName());
     // Now the total quota per router falls back under the max capacity.
-    Assert.assertEquals(throttler.getStoreReadThrottler("testOnStoreCreatedAndDeleted").getQuota(), extraQuota);
+    Assert.assertEquals(
+        throttler.getStoreReadThrottler("testOnStoreCreatedAndDeleted").getQuota(),
+        extraQuota * appliedQuotaBuffer);
   }
 
   @Test
@@ -347,38 +360,6 @@ public class ReadRequestThrottlerTest {
   }
 
   @Test
-  public void testDisableQuotaRebalance() {
-    // disable quota rebalance
-    Mockito.doReturn(false).when(zkRoutersClusterManager).isQuotaRebalanceEnabled();
-    Mockito.doReturn(routerCount).when(zkRoutersClusterManager).getExpectedRoutersCount();
-
-    // Mock router count is changed.
-    Mockito.doReturn(routerCount - 1).when(zkRoutersClusterManager).getLiveRoutersCount();
-    throttler.handleRouterCountChanged(routerCount - 1);
-    try {
-      throttler.mayThrottleRead(store.getName(), (int) (totalQuota / (routerCount - 1)), "test");
-      Assert.fail(
-          "As quota re-balance has been disabled, quota per router should not be increased with one router failure.");
-    } catch (QuotaExceededException e) {
-      // expected.
-    }
-    try {
-      throttler.mayThrottleRead(store.getName(), (int) (totalQuota / routerCount), "test");
-    } catch (QuotaExceededException e) {
-      Assert.fail("Usage does not exceed the quota, should not throttle the request.");
-    }
-
-    // enable again
-    Mockito.doReturn(true).when(zkRoutersClusterManager).isQuotaRebalanceEnabled();
-    throttler.handleRouterClusterConfigChanged(null);
-    try {
-      throttler.mayThrottleRead(store.getName(), (int) (totalQuota / (routerCount - 1)), "test");
-    } catch (QuotaExceededException e) {
-      Assert.fail("Usage does not exceed the quota, should not throttle the request.");
-    }
-  }
-
-  @Test
   public void testDisableMaxCapacityProtection() {
     // disable router protection
     Mockito.doReturn(false).when(zkRoutersClusterManager).isMaxCapacityProtectionEnabled();
@@ -399,7 +380,7 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(true).when(zkRoutersClusterManager).isMaxCapacityProtectionEnabled();
     throttler.handleRouterClusterConfigChanged(null);
     try {
-      throttler.mayThrottleRead(store.getName(), (int) totalQuota, "test");
+      throttler.mayThrottleRead(store.getName(), (int) totalQuota * appliedQuotaBuffer, "test");
       Assert.fail("As router protection has been enabled. Current usage exceeds the quota.");
     } catch (QuotaExceededException e) {
       // expected

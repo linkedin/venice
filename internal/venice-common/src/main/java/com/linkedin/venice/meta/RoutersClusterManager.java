@@ -56,8 +56,6 @@ public interface RoutersClusterManager {
 
   boolean isThrottlingEnabled();
 
-  boolean isQuotaRebalanceEnabled();
-
   boolean isMaxCapacityProtectionEnabled();
 
   /**
@@ -65,12 +63,6 @@ public interface RoutersClusterManager {
    * request regardless of store's quota.
    */
   void enableThrottling(boolean enable);
-
-  /**
-   * Enable or disable read quota re-balance feature on router. If this feature is disabled, router will not update
-   * store's read quota while a router is removed from or added into the cluster.
-   */
-  void enableQuotaRebalance(boolean enable, int expectRouterCount);
 
   /**
    * Enable or disable max read capacity protection feature on router. If this feature is disabled, router will not
