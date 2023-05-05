@@ -194,11 +194,6 @@ public class ZkRoutersClusterManager
   }
 
   @Override
-  public boolean isQuotaRebalanceEnabled() {
-    return routersClusterConfig.isQuotaRebalanceEnabled();
-  }
-
-  @Override
   public boolean isMaxCapacityProtectionEnabled() {
     return routersClusterConfig.isMaxCapacityProtectionEnabled();
   }
@@ -213,25 +208,6 @@ public class ZkRoutersClusterManager
       return currentData;
     });
     routersClusterConfig.setThrottlingEnabled(enable);
-  }
-
-  @Override
-  public void enableQuotaRebalance(boolean enable, int expectRouterCount) {
-    compareAndSetClusterConfig(currentData -> {
-      if (currentData == null) {
-        currentData = new RoutersClusterConfig();
-      }
-      currentData.setQuotaRebalanceEnabled(enable);
-      // While disabling the quota re-balance feature, an expected router count should be defined so that each router
-      // could use this count to calculate quota per router instead of depending on the live routers count.
-      if (!enable) {
-        validateExpectRouterCount(expectRouterCount);
-        currentData.setExpectedRouterCount(expectRouterCount);
-      }
-      return currentData;
-    });
-    routersClusterConfig.setQuotaRebalanceEnabled(enable);
-    routersClusterConfig.setExpectedRouterCount(expectRouterCount);
   }
 
   private void validateExpectRouterCount(int expectedRouterCount) {
