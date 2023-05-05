@@ -18,7 +18,7 @@ import org.testng.annotations.Test;
 
 
 public class ReadRequestThrottlerTest {
-  private final double PER_STORE_ROUTER_QUOTA_BUFFER = 1.5;
+  private static final double PER_STORE_ROUTER_QUOTA_BUFFER = 1.5;
 
   private ReadOnlyStoreRepository storeRepository;
   private ZkRoutersClusterManager zkRoutersClusterManager;
