@@ -18,6 +18,10 @@ dependencies {
     implementation libraries.jacksonDatabind
 
     implementation libraries.log4j2api
+    implementation libraries.log4j2core
+
+    testImplementation libraries.mockito
+    testImplementation libraries.testng
 }
 
 nar {
