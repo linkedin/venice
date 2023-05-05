@@ -400,12 +400,12 @@ public class MetaStoreWriter implements Closeable {
         messageProduceRetryCount++;
         if (messageProduceRetryCount < maxMessageProduceRetryCount) {
           LOGGER.warn(
-              "Caught exception while trying to write message, will retry {}/{}",
+              "Caught exception while trying to write message, will restart Venice Writer and retry {}/{}",
               messageProduceRetryCount,
               maxMessageProduceRetryCount);
-        } else {
-          LOGGER.error("Caught exception while trying to write message, will shutdown writer.", e);
           closeVeniceWriter(metaStoreName, writer, true);
+        } else {
+          LOGGER.error("Fail to write message after {} attempts.", maxMessageProduceRetryCount, e);
           break;
         }
       } finally {
