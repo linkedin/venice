@@ -187,14 +187,14 @@ public class PartitionConsumptionState {
    */
   private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
-  private boolean resetPCS;
+  private boolean restartIngestion;
 
-  public boolean isResetPCS() {
-    return resetPCS;
+  public boolean isRestartIngestion() {
+    return restartIngestion;
   }
 
-  public void setResetPCS(boolean resetPCS) {
-    this.resetPCS = resetPCS;
+  public void setRestartIngestion(boolean restartIngestion) {
+    this.restartIngestion = restartIngestion;
   }
 
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid) {
@@ -240,7 +240,7 @@ public class PartitionConsumptionState {
     this.latestIgnoredUpstreamRTOffsetMap = new HashMap<>();
     // On start we haven't sent anything
     this.latestRTOffsetTriedToProduceToVTMap = new HashMap<>();
-    this.resetPCS = false;
+    this.restartIngestion = false;
   }
 
   public int getPartition() {

@@ -177,7 +177,7 @@ public class RocksDBSstFileWriter {
         // remove all the temp sst files if found any as we will start fresh
         removeSSTFilesAfterCheckpointing(-1);
         if (partitionConsumptionState != null) {
-          partitionConsumptionState.setResetPCS(true);
+          partitionConsumptionState.setRestartIngestion(true);
         }
         return;
       }

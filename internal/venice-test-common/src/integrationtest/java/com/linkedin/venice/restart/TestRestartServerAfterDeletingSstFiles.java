@@ -230,7 +230,7 @@ public class TestRestartServerAfterDeletingSstFiles {
     // 1. wait for rocksDBSstFileWritter to be opened
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       rocksDBStoragePartitions.stream().forEach(partition -> {
-        Assert.assertNotNull(partition.rocksDBSstFileWritter);
+        Assert.assertNotNull(partition.getRocksDBSstFileWritter());
       });
     });
 
@@ -238,7 +238,7 @@ public class TestRestartServerAfterDeletingSstFiles {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       AtomicInteger totalIngestedKeys = new AtomicInteger();
       rocksDBStoragePartitions.stream().forEach(partition -> {
-        totalIngestedKeys.addAndGet((int) partition.rocksDBSstFileWritter.getRecordNumInAllSSTFiles());
+        totalIngestedKeys.addAndGet((int) partition.getRocksDBSstFileWritter().getRecordNumInAllSSTFiles());
       });
       Assert.assertEquals(totalIngestedKeys.get(), numKeys);
     });

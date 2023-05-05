@@ -132,7 +132,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
   protected final List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
 
-  public RocksDBSstFileWriter rocksDBSstFileWritter = null;
+  private RocksDBSstFileWriter rocksDBSstFileWritter = null;
 
   protected RocksDBStoragePartition(
       StoragePartitionConfig storagePartitionConfig,
@@ -594,7 +594,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       // Remove the files inside first
       Arrays.stream(dir.list()).forEach(file -> {
         if (!(new File(fullPath, file).delete())) {
-          LOGGER.warn("Failed to remove file: {} in dir: {} ", file, fullPath);
+          LOGGER.warn("Failed to remove file: {} in dir: {}", file, fullPath);
         }
       });
     }
@@ -779,5 +779,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   public String getFullPathForTempSSTFileDir() {
     return fullPathForTempSSTFileDir;
+  }
+
+  public RocksDBSstFileWriter getRocksDBSstFileWritter() {
+    return rocksDBSstFileWritter;
   }
 }
