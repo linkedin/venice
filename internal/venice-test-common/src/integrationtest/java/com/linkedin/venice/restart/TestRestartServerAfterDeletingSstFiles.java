@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.io.IOUtils;
@@ -42,10 +43,13 @@ import org.testng.annotations.Test;
 
 
 /**
- * This test was added to mimic {@link org.rocksdb.RocksDB#ingestExternalFile} completed moving
- * the locally created sst files to the DB but {@link com.linkedin.venice.offsets.OffsetRecord}
- * with EOP is not synced yet leading to restart of ingestion which will notice that the sst
- * files are missing and start the ingestion from scratch
+ * This test was added to mimic the below state:
+ * 1. {@link org.rocksdb.RocksDB#ingestExternalFile} moved the locally created sst files to the DB
+ *    after receiving EOP.
+ * 2. {@link com.linkedin.venice.offsets.OffsetRecord} with EOP set as true is not synced yet
+ * 3. process crashes
+ *
+ * When the process restarts, it will notice the sst files are not found and restart the ingestion from scratch.
  */
 public class TestRestartServerAfterDeletingSstFiles {
   private static final Logger LOGGER = LogManager.getLogger(TestRestartServerAfterDeletingSstFiles.class);
@@ -55,12 +59,15 @@ public class TestRestartServerAfterDeletingSstFiles {
   private String storeVersionName;
   private int valueSchemaId;
   private String storeName;
+  private int newVersion = 0;
 
   private VeniceWriter<String, String, byte[]> veniceWriter;
 
-  final int numKeys = 300;
-  final String keyPrefix = "key_";
-  final String valuePrefix = "value_";
+  private final int numKeys = 300;
+  private int startingKey = 0;
+  private final String keyPrefix = "key_";
+  private final String valuePrefix = "value_";
+  AvroGenericStoreClient<String, Object> storeClient;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws VeniceClientException {
@@ -77,7 +84,7 @@ public class TestRestartServerAfterDeletingSstFiles {
     storeName = Utils.getUniqueString("testRestart");
     veniceCluster.getNewStore(storeName);
 
-    // Create two servers, and one with early termination enabled, and one without
+    // Create one server
     Properties serverProperties = new Properties();
     serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
@@ -91,6 +98,12 @@ public class TestRestartServerAfterDeletingSstFiles {
     // Update default quota
     controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(0));
+
+    // AvroGenericStoreClient: to verify if the data is ingested
+    storeClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(veniceCluster.getRandomRouterURL())
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
   }
 
   @AfterClass(alwaysRun = true)
@@ -99,101 +112,35 @@ public class TestRestartServerAfterDeletingSstFiles {
   }
 
   /**
-   * Baseline: Ingestion and no servers restarted
+   * Baseline: Server is not restarted
    */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testWithOutServerRestart() throws Exception {
     // Create new version
-    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, true, true);
-    storeVersionName = creationResponse.getKafkaTopic();
-    veniceWriter = veniceCluster.getVeniceWriter(storeVersionName);
-    final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
-    final int numKeys = 300;
-    String keyPrefix = "key_";
-    String valuePrefix = "value_";
+    createNewVersionAndStartIngestion();
+    endIngestion();
 
-    veniceWriter.broadcastStartOfPush(true, new HashMap<>());
-    // Insert test records
-    for (int i = 0; i < numKeys; ++i) {
-      veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId);
-    }
-
-    // Write end of push message to finish the job
-    veniceWriter.broadcastEndOfPush(new HashMap<>());
-
-    // Wait for storage node to finish consuming, and new version to be activated
-    String controllerUrl = veniceCluster.getAllControllersURLs();
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
-          .getStore()
-          .getCurrentVersion();
-      return currentVersion == pushVersion;
-    });
-
-    // Test with AvroGenericStoreClient: verify if all the data is ingested even with a restart
-    AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(veniceCluster.getRandomRouterURL())
-            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
-
-    int currkey = 0;
-    while (++currkey < numKeys) {
-      Assert.assertEquals(storeClient.get(keyPrefix + currkey).get().toString(), valuePrefix + currkey);
-    }
+    verifyIngestion();
     IOUtils.closeQuietly(veniceWriter);
   }
 
   /**
-   * Servers are restarted in between ingestion but SST files are not manually deleted
+   * Servers are restarted in between ingestion but SST files are not deleted,
+   * so the ingestion will use the existing SST files based on checkpointing.
    */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testWithServerRestart() throws Exception {
-    // Create new version
-    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, true, true);
-    storeVersionName = creationResponse.getKafkaTopic();
-    veniceWriter = veniceCluster.getVeniceWriter(storeVersionName);
-    final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
-    final int numKeys = 300;
-    String keyPrefix = "key_";
-    String valuePrefix = "value_";
+    createNewVersionAndStartIngestion();
 
-    veniceWriter.broadcastStartOfPush(true, new HashMap<>());
-    // Insert test records
-    for (int i = 0; i < numKeys; ++i) {
-      veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId);
-    }
-
-    // Get the only available server and the storage partition and delete the sst files mimicing
-    // the ingestExternalFile deleting the files by moving them to DB
     VeniceServerWrapper server = veniceCluster.getVeniceServers().get(0);
 
-    // restart the venice servers: Mimic SN restart after ingestExternalFile() but before EOP sync to OffsetRecord
-    veniceCluster.stopVeniceServer(server.getPort());
-    veniceCluster.restartVeniceServer(server.getPort());
+    // restart the venice servers: Mimic Process crash and restart after ingestExternalFile()
+    // completes but before EOP was synced to OffsetRecord
+    restartVeniceServer(server);
 
-    // Write end of push message to finish the job
-    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    endIngestion();
 
-    // Wait for storage node to finish consuming, and new version to be activated
-    String controllerUrl = veniceCluster.getAllControllersURLs();
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
-          .getStore()
-          .getCurrentVersion();
-      LOGGER.info("currentVersion {}, pushVersion {}", currentVersion, pushVersion);
-      return currentVersion == pushVersion;
-    });
-
-    // Test with AvroGenericStoreClient: verify if all the data is ingested even with a restart
-    AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(veniceCluster.getRandomRouterURL())
-            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
-
-    int currkey = 0;
-    while (++currkey < numKeys) {
-      Assert.assertEquals(storeClient.get(keyPrefix + currkey).get().toString(), valuePrefix + currkey);
-    }
+    verifyIngestion();
     IOUtils.closeQuietly(veniceWriter);
   }
 
@@ -203,19 +150,8 @@ public class TestRestartServerAfterDeletingSstFiles {
    */
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testWithServerRestartWithDeletedSSTFiles() throws Exception {
-    // Create new version
-    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, true, true);
-    storeVersionName = creationResponse.getKafkaTopic();
-    veniceWriter = veniceCluster.getVeniceWriter(storeVersionName);
-    final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
-    veniceWriter.broadcastStartOfPush(true, new HashMap<>());
-    // Insert test records
-    for (int i = 0; i < numKeys; ++i) {
-      veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId);
-    }
+    createNewVersionAndStartIngestion();
 
-    // Get the only available server and the storage partition and delete the sst files mimicing
-    // the ingestExternalFile deleting the files by moving them to DB
     VeniceServerWrapper server = veniceCluster.getVeniceServers().get(0);
     TestVeniceServer testVeniceServer = server.getVeniceServer();
     StorageService storageService = testVeniceServer.getStorageService();
@@ -226,7 +162,7 @@ public class TestRestartServerAfterDeletingSstFiles {
     rocksDBStoragePartitions.add((RocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(1));
     rocksDBStoragePartitions.add((RocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(2));
 
-    LOGGER.info("Waiting for the SN to Finish ingesting all the data to sst files");
+    LOGGER.info("Waiting for the process to Finish ingesting all the data to sst files");
     // 1. wait for rocksDBSstFileWritter to be opened
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       rocksDBStoragePartitions.stream().forEach(partition -> {
@@ -243,38 +179,81 @@ public class TestRestartServerAfterDeletingSstFiles {
       Assert.assertEquals(totalIngestedKeys.get(), numKeys);
     });
 
+    // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
     LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
     rocksDBStoragePartitions.stream().forEach(partition -> {
       partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
     });
 
-    // restart the venice servers: Mimic SN restart after ingestExternalFile() but before EOP sync to OffsetRecord
-    veniceCluster.stopVeniceServer(server.getPort());
-    veniceCluster.restartVeniceServer(server.getPort());
+    // restart the venice servers: Mimic Process crash and restart after ingestExternalFile()
+    // completes but before EOP was synced to OffsetRecord
+    restartVeniceServer(server);
 
+    endIngestion();
+    verifyIngestion();
+    IOUtils.closeQuietly(veniceWriter);
+  }
+
+  private void createNewVersionAndStartIngestion() {
+    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, true, true);
+    storeVersionName = creationResponse.getKafkaTopic();
+    veniceWriter = veniceCluster.getVeniceWriter(storeVersionName);
+    int versionToBePushed = Version.parseVersionFromKafkaTopicName(storeVersionName);
+    Assert.assertEquals(newVersion + 1, versionToBePushed);
+    newVersion = versionToBePushed;
+    LOGGER.info("Store's current version is: {} and Push will create a new version: {}", newVersion - 1, newVersion);
+
+    // Different set of keys for different version
+    startingKey += numKeys;
+
+    int currkey = startingKey;
+    int endKey = startingKey + numKeys;
+
+    // Start of Push initiated
+    veniceWriter.broadcastStartOfPush(true, new HashMap<>());
+
+    // Insert test records
+    while (currkey < endKey) {
+      veniceWriter.put(keyPrefix + currkey, valuePrefix + currkey, valueSchemaId);
+      currkey++;
+    }
+
+    // EOP will be sent in endIngestion()
+  }
+
+  private void endIngestion() {
     // Write end of push message to finish the job
     veniceWriter.broadcastEndOfPush(new HashMap<>());
+  }
 
+  private void verifyIngestion() throws ExecutionException, InterruptedException {
     // Wait for storage node to finish consuming, and new version to be activated
     String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
           .getStore()
           .getCurrentVersion();
-      LOGGER.info("currentVersion {}, pushVersion {}", currentVersion, pushVersion);
-      return currentVersion == pushVersion;
+      LOGGER.info("currentVersion {}, pushVersion {}", currentVersion, newVersion);
+      return currentVersion == newVersion;
     });
 
-    // Test with AvroGenericStoreClient: verify if all the data is ingested even with a restart
-    AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(veniceCluster.getRandomRouterURL())
-            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+    // use client to query for all the keys
 
-    int currkey = 0;
-    while (++currkey < numKeys) {
+    // 1. invalid key
+    Assert.assertNull(storeClient.get(keyPrefix + (startingKey - 1)).get());
+
+    // 2. all valid keys
+    int currkey = startingKey;
+    int endKey = startingKey + numKeys;
+    while (currkey < endKey) {
       Assert.assertEquals(storeClient.get(keyPrefix + currkey).get().toString(), valuePrefix + currkey);
+      currkey++;
     }
-    IOUtils.closeQuietly(veniceWriter);
   }
+
+  private void restartVeniceServer(VeniceServerWrapper server) {
+    veniceCluster.stopVeniceServer(server.getPort());
+    veniceCluster.restartVeniceServer(server.getPort());
+  }
+
 }

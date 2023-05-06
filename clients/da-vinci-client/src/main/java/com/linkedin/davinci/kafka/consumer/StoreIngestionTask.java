@@ -588,7 +588,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         checkpointedDatabaseInfo,
         partitionChecksumSupplier,
         partitionConsumptionState);
-    if (partitionConsumptionState.isRestartIngestion()) {
+    if (partitionConsumptionState.isRestartIngestionRequired()) {
       return;
     }
     if (cacheBackend.isPresent()) {
@@ -1419,7 +1419,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         beginBatchWrite(partition, sorted, newPartitionConsumptionState);
 
-        if (newPartitionConsumptionState.isRestartIngestion()) {
+        if (newPartitionConsumptionState.isRestartIngestionRequired()) {
           return;
         }
 
@@ -1533,32 +1533,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
 
-        if (newPartitionConsumptionState.isRestartIngestion()) {
-          // remove the states set above
-          partitionConsumptionStateMap.remove(partition);
-          kafkaDataIntegrityValidator.clearPartition(partition);
-
-          // clear the offset data
-          storageMetadataService.clearOffset(topicPartition.getPubSubTopic().getName(), partition);
-          offsetRecord = storageMetadataService.getLastOffset(topicPartition.getPubSubTopic().getName(), partition);
-
-          // get new PartitionConsumptionState based on the cleared offset
-          newPartitionConsumptionState = new PartitionConsumptionState(
-              partition,
-              amplificationFactor,
-              offsetRecord,
-              hybridStoreConfig.isPresent());
-
-          // start again
-          partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-          offsetRecord.getProducerPartitionStateMap().entrySet().forEach(entry -> {
-            GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
-            ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
-            producerTracker.setPartitionState(partition, entry.getValue());
-          });
+        if (newPartitionConsumptionState.isRestartIngestionRequired()) {
+          LOGGER.warn(
+              "Restart ingestion from the beginning by resetting " + "OffsetRecord for topic: {} and partition: {}",
+              topicPartition.getPubSubTopic().getName(),
+              partition);
+          resetOffset(partition, topicPartition, true);
+          newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
+          offsetRecord = newPartitionConsumptionState.getOffsetRecord();
           checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
-          if (newPartitionConsumptionState.isRestartIngestion()) {
-            throw new VeniceException("Restarting ingestion can happen during the SN restart only once");
+          if (newPartitionConsumptionState.isRestartIngestionRequired()) {
+            throw new VeniceException(
+                "Restarting ingestion can happen after process restarts only once for topic: "
+                    + topicPartition.getPubSubTopic().getName() + " and partition: " + partition);
           }
         }
 
@@ -1648,50 +1635,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         break;
       case RESET_OFFSET:
-        /*
-         * After auditing all the calls that can result in the RESET_OFFSET action, it turns out we always unsubscribe
-         * from the topic/partition before resetting offset, which is unnecessary; but we decided to keep this action
-         * for now in case that in future, we do want to reset the consumer without unsubscription.
-         */
-        PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
-        if (partitionConsumptionState != null
-            && consumerHasSubscription(topicPartition.getPubSubTopic(), partitionConsumptionState)) {
-          LOGGER.error(
-              "This shouldn't happen since unsubscription should happen before reset offset for: {}",
-              topicPartition);
-          /*
-           * Only update the consumer and partitionConsumptionStateMap when consumer actually has
-           * subscription to this topic/partition; otherwise, we would blindly update the StateMap
-           * and mess up other operations on the StateMap.
-           */
-          try {
-            consumerResetOffset(topicPartition.getPubSubTopic(), partitionConsumptionState);
-            LOGGER.info("{} Reset OffSet : {}", consumerTaskId, topicPartition);
-          } catch (UnsubscribedTopicPartitionException e) {
-            LOGGER.error(
-                "{} Kafka consumer should have subscribed to the partition already but it fails "
-                    + "on resetting offset for: {}",
-                consumerTaskId,
-                topicPartition);
-          }
-          partitionConsumptionStateMap.put(
-              partition,
-              new PartitionConsumptionState(
-                  partition,
-                  amplificationFactor,
-                  new OffsetRecord(partitionStateSerializer),
-                  hybridStoreConfig.isPresent()));
-          storageUtilizationManager.initPartition(partition);
-          // Reset the error partition tracking
-          partitionIngestionExceptionList.set(partition, null);
-        } else {
-          LOGGER.info(
-              "{} No need to reset offset by Kafka consumer, since the consumer is not " + "subscribing: {}",
-              consumerTaskId,
-              topicPartition);
-        }
-        kafkaDataIntegrityValidator.clearPartition(partition);
-        storageMetadataService.clearOffset(topicPartition.getPubSubTopic().getName(), partition);
+        resetOffset(partition, topicPartition, false);
         break;
       case KILL:
         LOGGER.info("Kill this consumer task for Topic: {}", topicPartition.getPubSubTopic().getName());
@@ -1701,6 +1645,53 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }
+  }
+
+  private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+
+    if (partitionConsumptionState != null
+        && (restartIngestion || consumerHasSubscription(topicPartition.getPubSubTopic(), partitionConsumptionState))) {
+      if (restartIngestion) {
+        LOGGER.info("Reset offset before subscribing to restart ingestion for: {}", topicPartition);
+      } else {
+        LOGGER.error(
+            "This shouldn't happen since unsubscription should happen before reset offset for: {}",
+            topicPartition);
+      }
+      /*
+       * Only update the consumer and partitionConsumptionStateMap when consumer actually has
+       * subscription to this topic/partition; otherwise, we would blindly update the StateMap
+       * and mess up other operations on the StateMap.
+       */
+      try {
+        consumerResetOffset(topicPartition.getPubSubTopic(), partitionConsumptionState);
+        LOGGER.info("{} Reset OffSet : {}", consumerTaskId, topicPartition);
+      } catch (UnsubscribedTopicPartitionException e) {
+        LOGGER.error(
+            "{} Kafka consumer should have subscribed to the partition already but it fails "
+                + "on resetting offset for: {}",
+            consumerTaskId,
+            topicPartition);
+      }
+      partitionConsumptionStateMap.put(
+          partition,
+          new PartitionConsumptionState(
+              partition,
+              amplificationFactor,
+              new OffsetRecord(partitionStateSerializer),
+              hybridStoreConfig.isPresent()));
+      storageUtilizationManager.initPartition(partition);
+      // Reset the error partition tracking
+      partitionIngestionExceptionList.set(partition, null);
+    } else {
+      LOGGER.info(
+          "{} No need to reset offset by Kafka consumer, since the consumer is not " + "subscribing: {}",
+          consumerTaskId,
+          topicPartition);
+    }
+    kafkaDataIntegrityValidator.clearPartition(partition);
+    storageMetadataService.clearOffset(topicPartition.getPubSubTopic().getName(), partition);
   }
 
   /**

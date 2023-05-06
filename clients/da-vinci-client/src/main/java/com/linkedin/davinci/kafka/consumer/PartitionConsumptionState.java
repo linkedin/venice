@@ -187,9 +187,17 @@ public class PartitionConsumptionState {
    */
   private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
+  /**
+   * Indicates whether to restart the ingestion from scratch or not. The default
+   * value is false. This variable is set to true during
+   * {@link StoreIngestionTask#checkConsumptionStateWhenStart} if there is a mismatch
+   * between the number of SST files found and the checkpointed information, which
+   * implies that the process crashed during or after the ingestion but before syncing
+   * OffsetRecord with EOP.
+   */
   private boolean restartIngestion;
 
-  public boolean isRestartIngestion() {
+  public boolean isRestartIngestionRequired() {
     return restartIngestion;
   }
 

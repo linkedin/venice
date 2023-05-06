@@ -68,6 +68,7 @@ public class RocksDBSstFileWriter {
   protected static final String ROCKSDB_LAST_FINISHED_RMD_SST_FILE_NO = "rocksdb_last_finished_rmd_sst_file_no";
   protected static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
   protected static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
+  private static final int REMOVE_ALL_SST_FILES = -1;
   private int lastFinishedSSTFileNo = -1;
   /**
    * Whether the input is sorted or not.
@@ -158,7 +159,7 @@ public class RocksDBSstFileWriter {
       lastFinishedSSTFileNo = -1;
       currentSSTFileNo = 0;
       // remove all the temp sst files if found any
-      removeSSTFilesAfterCheckpointing(-1);
+      removeAllSSTFiles();
     } else {
       lastFinishedSSTFileNo = Integer.parseInt(checkpointedInfo.get(lastCheckPointedSSTFileNum));
       LOGGER.info(
@@ -173,13 +174,20 @@ public class RocksDBSstFileWriter {
         // remove the unwanted sst files, as flow will continue from the checkpointed info
         removeSSTFilesAfterCheckpointing(this.lastFinishedSSTFileNo);
         currentSSTFileNo = lastFinishedSSTFileNo + 1;
+        LOGGER.info(
+            "Ingestion will continue from the last checkpoint for store: " + "{} partition: {}",
+            storeName,
+            partitionId);
       } else {
         // remove all the temp sst files if found any as we will start fresh
-        removeSSTFilesAfterCheckpointing(-1);
+        removeAllSSTFiles();
         if (partitionConsumptionState != null) {
           partitionConsumptionState.setRestartIngestion(true);
+          LOGGER.info(
+              "Ingestion will restart from the beginning for store: " + "{} partition: {}",
+              storeName,
+              partitionId);
         }
-        return;
       }
     }
 
@@ -271,6 +279,10 @@ public class RocksDBSstFileWriter {
     }
   }
 
+  private void removeAllSSTFiles() {
+    removeSSTFilesAfterCheckpointing(REMOVE_ALL_SST_FILES);
+  }
+
   private boolean doesAllPreviousSSTFilesBeforeCheckpointingExist() {
     if (lastFinishedSSTFileNo < 0) {
       LOGGER.info("Since last finished sst file no is negative, there is nothing to verify");
@@ -286,24 +298,30 @@ public class RocksDBSstFileWriter {
     }
 
     if (currFileNo > lastFinishedSSTFileNo) {
-      LOGGER.info("Number of SST files matches with the checkpoint, continuing");
+      LOGGER.info(
+          "Number of SST files matches with the checkpoint for store: " + "{} partition: {}",
+          storeName,
+          partitionId);
       return true;
     }
 
     /**
-     * There is a mismatch in the number of created SST files vs the checkpointed
-     * number of SST files: This means that the ingestion started but the storage
-     * node crashed before OffsetRecord with EOP as true being synced.
+     * The number of SST files found and checkpointed does not match:
+     * This implies that the ingestion began but the process crashed before
+     * OffsetRecord with EOP as true could be synced.
      *
-     * This can mean one of the below things:
-     * 1. Crash after ingestion completion: Number of files is 0 in that case
-     * 2. Crash during the ingestion: The current idea of the state of the system
-     *    with this situation is undefined. Some files can be moved to the DB while
-     *    some might not, and some might linger on both the locations depends on how
-     *    RocksDB restores itself after coming up. But we are taking a safer approach
-     *    and starting from scratch.
+     * This could indicate one of these scenarios:
+     * 1. Crash after ingestion completion: Number of files is 0 in this case
+     * 2. Crash during the ingestion: The current state of the system in this
+     *    case is undefined. Some files might have been moved to the DB while
+     *    some might not have, and some might remain on both the locations
+     *    depending on how RocksDB recovers after a crash. But we are taking
+     *    a safer approach and starting the ingestion from beginning in this case.
      */
-    LOGGER.info("Number of SST files does not match with the checkpoint, restarting the ingestion");
+    LOGGER.info(
+        "Number of SST files does not match with the checkpoint for store: " + "{} partition: {}",
+        storeName,
+        partitionId);
     return false;
   }
 
@@ -396,7 +414,7 @@ public class RocksDBSstFileWriter {
 
   /**
    * If there are files already ingested in DB and we get here, then it means that the ingestion started but faced issues
-   * before completion or the SN crashed before the status of EOP was synced to OffsetRecord. In both these cases,
+   * before completion or the process crashed before the status of EOP was synced to OffsetRecord. In both these cases,
    * let's delete these files from the database and start a fresh ingestion as the new files will hold the complete data anyway.
    */
   private void deleteOldIngestion(RocksDB rocksDB, ColumnFamilyHandle columnFamilyHandle) throws RocksDBException {
