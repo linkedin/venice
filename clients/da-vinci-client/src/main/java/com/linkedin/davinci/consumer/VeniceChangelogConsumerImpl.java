@@ -280,7 +280,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       for (VeniceChangeCoordinate coordinate: checkpoints) {
         internalSeek(Collections.singleton(coordinate.getPartition()), coordinate.getTopic(), foo -> {
           // TODO: This is a hack until we refactor out kafkaConsumer, delete this.
-          Long topicOffset = ((ApacheKafkaOffsetPosition) coordinate.getOffset()).getOffset();
+          Long topicOffset = ((ApacheKafkaOffsetPosition) coordinate.getPosition()).getOffset();
           kafkaConsumer.seek(new TopicPartition(coordinate.getTopic(), coordinate.getPartition()), topicOffset);
         }).join();
       }

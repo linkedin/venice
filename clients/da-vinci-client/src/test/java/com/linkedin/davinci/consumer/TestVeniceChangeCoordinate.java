@@ -39,7 +39,7 @@ public class TestVeniceChangeCoordinate {
 
     Assert.assertEquals(restoredCoordinate.getStoreName(), TEST_STORE_NAME);
     Assert.assertEquals(restoredCoordinate.getPartition(), TEST_PARTITION);
-    Assert.assertEquals(restoredCoordinate.getOffset(), position);
+    Assert.assertEquals(restoredCoordinate.getPosition(), position);
 
   }
 }

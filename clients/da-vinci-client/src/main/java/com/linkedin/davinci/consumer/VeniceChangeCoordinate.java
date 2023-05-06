@@ -48,7 +48,7 @@ public class VeniceChangeCoordinate implements Externalizable {
     return topic;
   }
 
-  protected PubSubPosition getOffset() {
+  protected PubSubPosition getPosition() {
     return pubSubPosition;
   }
 
