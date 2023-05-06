@@ -12,7 +12,6 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.util.Attribute;
 import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
-import java.util.Optional;
 import javax.net.ssl.SSLPeerUnverifiedException;
 
 
@@ -52,9 +51,9 @@ public class ServerStoreAclHandler extends StoreAclHandler {
 
   @Override
   protected X509Certificate extractClientCert(ChannelHandlerContext ctx) throws SSLPeerUnverifiedException {
-    Optional<SslHandler> sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
-    if (sslHandler.isPresent()) {
-      return SslUtils.getX509Certificate(sslHandler.get().engine().getSession().getPeerCertificates()[0]);
+    SslHandler sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
+    if (sslHandler != null) {
+      return SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
     } else {
       throw new VeniceException("Failed to extract client cert from the incoming request");
     }
