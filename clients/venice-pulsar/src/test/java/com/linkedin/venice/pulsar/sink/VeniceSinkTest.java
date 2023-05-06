@@ -136,12 +136,9 @@ public class VeniceSinkTest {
     VeniceSink sink = new VeniceSink();
     sink.open(config, producer, null);
 
-    List<Record<GenericObject>> records = new LinkedList<>();
-
     try {
       for (int i = 0; i < 20; i++) {
         Record<GenericObject> rec = getRecord("k" + i, "v" + i);
-        records.add(rec);
         sink.write(rec);
       }
     } catch (Exception e) {

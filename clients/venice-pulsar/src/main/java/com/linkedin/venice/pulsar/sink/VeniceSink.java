@@ -80,10 +80,6 @@ public class VeniceSink implements Sink<GenericObject> {
     this.producer = startedProducer;
 
     maxNumberUnflushedRecords = this.config.getMaxNumberUnflushedRecords();
-    final int capacityMutliplier = 3;
-    int queueSize = Integer.MAX_VALUE / capacityMutliplier < maxNumberUnflushedRecords
-        ? Integer.MAX_VALUE
-        : maxNumberUnflushedRecords * capacityMutliplier;
     flushIntervalMs = this.config.getFlushIntervalMs();
 
     scheduledExecutor.scheduleAtFixedRate(() -> flush(false), flushIntervalMs, flushIntervalMs, TimeUnit.MILLISECONDS);
