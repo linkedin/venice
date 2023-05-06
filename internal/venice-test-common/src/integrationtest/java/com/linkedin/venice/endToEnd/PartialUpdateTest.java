@@ -932,15 +932,16 @@ public class PartialUpdateTest {
 
       NearlineProducerFactory factory = new NearlineProducerFactory();
       Version.PushType pushType = Version.PushType.BATCH;
-      Map<String, String> samzaConfig = getNearlineProducerConfig(veniceClusterWrapper, storeName, pushType);
+      Map<String, String> nearlineProducerConfig = getNearlineProducerConfig(veniceClusterWrapper, storeName, pushType);
       // final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
-      samzaConfig.put("systems.venice." + VENICE_AGGREGATE, "true");
-      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
-      samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-      samzaConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
-      Properties samzaProps = new Properties();
-      samzaProps.putAll(samzaConfig);
-      veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null);
+      nearlineProducerConfig.put("systems.venice." + VENICE_AGGREGATE, "true");
+      nearlineProducerConfig
+          .put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
+      nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
+      nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
+      Properties nearlineProducerProps = new Properties();
+      nearlineProducerProps.putAll(nearlineProducerConfig);
+      veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
       veniceProducer.start();
 
       // build partial update

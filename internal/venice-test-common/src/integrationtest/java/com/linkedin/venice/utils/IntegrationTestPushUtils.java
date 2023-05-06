@@ -14,14 +14,15 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_STORE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -183,17 +184,34 @@ public class IntegrationTestPushUtils {
       VeniceClusterWrapper venice,
       String storeName,
       Version.PushType type) {
-    Map<String, String> samzaConfig = new HashMap<>();
+    Map<String, String> nearlineProducerConfig = new HashMap<>();
+    nearlineProducerConfig.put(VENICE_PUSH_TYPE, type.toString());
+    nearlineProducerConfig.put(VENICE_STORE, storeName);
+    nearlineProducerConfig.put(VENICE_CHILD_D2_ZK_HOSTS, venice.getZk().getAddress());
+    nearlineProducerConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, VeniceControllerWrapper.D2_SERVICE_NAME);
+    nearlineProducerConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
+    nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, "invalid_parent_d2_service");
+    nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
+    nearlineProducerConfig.put(SSL_ENABLED, "false");
+    return nearlineProducerConfig;
+  }
+
+  public static Map<String, String> getSystemProducerConfig(
+      VeniceClusterWrapper venice,
+      String storeName,
+      Version.PushType type) {
+    Map<String, String> nearlineProducerConfig = new HashMap<>();
     String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, type.toString());
-    samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-    samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, venice.getZk().getAddress());
-    samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, VeniceControllerWrapper.D2_SERVICE_NAME);
-    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
-    samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, "invalid_parent_d2_service");
-    samzaConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
-    samzaConfig.put(SSL_ENABLED, "false");
-    return samzaConfig;
+    nearlineProducerConfig.put(configPrefix + VENICE_PUSH_TYPE, type.toString());
+    nearlineProducerConfig.put(configPrefix + VENICE_STORE, storeName);
+    nearlineProducerConfig.put(configPrefix + VENICE_AGGREGATE, "false");
+    nearlineProducerConfig.put(VENICE_CHILD_D2_ZK_HOSTS, venice.getZk().getAddress());
+    nearlineProducerConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, VeniceControllerWrapper.D2_SERVICE_NAME);
+    nearlineProducerConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
+    nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, "invalid_parent_d2_service");
+    nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
+    nearlineProducerConfig.put(SSL_ENABLED, "false");
+    return nearlineProducerConfig;
   }
 
   @SafeVarargs
@@ -202,14 +220,14 @@ public class IntegrationTestPushUtils {
       String storeName,
       Version.PushType type,
       Pair<String, String>... optionalConfigs) {
-    Map<String, String> samzaConfig = getNearlineProducerConfig(venice, storeName, type);
+    Map<String, String> nearlineProducerConfig = getNearlineProducerConfig(venice, storeName, type);
     for (Pair<String, String> config: optionalConfigs) {
-      samzaConfig.put(config.getFirst(), config.getSecond());
+      nearlineProducerConfig.put(config.getFirst(), config.getSecond());
     }
     NearlineProducerFactory factory = new NearlineProducerFactory();
-    Properties samzaProps = new Properties();
-    samzaProps.putAll(samzaConfig);
-    NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null);
+    Properties nearlineProducerProps = new Properties();
+    nearlineProducerProps.putAll(nearlineProducerConfig);
+    NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
     veniceProducer.start();
     return veniceProducer;
   }
@@ -344,9 +362,9 @@ public class IntegrationTestPushUtils {
       Long logicalTimeStamp) {
     ProducerMessageEnvelope envelope;
     if (logicalTimeStamp == null) {
-      envelope = new ProducerMessageEnvelope(storeName, key, message);
+      envelope = new ProducerMessageEnvelope(key, message);
     } else {
-      envelope = new ProducerMessageEnvelope(storeName, key, new VeniceObjectWithTimestamp(message, logicalTimeStamp));
+      envelope = new ProducerMessageEnvelope(key, new VeniceObjectWithTimestamp(message, logicalTimeStamp));
     }
     producer.send(envelope);
     producer.flush();

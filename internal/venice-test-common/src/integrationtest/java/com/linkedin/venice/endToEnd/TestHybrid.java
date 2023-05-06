@@ -593,15 +593,14 @@ public class TestHybrid {
         // Batch load from Samza
         NearlineProducerFactory factory = new NearlineProducerFactory();
         Version.PushType pushType = Version.PushType.STREAM_REPROCESSING;
-        Map<String, String> samzaConfig = getNearlineProducerConfig(veniceClusterWrapper, storeName, pushType);
-        Properties samzaProps = new Properties();
-        samzaProps.putAll(samzaConfig);
-        veniceBatchProducer = factory.getProducer(new VeniceProperties(samzaProps), null);
+        Map<String, String> nearlineProducerConfig =
+            getNearlineProducerConfig(veniceClusterWrapper, storeName, pushType);
+        Properties nearlineProducerProps = new Properties();
+        nearlineProducerProps.putAll(nearlineProducerConfig);
+        veniceBatchProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
         veniceBatchProducer.start();
-        if (veniceBatchProducer instanceof NearlineProducer) {
-          // The default behavior would exit the process
-          ((NearlineProducer) veniceBatchProducer).setExitMode(NearlineProducerExitMode.NO_OP);
-        }
+        // The default behavior would exit the process
+        veniceBatchProducer.setExitMode(NearlineProducerExitMode.NO_OP);
 
         // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
         for (int i = 10; i >= 1; i--) {
@@ -758,18 +757,18 @@ public class TestHybrid {
 
       // Batch load from Samza to both stores
       NearlineProducerFactory factory = new NearlineProducerFactory();
-      Map<String, String> samzaConfig1 =
+      Map<String, String> nearlineProducerConfig1 =
           getNearlineProducerConfig(veniceClusterWrapper, storeName1, Version.PushType.STREAM_REPROCESSING);
-      Properties samzaProps1 = new Properties();
-      samzaProps1.putAll(samzaConfig1);
-      veniceBatchProducer1 = factory.getProducer(new VeniceProperties(samzaProps1), null);
+      Properties nearlineProducerProps1 = new Properties();
+      nearlineProducerProps1.putAll(nearlineProducerConfig1);
+      veniceBatchProducer1 = factory.getProducer(new VeniceProperties(nearlineProducerProps1), null);
 
       veniceBatchProducer1.start();
-      Map<String, String> samzaConfig2 =
+      Map<String, String> nearlineProducerConfig2 =
           getNearlineProducerConfig(veniceClusterWrapper, storeName2, Version.PushType.STREAM_REPROCESSING);
-      Properties samzaProps2 = new Properties();
-      samzaProps2.putAll(samzaConfig2);
-      veniceBatchProducer2 = factory.getProducer(new VeniceProperties(samzaProps2), null);
+      Properties nearlineProducerProps2 = new Properties();
+      nearlineProducerProps2.putAll(nearlineProducerConfig2);
+      veniceBatchProducer2 = factory.getProducer(new VeniceProperties(nearlineProducerProps2), null);
       veniceBatchProducer2.start();
 
       // The default behavior would exit the process

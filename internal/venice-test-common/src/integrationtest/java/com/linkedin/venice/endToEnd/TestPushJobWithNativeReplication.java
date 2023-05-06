@@ -19,16 +19,14 @@ import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIR
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
-import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
@@ -368,21 +366,23 @@ public class TestPushJobWithNativeReplication {
           Assert.assertEquals(hybridConfig.getDataReplicationPolicy(), DataReplicationPolicy.AGGREGATE);
 
           // Write Samza data (aggregated mode)
-          Map<String, String> samzaConfig = new HashMap<>();
-          String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-          samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-          samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-          samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
-          samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
-          samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-          samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
-          samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-          samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
-          samzaConfig.put(SSL_ENABLED, "false");
+          Map<String, String> nearlineProducerConfig = new HashMap<>();
+          nearlineProducerConfig.put(VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+          nearlineProducerConfig.put(VENICE_STORE, storeName);
+          nearlineProducerConfig.put(VENICE_AGGREGATE, "true");
+          nearlineProducerConfig
+              .put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
+          nearlineProducerConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
+          nearlineProducerConfig
+              .put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
+          nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
+          nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
+          nearlineProducerConfig.put(SSL_ENABLED, "false");
           NearlineProducerFactory factory = new NearlineProducerFactory();
-          Properties samzaProps = new Properties();
-          samzaProps.putAll(samzaConfig);
-          try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
+          Properties nearlineProducerProps = new Properties();
+          nearlineProducerProps.putAll(nearlineProducerConfig);
+          try (NearlineProducer veniceProducer =
+              factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
             veniceProducer.start();
 
             // Verify the kafka URL being returned to Samza is the same as parent region kafka url.

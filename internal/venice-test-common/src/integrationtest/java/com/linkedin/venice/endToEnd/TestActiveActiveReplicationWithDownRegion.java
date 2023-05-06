@@ -26,7 +26,8 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.producer.NearlineProducer;
+import com.linkedin.venice.producer.ProducerMessageEnvelope;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -39,9 +40,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.system.OutgoingMessageEnvelope;
-import org.apache.samza.system.SystemProducer;
-import org.apache.samza.system.SystemStream;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -171,7 +169,7 @@ public class TestActiveActiveReplicationWithDownRegion {
     // A store has been created with version 1 in all regions that is hybrid and A/A
     // Now lets populate some data into dc-0 and verify that records replicate to all regions
     // Build a system producer that writes nearline to dc-0
-    SystemProducer producerInDC0 = new VeniceSystemProducer(
+    NearlineProducer producerInDC0 = new NearlineProducer(
         childDatacenters.get(0).getZkServerWrapper().getAddress(),
         childDatacenters.get(0).getZkServerWrapper().getAddress(),
         D2_SERVICE_NAME,
@@ -181,11 +179,10 @@ public class TestActiveActiveReplicationWithDownRegion {
         "dc-0",
         true,
         null,
-        Optional.empty(),
-        Optional.empty());
+        null);
     producerInDC0.start();
 
-    SystemProducer producerInDC1 = new VeniceSystemProducer(
+    NearlineProducer producerInDC1 = new NearlineProducer(
         childDatacenters.get(1).getZkServerWrapper().getAddress(),
         childDatacenters.get(1).getZkServerWrapper().getAddress(),
         D2_SERVICE_NAME,
@@ -195,12 +192,11 @@ public class TestActiveActiveReplicationWithDownRegion {
         "dc-1",
         true,
         null,
-        Optional.empty(),
-        Optional.empty());
+        null);
     producerInDC1.start();
 
     // Build another one which will write some batch data
-    SystemProducer batchProducer = new VeniceSystemProducer(
+    NearlineProducer batchProducer = new NearlineProducer(
         childDatacenters.get(0).getZkServerWrapper().getAddress(),
         multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress(),
         PARENT_D2_SERVICE_NAME,
@@ -210,25 +206,22 @@ public class TestActiveActiveReplicationWithDownRegion {
         "dc-0",
         true,
         null,
-        Optional.empty(),
-        Optional.empty());
+        null);
     batchProducer.start();
 
     // Send a few keys, and close out the system writer
     for (int rowIncrement = 0; rowIncrement < RECORDS_TO_POPULATE; rowIncrement++) {
       String value1 = "value" + rowIncrement;
-      OutgoingMessageEnvelope envelope1 =
-          new OutgoingMessageEnvelope(new SystemStream("venice", storeName), rowIncrement, value1);
-      producerInDC0.send(storeName, envelope1);
+      ProducerMessageEnvelope envelope1 = new ProducerMessageEnvelope(rowIncrement, value1);
+      producerInDC0.send(envelope1);
     }
     producerInDC0.stop();
 
     // Send a few keys, and close out the system writer
     for (int rowIncrement = 0; rowIncrement < RECORDS_TO_POPULATE; rowIncrement++) {
       String value1 = "value1" + rowIncrement;
-      OutgoingMessageEnvelope envelope1 =
-          new OutgoingMessageEnvelope(new SystemStream("venice", storeName), rowIncrement + 10, value1);
-      producerInDC1.send(storeName, envelope1);
+      ProducerMessageEnvelope envelope1 = new ProducerMessageEnvelope(rowIncrement + 10, value1);
+      producerInDC1.send(envelope1);
     }
     producerInDC1.stop();
 
@@ -268,9 +261,8 @@ public class TestActiveActiveReplicationWithDownRegion {
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       for (int rowIncrement = 0; rowIncrement < RECORDS_TO_POPULATE; rowIncrement++) {
         String value1 = "value" + rowIncrement;
-        OutgoingMessageEnvelope envelope1 =
-            new OutgoingMessageEnvelope(new SystemStream("venice", storeName), rowIncrement, value1);
-        batchProducer.send(storeName, envelope1);
+        ProducerMessageEnvelope envelope1 = new ProducerMessageEnvelope(rowIncrement, value1);
+        batchProducer.send(envelope1);
       }
       // close out the push
       parentControllerClient.writeEndOfPush(storeName, 2);

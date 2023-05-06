@@ -1,6 +1,6 @@
 package com.linkedin.venice.samza;
 
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getNearlineProducerConfig;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSystemProducerConfig;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -239,7 +239,7 @@ public class VeniceSystemFactoryTest {
   public void testGetProducerRunningFabric() throws Exception {
     VeniceSystemFactory factory = new VeniceSystemFactory();
     Map<String, String> samzaConfig =
-        getNearlineProducerConfig(cluster, "test-store-sr", Version.PushType.STREAM_REPROCESSING);
+        getSystemProducerConfig(cluster, "test-store-sr", Version.PushType.STREAM_REPROCESSING);
 
     // null runningFabric
     SystemProducer producer1 = factory.getProducer("venice", new MapConfig(samzaConfig), null);

@@ -16,13 +16,13 @@ import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_S
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
@@ -268,20 +268,20 @@ public class DataRecoveryTest {
       String versionTopic = Version.composeKafkaTopic(storeName, 1);
       TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient, 60, TimeUnit.SECONDS);
 
-      Map<String, String> samzaConfig = new HashMap<>();
-      samzaConfig.put(VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-      samzaConfig.put(VENICE_STORE, storeName);
-      samzaConfig.put(VENICE_AGGREGATE, "false");
-      samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
-      samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentControllers.get(0).getZkAddress());
-      samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-      samzaConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
-      samzaConfig.put(SSL_ENABLED, "false");
+      Map<String, String> nearlineProducerConfig = new HashMap<>();
+      nearlineProducerConfig.put(VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+      nearlineProducerConfig.put(VENICE_STORE, storeName);
+      nearlineProducerConfig.put(VENICE_AGGREGATE, "false");
+      nearlineProducerConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
+      nearlineProducerConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
+      nearlineProducerConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentControllers.get(0).getZkAddress());
+      nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
+      nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
+      nearlineProducerConfig.put(SSL_ENABLED, "false");
       NearlineProducerFactory factory = new NearlineProducerFactory();
-      Properties samzaProps = new Properties();
-      samzaProps.putAll(samzaConfig);
-      NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null);
+      Properties nearlineProducerProps = new Properties();
+      nearlineProducerProps.putAll(nearlineProducerConfig);
+      NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
       veniceProducer.start();
 
       for (int i = 0; i < 10; i++) {

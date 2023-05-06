@@ -13,16 +13,14 @@ import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
-import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
@@ -53,8 +51,8 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.NearlineProducer;
+import com.linkedin.venice.producer.NearlineProducerFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -187,8 +185,8 @@ public class TestChangeCaptureIngestion {
     storeParms.setStoreViews(viewConfig);
     IntegrationTestPushUtils.updateStore(clusterName, props, storeParms);
     TestWriteUtils.runPushJob("Run push job", props);
-    Map<String, String> samzaConfig = getSamzaConfig(storeName);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
+    Map<String, String> nearlineProducerConfig = getNearlineProducerConfig(storeName);
+    NearlineProducerFactory factory = new NearlineProducerFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
 
@@ -219,9 +217,9 @@ public class TestChangeCaptureIngestion {
     VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
     veniceChangelogConsumer.subscribeAll().get();
-    Properties samzaProps = new Properties();
-    samzaProps.putAll(samzaConfig);
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
+    Properties nearlineProducerProps = new Properties();
+    nearlineProducerProps.putAll(nearlineProducerConfig);
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
@@ -311,7 +309,7 @@ public class TestChangeCaptureIngestion {
         }
       });
     }
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
       // larger
@@ -365,7 +363,7 @@ public class TestChangeCaptureIngestion {
     Instant past = now.minus(1, ChronoUnit.HOURS);
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null)) {
+    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // run samza to stream put and delete
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
@@ -536,19 +534,18 @@ public class TestChangeCaptureIngestion {
     return polledMessagesNum;
   }
 
-  private Map<String, String> getSamzaConfig(String storeName) {
-    Map<String, String> samzaConfig = new HashMap<>();
-    String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-    samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-    samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
-    samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
-    samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "dfd"); // parentController.getKafkaZkAddress());
-    samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-    samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
-    samzaConfig.put(SSL_ENABLED, "false");
-    return samzaConfig;
+  private Map<String, String> getNearlineProducerConfig(String storeName) {
+    Map<String, String> nearlineProducerConfig = new HashMap<>();
+    nearlineProducerConfig.put(VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+    nearlineProducerConfig.put(VENICE_STORE, storeName);
+    nearlineProducerConfig.put(VENICE_AGGREGATE, "false");
+    nearlineProducerConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
+    nearlineProducerConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
+    nearlineProducerConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "dfd"); // parentController.getKafkaZkAddress());
+    nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
+    nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
+    nearlineProducerConfig.put(SSL_ENABLED, "false");
+    return nearlineProducerConfig;
   }
 
   private void runSamzaStreamJob(

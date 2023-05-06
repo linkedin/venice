@@ -26,6 +26,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeHandlerV1;
 import com.linkedin.venice.security.SSLFactory;
@@ -33,7 +34,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.BoundedHashMap;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -110,17 +110,16 @@ public class NearlineProducer implements AutoCloseable, Closeable {
   private final String storeName;
   private final String jobId;
   private final Version.PushType pushType;
-  private final Optional<SSLFactory> sslFactory;
-  private final NearlineProducerFactory factory;
-  private final Optional<String> partitioners;
+  private final SSLFactory sslFactory;
+  private final String partitioners;
   private final Time time;
-  private final String runningFabric;
+  private final String runningRegion;
   private final boolean verifyLatestProtocolPresent;
   private final Map<String, D2ClientEnvelope> d2ZkHostToClientEnvelopeMap = new HashMap<>();
-  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaToIdsMap =
+  private final VeniceConcurrentHashMap<Schema, GeneratedSchemaID> valueSchemaToIdsMap =
       new VeniceConcurrentHashMap<>();
 
-  private final VeniceConcurrentHashMap<Pair<Integer, Integer>, Schema> valueSchemaIdsToSchemaMap =
+  private final VeniceConcurrentHashMap<GeneratedSchemaID, Schema> valueSchemaIdsToSchemaMap =
       new VeniceConcurrentHashMap<>();
 
   /**
@@ -148,11 +147,11 @@ public class NearlineProducer implements AutoCloseable, Closeable {
   private boolean isStarted = false;
 
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
-  private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
-  private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
+  private RouterBasedPushMonitor pushMonitor = null;
+  private RouterBasedHybridStoreQuotaMonitor hybridStoreQuotaMonitor = null;
 
   /**
-   * Construct a new instance of {@link NearlineProducer}. Equivalent to {@link NearlineProducer(veniceChildD2ZkHost, primaryControllerColoD2ZKHost, primaryControllerD2ServiceName, storeName, pushType, jobId, runningFabric, verifyLatestProtocolPresent, factory, sslFactory, partitioners, SystemTime.INSTANCE)}
+   * Construct a new instance of {@link NearlineProducer}. Equivalent to {@link NearlineProducer(veniceChildD2ZkHost, primaryControllerColoD2ZKHost, primaryControllerD2ServiceName, storeName, pushType, jobId, runningRegion, verifyLatestProtocolPresent, factory, sslFactory, partitioners, SystemTime.INSTANCE)}
    */
   public NearlineProducer(
       String veniceChildD2ZkHost,
@@ -161,11 +160,10 @@ public class NearlineProducer implements AutoCloseable, Closeable {
       String storeName,
       Version.PushType pushType,
       String jobId,
-      String runningFabric,
+      String runningRegion,
       boolean verifyLatestProtocolPresent,
-      NearlineProducerFactory factory,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
+      SSLFactory sslFactory,
+      String partitioners) {
     this(
         veniceChildD2ZkHost,
         primaryControllerColoD2ZKHost,
@@ -173,9 +171,8 @@ public class NearlineProducer implements AutoCloseable, Closeable {
         storeName,
         pushType,
         jobId,
-        runningFabric,
+        runningRegion,
         verifyLatestProtocolPresent,
-        factory,
         sslFactory,
         partitioners,
         SystemTime.INSTANCE);
@@ -189,10 +186,10 @@ public class NearlineProducer implements AutoCloseable, Closeable {
    * @param storeName The store to write to
    * @param pushType The {@link Version.PushType} to use to write to the store
    * @param jobId A unique id used to identify jobs that can concurrently write to the same store
-   * @param runningFabric The colo where the job is running. It is used to find the best destination for the data to be written to
+   * @param runningRegion The colo where the job is running. It is used to find the best destination for the data to be written to
    * @param verifyLatestProtocolPresent Config to check whether the protocol versions used at runtime are valid in Venice backend
    * @param factory The {@link NearlineProducerFactory} object that was used to create this object
-   * @param sslFactory An optional {@link SSLFactory} that is used to communicate with other components using SSL
+   * @param sslFactory An {@link SSLFactory} that is used to communicate with other components using SSL
    * @param partitioners A list of comma-separated partitioners class names that are supported.
    * @param time An object of type {@link Time}. It is helpful to be configurable for testing.
    */
@@ -203,11 +200,10 @@ public class NearlineProducer implements AutoCloseable, Closeable {
       String storeName,
       Version.PushType pushType,
       String jobId,
-      String runningFabric,
+      String runningRegion,
       boolean verifyLatestProtocolPresent,
-      NearlineProducerFactory factory,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners,
+      SSLFactory sslFactory,
+      String partitioners,
       Time time) {
     this.veniceChildD2ZkHost = veniceChildD2ZkHost;
     this.primaryControllerColoD2ZKHost = primaryControllerColoD2ZKHost;
@@ -215,16 +211,15 @@ public class NearlineProducer implements AutoCloseable, Closeable {
     this.storeName = storeName;
     this.pushType = pushType;
     this.jobId = jobId;
-    this.runningFabric = runningFabric;
+    this.runningRegion = runningRegion;
     this.verifyLatestProtocolPresent = verifyLatestProtocolPresent;
-    this.factory = factory;
     this.sslFactory = sslFactory;
     this.partitioners = partitioners;
     this.time = time;
   }
 
-  public String getRunningFabric() {
-    return this.runningFabric;
+  public String getRunningRegion() {
+    return this.runningRegion;
   }
 
   protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier, int retryLimit) {
@@ -345,8 +340,11 @@ public class NearlineProducer implements AutoCloseable, Closeable {
       LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
     }
 
-    this.controllerClient =
-        new D2ControllerClient(primaryControllerD2ServiceName, clusterName, primaryControllerColoD2Client, sslFactory);
+    this.controllerClient = new D2ControllerClient(
+        primaryControllerD2ServiceName,
+        clusterName,
+        primaryControllerColoD2Client,
+        Optional.ofNullable(sslFactory));
 
     // Request all the necessary info from Venice Controller
     VersionCreationResponse versionCreationResponse = (VersionCreationResponse) controllerRequestWithRetry(
@@ -358,9 +356,9 @@ public class NearlineProducer implements AutoCloseable, Closeable {
             true, // sendStartOfPush must be true in order to support batch push to Venice from Samza app
             false, // Samza jobs, including batch ones, are expected to write data out of order
             false,
-            partitioners,
+            Optional.ofNullable(partitioners),
             Optional.empty(),
-            Optional.ofNullable(runningFabric),
+            Optional.ofNullable(runningRegion),
             false,
             -1),
         2);
@@ -385,13 +383,12 @@ public class NearlineProducer implements AutoCloseable, Closeable {
 
     if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      pushMonitor = Optional.of(
-          new RouterBasedPushMonitor(
-              new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client),
-              versionTopic,
-              factory,
-              this));
-      pushMonitor.get().start();
+      pushMonitor = new RouterBasedPushMonitor(
+          new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client),
+          versionTopic,
+          NearlineProducerFactory.getInstance(),
+          this);
+      pushMonitor.start();
     }
 
     if (pushType.isBatchOrStreamReprocessing()) {
@@ -410,11 +407,11 @@ public class NearlineProducer implements AutoCloseable, Closeable {
 
     this.veniceWriter = getVeniceWriter(versionCreationResponse);
 
-    if (pushMonitor.isPresent()) {
+    if (pushMonitor != null) {
       /**
        * If the stream reprocessing job has finished, push monitor will exit the Samza process directly.
        */
-      ExecutionStatus currentStatus = pushMonitor.get().getCurrentStatus();
+      ExecutionStatus currentStatus = pushMonitor.getCurrentStatus();
       if (ExecutionStatus.ERROR.equals(currentStatus)) {
         throw new VeniceException(
             "Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
@@ -423,13 +420,12 @@ public class NearlineProducer implements AutoCloseable, Closeable {
 
     if ((pushType.equals(Version.PushType.STREAM) || pushType.equals(Version.PushType.STREAM_REPROCESSING))
         && hybridStoreDiskQuotaEnabled) {
-      hybridStoreQuotaMonitor = Optional.of(
-          new RouterBasedHybridStoreQuotaMonitor(
-              new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client),
-              storeName,
-              pushType,
-              topicName));
-      hybridStoreQuotaMonitor.get().start();
+      hybridStoreQuotaMonitor = new RouterBasedHybridStoreQuotaMonitor(
+          new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client),
+          storeName,
+          pushType,
+          topicName);
+      hybridStoreQuotaMonitor.start();
     }
   }
 
@@ -441,9 +437,9 @@ public class NearlineProducer implements AutoCloseable, Closeable {
     LOGGER.info("Got [store: {}] SchemaResponse for value schemas: {}", storeName, valueSchemaResponse);
     for (MultiSchemaResponse.Schema valueSchema: valueSchemaResponse.getSchemas()) {
       Schema schema = parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr());
-      Pair<Integer, Integer> idPair = new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId());
-      valueSchemaToIdsMap.put(schema, idPair);
-      valueSchemaIdsToSchemaMap.put(idPair, schema);
+      GeneratedSchemaID derivedSchemaId = new GeneratedSchemaID(valueSchema.getId(), valueSchema.getDerivedSchemaId());
+      valueSchemaToIdsMap.put(schema, derivedSchemaId);
+      valueSchemaIdsToSchemaMap.put(derivedSchemaId, schema);
     }
   }
 
@@ -454,9 +450,9 @@ public class NearlineProducer implements AutoCloseable, Closeable {
   public synchronized void stop() {
     this.isStarted = false;
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
-    if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
+    if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor != null) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      switch (pushMonitor.get().getCurrentStatus()) {
+      switch (pushMonitor.getCurrentStatus()) {
         case COMPLETED:
           LOGGER.info("Push job for {} is COMPLETED.", topicName);
           break;
@@ -476,10 +472,10 @@ public class NearlineProducer implements AutoCloseable, Closeable {
           controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
           LOGGER.info("Offline push job has been killed, topic: {}", versionTopic);
       }
-      Utils.closeQuietlyWithErrorLogged(pushMonitor.get());
+      Utils.closeQuietlyWithErrorLogged(pushMonitor);
     }
     Utils.closeQuietlyWithErrorLogged(controllerClient);
-    hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    Utils.closeQuietlyWithErrorLogged(hybridStoreQuotaMonitor);
     d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
   }
 
@@ -487,15 +483,9 @@ public class NearlineProducer implements AutoCloseable, Closeable {
     if (!isStarted) {
       throw new VeniceException("Send called on Venice Nearline Producer that is not started yet!");
     }
-    String storeOfIncomingMessage = producerMessageEnvelope.getStoreName();
-    if (!storeOfIncomingMessage.equals(storeName)) {
-      throw new VeniceException(
-          "The store of the incoming message: " + storeOfIncomingMessage + " is unexpected, and it should be "
-              + storeName);
-    }
 
-    if (pushMonitor.isPresent() && Version.PushType.STREAM_REPROCESSING.equals(pushType)) {
-      ExecutionStatus currentStatus = pushMonitor.get().getCurrentStatus();
+    if (pushMonitor != null && Version.PushType.STREAM_REPROCESSING.equals(pushType)) {
+      ExecutionStatus currentStatus = pushMonitor.getCurrentStatus();
       switch (currentStatus) {
         case ERROR:
           /**
@@ -512,9 +502,9 @@ public class NearlineProducer implements AutoCloseable, Closeable {
           // no-op
       }
     }
-    if (hybridStoreQuotaMonitor.isPresent()
+    if (hybridStoreQuotaMonitor != null
         && (Version.PushType.STREAM.equals(pushType) || Version.PushType.STREAM_REPROCESSING.equals(pushType))) {
-      HybridStoreQuotaStatus currentStatus = hybridStoreQuotaMonitor.get().getCurrentStatus();
+      HybridStoreQuotaStatus currentStatus = hybridStoreQuotaMonitor.getCurrentStatus();
       switch (currentStatus) {
         case QUOTA_VIOLATED:
           /**
@@ -534,7 +524,7 @@ public class NearlineProducer implements AutoCloseable, Closeable {
     send(producerMessageEnvelope.getKey(), producerMessageEnvelope.getValue());
   }
 
-  protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {
+  private CompletableFuture<Void> send(Object keyObject, Object valueObject) {
     Schema keyObjectSchema = getSchemaFromObject(keyObject);
     String canonicalSchemaStr = canonicalSchemaStrCache
         .computeIfAbsent(keyObjectSchema, k -> AvroCompatibilityHelper.toParsingForm(keyObjectSchema));
@@ -571,31 +561,31 @@ public class NearlineProducer implements AutoCloseable, Closeable {
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
 
-      Pair<Integer, Integer> valueSchemaIdPair = valueSchemaToIdsMap.computeIfAbsent(valueObjectSchema, valueSchema -> {
+      GeneratedSchemaID derivedSchemaId = valueSchemaToIdsMap.computeIfAbsent(valueObjectSchema, valueSchema -> {
         SchemaResponse valueSchemaResponse = (SchemaResponse) controllerRequestWithRetry(
             () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString()),
             2);
         LOGGER.info("Got [store: {}] SchemaResponse for schema: {}", storeName, valueSchema);
-        return new Pair<>(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
+        return new GeneratedSchemaID(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
       });
 
-      if (Version.isATopicThatIsVersioned(topicName) && valueSchemaIdPair.getSecond() != -1) {
+      if (Version.isATopicThatIsVersioned(topicName) && derivedSchemaId.getGeneratedSchemaVersion() != -1) {
         // This is a write compute request getting published to a version topic or reprocessing topic. We don't
         // support partial records in the Venice version topic, so we will convert this request
         // to a full put with default fields applied
 
-        int baseSchemaId = valueSchemaIdPair.getFirst();
-        valueObject = convertPartialUpdateToFullPut(valueSchemaIdPair, valueObject);
-        valueSchemaIdPair = new Pair<>(baseSchemaId, -1);
+        int valueSchemaId = derivedSchemaId.getValueSchemaID();
+        valueObject = convertPartialUpdateToFullPut(derivedSchemaId, valueObject);
+        derivedSchemaId = new GeneratedSchemaID(valueSchemaId, -1);
       }
 
       byte[] value = serializeObject(topicName, valueObject);
 
-      if (valueSchemaIdPair.getSecond() == -1) {
+      if (derivedSchemaId.getGeneratedSchemaVersion() == -1) {
         if (logicalTimestamp > 0) {
-          veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), logicalTimestamp, callback);
+          veniceWriter.put(key, value, derivedSchemaId.getValueSchemaID(), logicalTimestamp, callback);
         } else {
-          veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
+          veniceWriter.put(key, value, derivedSchemaId.getValueSchemaID(), callback);
         }
       } else {
         if (!isWriteComputeEnabled) {
@@ -607,12 +597,17 @@ public class NearlineProducer implements AutoCloseable, Closeable {
           veniceWriter.update(
               key,
               value,
-              valueSchemaIdPair.getFirst(),
-              valueSchemaIdPair.getSecond(),
+              derivedSchemaId.getValueSchemaID(),
+              derivedSchemaId.getGeneratedSchemaVersion(),
               callback,
               logicalTimestamp);
         } else {
-          veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
+          veniceWriter.update(
+              key,
+              value,
+              derivedSchemaId.getValueSchemaID(),
+              derivedSchemaId.getGeneratedSchemaVersion(),
+              callback);
         }
       }
     }
@@ -704,8 +699,8 @@ public class NearlineProducer implements AutoCloseable, Closeable {
     return out.toByteArray();
   }
 
-  protected Object convertPartialUpdateToFullPut(Pair<Integer, Integer> schemaIds, Object incomingWriteValueObject) {
-    Pair<Integer, Integer> baseSchemaIds = new Pair(schemaIds.getFirst(), -1);
+  protected Object convertPartialUpdateToFullPut(GeneratedSchemaID derivedSchemaId, Object incomingWriteValueObject) {
+    GeneratedSchemaID baseSchemaIds = new GeneratedSchemaID(derivedSchemaId.getValueSchemaID(), -1);
     Schema baseSchema = valueSchemaIdsToSchemaMap.get(baseSchemaIds);
     if (baseSchema == null) {
       // refresh from venice once since we don't have this schema cached yet, then check again
@@ -714,16 +709,16 @@ public class NearlineProducer implements AutoCloseable, Closeable {
       if (baseSchema == null) {
         // Something isn't right with this write. We can't seem to find an associated schema, so raise an exception.
         throw new VeniceException(
-            "Unable to find base schema with id: " + schemaIds.getFirst() + " for write compute schema with id "
-                + schemaIds.getSecond());
+            "Unable to find base schema with id: " + derivedSchemaId.getValueSchemaID()
+                + " for write compute schema with id " + derivedSchemaId.getGeneratedSchemaVersion());
       }
     }
     return writeComputeHandlerV1.updateValueRecord(baseSchema, null, (GenericRecord) incomingWriteValueObject);
   }
 
   public void setExitMode(NearlineProducerExitMode exitMode) {
-    if (pushMonitor.isPresent()) {
-      pushMonitor.get().setStreamReprocessingExitMode(exitMode);
+    if (pushMonitor != null) {
+      pushMonitor.setStreamReprocessingExitMode(exitMode);
     }
   }
 
@@ -745,13 +740,16 @@ public class NearlineProducer implements AutoCloseable, Closeable {
   private D2Client getStartedD2Client(String d2ZkHost) {
     D2ClientEnvelope d2ClientEnvelope = d2ZkHostToClientEnvelopeMap.computeIfAbsent(d2ZkHost, zkHost -> {
       String fsBasePath = Utils.getUniqueTempPath("d2");
-      D2Client d2Client = new D2ClientBuilder().setZkHosts(d2ZkHost)
-          .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
-          .setIsSSLEnabled(sslFactory.isPresent())
-          .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
-          .setFsBasePath(fsBasePath)
-          .setEnableSaveUriDataOnDisk(true)
-          .build();
+      D2ClientBuilder d2ClientBuilder =
+          new D2ClientBuilder().setZkHosts(d2ZkHost).setFsBasePath(fsBasePath).setEnableSaveUriDataOnDisk(true);
+
+      if (sslFactory != null) {
+        d2ClientBuilder.setSSLContext(sslFactory.getSSLContext())
+            .setIsSSLEnabled(sslFactory.isSslEnabled())
+            .setSSLParameters(sslFactory.getSSLParameters());
+      }
+
+      D2Client d2Client = d2ClientBuilder.build();
       D2ClientUtils.startClient(d2Client);
       return new D2ClientEnvelope(d2Client, fsBasePath);
     });

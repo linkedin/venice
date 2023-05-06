@@ -1,5 +1,6 @@
 package com.linkedin.venice.samza;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.producer.NearlineProducerExitMode;
@@ -9,8 +10,6 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import java.io.Closeable;
 import java.util.Optional;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 
@@ -31,8 +30,7 @@ import org.apache.samza.system.SystemProducer;
  *     b. The {@link Version.PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
  */
 public class VeniceSystemProducer implements SystemProducer, Closeable {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);
-
+  final String storeName;
   final NearlineProducer delegate;
 
   @Deprecated
@@ -147,6 +145,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       Optional<SSLFactory> sslFactory,
       Optional<String> partitioners,
       Time time) {
+    this.storeName = storeName;
     delegate = new NearlineProducer(
         veniceChildD2ZkHost,
         primaryControllerColoD2ZKHost,
@@ -156,13 +155,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         samzaJobId,
         runningFabric,
         verifyLatestProtocolPresent,
-        factory,
-        sslFactory,
-        partitioners,
+        sslFactory.orElse(null),
+        partitioners.orElse(null),
         time);
   }
 
-  public VeniceSystemProducer(NearlineProducer producer) {
+  public VeniceSystemProducer(String storeName, VeniceSystemFactory systemFactory, NearlineProducer producer) {
+    this.storeName = storeName;
     delegate = producer;
   }
 
@@ -188,10 +187,14 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   @Override
   public void send(String source, OutgoingMessageEnvelope outgoingMessageEnvelope) {
-    ProducerMessageEnvelope producerMessageEnvelope = new ProducerMessageEnvelope(
-        outgoingMessageEnvelope.getSystemStream().getStream(),
-        outgoingMessageEnvelope.getKey(),
-        outgoingMessageEnvelope.getMessage());
+    String storeOfIncomingMessage = outgoingMessageEnvelope.getSystemStream().getStream();
+    if (!storeOfIncomingMessage.equals(storeName)) {
+      throw new VeniceException(
+          "The store of the incoming message: " + storeOfIncomingMessage + " is unexpected, and it should be "
+              + storeName);
+    }
+    ProducerMessageEnvelope producerMessageEnvelope =
+        new ProducerMessageEnvelope(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
     delegate.send(producerMessageEnvelope);
   }
 
@@ -208,12 +211,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   /**
    * Test methods
    */
+  @Deprecated
   public String getKafkaBootstrapServers() {
     return delegate.getKafkaBootstrapServers();
   }
 
   public String getRunningFabric() {
-    return delegate.getRunningFabric();
+    return delegate.getRunningRegion();
   }
 
   public void setExitMode(NearlineProducerExitMode exitMode) {

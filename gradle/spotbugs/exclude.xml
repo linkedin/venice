@@ -109,7 +109,7 @@
     -->
     <Bug pattern="IS2_INCONSISTENT_SYNC"/>
     <Or>
-      <Class name="com.linkedin.venice.samza.VeniceSystemProducer">
+      <Class name="com.linkedin.venice.producer.NearlineProducer">
         <Field name="hybridStoreQuotaMonitor"/>
         <Field name="isWriteComputeEnabled"/>
         <Field name="primaryControllerColoD2Client"/>
@@ -177,9 +177,6 @@
     <Or>
       <Class name="com.linkedin.venice.endToEnd.TestBatch$StatCounter">
         <Field name="accumulator"/>
-      </Class>
-      <Class name="com.linkedin.venice.samza.VeniceSystemFactory">
-        <Field name="systemProducerStatues"/>
       </Class>
     </Or>
   </Match>

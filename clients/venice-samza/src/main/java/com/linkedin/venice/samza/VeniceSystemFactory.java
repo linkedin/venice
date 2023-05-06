@@ -1,19 +1,23 @@
 package com.linkedin.venice.samza;
 
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
-import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
+import static com.linkedin.venice.VeniceConstants.NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
+import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
+import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_STORE;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.NearlineProducerFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Serializable;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -43,23 +47,19 @@ import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
  *     b. The {@link PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
  */
 
-public class VeniceSystemFactory extends NearlineProducerFactory implements SystemFactory, Serializable {
+public class VeniceSystemFactory implements SystemFactory, Serializable {
   private static final long serialVersionUID = 1L;
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemFactory.class);
 
   public static final String SYSTEMS_PREFIX = "systems.";
   public static final String DOT = ".";
+  public static final String LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY = "__r2d2DefaultClient__.r2d2Client.zkHosts";
   public static final String DEPLOYMENT_ID = "deployment.id";
-
-  /**
-   * All the required configs to build a SSL Factory
-   */
-  private static final List<String> SSL_MANDATORY_CONFIGS = Arrays.asList(
-      SSL_KEYSTORE_TYPE,
-      SSL_KEYSTORE_LOCATION,
-      SSL_KEY_PASSWORD,
-      SSL_TRUSTSTORE_LOCATION,
-      SSL_TRUSTSTORE_PASSWORD);
+  // Legacy D2 service name for local cluster
+  public static final String LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE = "VeniceController";
+  // Legacy D2 service name for parent cluster
+  public static final String LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE = "VeniceParentController";
+  // public static final NearlineProducerFactory producerFactoryDelegate;
 
   @Override
   public SystemAdmin getAdmin(String systemName, Config config) {
@@ -218,7 +218,6 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
       boolean veniceAggregate,
       String pushTypeString,
       Config config) {
-    String samzaJobId = config.get(DEPLOYMENT_ID);
     String prefix = SYSTEMS_PREFIX + systemName + DOT;
 
     Properties props = new Properties();
@@ -234,12 +233,60 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
       }
     }
 
+    String samzaJobId = config.get(DEPLOYMENT_ID);
     props.put(JOB_ID, samzaJobId);
     props.remove(DEPLOYMENT_ID);
 
+    String localVeniceZKHosts = config.get(VENICE_CHILD_D2_ZK_HOSTS);
+    String legacyLocalVeniceZKHosts = config.get(LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY);
+    if (isEmpty(localVeniceZKHosts)) {
+      if (isEmpty(legacyLocalVeniceZKHosts)) {
+        throw new VeniceException(
+            "Either " + VENICE_CHILD_D2_ZK_HOSTS + " or " + LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY + " should be defined");
+      }
+      localVeniceZKHosts = legacyLocalVeniceZKHosts;
+    }
+
+    props.put(VENICE_CHILD_D2_ZK_HOSTS, localVeniceZKHosts);
+    props.remove(LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY);
+
+    String localControllerD2Service = config.get(VENICE_CHILD_CONTROLLER_D2_SERVICE);
+    if (isEmpty(localControllerD2Service)) {
+      LOGGER.info(
+          VENICE_CHILD_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE);
+      localControllerD2Service = LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE;
+    }
+    props.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, localControllerD2Service);
+
+    String parentControllerD2Service = config.get(VENICE_PARENT_CONTROLLER_D2_SERVICE);
+    if (isEmpty(parentControllerD2Service)) {
+      LOGGER.info(
+          VENICE_PARENT_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE);
+      parentControllerD2Service = LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE;
+    }
+    props.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, parentControllerD2Service);
+
+    String runningFabric = config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
+    LOGGER.info("Running Fabric from props: {}", runningFabric);
+    if (runningFabric == null) {
+      runningFabric = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
+      LOGGER.info("Running Fabric from environment: {}", runningFabric);
+      if (runningFabric != null) {
+        runningFabric = runningFabric.toLowerCase();
+      }
+    }
+    if (runningFabric != null && runningFabric.contains("corp")) {
+      runningFabric = NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
+    }
+    props.put(LOCAL_REGION_NAME, runningFabric);
+
     VeniceProperties veniceProperties = new VeniceProperties(props);
 
-    return new VeniceSystemProducer(super.getProducer(storeName, veniceAggregate, pushTypeString, veniceProperties));
+    return new VeniceSystemProducer(
+        storeName,
+        this,
+        NearlineProducerFactory.getInstance()
+            .getProducer(storeName, veniceAggregate, pushTypeString, veniceProperties));
   }
 
   /**
@@ -266,5 +313,13 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
    */
   public VeniceSystemProducer getClosableProducer(String systemName, Config config, MetricsRegistry registry) {
     return (VeniceSystemProducer) getProducer(systemName, config, registry);
+  }
+
+  // public NearlineProducerFactory getNearlineProducerFactory() {
+  // return producerFactoryDelegate;
+  // }
+
+  private static boolean isEmpty(String input) {
+    return (input == null) || input.isEmpty() || input.equals("null");
   }
 }

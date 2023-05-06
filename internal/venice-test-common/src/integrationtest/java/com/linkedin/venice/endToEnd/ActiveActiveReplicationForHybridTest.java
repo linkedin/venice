@@ -16,13 +16,13 @@ import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFA
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
@@ -68,8 +68,8 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.producer.NearlineProducerFactory;
+import com.linkedin.venice.producer.ProducerMessageEnvelope;
 import com.linkedin.venice.producer.VeniceObjectWithTimestamp;
-import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockCircularTime;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -93,8 +93,6 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.IdealState;
 import org.apache.http.HttpStatus;
-import org.apache.samza.system.OutgoingMessageEnvelope;
-import org.apache.samza.system.SystemStream;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -385,20 +383,21 @@ public class ActiveActiveReplicationForHybridTest {
           String keyPrefix = "dc-" + dataCenterIndex + "_key_";
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(dataCenterIndex);
 
-          Map<String, String> samzaConfig = new HashMap<>();
-          samzaConfig.put(VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-          samzaConfig.put(VENICE_STORE, storeName);
-          samzaConfig.put(VENICE_AGGREGATE, "false");
-          samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDataCenter.getZkServerWrapper().getAddress());
-          samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-          samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
-          samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-          samzaConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
-          samzaConfig.put(SSL_ENABLED, "false");
+          Map<String, String> nearlineProducerConfig = new HashMap<>();
+          nearlineProducerConfig.put(VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+          nearlineProducerConfig.put(VENICE_STORE, storeName);
+          nearlineProducerConfig.put(VENICE_AGGREGATE, "false");
+          nearlineProducerConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDataCenter.getZkServerWrapper().getAddress());
+          nearlineProducerConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
+          nearlineProducerConfig
+              .put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
+          nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
+          nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
+          nearlineProducerConfig.put(SSL_ENABLED, "false");
           NearlineProducerFactory factory = new NearlineProducerFactory();
-          Properties samzaProps = new Properties();
-          samzaProps.putAll(samzaConfig);
-          NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null);
+          Properties nearlineProducerProps = new Properties();
+          nearlineProducerProps.putAll(nearlineProducerConfig);
+          NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
           veniceProducer.start();
           childDatacenterToNearlineProducer.put(childDataCenter, veniceProducer);
 
@@ -611,7 +610,7 @@ public class ActiveActiveReplicationForHybridTest {
 
       // Build the SystemProducer with the mock time
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
-      try (VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
+      try (NearlineProducer producerInDC0 = new NearlineProducer(
           childDataCenter.getZkServerWrapper().getAddress(),
           childDataCenter.getZkServerWrapper().getAddress(),
           D2_SERVICE_NAME,
@@ -621,35 +620,31 @@ public class ActiveActiveReplicationForHybridTest {
           "dc-0",
           true,
           null,
-          Optional.empty(),
-          Optional.empty(),
+          null,
           mockTime)) {
         producerInDC0.start();
 
         // Send <Key1, Value1>
-        OutgoingMessageEnvelope envelope1 = new OutgoingMessageEnvelope(
-            new SystemStream("venice", storeName),
+        ProducerMessageEnvelope envelope1 = new ProducerMessageEnvelope(
             key1,
             useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1);
-        producerInDC0.send(storeName, envelope1);
+        producerInDC0.send(envelope1);
 
         // Send <Key1, Value2>, which will be ignored by Servers if DCR is properly supported
-        OutgoingMessageEnvelope envelope2 = new OutgoingMessageEnvelope(
-            new SystemStream("venice", storeName),
+        ProducerMessageEnvelope envelope2 = new ProducerMessageEnvelope(
             key1,
             useLogicalTimestamp ? new VeniceObjectWithTimestamp(value2, mockTime.getMilliseconds()) : value2);
-        producerInDC0.send(storeName, envelope2);
+        producerInDC0.send(envelope2);
 
         // Send <Key1, Value1> with same timestamp to trigger direct object comparison
-        producerInDC0.send(storeName, envelope1);
+        producerInDC0.send(envelope1);
 
         // Send <Key2, Value1>, which is used to verify that servers have consumed and processed till the end of all
         // real-time messages
-        OutgoingMessageEnvelope envelope3 = new OutgoingMessageEnvelope(
-            new SystemStream("venice", storeName),
+        ProducerMessageEnvelope envelope3 = new ProducerMessageEnvelope(
             key2,
             useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1);
-        producerInDC0.send(storeName, envelope3);
+        producerInDC0.send(envelope3);
       }
 
       // Verify data in dc-0
@@ -695,7 +690,7 @@ public class ActiveActiveReplicationForHybridTest {
 
       // Build the SystemProducer with the mock time
       VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);
-      try (VeniceSystemProducer producerInDC1 = new VeniceSystemProducer(
+      try (NearlineProducer producerInDC1 = new NearlineProducer(
           childDataCenter.getZkServerWrapper().getAddress(),
           childDataCenter1.getZkServerWrapper().getAddress(),
           D2_SERVICE_NAME,
@@ -705,25 +700,22 @@ public class ActiveActiveReplicationForHybridTest {
           "dc-1",
           true,
           null,
-          Optional.empty(),
-          Optional.empty(),
+          null,
           mockTime)) {
         producerInDC1.start();
 
         // Send <Key1, Value3>, which will be ignored if DCR is implemented properly
-        OutgoingMessageEnvelope envelope4 = new OutgoingMessageEnvelope(
-            new SystemStream("venice", storeName),
+        ProducerMessageEnvelope envelope4 = new ProducerMessageEnvelope(
             key1,
             useLogicalTimestamp ? new VeniceObjectWithTimestamp(value3, mockTime.getMilliseconds()) : value3);
-        producerInDC1.send(storeName, envelope4);
+        producerInDC1.send(envelope4);
 
         // Send <Key3, Value1>, which is used to verify that servers have consumed and processed till the end of all
         // real-time messages from dc-1
-        OutgoingMessageEnvelope envelope5 = new OutgoingMessageEnvelope(
-            new SystemStream("venice", storeName),
+        ProducerMessageEnvelope envelope5 = new ProducerMessageEnvelope(
             key3,
             useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1);
-        producerInDC1.send(storeName, envelope5);
+        producerInDC1.send(envelope5);
       }
 
       // Verify data in dc-0

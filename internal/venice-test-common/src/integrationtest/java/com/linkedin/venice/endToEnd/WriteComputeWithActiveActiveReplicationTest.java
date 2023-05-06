@@ -10,13 +10,13 @@ import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_S
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
@@ -187,19 +187,20 @@ public class WriteComputeWithActiveActiveReplicationTest {
     NearlineProducerFactory factory = new NearlineProducerFactory();
     for (int dcId = 0; dcId < NUMBER_OF_CHILD_DATACENTERS; dcId++) {
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(dcId);
-      Map<String, String> samzaConfig = new HashMap<>();
-      samzaConfig.put(VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-      samzaConfig.put(VENICE_STORE, storeName);
-      samzaConfig.put(VENICE_AGGREGATE, "false");
-      samzaConfig.put(JOB_ID, "dcId_" + dcId + "_" + storeName);
-      samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDataCenter.getZkServerWrapper().getAddress());
-      samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
-      samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-      samzaConfig.put(SSL_ENABLED, "false");
-      Properties samzaProps = new Properties();
-      samzaProps.putAll(samzaConfig);
-      NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null);
+      Map<String, String> nearlineProducerConfig = new HashMap<>();
+      nearlineProducerConfig.put(VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+      nearlineProducerConfig.put(VENICE_STORE, storeName);
+      nearlineProducerConfig.put(VENICE_AGGREGATE, "false");
+      nearlineProducerConfig.put(JOB_ID, "dcId_" + dcId + "_" + storeName);
+      nearlineProducerConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDataCenter.getZkServerWrapper().getAddress());
+      nearlineProducerConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
+      nearlineProducerConfig
+          .put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
+      nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
+      nearlineProducerConfig.put(SSL_ENABLED, "false");
+      Properties nearlineProducerProps = new Properties();
+      nearlineProducerProps.putAll(nearlineProducerConfig);
+      NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
       veniceProducer.start();
       nearlineProducerMap.put(childDataCenter, veniceProducer);
     }

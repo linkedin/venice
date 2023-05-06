@@ -1,7 +1,11 @@
 package com.linkedin.venice.producer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -10,14 +14,13 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.util.Arrays;
-import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -40,8 +43,7 @@ public class NearlineProducerTest {
         "dc-0",
         true,
         null,
-        Optional.empty(),
-        Optional.empty(),
+        null,
         SystemTime.INSTANCE);
 
     MultiSchemaResponse.Schema mockBaseSchema = new MultiSchemaResponse.Schema();
@@ -76,7 +78,7 @@ public class NearlineProducerTest {
     producerInDC0.setControllerClient(blankMockControllerclient);
 
     Assert.assertThrows(
-        () -> producerInDC0.convertPartialUpdateToFullPut(new Pair<Integer, Integer>(1, 1), partialUpdateRecord));
+        () -> producerInDC0.convertPartialUpdateToFullPut(new GeneratedSchemaID(1, 1), partialUpdateRecord));
 
     // Set up the mock controller client that returns the schemas we need
     MultiSchemaResponse response = new MultiSchemaResponse();
@@ -86,17 +88,17 @@ public class NearlineProducerTest {
     producerInDC0.setControllerClient(mockControllerClient);
 
     // Verify partial update conversion
-    GenericRecord result = (GenericRecord) producerInDC0
-        .convertPartialUpdateToFullPut(new Pair<Integer, Integer>(1, 1), partialUpdateRecord);
+    GenericRecord result =
+        (GenericRecord) producerInDC0.convertPartialUpdateToFullPut(new GeneratedSchemaID(1, 1), partialUpdateRecord);
     Assert.assertNotNull(result);
     Assert.assertEquals(result.getSchema().toString(), mockBaseSchema.getSchemaStr());
     Assert.assertEquals(result.get("firstName"), partialUpdateRecord.get("firstName"));
     Assert.assertEquals(result.get("lastName"), partialUpdateRecord.get("lastName"));
     Assert.assertEquals(result.get("age"), -1);
 
-    ProducerMessageEnvelope envelope = new ProducerMessageEnvelope("storeName", "key1", partialUpdateRecord);
+    ProducerMessageEnvelope envelope = new ProducerMessageEnvelope("key1", partialUpdateRecord);
 
-    Assert.assertThrows(() -> producerInDC0.send("venice", envelope));
+    Assert.assertThrows(() -> producerInDC0.send(envelope));
   }
 
   @Test(dataProvider = "BatchOrStreamReprocessing")
@@ -111,8 +113,7 @@ public class NearlineProducerTest {
         "dc-0",
         true,
         null,
-        Optional.empty(),
-        Optional.empty(),
+        null,
         SystemTime.INSTANCE);
 
     NearlineProducer veniceSystemProducerSpy = spy(producerInDC0);

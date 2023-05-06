@@ -2,16 +2,10 @@ package com.linkedin.venice.producer;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
-import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.VeniceConstants.NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
-import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
@@ -21,10 +15,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,12 +37,10 @@ import org.apache.logging.log4j.Logger;
 
 public class NearlineProducerFactory {
   private static final Logger LOGGER = LogManager.getLogger(NearlineProducerFactory.class);
-
-  public static final String LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY = "__r2d2DefaultClient__.r2d2Client.zkHosts";
-
   public static final String JOB_ID = "job.id";
-
   public static final String VENICE_PUSH_TYPE = "push.type";
+
+  private static final NearlineProducerFactory INSTANCE = new NearlineProducerFactory();
 
   /**
    * Venice store name Samza application is going to produce to.
@@ -83,18 +72,6 @@ public class NearlineProducerFactory {
   // D2 service name for parent cluster
   public static final String VENICE_PARENT_CONTROLLER_D2_SERVICE = "venice.parent.controller.d2.service";
 
-  // Legacy D2 service name for local cluster
-  public static final String LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE = "VeniceController";
-  // Legacy D2 service name for parent cluster
-  public static final String LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE = "VeniceParentController";
-
-  /**
-   * A global static counter to track how many factory one process would create.
-   * In general, one factory is enough for one application; otherwise, if there are
-   * multiple factory built in the same process, log this information for debugging purpose.
-   */
-  private static final AtomicInteger FACTORY_INSTANCE_NUMBER = new AtomicInteger(0);
-
   /**
    * Key: NearlineProducer instance;
    * Value: a pair of boolean: <isActive, isStreamReprocessingJobSucceeded>
@@ -103,25 +80,7 @@ public class NearlineProducerFactory {
    * the below Map. {@link com.linkedin.venice.pushmonitor.RouterBasedPushMonitor} will update
    * the status of the NearlineProducer.
    */
-  private final Map<NearlineProducer, JobState> nearlineProducerStates;
-
-  /**
-   * All the required configs to build a SSL Factory
-   */
-  private static final List<String> SSL_MANDATORY_CONFIGS = Arrays.asList(
-      SSL_KEYSTORE_TYPE,
-      SSL_KEYSTORE_LOCATION,
-      SSL_KEY_PASSWORD,
-      SSL_TRUSTSTORE_LOCATION,
-      SSL_TRUSTSTORE_PASSWORD);
-
-  public NearlineProducerFactory() {
-    nearlineProducerStates = new VeniceConcurrentHashMap<>();
-    int totalNumberOfFactory = FACTORY_INSTANCE_NUMBER.incrementAndGet();
-    if (totalNumberOfFactory > 1) {
-      LOGGER.warn("There are {} NearlineProducer factory instances in one process.", totalNumberOfFactory);
-    }
-  }
+  private final Map<NearlineProducer, JobState> nearlineProducerStates = new VeniceConcurrentHashMap<>();
 
   /**
    * Construct a new instance of {@link NearlineProducer}
@@ -131,7 +90,7 @@ public class NearlineProducerFactory {
    * @param storeName The store to write to
    * @param pushType The {@link PushType} to use to write to the store
    * @param jobId A unique id used to identify jobs that can concurrently write to the same store
-   * @param runningFabric The colo where the job is running. It is used to find the best destination for the data to be written to
+   * @param runningRegion The colo where the job is running. It is used to find the best destination for the data to be written to
    * @param verifyLatestProtocolPresent Config to check whether the protocol versions used at runtime are valid in Venice backend
    * @param factory The {@link NearlineProducerFactory} object that was used to create this object
    * @param config A Config object that may be used by the factory implementation to create an overridden NearlineProducer instance
@@ -146,11 +105,11 @@ public class NearlineProducerFactory {
       String storeName,
       Version.PushType venicePushType,
       String jobId,
-      String runningFabric,
+      String runningRegion,
       boolean verifyLatestProtocolPresent,
       VeniceProperties properties,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
+      SSLFactory sslFactory,
+      String partitioners) {
     return createNearlineProducer(
         veniceChildD2ZkHost,
         primaryControllerColoD2ZKHost,
@@ -158,7 +117,7 @@ public class NearlineProducerFactory {
         storeName,
         venicePushType,
         jobId,
-        runningFabric,
+        runningRegion,
         verifyLatestProtocolPresent,
         sslFactory,
         partitioners);
@@ -172,7 +131,7 @@ public class NearlineProducerFactory {
    * @param storeName The store to write to
    * @param pushType The {@link PushType} to use to write to the store
    * @param jobId A unique id used to identify jobs that can concurrently write to the same store
-   * @param runningFabric The colo where the job is running. It is used to find the best destination for the data to be written to
+   * @param runningRegion The colo where the job is running. It is used to find the best destination for the data to be written to
    * @param verifyLatestProtocolPresent Config to check whether the protocol versions used at runtime are valid in Venice backend
    * @param factory The {@link NearlineProducerFactory} object that was used to create this object
    * @param sslFactory An optional {@link SSLFactory} that is used to communicate with other components using SSL
@@ -185,10 +144,10 @@ public class NearlineProducerFactory {
       String storeName,
       Version.PushType venicePushType,
       String jobId,
-      String runningFabric,
+      String runningRegion,
       boolean verifyLatestProtocolPresent,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
+      SSLFactory sslFactory,
+      String partitioners) {
     return new NearlineProducer(
         veniceChildD2ZkHost,
         primaryControllerColoD2ZKHost,
@@ -196,9 +155,8 @@ public class NearlineProducerFactory {
         storeName,
         venicePushType,
         jobId,
-        runningFabric,
+        runningRegion,
         verifyLatestProtocolPresent,
-        this,
         sslFactory,
         partitioners);
   }
@@ -227,45 +185,21 @@ public class NearlineProducerFactory {
     }
 
     String veniceParentZKHosts = props.getString(VENICE_PARENT_D2_ZK_HOSTS);
-    if (isEmpty(veniceParentZKHosts)) {
-      throw new VeniceException(
-          VENICE_PARENT_D2_ZK_HOSTS + " should not be null, please put this property in your app-def.xml");
-    }
-
     String localVeniceZKHosts = props.getString(VENICE_CHILD_D2_ZK_HOSTS);
-    String legacyLocalVeniceZKHosts = props.getString(LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY);
-    if (isEmpty(localVeniceZKHosts)) {
-      if (isEmpty(legacyLocalVeniceZKHosts)) {
-        throw new VeniceException(
-            "Either " + VENICE_CHILD_D2_ZK_HOSTS + " or " + LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY + " should be defined");
-      }
-      localVeniceZKHosts = legacyLocalVeniceZKHosts;
-    }
-
     String localControllerD2Service = props.getString(VENICE_CHILD_CONTROLLER_D2_SERVICE);
-    if (isEmpty(localControllerD2Service)) {
-      LOGGER.info(
-          VENICE_CHILD_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE);
-      localControllerD2Service = LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE;
-    }
-
     String parentControllerD2Service = props.getString(VENICE_PARENT_CONTROLLER_D2_SERVICE);
-    if (isEmpty(parentControllerD2Service)) {
-      LOGGER.info(
-          VENICE_PARENT_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE);
-      parentControllerD2Service = LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE;
-    }
 
     // Build Ssl Factory if Controller SSL is enabled
-    Optional<SSLFactory> sslFactory = Optional.empty();
+    SSLFactory sslFactory = null;
     boolean controllerSslEnabled = props.getBoolean(SSL_ENABLED, true);
     if (controllerSslEnabled) {
       LOGGER.info("Controller ACL is enabled.");
       String sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      sslFactory = Optional.of(SslUtils.getSSLFactory(props.getPropertiesCopy(), sslFactoryClassName));
+      sslFactory = SslUtils.getSSLFactory(props.getPropertiesCopy(), sslFactoryClassName);
     }
 
-    Optional<String> partitioners = Optional.ofNullable(props.getString(VENICE_PARTITIONERS));
+    String partitioners = props.getString(VENICE_PARTITIONERS, (String) null);
+    String runningRegion = props.getString(LOCAL_REGION_NAME, (String) null);
 
     LOGGER.info("Configs for producer: ");
     LOGGER.info("{}: {}", VENICE_STORE, storeName);
@@ -275,20 +209,7 @@ public class NearlineProducerFactory {
     LOGGER.info("{}: {}", VENICE_CHILD_D2_ZK_HOSTS, localVeniceZKHosts);
     LOGGER.info("{}: {}", VENICE_PARENT_CONTROLLER_D2_SERVICE, parentControllerD2Service);
     LOGGER.info("{}: {}", VENICE_CHILD_CONTROLLER_D2_SERVICE, localControllerD2Service);
-
-    String runningFabric = props.getString(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-    LOGGER.info("Running Fabric from props: {}", runningFabric);
-    if (runningFabric == null) {
-      runningFabric = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-      LOGGER.info("Running Fabric from environment: {}", runningFabric);
-      if (runningFabric != null) {
-        runningFabric = runningFabric.toLowerCase();
-      }
-    }
-    if (runningFabric != null && runningFabric.contains("corp")) {
-      runningFabric = NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
-    }
-    LOGGER.info("Final Running Fabric: {}", runningFabric);
+    LOGGER.info("{}: {}", LOCAL_REGION_NAME, runningRegion);
 
     String primaryControllerColoD2ZKHost;
     String primaryControllerD2Service;
@@ -312,7 +233,7 @@ public class NearlineProducerFactory {
         storeName,
         venicePushType,
         jobId,
-        runningFabric,
+        runningRegion,
         verifyLatestProtocolPresent,
         props, // Although we don't use this config in our default implementation, overridden implementations might
         // need this
@@ -378,5 +299,9 @@ public class NearlineProducerFactory {
 
   private static boolean isEmpty(String input) {
     return (input == null) || input.isEmpty() || input.equals("null");
+  }
+
+  public static NearlineProducerFactory getInstance() {
+    return INSTANCE;
   }
 }
