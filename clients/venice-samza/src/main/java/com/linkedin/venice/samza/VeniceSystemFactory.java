@@ -278,7 +278,9 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     if (runningFabric != null && runningFabric.contains("corp")) {
       runningFabric = NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
     }
-    props.put(LOCAL_REGION_NAME, runningFabric);
+    if (runningFabric != null) {
+      props.put(LOCAL_REGION_NAME, runningFabric);
+    }
 
     VeniceProperties veniceProperties = new VeniceProperties(props);
 

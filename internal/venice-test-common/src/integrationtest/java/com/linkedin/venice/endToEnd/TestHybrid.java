@@ -377,7 +377,7 @@ public class TestHybrid {
           // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
           // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
           // max chunk size is not altered, and thus this will be under threshold.
-          sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
+          sendCustomSizeStreamingRecord(veniceProducer, i, STREAMING_RECORD_SIZE);
         }
         if (multiDivStream) {
           veniceProducer.stop(); // close out the DIV segment
@@ -418,7 +418,7 @@ public class TestHybrid {
           // segment.
         }
         for (int i = 10; i <= 20; i++) {
-          sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
+          sendCustomSizeStreamingRecord(veniceProducer, i, STREAMING_RECORD_SIZE);
         }
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
           try {
@@ -591,13 +591,13 @@ public class TestHybrid {
         });
 
         // Batch load from Samza
-        NearlineProducerFactory factory = new NearlineProducerFactory();
         Version.PushType pushType = Version.PushType.STREAM_REPROCESSING;
         Map<String, String> nearlineProducerConfig =
             getNearlineProducerConfig(veniceClusterWrapper, storeName, pushType);
         Properties nearlineProducerProps = new Properties();
         nearlineProducerProps.putAll(nearlineProducerConfig);
-        veniceBatchProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
+        veniceBatchProducer =
+            NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null);
         veniceBatchProducer.start();
         // The default behavior would exit the process
         veniceBatchProducer.setExitMode(NearlineProducerExitMode.NO_OP);
@@ -638,7 +638,7 @@ public class TestHybrid {
         });
 
         for (int i = 21; i <= 30; i++) {
-          sendCustomSizeStreamingRecord(veniceBatchProducer, storeName, i, ByteUtils.BYTES_PER_MB);
+          sendCustomSizeStreamingRecord(veniceBatchProducer, i, ByteUtils.BYTES_PER_MB);
         }
 
         for (int i = 31; i <= 40; i++) {
@@ -646,7 +646,7 @@ public class TestHybrid {
         }
 
         // Before EOP, the Samza batch producer should still be in active state
-        Assert.assertEquals(factory.getNumberOfActiveNearlineProducers(), 1);
+        Assert.assertEquals(NearlineProducerFactory.getInstance().getNumberOfActiveNearlineProducers(), 1);
 
         /**
          * Use the same VeniceWriter to write END_OF_PUSH message, which will guarantee the message order in topic
@@ -657,7 +657,7 @@ public class TestHybrid {
           Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
           // After EOP, the push monitor inside the system producer would mark the producer as inactive in the factory
-          Assert.assertEquals(factory.getNumberOfActiveNearlineProducers(), 0);
+          Assert.assertEquals(NearlineProducerFactory.getInstance().getNumberOfActiveNearlineProducers(), 0);
         });
 
         NearlineProducer veniceStreamProducer =
@@ -696,7 +696,7 @@ public class TestHybrid {
           }
           Assert.assertThrows(
               RecordTooLargeException.class,
-              () -> sendCustomSizeStreamingRecord(veniceStreamProducer, storeName, 0, ByteUtils.BYTES_PER_MB));
+              () -> sendCustomSizeStreamingRecord(veniceStreamProducer, 0, ByteUtils.BYTES_PER_MB));
 
           Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
           Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(2));
@@ -756,19 +756,20 @@ public class TestHybrid {
       Assert.assertEquals(admin.getStore(clusterName, storeName2).getCurrentVersion(), 0);
 
       // Batch load from Samza to both stores
-      NearlineProducerFactory factory = new NearlineProducerFactory();
       Map<String, String> nearlineProducerConfig1 =
           getNearlineProducerConfig(veniceClusterWrapper, storeName1, Version.PushType.STREAM_REPROCESSING);
       Properties nearlineProducerProps1 = new Properties();
       nearlineProducerProps1.putAll(nearlineProducerConfig1);
-      veniceBatchProducer1 = factory.getProducer(new VeniceProperties(nearlineProducerProps1), null);
+      veniceBatchProducer1 =
+          NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps1), null);
 
       veniceBatchProducer1.start();
       Map<String, String> nearlineProducerConfig2 =
           getNearlineProducerConfig(veniceClusterWrapper, storeName2, Version.PushType.STREAM_REPROCESSING);
       Properties nearlineProducerProps2 = new Properties();
       nearlineProducerProps2.putAll(nearlineProducerConfig2);
-      veniceBatchProducer2 = factory.getProducer(new VeniceProperties(nearlineProducerProps2), null);
+      veniceBatchProducer2 =
+          NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps2), null);
       veniceBatchProducer2.start();
 
       // The default behavior would exit the process
@@ -782,7 +783,7 @@ public class TestHybrid {
       }
 
       // Before EOP, there should be 2 active producers
-      Assert.assertEquals(factory.getNumberOfActiveNearlineProducers(), 2);
+      Assert.assertEquals(NearlineProducerFactory.getInstance().getNumberOfActiveNearlineProducers(), 2);
       /**
        * Send EOP to the first store, eventually the first SystemProducer will be marked as inactive
        * after push monitor poll the latest push job status from router.
@@ -794,7 +795,7 @@ public class TestHybrid {
           Assert.assertTrue(admin.getStore(clusterName, storeName1).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName1).getCurrentVersion(), 1);
           // The second SystemProducer should still be active
-          Assert.assertEquals(factory.getNumberOfActiveNearlineProducers(), 1);
+          Assert.assertEquals(NearlineProducerFactory.getInstance().getNumberOfActiveNearlineProducers(), 1);
         });
 
         c.writeEndOfPush(storeName2, 1);
@@ -802,7 +803,7 @@ public class TestHybrid {
           Assert.assertTrue(admin.getStore(clusterName, storeName2).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName2).getCurrentVersion(), 1);
           // There should be no active SystemProducer any more.
-          Assert.assertEquals(factory.getNumberOfActiveNearlineProducers(), 0);
+          Assert.assertEquals(NearlineProducerFactory.getInstance().getNumberOfActiveNearlineProducers(), 0);
         });
       });
     } finally {
@@ -1065,7 +1066,7 @@ public class TestHybrid {
       NearlineProducer producer =
           IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
       for (int i = 0; i < keyCount; i++) {
-        IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i + 1);
+        IntegrationTestPushUtils.sendStreamingRecord(producer, i, i + 1);
       }
       producer.stop();
 
@@ -1170,7 +1171,7 @@ public class TestHybrid {
             // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
             // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
             // max chunk size is not altered, and thus this will be under threshold.
-            sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
+            sendCustomSizeStreamingRecord(veniceProducer, i, STREAMING_RECORD_SIZE);
           }
 
           TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
@@ -1461,7 +1462,7 @@ public class TestHybrid {
           // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
           // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
           // max chunk size is not altered, and thus this will be under threshold.
-          sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
+          sendCustomSizeStreamingRecord(veniceProducer, i, STREAMING_RECORD_SIZE);
         }
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
@@ -1726,7 +1727,7 @@ public class TestHybrid {
         NearlineProducer producer =
             IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = 0; i < keyCount; i++) {
-          IntegrationTestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
+          IntegrationTestPushUtils.sendCustomSizeStreamingRecord(producer, i, STREAMING_RECORD_SIZE);
         }
         producer.stop();
         AtomicInteger watermarkOfSuccessfullyVerifiedKeys = new AtomicInteger(0);
@@ -1791,7 +1792,7 @@ public class TestHybrid {
         NearlineProducer producer =
             IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = 0; i < keyCount; i++) {
-          IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+          IntegrationTestPushUtils.sendStreamingRecord(producer, i, i);
         }
         producer.stop();
         TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
@@ -1808,7 +1809,7 @@ public class TestHybrid {
             IntStream.range(keyCount, keyCount * 2).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
         producer = IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = keyCount; i < keyCount * 2; i++) {
-          IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+          IntegrationTestPushUtils.sendStreamingRecord(producer, i, i);
         }
         producer.stop();
         TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
@@ -1825,7 +1826,7 @@ public class TestHybrid {
             IntStream.range(keyCount * 2, keyCount * 3).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
         producer = IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = keyCount * 2; i < keyCount * 3; i++) {
-          IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+          IntegrationTestPushUtils.sendStreamingRecord(producer, i, i);
         }
         TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
           for (int i = 0; i < keyCount * 3; i++) {

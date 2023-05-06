@@ -186,7 +186,6 @@ public class TestChangeCaptureIngestion {
     IntegrationTestPushUtils.updateStore(clusterName, props, storeParms);
     TestWriteUtils.runPushJob("Run push job", props);
     Map<String, String> nearlineProducerConfig = getNearlineProducerConfig(storeName);
-    NearlineProducerFactory factory = new NearlineProducerFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
 
@@ -219,7 +218,8 @@ public class TestChangeCaptureIngestion {
     veniceChangelogConsumer.subscribeAll().get();
     Properties nearlineProducerProps = new Properties();
     nearlineProducerProps.putAll(nearlineProducerConfig);
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+    try (NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
@@ -309,7 +309,8 @@ public class TestChangeCaptureIngestion {
         }
       });
     }
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+    try (NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
       // larger
@@ -363,7 +364,8 @@ public class TestChangeCaptureIngestion {
     Instant past = now.minus(1, ChronoUnit.HOURS);
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+    try (NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // run samza to stream put and delete
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
@@ -559,7 +561,6 @@ public class TestChangeCaptureIngestion {
     for (int i = startIdx; i < startIdx + numPuts; i++) {
       sendStreamingRecord(
           veniceProducer,
-          storeName,
           Integer.toString(i),
           "stream_" + i,
           mockedTime == null ? null : mockedTime.getMilliseconds());
@@ -568,7 +569,6 @@ public class TestChangeCaptureIngestion {
     for (int i = startIdx + numPuts; i < startIdx + numPuts + numDels; i++) {
       sendStreamingDeleteRecord(
           veniceProducer,
-          storeName,
           Integer.toString(i),
           mockedTime == null ? null : mockedTime.getMilliseconds());
     }
@@ -581,9 +581,9 @@ public class TestChangeCaptureIngestion {
       long logicalTimestamp,
       boolean isDeleteOperation) {
     if (isDeleteOperation) {
-      sendStreamingDeleteRecord(veniceProducer, storeName, Integer.toString(index), logicalTimestamp);
+      sendStreamingDeleteRecord(veniceProducer, Integer.toString(index), logicalTimestamp);
     } else {
-      sendStreamingRecord(veniceProducer, storeName, Integer.toString(index), "stream_" + index, logicalTimestamp);
+      sendStreamingRecord(veniceProducer, Integer.toString(index), "stream_" + index, logicalTimestamp);
     }
   }
 }

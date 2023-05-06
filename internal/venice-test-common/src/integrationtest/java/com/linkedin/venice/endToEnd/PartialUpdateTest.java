@@ -185,7 +185,7 @@ public class PartialUpdateTest {
       GenericRecord partialUpdateRecord = new UpdateBuilderImpl(writeComputeSchema)
           .setElementsToAddToListField("blockedContentsUrns", Collections.singletonList("urn:li:lyndaCourse:751323"))
           .build();
-      sendStreamingRecord(veniceProducer, storeName, keyRecord, partialUpdateRecord);
+      sendStreamingRecord(veniceProducer, keyRecord, partialUpdateRecord);
 
       // Perform one time repush to make sure repush can handle RMD chunks data correctly.
       Properties props =
@@ -241,12 +241,12 @@ public class PartialUpdateTest {
       partialUpdateRecord = new UpdateBuilderImpl(writeComputeSchema)
           .setElementsToAddToListField("blockedContentsUrns", Collections.singletonList("urn:li:lyndaCourse:1"))
           .build();
-      sendStreamingRecord(veniceProducer, storeName, keyRecord, partialUpdateRecord);
+      sendStreamingRecord(veniceProducer, keyRecord, partialUpdateRecord);
       partialUpdateRecord = new UpdateBuilderImpl(writeComputeSchema)
           .setElementsToAddToListField("blockedContentsUrns", Collections.singletonList("urn:li:lyndaCourse:2"))
           .build();
-      sendStreamingRecord(veniceProducer, storeName, keyRecord, partialUpdateRecord);
-      sendStreamingRecord(veniceProducer, storeName, checkpointKeyRecord, partialUpdateRecord);
+      sendStreamingRecord(veniceProducer, keyRecord, partialUpdateRecord);
+      sendStreamingRecord(veniceProducer, checkpointKeyRecord, partialUpdateRecord);
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
         try {
           GenericRecord value = (GenericRecord) storeReader.get(checkpointKeyRecord).get();
@@ -322,7 +322,7 @@ public class PartialUpdateTest {
       for (int i = 1; i < 100; i++) {
         GenericRecord partialUpdateRecord =
             new UpdateBuilderImpl(writeComputeSchema).setNewFieldValue("firstName", "new_name_" + i).build();
-        sendStreamingRecord(veniceProducer, storeName, String.valueOf(i), partialUpdateRecord);
+        sendStreamingRecord(veniceProducer, String.valueOf(i), partialUpdateRecord);
       }
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -417,7 +417,7 @@ public class PartialUpdateTest {
         }
         updateBuilder.setEntriesToAddToMapField(mapFieldName, newEntries);
         GenericRecord partialUpdateRecord = updateBuilder.build();
-        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord, i * 10L + 1);
+        sendStreamingRecord(veniceProducer, key, partialUpdateRecord, i * 10L + 1);
       }
 
       // Verify the value record has been partially updated.
@@ -487,7 +487,7 @@ public class PartialUpdateTest {
       });
 
       // Send DELETE record that partially removes data.
-      sendStreamingDeleteRecord(veniceProducer, storeName, key, (updateCount - 1) * 10L);
+      sendStreamingDeleteRecord(veniceProducer, key, (updateCount - 1) * 10L);
 
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         GenericRecord valueRecord = readValue(storeReader, key);
@@ -510,7 +510,7 @@ public class PartialUpdateTest {
       });
 
       // Send DELETE record that fully removes data.
-      sendStreamingDeleteRecord(veniceProducer, storeName, key, updateCount * 10L);
+      sendStreamingDeleteRecord(veniceProducer, key, updateCount * 10L);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         GenericRecord valueRecord = readValue(storeReader, key);
         boolean nullRecord = (valueRecord == null);
@@ -609,7 +609,7 @@ public class PartialUpdateTest {
       GenericRecord value = new GenericData.Record(valueSchemaV1);
       value.put(valueFieldName, "Lebron");
       value.put("age", 37);
-      sendStreamingRecord(veniceProducer, storeName, key, value);
+      sendStreamingRecord(veniceProducer, key, value);
 
       // Verify the Put has been persisted
       TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
@@ -631,7 +631,7 @@ public class PartialUpdateTest {
       updateBuilder.setNewFieldValue(valueFieldName, "Lebron James");
       updateBuilder.setNewFieldValue("hometown", "Akron");
       GenericRecord partialUpdateRecord = updateBuilder.build();
-      sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+      sendStreamingRecord(veniceProducer, key, partialUpdateRecord);
 
       // Verify the value record has been partially updated and it uses V3 superset value schema now.
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
@@ -758,7 +758,7 @@ public class PartialUpdateTest {
         String lastName = new String(chars);
         value.put("firstName", firstName);
         value.put("lastName", lastName);
-        sendStreamingRecord(veniceProducer, storeName, key, value);
+        sendStreamingRecord(veniceProducer, key, value);
 
         // Verify the streaming record
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
@@ -781,7 +781,7 @@ public class PartialUpdateTest {
         updateBuilder.setNewFieldValue("age", updatedAge);
         GenericRecord partialUpdateRecord = updateBuilder.build();
 
-        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+        sendStreamingRecord(veniceProducer, key, partialUpdateRecord);
         // Verify the update
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           try {
@@ -802,7 +802,7 @@ public class PartialUpdateTest {
         updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
         updateBuilder.setNewFieldValue("firstName", updatedFirstName1);
         GenericRecord partialUpdateRecord1 = updateBuilder.build();
-        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord1);
+        sendStreamingRecord(veniceProducer, key, partialUpdateRecord1);
         // Verify the update
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
           try {
@@ -839,7 +839,7 @@ public class PartialUpdateTest {
         updateBuilder.setNewFieldValue("age", 2);
         GenericRecord partialUpdateRecord2 = updateBuilder.build();
 
-        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord2);
+        sendStreamingRecord(veniceProducer, key, partialUpdateRecord2);
         // Verify the update
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           try {
@@ -860,7 +860,7 @@ public class PartialUpdateTest {
         updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
         updateBuilder.setNewFieldValue("firstName", updatedFirstName3);
         GenericRecord partialUpdateRecord3 = updateBuilder.build();
-        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord3);
+        sendStreamingRecord(veniceProducer, key, partialUpdateRecord3);
         // Verify the update
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           try {
@@ -930,7 +930,6 @@ public class PartialUpdateTest {
       // Run empty push to create a version and get everything created
       controllerClient.sendEmptyPushAndWait(storeName, "foopush", 10000, 60 * Time.MS_PER_SECOND);
 
-      NearlineProducerFactory factory = new NearlineProducerFactory();
       Version.PushType pushType = Version.PushType.BATCH;
       Map<String, String> nearlineProducerConfig = getNearlineProducerConfig(veniceClusterWrapper, storeName, pushType);
       // final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
@@ -941,7 +940,8 @@ public class PartialUpdateTest {
       nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
       Properties nearlineProducerProps = new Properties();
       nearlineProducerProps.putAll(nearlineProducerConfig);
-      veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
+      veniceProducer =
+          NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null);
       veniceProducer.start();
 
       // build partial update
@@ -958,7 +958,7 @@ public class PartialUpdateTest {
 
       for (int i = 0; i < 10; i++) {
         String key = String.valueOf(i);
-        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+        sendStreamingRecord(veniceProducer, key, partialUpdateRecord);
       }
 
       // send end of push

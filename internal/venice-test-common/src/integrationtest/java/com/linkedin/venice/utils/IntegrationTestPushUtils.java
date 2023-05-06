@@ -21,6 +21,7 @@ import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT
 import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_STORE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
 
@@ -48,6 +49,8 @@ import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFac
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -59,7 +62,10 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.samza.config.MapConfig;
+import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
+import org.apache.samza.system.SystemStream;
 import org.testng.Assert;
 
 
@@ -209,7 +215,7 @@ public class IntegrationTestPushUtils {
     nearlineProducerConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, VeniceControllerWrapper.D2_SERVICE_NAME);
     nearlineProducerConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
     nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, "invalid_parent_d2_service");
-    nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
+    nearlineProducerConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     nearlineProducerConfig.put(SSL_ENABLED, "false");
     return nearlineProducerConfig;
   }
@@ -224,12 +230,28 @@ public class IntegrationTestPushUtils {
     for (Pair<String, String> config: optionalConfigs) {
       nearlineProducerConfig.put(config.getFirst(), config.getSecond());
     }
-    NearlineProducerFactory factory = new NearlineProducerFactory();
     Properties nearlineProducerProps = new Properties();
     nearlineProducerProps.putAll(nearlineProducerConfig);
-    NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
+    NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null);
     veniceProducer.start();
     return veniceProducer;
+  }
+
+  @SafeVarargs
+  public static VeniceSystemProducer getSystemProducer(
+      VeniceClusterWrapper venice,
+      String storeName,
+      Version.PushType type,
+      Pair<String, String>... optionalConfigs) {
+    Map<String, String> systemProducerConfig = getSystemProducerConfig(venice, storeName, type);
+    for (Pair<String, String> config: optionalConfigs) {
+      systemProducerConfig.put(config.getFirst(), config.getSecond());
+    }
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(systemProducerConfig), null);
+    veniceProducer.start();
+    return (VeniceSystemProducer) veniceProducer;
   }
 
   public static PubSubConsumerAdapterFactory getVeniceConsumerFactory() {
@@ -326,40 +348,27 @@ public class IntegrationTestPushUtils {
    * key and value schema of the store must both be "string", the record produced is
    * based on the provided recordId
    */
-  public static void sendStreamingRecord(NearlineProducer producer, String storeName, int recordId) {
-    sendStreamingRecord(producer, storeName, Integer.toString(recordId), "stream_" + recordId);
+  public static void sendStreamingRecord(NearlineProducer producer, int recordId) {
+    sendStreamingRecord(producer, Integer.toString(recordId), "stream_" + recordId);
   }
 
-  public static void sendStreamingRecordWithKeyPrefix(
-      NearlineProducer producer,
-      String storeName,
-      String keyPrefix,
-      int recordId) {
-    sendStreamingRecord(producer, storeName, keyPrefix + recordId, "stream_" + recordId);
+  public static void sendStreamingRecordWithKeyPrefix(NearlineProducer producer, String keyPrefix, int recordId) {
+    sendStreamingRecord(producer, keyPrefix + recordId, "stream_" + recordId);
   }
 
-  public static void sendStreamingDeleteRecord(NearlineProducer producer, String storeName, String key) {
-    sendStreamingRecord(producer, storeName, key, null, null);
+  public static void sendStreamingDeleteRecord(NearlineProducer producer, String key) {
+    sendStreamingRecord(producer, key, null, null);
   }
 
-  public static void sendStreamingDeleteRecord(
-      NearlineProducer producer,
-      String storeName,
-      String key,
-      Long logicalTimeStamp) {
-    sendStreamingRecord(producer, storeName, key, null, logicalTimeStamp);
+  public static void sendStreamingDeleteRecord(NearlineProducer producer, String key, Long logicalTimeStamp) {
+    sendStreamingRecord(producer, key, null, logicalTimeStamp);
   }
 
-  public static void sendStreamingRecord(NearlineProducer producer, String storeName, Object key, Object message) {
-    sendStreamingRecord(producer, storeName, key, message, null);
+  public static void sendStreamingRecord(NearlineProducer producer, Object key, Object message) {
+    sendStreamingRecord(producer, key, message, null);
   }
 
-  public static void sendStreamingRecord(
-      NearlineProducer producer,
-      String storeName,
-      Object key,
-      Object message,
-      Long logicalTimeStamp) {
+  public static void sendStreamingRecord(NearlineProducer producer, Object key, Object message, Long logicalTimeStamp) {
     ProducerMessageEnvelope envelope;
     if (logicalTimeStamp == null) {
       envelope = new ProducerMessageEnvelope(key, message);
@@ -370,20 +379,39 @@ public class IntegrationTestPushUtils {
     producer.flush();
   }
 
+  public static void sendStreamingRecord(VeniceSystemProducer producer, String storeName, Object key, Object message) {
+    sendStreamingRecord(producer, storeName, key, message, null);
+  }
+
+  public static void sendStreamingRecord(
+      VeniceSystemProducer producer,
+      String storeName,
+      Object key,
+      Object message,
+      Long logicalTimeStamp) {
+    OutgoingMessageEnvelope envelope;
+    if (logicalTimeStamp == null) {
+      envelope = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key, message);
+    } else {
+      envelope = new OutgoingMessageEnvelope(
+          new SystemStream("venice", storeName),
+          key,
+          new VeniceObjectWithTimestamp(message, logicalTimeStamp));
+    }
+    producer.send(storeName, envelope);
+    producer.flush(storeName);
+  }
+
   /**
    * Identical to {@link #sendStreamingRecord(SystemProducer, String, int)} except that the value's length is equal
    * to {@param valueSizeInBytes}. The value is composed exclusively of the first digit of the {@param recordId}.
    *
    * @see #sendStreamingRecord(SystemProducer, String, int)
    */
-  public static void sendCustomSizeStreamingRecord(
-      NearlineProducer producer,
-      String storeName,
-      int recordId,
-      int valueSizeInBytes) {
+  public static void sendCustomSizeStreamingRecord(NearlineProducer producer, int recordId, int valueSizeInBytes) {
     char[] chars = new char[valueSizeInBytes];
     Arrays.fill(chars, Integer.toString(recordId).charAt(0));
-    sendStreamingRecord(producer, storeName, Integer.toString(recordId), new String(chars));
+    sendStreamingRecord(producer, Integer.toString(recordId), new String(chars));
   }
 
   public static TopicManagerRepository getTopicManagerRepo(

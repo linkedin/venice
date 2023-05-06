@@ -378,11 +378,10 @@ public class TestPushJobWithNativeReplication {
           nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
           nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
           nearlineProducerConfig.put(SSL_ENABLED, "false");
-          NearlineProducerFactory factory = new NearlineProducerFactory();
           Properties nearlineProducerProps = new Properties();
           nearlineProducerProps.putAll(nearlineProducerConfig);
           try (NearlineProducer veniceProducer =
-              factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+              NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
             veniceProducer.start();
 
             // Verify the kafka URL being returned to Samza is the same as parent region kafka url.

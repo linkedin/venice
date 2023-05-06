@@ -13,7 +13,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -55,7 +54,7 @@ public class VeniceSystemFactoryTest {
   /**
    * Write a record using the Samza SystemProducer for Venice, then verify we can read that record.
    */
-  @Test // (timeOut = TEST_TIMEOUT * 2)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testGetProducer() throws Exception {
     String keySchema = "\"string\"";
     String valueSchema = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
@@ -92,10 +91,10 @@ public class VeniceSystemFactoryTest {
 
     ClientConfig config = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL());
 
-    NearlineProducer producer = null;
+    VeniceSystemProducer producer = null;
 
     try (AvroGenericStoreClient<String, GenericRecord> client = ClientFactory.getAndStartGenericAvroClient(config)) {
-      producer = IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
+      producer = IntegrationTestPushUtils.getSystemProducer(cluster, storeName, Version.PushType.STREAM);
 
       // Send the record to Venice using the SystemProducer
       GenericRecord record = new GenericData.Record(Schema.parse(valueSchema));
@@ -153,8 +152,8 @@ public class VeniceSystemFactoryTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testSchemaMismatchError() throws Exception {
     String storeName = cluster.createStore(0);
-    NearlineProducer producer =
-        IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.BATCH);
+    VeniceSystemProducer producer =
+        IntegrationTestPushUtils.getSystemProducer(cluster, storeName, Version.PushType.BATCH);
     try {
       // Send a record with a wrong schema, this is byte[] of chars "1", "2", "3", expects int
       assertThrows(
@@ -211,8 +210,8 @@ public class VeniceSystemFactoryTest {
     cluster.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", schema, schema);
 
-      NearlineProducer producer =
-          IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.BATCH);
+      VeniceSystemProducer producer =
+          IntegrationTestPushUtils.getSystemProducer(cluster, storeName, Version.PushType.BATCH);
       try {
         IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, writeKey, value);
       } finally {

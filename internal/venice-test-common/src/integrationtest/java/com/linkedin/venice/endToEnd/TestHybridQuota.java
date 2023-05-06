@@ -214,7 +214,7 @@ public class TestHybridQuota {
       }
       for (int i = 1; i <= 20; i++) {
         try {
-          sendCustomSizeStreamingRecord(veniceProducer, storeName, i, TestHybrid.STREAMING_RECORD_SIZE);
+          sendCustomSizeStreamingRecord(veniceProducer, i, TestHybrid.STREAMING_RECORD_SIZE);
         } catch (VeniceException e) {
           // Expected exception.
           LOGGER.info(e.getMessage());

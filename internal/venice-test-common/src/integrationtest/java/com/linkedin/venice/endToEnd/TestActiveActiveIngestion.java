@@ -210,7 +210,6 @@ public class TestActiveActiveIngestion {
     Map<String, String> nearlineProducerConfig = getNearlineProducerConfig(storeName);
     Properties nearlineProducerProps = new Properties();
     nearlineProducerProps.putAll(nearlineProducerConfig);
-    NearlineProducerFactory factory = new NearlineProducerFactory();
     // set up mocked time for Samza records so some records can be stale intentionally.
     List<Long> mockTimestampInMs = new LinkedList<>();
     List<Long> mockTimestampInMsInThePast = new LinkedList<>();
@@ -225,7 +224,8 @@ public class TestActiveActiveIngestion {
     Time mockTime = new MockCircularTime(mockTimestampInMs);
     Time mockPastime = new MockCircularTime(mockTimestampInMsInThePast);
 
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+    try (NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests with a mix of records that will land and some which won't.
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 0, 20);
@@ -295,16 +295,16 @@ public class TestActiveActiveIngestion {
     Map<String, String> nearlineProducerConfig = getNearlineProducerConfig(storeName);
     Properties nearlineProducerProps = new Properties();
     nearlineProducerProps.putAll(nearlineProducerConfig);
-    NearlineProducerFactory factory = new NearlineProducerFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
 
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+    try (NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
       // Produce a DELETE record with large timestamp
-      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+      produceRecordWithLogicalTimestamp(veniceProducer, deleteWithRmdKeyIndex, 1000, true);
     }
 
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
@@ -359,14 +359,15 @@ public class TestActiveActiveIngestion {
         }
       });
     }
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+    try (NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
       // larger
       // timestamp
-      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 2, false);
+      produceRecordWithLogicalTimestamp(veniceProducer, deleteWithRmdKeyIndex, 2, false);
       // Produce another record to the same partition to make sure the above PUT is processed during validation stage.
-      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex + 1, 1, false);
+      produceRecordWithLogicalTimestamp(veniceProducer, deleteWithRmdKeyIndex + 1, 1, false);
     }
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
@@ -399,7 +400,8 @@ public class TestActiveActiveIngestion {
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
 
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+    try (NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // run samza to stream put and delete
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
@@ -573,7 +575,6 @@ public class TestActiveActiveIngestion {
     Map<String, String> nearlineProducerConfig = getNearlineProducerConfig(storeName);
     Properties nearlineProducerProps = new Properties();
     nearlineProducerProps.putAll(nearlineProducerConfig);
-    NearlineProducerFactory factory = new NearlineProducerFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
 
@@ -604,12 +605,13 @@ public class TestActiveActiveIngestion {
     VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
     veniceChangelogConsumer.subscribeAll().get();
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+    try (NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
       // Produce a DELETE record with large timestamp
-      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+      produceRecordWithLogicalTimestamp(veniceProducer, deleteWithRmdKeyIndex, 1000, true);
     }
 
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
@@ -695,14 +697,15 @@ public class TestActiveActiveIngestion {
         }
       });
     }
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+    try (NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
       // larger
       // timestamp
-      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 2, false);
+      produceRecordWithLogicalTimestamp(veniceProducer, deleteWithRmdKeyIndex, 2, false);
       // Produce another record to the same partition to make sure the above PUT is processed during validation stage.
-      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex + 1, 1, false);
+      produceRecordWithLogicalTimestamp(veniceProducer, deleteWithRmdKeyIndex + 1, 1, false);
     }
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
@@ -749,7 +752,8 @@ public class TestActiveActiveIngestion {
     Instant past = now.minus(1, ChronoUnit.HOURS);
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
-    try (NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null)) {
+    try (NearlineProducer veniceProducer =
+        NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null)) {
       veniceProducer.start();
       // run samza to stream put and delete
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
@@ -906,7 +910,6 @@ public class TestActiveActiveIngestion {
     for (int i = startIdx; i < startIdx + numPuts; i++) {
       sendStreamingRecord(
           veniceProducer,
-          storeName,
           Integer.toString(i),
           "stream_" + i,
           mockedTime == null ? null : mockedTime.getMilliseconds());
@@ -915,7 +918,6 @@ public class TestActiveActiveIngestion {
     for (int i = startIdx + numPuts; i < startIdx + numPuts + numDels; i++) {
       sendStreamingDeleteRecord(
           veniceProducer,
-          storeName,
           Integer.toString(i),
           mockedTime == null ? null : mockedTime.getMilliseconds());
     }
@@ -923,14 +925,13 @@ public class TestActiveActiveIngestion {
 
   private void produceRecordWithLogicalTimestamp(
       NearlineProducer veniceProducer,
-      String storeName,
       int index,
       long logicalTimestamp,
       boolean isDeleteOperation) {
     if (isDeleteOperation) {
-      sendStreamingDeleteRecord(veniceProducer, storeName, Integer.toString(index), logicalTimestamp);
+      sendStreamingDeleteRecord(veniceProducer, Integer.toString(index), logicalTimestamp);
     } else {
-      sendStreamingRecord(veniceProducer, storeName, Integer.toString(index), "stream_" + index, logicalTimestamp);
+      sendStreamingRecord(veniceProducer, Integer.toString(index), "stream_" + index, logicalTimestamp);
     }
   }
 

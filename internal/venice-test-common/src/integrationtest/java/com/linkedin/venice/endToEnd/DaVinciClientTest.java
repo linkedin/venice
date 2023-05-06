@@ -953,7 +953,7 @@ public class DaVinciClientTest {
           Pair.create(VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
       try {
         for (int i = 0; i < keyCount; i++) {
-          IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+          IntegrationTestPushUtils.sendStreamingRecord(producer, i, i);
         }
       } finally {
         producer.stop();
@@ -969,7 +969,7 @@ public class DaVinciClientTest {
         Pair.create(VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
     try {
       for (Pair<Object, Object> record: dataToWrite) {
-        IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, record.getFirst(), record.getSecond());
+        IntegrationTestPushUtils.sendStreamingRecord(producer, record.getFirst(), record.getSecond());
       }
     } finally {
       producer.stop();

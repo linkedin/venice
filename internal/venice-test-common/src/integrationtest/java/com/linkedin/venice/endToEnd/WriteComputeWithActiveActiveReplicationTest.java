@@ -184,7 +184,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
   // Create one system producer per region
   private void startVeniceSystemProducers() {
     nearlineProducerMap = new HashMap<>(NUMBER_OF_CHILD_DATACENTERS);
-    NearlineProducerFactory factory = new NearlineProducerFactory();
     for (int dcId = 0; dcId < NUMBER_OF_CHILD_DATACENTERS; dcId++) {
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(dcId);
       Map<String, String> nearlineProducerConfig = new HashMap<>();
@@ -200,7 +199,8 @@ public class WriteComputeWithActiveActiveReplicationTest {
       nearlineProducerConfig.put(SSL_ENABLED, "false");
       Properties nearlineProducerProps = new Properties();
       nearlineProducerProps.putAll(nearlineProducerConfig);
-      NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
+      NearlineProducer veniceProducer =
+          NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null);
       veniceProducer.start();
       nearlineProducerMap.put(childDataCenter, veniceProducer);
     }
@@ -237,7 +237,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     // PartialPut before PUT should succeed with empty values for the fields which were not set using PartialPut
     UpdateBuilder ubKv1F0 = new UpdateBuilderImpl(wcSchemaV1);
     ubKv1F0.setNewFieldValue(PERSON_F1_NAME, "Bar");
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ubKv1F0.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ubKv1F0.build());
     validatePersonV1Record(storeName, dc0RouterUrl, key1, "Bar", -1);
     validatePersonV1Record(storeName, dc1RouterUrl, key1, "Bar", -1);
 
@@ -245,14 +245,14 @@ public class WriteComputeWithActiveActiveReplicationTest {
     GenericRecord val1 = new GenericData.Record(valueSchemaV1);
     val1.put(PERSON_F1_NAME, "Foo");
     val1.put(PERSON_F2_NAME, 42);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, val1);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, val1);
     validatePersonV1Record(storeName, dc0RouterUrl, key1, "Foo", 42);
     validatePersonV1Record(storeName, dc1RouterUrl, key1, "Foo", 42);
 
     // PartialPut
     UpdateBuilder ubKv1F1 = new UpdateBuilderImpl(wcSchemaV1);
     ubKv1F1.setNewFieldValue(PERSON_F1_NAME, "Bar");
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ubKv1F1.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ubKv1F1.build());
     validatePersonV1Record(storeName, dc0RouterUrl, key1, "Bar", 42);
     validatePersonV1Record(storeName, dc1RouterUrl, key1, "Bar", 42);
 
@@ -260,17 +260,17 @@ public class WriteComputeWithActiveActiveReplicationTest {
     UpdateBuilder ubKv1All = new UpdateBuilderImpl(wcSchemaV1);
     ubKv1All.setNewFieldValue(PERSON_F1_NAME, "FooBar");
     ubKv1All.setNewFieldValue(PERSON_F2_NAME, 24);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, ubKv1All.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, ubKv1All.build());
     validatePersonV1Record(storeName, dc0RouterUrl, key1, "FooBar", 24);
     validatePersonV1Record(storeName, dc1RouterUrl, key1, "FooBar", 24);
 
     // Delete then PartialPut
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, null);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, null);
     validatePersonV1Record(storeName, dc0RouterUrl, key1, null, null);
     validatePersonV1Record(storeName, dc1RouterUrl, key1, null, null);
     UpdateBuilder ub = new UpdateBuilderImpl(wcSchemaV1);
     ub.setNewFieldValue(PERSON_F1_NAME, "DeleteThenPartialPut");
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, ub.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, ub.build());
     validatePersonV1Record(storeName, dc0RouterUrl, key1, "DeleteThenPartialPut", -1);
     validatePersonV1Record(storeName, dc1RouterUrl, key1, "DeleteThenPartialPut", -1);
 
@@ -287,7 +287,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     val2.put(PERSON_F1_NAME, "val2f1_b");
     val2.put(PERSON_F2_NAME, 20);
     VeniceObjectWithTimestamp val2T2 = new VeniceObjectWithTimestamp(val2, 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, val2T2);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, val2T2);
     validatePersonV1Record(storeName, dc0RouterUrl, key2, "val2f1_b", 20);
     validatePersonV1Record(storeName, dc1RouterUrl, key2, "val2f1_b", 20);
 
@@ -295,13 +295,13 @@ public class WriteComputeWithActiveActiveReplicationTest {
     UpdateBuilder ub2 = new UpdateBuilderImpl(wcSchemaV1);
     ub2.setNewFieldValue(PERSON_F1_NAME, "val2f1_a");
     VeniceObjectWithTimestamp val2T1 = new VeniceObjectWithTimestamp(ub2.build(), 1);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, val2T1);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, val2T1);
 
     // val2T3 update should be applied since its timestamp t3 is greater than the existing timestamp t2 for age field
     UpdateBuilder ub3 = new UpdateBuilderImpl(wcSchemaV1);
     ub3.setNewFieldValue(PERSON_F2_NAME, 40);
     VeniceObjectWithTimestamp val2T3 = new VeniceObjectWithTimestamp(ub3.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, val2T3);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, val2T3);
     validatePersonV1Record(storeName, dc0RouterUrl, key2, "val2f1_b", 40);
     validatePersonV1Record(storeName, dc1RouterUrl, key2, "val2f1_b", 40);
 
@@ -312,7 +312,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     UpdateBuilder ub2Prime = new UpdateBuilderImpl(wcSchemaV1);
     ub2Prime.setNewFieldValue(PERSON_F1_NAME, "val2f1_b_prime");
     VeniceObjectWithTimestamp val2T2Prime = new VeniceObjectWithTimestamp(ub2Prime.build(), 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, val2T2Prime);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, val2T2Prime);
     validatePersonV1Record(storeName, dc0RouterUrl, key2, "val2f1_b_prime", 40);
     validatePersonV1Record(storeName, dc1RouterUrl, key2, "val2f1_b_prime", 40);
 
@@ -320,16 +320,16 @@ public class WriteComputeWithActiveActiveReplicationTest {
 
     // Delete then PartialPut with the same timestamp
     timestampedOp = new VeniceObjectWithTimestamp(null, 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     validatePersonV1Record(storeName, dc0RouterUrl, key2, null, null);
     validatePersonV1Record(storeName, dc1RouterUrl, key2, null, null);
     ub = new UpdateBuilderImpl(wcSchemaV1);
     ub.setNewFieldValue(PERSON_F1_NAME, "DeleteThenPartialPut");
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     ub.setNewFieldValue(PERSON_F2_NAME, 42);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 4);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     validatePersonV1Record(storeName, dc0RouterUrl, key2, "DeleteThenPartialPut", 42);
     validatePersonV1Record(storeName, dc1RouterUrl, key2, "DeleteThenPartialPut", 42);
 
@@ -341,7 +341,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     GenericRecord val3 = new GenericData.Record(valueSchemaV1);
     val3.put(PERSON_F1_NAME, "val3f1");
     val3.put(PERSON_F2_NAME, 30);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key3, val3);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key3, val3);
     validatePersonV1Record(storeName, dc0RouterUrl, key3, "val3f1", 30);
     validatePersonV1Record(storeName, dc1RouterUrl, key3, "val3f1", 30);
 
@@ -350,7 +350,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
 
     UpdateBuilder ubKv3 = new UpdateBuilderImpl(wcSchemaV2);
     ubKv3.setNewFieldValue(PERSON_F3_NAME, "val3f3");
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key3, ubKv3.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key3, ubKv3.build());
     validatePersonV1V2SupersetRecord(storeName, dc0RouterUrl, key3, "val3f1", 30, "val3f3");
     validatePersonV1V2SupersetRecord(storeName, dc1RouterUrl, key3, "val3f1", 30, "val3f3");
 
@@ -359,7 +359,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     GenericRecord val3Prime = new GenericData.Record(valueSchemaV2);
     val3Prime.put(PERSON_F1_NAME, "val3PrimeF1");
     val3Prime.put(PERSON_F3_NAME, "val3PrimeF3");
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key3Prime, val3Prime);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key3Prime, val3Prime);
     validatePersonV1V2SupersetRecord(storeName, dc0RouterUrl, key3Prime, "val3PrimeF1", -1, "val3PrimeF3");
     validatePersonV1V2SupersetRecord(storeName, dc1RouterUrl, key3Prime, "val3PrimeF1", -1, "val3PrimeF3");
   }
@@ -478,7 +478,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     val1.put(REGULAR_FIELD, regularFieldValue);
     val1.put(INT_ARRAY_FIELD, arrayFieldValue);
     val1.put(MAP_FIELD, mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, val1);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, val1);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
 
@@ -491,7 +491,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub = new UpdateBuilderImpl(wcSchemaV1);
     ub.setEntriesToAddToMapField(MAP_FIELD, updateToMapField);
     mapFieldValue.putAll(updateToMapField);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ub.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ub.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
 
@@ -500,7 +500,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub.setKeysToRemoveFromMapField(MAP_FIELD, Arrays.asList("one", "two"));
     mapFieldValue.remove("one");
     mapFieldValue.remove("two");
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, ub.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, ub.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
 
@@ -517,7 +517,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.putAll(updateToMapField);
     mapFieldValue.remove("five");
     mapFieldValue.remove("seven");
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ub.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ub.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
 
@@ -528,14 +528,14 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("seven", 7);
     mapFieldValue.put("eight", 8);
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, ub.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, ub.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
 
     // PartialPut: set map field to an empty map
     ub = new UpdateBuilderImpl(wcSchemaV1);
     ub.setNewFieldValue(MAP_FIELD, Collections.emptyMap());
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ub.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ub.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, arrayFieldValue, Collections.emptyMap());
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, arrayFieldValue, Collections.emptyMap());
 
@@ -545,12 +545,12 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("seven", 7);
     mapFieldValue.put("eight", 8);
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ub.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ub.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, arrayFieldValue, mapFieldValue);
 
     // PUT after DELETE: should be able to add back previously deleted Key-Value
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, null);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, null);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, null, null, null);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, null, null, null);
     mapFieldValue = new HashMap<>();
@@ -561,12 +561,12 @@ public class WriteComputeWithActiveActiveReplicationTest {
     val1.put(REGULAR_FIELD, regularFieldValue);
     val1.put(INT_ARRAY_FIELD, Collections.emptyList());
     val1.put(MAP_FIELD, mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, val1);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, val1);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, Collections.emptyList(), mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, Collections.emptyList(), mapFieldValue);
 
     // PartialPut after DELETE: should be able to do PartialPut on the previously deleted Key-Value
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, null);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, null);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, null, null, null);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, null, null, null);
     ub = new UpdateBuilderImpl(wcSchemaV1);
@@ -574,29 +574,29 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("ten", 10);
     mapFieldValue.put("twenty", 20);
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ub.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ub.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldDefault, intArrayFieldDefault, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldDefault, intArrayFieldDefault, mapFieldValue);
 
     // AddToMap after DELETE: should be able to add a key to a map field of the previously deleted Key-Value
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, null);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, null);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, null, null, null);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, null, null, null);
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
     mapFieldValue.put("thirty", 30);
     ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ub.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ub.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldDefault, intArrayFieldDefault, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldDefault, intArrayFieldDefault, mapFieldValue);
 
     // RemoveFromMap after DELETE: should get a record with default values
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, null);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, null);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, null, null, null);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, null, null, null);
     ub = new UpdateBuilderImpl(wcSchemaV1);
     ub.setKeysToRemoveFromMapField(MAP_FIELD, Collections.singletonList("fortyTwo"));
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ub.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ub.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldDefault, intArrayFieldDefault, mapFieldDefault);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldDefault, intArrayFieldDefault, mapFieldDefault);
 
@@ -615,7 +615,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 1);
     expectedMapFieldValue.putAll(mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
 
@@ -625,7 +625,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 2);
     expectedMapFieldValue.putAll(mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
 
@@ -636,7 +636,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 1);
     expectedMapFieldValue.putAll(mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
     ub = new UpdateBuilderImpl(wcSchemaV1); // t2
@@ -645,7 +645,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 2);
     expectedMapFieldValue.putAll(mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
     ub = new UpdateBuilderImpl(wcSchemaV1); // t3
@@ -654,7 +654,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
     expectedMapFieldValue.putAll(mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
 
@@ -671,7 +671,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     val2.put(INT_ARRAY_FIELD, arrayFieldValue);
     val2.put(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(val2, 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     expectedMapFieldValue.putAll(mapFieldValue);
     expectedMapFieldValue.remove("OneZero");
     expectedMapFieldValue.remove("TwoZero");
@@ -686,7 +686,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("four", 4);
     ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     expectedMapFieldValue.putAll(mapFieldValue);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
@@ -696,7 +696,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("five", 5);
     ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 5);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     expectedMapFieldValue.putAll(mapFieldValue);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
@@ -711,7 +711,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("four", 40);
     ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     expectedMapFieldValue.putAll(mapFieldValue);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
@@ -725,7 +725,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     regularFieldValue = "TwoZero"; // to make sure that the assertion doesn't go ahead with false-positive
     ub.setNewFieldValue(REGULAR_FIELD, regularFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
@@ -739,7 +739,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     regularFieldValue = "TwoZeroTwo";
     ub.setNewFieldValue(REGULAR_FIELD, regularFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
@@ -755,9 +755,9 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("OneZeroZero", 100);
     ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 1);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     // send another record from the same region to ensure that the previous operation was completed
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, "marker", val2);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), "marker", val2);
     verifyFLMRecord(storeName, dc1RouterUrl, "marker", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc0RouterUrl, "marker", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
@@ -769,9 +769,9 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub = new UpdateBuilderImpl(wcSchemaV1);
     ub.setKeysToRemoveFromMapField(MAP_FIELD, Arrays.asList("one", "four"));
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     // send another record from the same region/producer to ensure that the previous operation was completed
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, "marker1", val2);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), "marker1", val2);
     verifyFLMRecord(storeName, dc1RouterUrl, "marker1", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc0RouterUrl, "marker1", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
@@ -781,7 +781,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub = new UpdateBuilderImpl(wcSchemaV1);
     ub.setKeysToRemoveFromMapField(MAP_FIELD, Arrays.asList("four", "one"));
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     expectedMapFieldValue.remove("four");
     expectedMapFieldValue.remove("one");
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
@@ -795,7 +795,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     regularFieldValue = "AddBack";
     ub.setNewFieldValue(REGULAR_FIELD, regularFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
@@ -806,9 +806,9 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("seven", 7);
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 1);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     // send another record from the same region/producer to ensure that the previous operation was completed
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, "marker1", val2);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), "marker1", val2);
     verifyFLMRecord(storeName, dc1RouterUrl, "marker1", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc0RouterUrl, "marker1", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
@@ -820,13 +820,13 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("seven", 7);
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     expectedMapFieldValue.putAll(mapFieldValue);
     expectedMapFieldValue.remove("two");
     expectedMapFieldValue.remove("three");
 
     // send another record from the same region/producer to ensure that the previous operation was completed
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, "marker1", val2);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), "marker1", val2);
     verifyFLMRecord(storeName, dc1RouterUrl, "marker1", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc0RouterUrl, "marker1", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
@@ -840,7 +840,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("seven", 70);
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     expectedMapFieldValue.putAll(mapFieldValue);
     expectedMapFieldValue.remove("two"); // existing timestamp 2
     expectedMapFieldValue.remove("three"); // existing timestamp 2
@@ -854,7 +854,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     mapFieldValue.put("seven", 77);
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     // This setField UPDATE is ignored, as it has smaller colo ID compared to existing top-level colo ID.
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
@@ -900,7 +900,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     val1.put(REGULAR_FIELD, regularFieldValue);
     val1.put(INT_ARRAY_FIELD, expectedArrayFieldVal);
     val1.put(MAP_FIELD, mapFieldValue);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, val1);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, val1);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
 
@@ -914,7 +914,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     List<Integer> addToArrayFieldValue = Arrays.asList(44, 55);
     ubV1.setElementsToAddToListField(INT_ARRAY_FIELD, addToArrayFieldValue);
     expectedArrayFieldVal = Arrays.asList(11, 22, 33, 44, 55);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ubV1.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ubV1.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
 
@@ -923,7 +923,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     List<Integer> removeFromArrayFieldValue = Arrays.asList(11, 55);
     ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, removeFromArrayFieldValue);
     expectedArrayFieldVal = Arrays.asList(22, 33, 44);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, ubV1.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, ubV1.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
 
@@ -936,7 +936,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1.setElementsToAddToListField(INT_ARRAY_FIELD, addToArrayFieldValue);
     ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, removeFromArrayFieldValue);
     expectedArrayFieldVal = Arrays.asList(22, 44, 11, 66);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ubV1.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ubV1.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
 
@@ -945,7 +945,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     addToArrayFieldValue = Arrays.asList(77, 88, 99);
     ubV1.setNewFieldValue(INT_ARRAY_FIELD, addToArrayFieldValue);
     expectedArrayFieldVal = Arrays.asList(77, 88, 99);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, ubV1.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, ubV1.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
 
@@ -953,7 +953,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setNewFieldValue(INT_ARRAY_FIELD, Collections.emptyList());
     expectedArrayFieldVal = Collections.emptyList();
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ubV1.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ubV1.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
 
@@ -961,12 +961,12 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setNewFieldValue(INT_ARRAY_FIELD, Arrays.asList(111, 222));
     expectedArrayFieldVal = Arrays.asList(111, 222);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, ubV1.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, ubV1.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldValue, expectedArrayFieldVal, mapFieldValue);
 
     // PUT after DELETE: should be able to add back previously deleted Key-Value
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, null);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, null);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, null, null, null);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, null, null, null);
     expectedArrayFieldVal = Arrays.asList(11, 22, 33);
@@ -974,42 +974,42 @@ public class WriteComputeWithActiveActiveReplicationTest {
     val1.put(REGULAR_FIELD, "");
     val1.put(INT_ARRAY_FIELD, expectedArrayFieldVal);
     val1.put(MAP_FIELD, Collections.emptyMap());
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, val1);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, val1);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, "", expectedArrayFieldVal, Collections.emptyMap());
 
     // PartialPut after DELETE: should be able to do PartialPut on the previously deleted Key-Value
     // For a given KEY, a new VALUE should be created with the fields and their values provided in the PartialPut.
     // For remaining fields an empty / (default value) will be used.
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, null);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, null);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, null, null, null);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, null, null, null);
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setNewFieldValue(INT_ARRAY_FIELD, Arrays.asList(77, 88, 99));
     expectedArrayFieldVal = Arrays.asList(77, 88, 99);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, ubV1.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, ubV1.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldDefault, expectedArrayFieldVal, mapFieldDefault);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldDefault, expectedArrayFieldVal, mapFieldDefault);
 
     // AddToSet after DELETE: should be able to add elements to a set field of the previously deleted Key-Value
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, null);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, null);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, null, null, null);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, null, null, null);
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setElementsToAddToListField(INT_ARRAY_FIELD, Arrays.asList(44, 55));
     expectedArrayFieldVal = Arrays.asList(44, 55);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ubV1.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ubV1.build());
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldDefault, expectedArrayFieldVal, mapFieldDefault);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldDefault, expectedArrayFieldVal, mapFieldDefault);
 
     // RemoveFromSet after DELETE: should get a record with default values
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key1, null);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key1, null);
     verifyFLMRecord(storeName, dc0RouterUrl, key1, null, null, null);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, null, null, null);
     // Key1 was successfully deleted. Now run remove elements op
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, Arrays.asList(44, 55));
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key1, ubV1.build());
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key1, ubV1.build());
     verifyFLMRecord(storeName, dc0RouterUrl, key1, regularFieldDefault, intArrayFieldDefault, mapFieldDefault);
     verifyFLMRecord(storeName, dc1RouterUrl, key1, regularFieldDefault, intArrayFieldDefault, mapFieldDefault);
 
@@ -1024,7 +1024,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     expectedArrayFieldVal = Arrays.asList(11, 22, 33);
     ubV1.setElementsToAddToListField(INT_ARRAY_FIELD, expectedArrayFieldVal);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldDefault, expectedArrayFieldVal, mapFieldDefault);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldDefault, expectedArrayFieldVal, mapFieldDefault);
 
@@ -1035,7 +1035,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     val2.put(MAP_FIELD, Collections.emptyMap());
     val2.put(REGULAR_FIELD, "");
     timestampedOp = new VeniceObjectWithTimestamp(val2, 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
@@ -1044,7 +1044,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1.setElementsToAddToListField(INT_ARRAY_FIELD, Arrays.asList(44, 55));
     expectedArrayFieldVal = Arrays.asList(11, 22, 33, 44, 55);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
@@ -1056,7 +1056,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, Collections.singletonList(44));
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 3);
     expectedArrayFieldVal = Arrays.asList(11, 22, 33, 55);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
@@ -1069,7 +1069,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1.setElementsToAddToListField(INT_ARRAY_FIELD, addToListFieldValue);
     expectedArrayFieldVal = Arrays.asList(11, 22, 33, 55);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
@@ -1078,12 +1078,12 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, Collections.singletonList(55));
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     // send another update from the same region to ensure that previous update was indeed ignored
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setElementsToAddToListField(INT_ARRAY_FIELD, Collections.singletonList(66));
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 4);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     expectedArrayFieldVal = Arrays.asList(11, 22, 33, 55, 66);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
@@ -1094,7 +1094,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1.setNewFieldValue(INT_ARRAY_FIELD, Collections.singletonList(77));
     expectedArrayFieldVal = Arrays.asList(11, 22, 33, 55, 66);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 1);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
@@ -1107,7 +1107,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1.setNewFieldValue(INT_ARRAY_FIELD, Arrays.asList(11, 77, 88));
     expectedArrayFieldVal = Arrays.asList(11, 77, 88, 66);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 3);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
@@ -1117,7 +1117,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, Arrays.asList(11, 22, 77, 88, 66));
     expectedArrayFieldVal = Arrays.asList(11, 77, 88, 66);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 2);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
@@ -1125,7 +1125,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, Collections.singletonList(66));
     expectedArrayFieldVal = Arrays.asList(11, 77, 88);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 4);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(1)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
@@ -1134,7 +1134,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1.setNewFieldValue(INT_ARRAY_FIELD, Arrays.asList(66, 99));
     expectedArrayFieldVal = Collections.singletonList(99);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 4);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
@@ -1144,7 +1144,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ubV1.setNewFieldValue(INT_ARRAY_FIELD, Arrays.asList(101, 202, 303));
     expectedArrayFieldVal = Arrays.asList(101, 202, 303);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 5);
-    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    sendStreamingRecord(nearlineProducerMap.get(childDatacenters.get(0)), key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
   }

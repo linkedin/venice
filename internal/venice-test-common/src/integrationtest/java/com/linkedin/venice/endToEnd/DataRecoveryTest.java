@@ -278,14 +278,14 @@ public class DataRecoveryTest {
       nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
       nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
       nearlineProducerConfig.put(SSL_ENABLED, "false");
-      NearlineProducerFactory factory = new NearlineProducerFactory();
       Properties nearlineProducerProps = new Properties();
       nearlineProducerProps.putAll(nearlineProducerConfig);
-      NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
+      NearlineProducer veniceProducer =
+          NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null);
       veniceProducer.start();
 
       for (int i = 0; i < 10; i++) {
-        sendStreamingRecordWithKeyPrefix(veniceProducer, storeName, "dc-0_", i);
+        sendStreamingRecordWithKeyPrefix(veniceProducer, "dc-0_", i);
       }
 
       // Prepare dc-1 for data recovery

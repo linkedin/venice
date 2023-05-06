@@ -394,15 +394,15 @@ public class ActiveActiveReplicationForHybridTest {
           nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
           nearlineProducerConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
           nearlineProducerConfig.put(SSL_ENABLED, "false");
-          NearlineProducerFactory factory = new NearlineProducerFactory();
           Properties nearlineProducerProps = new Properties();
           nearlineProducerProps.putAll(nearlineProducerConfig);
-          NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(nearlineProducerProps), null);
+          NearlineProducer veniceProducer =
+              NearlineProducerFactory.getInstance().getProducer(new VeniceProperties(nearlineProducerProps), null);
           veniceProducer.start();
           childDatacenterToNearlineProducer.put(childDataCenter, veniceProducer);
 
           for (int i = 0; i < streamingRecordCount; i++) {
-            sendStreamingRecordWithKeyPrefix(veniceProducer, storeName, keyPrefix, i);
+            sendStreamingRecordWithKeyPrefix(veniceProducer, keyPrefix, i);
           }
         }
 
@@ -437,11 +437,9 @@ public class ActiveActiveReplicationForHybridTest {
             String keyPrefix = "dc-" + dataCenterIndex + "_key_";
             sendStreamingDeleteRecord(
                 childDatacenterToNearlineProducer.get(childDatacenters.get(dataCenterIndex)),
-                storeName,
                 keyPrefix + (streamingRecordCount - 1));
             sendStreamingDeleteRecord(
                 childDatacenterToNearlineProducer.get(childDatacenters.get(dataCenterIndex)),
-                storeName,
                 keyPrefix + streamingRecordCount);
           }
 
@@ -464,7 +462,6 @@ public class ActiveActiveReplicationForHybridTest {
             String keyPrefix = "dc-" + dataCenterIndex + "_key_";
             sendStreamingRecordWithKeyPrefix(
                 childDatacenterToNearlineProducer.get(childDatacenters.get(dataCenterIndex)),
-                storeName,
                 keyPrefix,
                 streamingRecordCount);
           }

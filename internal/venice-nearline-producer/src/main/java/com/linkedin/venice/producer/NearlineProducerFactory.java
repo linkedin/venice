@@ -82,6 +82,9 @@ public class NearlineProducerFactory {
    */
   private final Map<NearlineProducer, JobState> nearlineProducerStates = new VeniceConcurrentHashMap<>();
 
+  private NearlineProducerFactory() {
+  }
+
   /**
    * Construct a new instance of {@link NearlineProducer}
    * @param veniceChildD2ZkHost D2 Zk Address where the components in the child colo are announcing themselves

@@ -117,7 +117,7 @@ public class TestEmptyPush {
       String valuePrefix = "test_value_";
 
       for (int i = 1; i <= 1000; i++) {
-        sendStreamingRecord(veniceProducer, storeName, keyPrefix + i, valuePrefix + i);
+        sendStreamingRecord(veniceProducer, keyPrefix + i, valuePrefix + i);
       }
 
       Runnable dataValidator = () -> {
