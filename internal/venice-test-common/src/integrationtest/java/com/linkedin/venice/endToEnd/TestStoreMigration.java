@@ -379,7 +379,7 @@ public class TestStoreMigration {
       veniceProducer0 =
           getNearlineProducer(multiClusterWrapper.getClusters().get(clusterName), storeName, Version.PushType.STREAM);
       for (int i = 1; i <= 10; i++) {
-        sendStreamingRecord(veniceProducer0, storeName, i);
+        sendStreamingRecord(veniceProducer0, i);
       }
     } catch (Exception e) {
       throw new VeniceException(e);

@@ -604,7 +604,7 @@ public class TestHybrid {
 
         // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
         for (int i = 10; i >= 1; i--) {
-          sendStreamingRecord(veniceBatchProducer, storeName, i);
+          sendStreamingRecord(veniceBatchProducer, i);
         }
 
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
@@ -642,7 +642,7 @@ public class TestHybrid {
         }
 
         for (int i = 31; i <= 40; i++) {
-          sendStreamingRecord(veniceBatchProducer, storeName, i);
+          sendStreamingRecord(veniceBatchProducer, i);
         }
 
         // Before EOP, the Samza batch producer should still be in active state
@@ -692,7 +692,7 @@ public class TestHybrid {
           // Switch to stream mode and push more data
           veniceStreamProducer.start();
           for (int i = 11; i <= 20; i++) {
-            sendStreamingRecord(veniceStreamProducer, storeName, i);
+            sendStreamingRecord(veniceStreamProducer, i);
           }
           Assert.assertThrows(
               RecordTooLargeException.class,
@@ -778,8 +778,8 @@ public class TestHybrid {
       veniceBatchProducer2.setExitMode(NearlineProducerExitMode.NO_OP);
 
       for (int i = 10; i >= 1; i--) {
-        sendStreamingRecord(veniceBatchProducer1, storeName1, i);
-        sendStreamingRecord(veniceBatchProducer2, storeName2, i);
+        sendStreamingRecord(veniceBatchProducer1, i);
+        sendStreamingRecord(veniceBatchProducer2, i);
       }
 
       // Before EOP, there should be 2 active producers
@@ -965,7 +965,7 @@ public class TestHybrid {
       // write a few of messages from the Samza
       producer = IntegrationTestPushUtils.getNearlineProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
       for (int i = 0; i < 10; i++) {
-        sendStreamingRecord(producer, storeName, i);
+        sendStreamingRecord(producer, i);
       }
 
       // make sure the v1 is online and all the writes have been consumed by the SN
@@ -996,7 +996,7 @@ public class TestHybrid {
         veniceClusterWrapper.stopVeniceServer(serverWrapper.getPort());
 
         for (int i = 10; i < 20; i++) {
-          sendStreamingRecord(producer, storeName, i);
+          sendStreamingRecord(producer, i);
         }
 
         // restart the SN (leader). The node is supposed to be promoted to leader even with the offset lags.

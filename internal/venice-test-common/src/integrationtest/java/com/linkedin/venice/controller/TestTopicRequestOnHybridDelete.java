@@ -74,7 +74,7 @@ public class TestTopicRequestOnHybridDelete {
       // write streaming records
       veniceProducer = getNearlineProducer(venice, storeName, Version.PushType.STREAM);
       for (int i = 1; i <= 10; i++) {
-        sendStreamingRecord(veniceProducer, storeName, i);
+        sendStreamingRecord(veniceProducer, i);
       }
       veniceProducer.stop();
 
@@ -143,7 +143,7 @@ public class TestTopicRequestOnHybridDelete {
       // write more streaming records
       veniceProducer = getNearlineProducer(venice, storeName, Version.PushType.STREAM);
       for (int i = 11; i <= 20; i++) {
-        sendStreamingRecord(veniceProducer, storeName, i);
+        sendStreamingRecord(veniceProducer, i);
       }
 
       // Ugh... I don't like doing this. Feels sketchy.

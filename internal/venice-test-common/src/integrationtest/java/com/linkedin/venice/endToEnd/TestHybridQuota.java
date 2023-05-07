@@ -231,7 +231,7 @@ public class TestHybridQuota {
       assertTrue(offlinePushRepository.containsKafkaTopic(topicVersion));
 
       if (!recoverFromViolation) {
-        sendStreamingRecord(veniceProducer, storeName, 21);
+        sendStreamingRecord(veniceProducer, 21);
         Assert.fail("Exception should be thrown because quota violation happens.");
       } else {
         // Disable HybridStoreDiskQuota and verify quota status is changed to QUOTA_NOT_VIOLATED.
@@ -262,7 +262,7 @@ public class TestHybridQuota {
           // segment.
         }
 
-        sendStreamingRecord(veniceProducer, storeName, 21);
+        sendStreamingRecord(veniceProducer, 21);
         if (isStreamReprocessing) {
           // Version 4 does not exist anymore, new version created.
           String topicForStoreVersion5 = Version.composeKafkaTopic(storeName, 5);

@@ -390,7 +390,7 @@ public class TestPushJobWithNativeReplication {
                 multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
 
             for (int i = 1; i <= 10; i++) {
-              sendStreamingRecord(veniceProducer, storeName, i);
+              sendStreamingRecord(veniceProducer, i);
             }
 
             String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();

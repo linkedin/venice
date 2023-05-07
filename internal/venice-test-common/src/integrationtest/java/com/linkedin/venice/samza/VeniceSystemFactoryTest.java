@@ -10,6 +10,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -27,7 +28,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
-import org.apache.samza.SamzaException;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
@@ -157,7 +157,7 @@ public class VeniceSystemFactoryTest {
     try {
       // Send a record with a wrong schema, this is byte[] of chars "1", "2", "3", expects int
       assertThrows(
-          SamzaException.class,
+          VeniceException.class,
           () -> IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, new byte[] { 49, 50, 51 }, 0));
     } finally {
       producer.stop();

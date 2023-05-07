@@ -86,7 +86,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     try {
       veniceProducer = getNearlineProducer(venice, storeName, Version.PushType.STREAM);
       for (int i = 1; i <= 10; i++) {
-        sendStreamingRecord(veniceProducer, storeName, i);
+        sendStreamingRecord(veniceProducer, i);
       }
     } finally {
       if (veniceProducer != null) {

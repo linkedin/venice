@@ -145,7 +145,7 @@ public class NearlineE2ELatencyTest {
     NearlineProducer dc0Producer = getNearlineProducer(cluster0, storeName, Version.PushType.STREAM);
 
     for (int i = 10; i < 20; i++) {
-      sendStreamingRecord(dc0Producer, storeName, i);
+      sendStreamingRecord(dc0Producer, i);
     }
 
     try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(

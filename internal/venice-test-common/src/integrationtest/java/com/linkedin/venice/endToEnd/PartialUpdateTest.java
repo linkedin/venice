@@ -816,7 +816,7 @@ public class PartialUpdateTest {
         });
 
         // Delete the record
-        sendStreamingRecord(veniceProducer, storeName, key, null);
+        sendStreamingRecord(veniceProducer, key, null);
         // Verify the delete
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           try {
@@ -933,7 +933,7 @@ public class PartialUpdateTest {
       Version.PushType pushType = Version.PushType.BATCH;
       Map<String, String> nearlineProducerConfig = getNearlineProducerConfig(veniceClusterWrapper, storeName, pushType);
       // final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
-      nearlineProducerConfig.put("systems.venice." + VENICE_AGGREGATE, "true");
+      nearlineProducerConfig.put(VENICE_AGGREGATE, "true");
       nearlineProducerConfig
           .put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
       nearlineProducerConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);

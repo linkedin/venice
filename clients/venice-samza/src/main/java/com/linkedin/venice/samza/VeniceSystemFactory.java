@@ -59,7 +59,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public static final String LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE = "VeniceController";
   // Legacy D2 service name for parent cluster
   public static final String LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE = "VeniceParentController";
-  // public static final NearlineProducerFactory producerFactoryDelegate;
 
   @Override
   public SystemAdmin getAdmin(String systemName, Config config) {
@@ -316,10 +315,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public VeniceSystemProducer getClosableProducer(String systemName, Config config, MetricsRegistry registry) {
     return (VeniceSystemProducer) getProducer(systemName, config, registry);
   }
-
-  // public NearlineProducerFactory getNearlineProducerFactory() {
-  // return producerFactoryDelegate;
-  // }
 
   private static boolean isEmpty(String input) {
     return (input == null) || input.isEmpty() || input.equals("null");
