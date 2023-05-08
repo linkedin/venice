@@ -2951,7 +2951,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       elapsedTime = System.currentTimeMillis() - startTime;
 
       if (state != null) {
-        LOGGER.info("Version state is available for {} after {} ms", kafkaTopic, elapsedTime);
         return state;
       }
 
