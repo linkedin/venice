@@ -3,14 +3,12 @@ package com.linkedin.venice.client.schema;
 import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
-import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
@@ -46,7 +44,6 @@ public class RouterBackedSchemaReader implements SchemaReader {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   public static final String TYPE_GET_UPDATE_SCHEMA = "update_schema";
-  public static final String TYPE_STORE_STATE = "store_state";
   private static final Logger LOGGER = LogManager.getLogger(RouterBackedSchemaReader.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
@@ -347,7 +344,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   private void refreshAllSchemas() throws VeniceClientException {
     refreshAllValueSchemas();
-    if (loadUpdateSchemas.get() && storeHasPartialUpdateEnabled()) {
+    if (loadUpdateSchemas.get()) {
       refreshAllUpdateSchemas();
     }
   }
@@ -420,68 +417,32 @@ public class RouterBackedSchemaReader implements SchemaReader {
       }
     } catch (Exception e) {
       throw new VeniceClientException(
-          "Got exception while trying to fetch single schema. " + getExceptionDetails(requestPath),
+          "Got exception while trying to fetch all value schemas. " + getExceptionDetails(requestPath),
           e);
     }
   }
 
   private void refreshAllUpdateSchemas() throws VeniceClientException {
-    valueSchemaMap.keySet()
-        .forEach(
-            valueSchemaId -> valueSchemaIdToUpdateSchemaMap
-                .computeIfAbsent(valueSchemaId, this::fetchUpdateSchemaEntry));
-  }
-
-  private DerivedSchemaEntry fetchUpdateSchemaEntry(int valueSchemaId) throws VeniceClientException {
-    String requestPath = TYPE_GET_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
-    SchemaResponse schemaResponse = fetchSingleSchemaResponse(requestPath);
-
-    if (schemaResponse == null) {
-      return null;
-    }
-
-    DerivedSchemaEntry updateSchemaEntry =
-        new DerivedSchemaEntry(valueSchemaId, schemaResponse.getDerivedSchemaId(), schemaResponse.getSchemaStr());
-    if (!updateSchemaEntry.getSchema().getType().equals(Schema.Type.RECORD)) {
-      throw new InvalidVeniceSchemaException("Update schema can only be record schema.");
-    }
-
-    LOGGER.info(
-        "[Store: {}] Got update schema id: {}-{}; schema: {}",
-        storeName,
-        valueSchemaId,
-        updateSchemaEntry.getId(),
-        updateSchemaEntry.getSchema());
-
-    return updateSchemaEntry;
-  }
-
-  // It would be better to use StoreStateReader and return a Store object, but it needs a lot of refactoring due to the
-  // module structure and dependencies of StoreJSONSerializer.
-  private boolean storeHasPartialUpdateEnabled() {
-    JsonNode storeState = fetchStoreState();
-    if (storeState == null) {
-      return false;
-    }
-    return storeState.get("writeComputationEnabled").asBoolean(false);
-  }
-
-  private JsonNode fetchStoreState() throws VeniceClientException {
-    String requestPath = TYPE_STORE_STATE + "/" + storeClient.getStoreName();
-    byte[] response = executeRouterRequest(requestPath);
-
-    if (response == null) {
-      return null;
-    }
-
-    JsonNode storeState;
+    String requestPath = TYPE_GET_UPDATE_SCHEMA + "/" + storeName;
     try {
-      storeState = OBJECT_MAPPER.readTree(response);
-    } catch (Exception e) {
-      throw new VeniceClientException("Got exception while deserializing response", e);
-    }
+      MultiSchemaResponse schemaResponse = fetchMultiSchemaResponse(requestPath);
 
-    return storeState;
+      if (schemaResponse == null) {
+        return;
+      }
+
+      for (MultiSchemaResponse.Schema schema: schemaResponse.getSchemas()) {
+        int valueSchemaId = schema.getId();
+        int updateSchemaId = schema.getDerivedSchemaId();
+        String schemaStr = schema.getSchemaStr();
+        valueSchemaIdToUpdateSchemaMap
+            .computeIfAbsent(valueSchemaId, id -> new DerivedSchemaEntry(valueSchemaId, updateSchemaId, schemaStr));
+      }
+    } catch (Exception e) {
+      throw new VeniceClientException(
+          "Got exception while trying to fetch all update schemas. " + getExceptionDetails(requestPath),
+          e);
+    }
   }
 
   /**

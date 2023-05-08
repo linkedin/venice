@@ -540,6 +540,11 @@ public class RouterBackedSchemaReaderTest {
     Mockito.doReturn(valueSchemasFuture).when(storeClient).getRaw("value_schema/" + storeName);
 
     if (updateEnabled) {
+      MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
+      allUpdateSchemaResponse.setCluster(clusterName);
+      allUpdateSchemaResponse.setName(storeName);
+
+      MultiSchemaResponse.Schema[] multiSchemas = new MultiSchemaResponse.Schema[updateSchemas.size()];
       for (int i = 0; i < updateSchemas.size(); i++) {
         SchemaResponse updateSchemaResponse = new SchemaResponse();
         updateSchemaResponse.setCluster(clusterName);
@@ -551,7 +556,18 @@ public class RouterBackedSchemaReaderTest {
         CompletableFuture<byte[]> updateSchemaFuture = mock(CompletableFuture.class);
         Mockito.doReturn(MAPPER.writeValueAsBytes(updateSchemaResponse)).when(updateSchemaFuture).get();
         Mockito.doReturn(updateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName + "/" + (i + 1));
+
+        MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
+        schema.setId(i + 1);
+        schema.setDerivedSchemaId(1);
+        schema.setSchemaStr(updateSchemas.get(i).toString());
+        multiSchemas[i] = schema;
       }
+
+      allUpdateSchemaResponse.setSchemas(multiSchemas);
+      CompletableFuture<byte[]> allUpdateSchemaFuture = mock(CompletableFuture.class);
+      Mockito.doReturn(MAPPER.writeValueAsBytes(allUpdateSchemaResponse)).when(allUpdateSchemaFuture).get();
+      Mockito.doReturn(allUpdateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName);
     } else {
       for (int i = 0; i < updateSchemas.size(); i++) {
         SchemaResponse noUpdateSchemaResponse = new SchemaResponse();
@@ -561,6 +577,16 @@ public class RouterBackedSchemaReaderTest {
         CompletableFuture<byte[]> updateSchemaFuture = mock(CompletableFuture.class);
         Mockito.doReturn(MAPPER.writeValueAsBytes(noUpdateSchemaResponse)).when(updateSchemaFuture).get();
         Mockito.doReturn(updateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName + "/" + (i + 1));
+
+        MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
+        allUpdateSchemaResponse.setCluster(clusterName);
+        allUpdateSchemaResponse.setName(storeName);
+
+        MultiSchemaResponse.Schema[] multiSchemas = new MultiSchemaResponse.Schema[0];
+        allUpdateSchemaResponse.setSchemas(multiSchemas);
+        CompletableFuture<byte[]> allUpdateSchemaFuture = mock(CompletableFuture.class);
+        Mockito.doReturn(MAPPER.writeValueAsBytes(allUpdateSchemaResponse)).when(allUpdateSchemaFuture).get();
+        Mockito.doReturn(allUpdateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName);
       }
     }
   }
