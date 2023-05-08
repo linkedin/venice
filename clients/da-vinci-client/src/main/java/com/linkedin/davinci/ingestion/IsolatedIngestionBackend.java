@@ -31,6 +31,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -58,7 +59,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   private final VeniceConfigLoader configLoader;
   private final ExecutorService completionReportHandlingExecutor = Executors.newFixedThreadPool(10);
   private Process isolatedIngestionServiceProcess;
-  private boolean isShuttingDown = false;
+  private AtomicBoolean isShuttingDown = new AtomicBoolean(false);
 
   public IsolatedIngestionBackend(
       VeniceConfigLoader configLoader,
@@ -231,7 +232,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
 
   @Override
   public void prepareForShutdown() {
-    isShuttingDown = true;
+    isShuttingDown.set(true);
   }
 
   public void setIsolatedIngestionServiceProcess(Process process) {
@@ -251,7 +252,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   }
 
   public boolean isShuttingDown() {
-    return isShuttingDown;
+    return isShuttingDown.get();
   }
 
   void removeTopicPartitionLocally(
