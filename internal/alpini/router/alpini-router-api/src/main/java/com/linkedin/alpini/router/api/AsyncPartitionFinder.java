@@ -40,6 +40,11 @@ public interface AsyncPartitionFinder<K> {
    */
   CompletionStage<Integer> getNumPartitions(@Nonnull String resourceName);
 
+  /**
+   * Venice-specific API for finding the partition number without the added overhead of parsing a partition name.
+   */
+  CompletionStage<Integer> findPartitionNumber(K partitionKey, int numPartitions, String storeName, int versionNumber);
+
   static <K> AsyncPartitionFinder<K> adapt(PartitionFinder<K> partitionFinder, Executor executor) {
 
     class Supply<T> implements Supplier<T> {
@@ -78,6 +83,18 @@ public interface AsyncPartitionFinder<K> {
       public CompletionStage<Integer> getNumPartitions(@Nonnull String resourceName) {
         return CompletableFuture
             .supplyAsync(new Supply<>(() -> partitionFinder.getNumPartitions(resourceName)), executor);
+      }
+
+      @Override
+      public CompletionStage<Integer> findPartitionNumber(
+          K partitionKey,
+          int numPartitions,
+          String storeName,
+          int versionNumber) {
+        return CompletableFuture.supplyAsync(
+            new Supply<>(
+                () -> partitionFinder.findPartitionNumber(partitionKey, numPartitions, storeName, versionNumber)),
+            executor);
       }
     };
   }

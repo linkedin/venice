@@ -29,4 +29,10 @@ public interface PartitionFinder<K> {
    * @param resourceName name of the database
    */
   int getNumPartitions(@Nonnull String resourceName) throws RouterException;
+
+  /**
+   * Venice-specific API for finding the partition number without the added overhead of parsing a partition name.
+   */
+  int findPartitionNumber(@Nonnull K partitionKey, int numPartitions, String storeName, int versionNumber)
+      throws RouterException;
 }

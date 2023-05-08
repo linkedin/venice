@@ -8,11 +8,8 @@ import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.Collection;
-import java.util.Optional;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.testng.annotations.Test;
@@ -28,7 +25,7 @@ public class TestVenicePath {
         Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
 
     public SmartRetryVenicePath(Time time) {
-      super("fake_resource_v1", true, SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS, time);
+      super("fake_resource", 1, "fake_resource_v1", true, SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS, time);
     }
 
     @Override
@@ -57,13 +54,8 @@ public class TestVenicePath {
     }
 
     @Override
-    public ByteBuf getRequestBody() {
-      return Unpooled.EMPTY_BUFFER;
-    }
-
-    @Override
-    public Optional<byte[]> getBody() {
-      return Optional.empty();
+    public byte[] getBody() {
+      return null;
     }
 
     public String getVeniceApiVersionHeader() {

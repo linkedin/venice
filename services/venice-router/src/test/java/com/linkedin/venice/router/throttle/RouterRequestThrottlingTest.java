@@ -22,6 +22,8 @@ import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceDelegateMode;
+import com.linkedin.venice.router.api.VeniceHostFinder;
+import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VeniceRole;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
@@ -127,8 +129,8 @@ public class RouterRequestThrottlingTest {
     doReturn(Arrays.asList(part)).when(scatter).getOnlineRequests();
 
     // mock other inputs for VeniceDelegateMode#scatter()
-    PartitionFinder<RouterKey> partitionFinder = mock(PartitionFinder.class);
-    HostFinder<Instance, VeniceRole> hostFinder = mock(HostFinder.class);
+    PartitionFinder<RouterKey> partitionFinder = mock(VenicePartitionFinder.class);
+    HostFinder<Instance, VeniceRole> hostFinder = mock(VeniceHostFinder.class);
     HostHealthMonitor<Instance> hostHealthMonitor = mock(HostHealthMonitor.class);
     Metrics metrics = mock(Metrics.class);
 
@@ -229,8 +231,8 @@ public class RouterRequestThrottlingTest {
     doReturn(Arrays.asList(part)).when(scatter).getOnlineRequests();
 
     // mock other inputs for VeniceDelegateMode#scatter()
-    PartitionFinder<RouterKey> partitionFinder = mock(PartitionFinder.class);
-    HostFinder<Instance, VeniceRole> hostFinder = mock(HostFinder.class);
+    PartitionFinder<RouterKey> partitionFinder = mock(VenicePartitionFinder.class);
+    HostFinder<Instance, VeniceRole> hostFinder = mock(VeniceHostFinder.class);
     HostHealthMonitor<Instance> hostHealthMonitor = mock(HostHealthMonitor.class);
     Metrics metrics = mock(Metrics.class);
 

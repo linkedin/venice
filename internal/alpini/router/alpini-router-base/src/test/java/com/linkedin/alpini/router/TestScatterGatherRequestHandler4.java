@@ -99,6 +99,15 @@ public class TestScatterGatherRequestHandler4 {
       public int getNumPartitions(@Nonnull String resourceName) throws RouterException {
         throw new IllegalStateException();
       }
+
+      @Override
+      public int findPartitionNumber(
+          @Nonnull String partitionKey,
+          int numPartitions,
+          String storeName,
+          int versionNumber) throws RouterException {
+        throw new IllegalStateException();
+      }
     }
 
     class HostFinder implements com.linkedin.alpini.router.api.HostFinder<InetSocketAddress, List<List<State>>> {

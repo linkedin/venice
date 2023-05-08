@@ -37,7 +37,7 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
       this.selectionStrategy = new HelixGroupLeastLoadedStrategy(timeoutProcessor, HELIX_GROUP_COUNTER_TIMEOUT_MS);
     } else {
       try {
-        this.selectionStrategy = strategyClass.newInstance();
+        this.selectionStrategy = strategyClass.getDeclaredConstructor().newInstance();
       } catch (Exception e) {
         throw new VeniceException("Failed to construct strategy: " + strategyClass.getSimpleName(), e);
       }

@@ -19,14 +19,18 @@ import javax.annotation.Nonnull;
  * @author Jemiah Westerman<jwesterman@linkedin.com>
  */
 public class ScatterGatherRequest<H, K> {
-  private final List<H> _host;
+  private final List<H> _host; // TODO Make this a single instance since we always use it with just one item
   private final @Nonnull SortedSet<K> _keys;
   private final @Nonnull Set<String> _partitions;
   // client specified partitionIds intended for table level query request.
-  private final @Nonnull Set<String> _partitionIdsToQuery;
+  private @Nonnull Set<String> _partitionIdsToQuery; // TODO consider removing as it's never used in Venice
 
   public ScatterGatherRequest(List<H> host) {
     this(host, new TreeSet<>(), new HashSet<>());
+  }
+
+  public ScatterGatherRequest(List<H> host, SortedSet<K> partitionKeys) {
+    this(host, partitionKeys, Collections.emptySet());
   }
 
   public ScatterGatherRequest(List<H> host, SortedSet<K> partitionKeys, String partitionName) {
@@ -38,7 +42,7 @@ public class ScatterGatherRequest<H, K> {
         host,
         Objects.requireNonNull(partitionKeys, "partitionKeys"),
         Objects.requireNonNull(partitionNames, "partitionNames"),
-        new HashSet<>());
+        Collections.EMPTY_SET);
   }
 
   private ScatterGatherRequest(
@@ -52,12 +56,10 @@ public class ScatterGatherRequest<H, K> {
     _partitionIdsToQuery = partitionIdsToQuery;
   }
 
-  public void addKeys(Set<K> partitionKeys, String partitionName) {
-    _keys.addAll(partitionKeys);
-    _partitions.add(partitionName);
-  }
-
   public void addPartitionNameToQuery(String partitionName) {
+    if (_partitionIdsToQuery == Collections.EMPTY_SET) {
+      _partitionIdsToQuery = new HashSet<>();
+    }
     _partitionIdsToQuery.add(Objects.requireNonNull(partitionName, "partitionName"));
   }
 

@@ -129,6 +129,12 @@ public abstract class ScatterGatherMode {
         public int getNumPartitions(@Nonnull String resourceName) throws RouterException {
           return join(CompletableFuture.completedFuture(resourceName).thenCompose(partitionFinder::getNumPartitions));
         }
+
+        @Override
+        public int findPartitionNumber(@Nonnull K partitionKey, int numPartitions, String storeName, int versionNumber)
+            throws RouterException {
+          return join(partitionFinder.findPartitionNumber(partitionKey, numPartitions, storeName, versionNumber));
+        }
       }, hostFinder, hostHealthMonitor, roles, metrics));
     } catch (RouterException ex) {
       return failedFuture(ex);
@@ -183,6 +189,21 @@ public abstract class ScatterGatherMode {
         return CompletableFuture.supplyAsync(() -> {
           try {
             return partitionFinder.getNumPartitions(resourceName);
+          } catch (RouterException e) {
+            throw new CompletionException(e);
+          }
+        }, Runnable::run);
+      }
+
+      @Override
+      public CompletionStage<Integer> findPartitionNumber(
+          K partitionKey,
+          int numPartitions,
+          String storeName,
+          int versionNumber) {
+        return CompletableFuture.supplyAsync(() -> {
+          try {
+            return partitionFinder.findPartitionNumber(partitionKey, numPartitions, storeName, versionNumber);
           } catch (RouterException e) {
             throw new CompletionException(e);
           }

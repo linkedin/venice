@@ -38,7 +38,6 @@ import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
-import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -380,7 +379,6 @@ public class TestVeniceDispatcher {
     VenicePath mockPath = mock(VenicePath.class);
     doReturn("test_store").when(mockPath).getStoreName();
     doReturn(requestType).when(mockPath).getRequestType();
-    doReturn(Unpooled.EMPTY_BUFFER).when(mockPath).getRequestBody();
     doReturn(HttpMethod.GET).when(mockPath).getHttpMethod();
 
     if (requestType.equals(RequestType.SINGLE_GET)) {

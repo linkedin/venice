@@ -12,14 +12,8 @@ import java.util.Map;
  */
 public class PartitionAssignment {
   private final String topic;
-  /**
-   * Expected number of partitions for this resource, it's a fixed value after resource is created. If this value is 0,
-   * it means this resource has been deleted, so there is not any partition should be assigned to.
-   */
-  private final int expectedNumberOfPartitions;
-  // TODO will remove the Partition class in the next change, instead, use map of <partitionId,List<Replica>> and expose
-  // TODO the methods like getInstance(partitionId), getAllPartitionIds() from PartitionAssignment class.
   private final Map<Integer, Partition> idToPartitionMap;
+  private final Partition[] partitionsArrayIndexedById;
 
   public PartitionAssignment(String topic, int numberOfPartition) {
     this.topic = topic;
@@ -28,25 +22,22 @@ public class PartitionAssignment {
           "Expected number of partition should be larger than 0 for resource '" + topic + "'. Current value:"
               + numberOfPartition);
     }
-    this.expectedNumberOfPartitions = numberOfPartition;
-    idToPartitionMap = new HashMap<>();
+    this.idToPartitionMap = new HashMap<>(numberOfPartition);
+    this.partitionsArrayIndexedById = new Partition[numberOfPartition];
   }
 
   public Partition getPartition(int partitionId) {
-    return idToPartitionMap.get(partitionId);
+    return this.partitionsArrayIndexedById[partitionId];
   }
 
   public void addPartition(Partition partition) {
-    if (partition.getId() < 0 || partition.getId() >= expectedNumberOfPartitions) {
+    if (partition.getId() < 0 || partition.getId() >= getExpectedNumberOfPartitions()) {
       throw new VeniceException(
           "Invalid Partition id:" + partition.getId() + ". Partition id should be in the range of [0,"
-              + expectedNumberOfPartitions + "]");
+              + getExpectedNumberOfPartitions() + "]");
     }
-    idToPartitionMap.put(partition.getId(), partition);
-  }
-
-  public void removePartition(int partitionId) {
-    idToPartitionMap.remove(partitionId);
+    this.idToPartitionMap.put(partition.getId(), partition);
+    this.partitionsArrayIndexedById[partition.getId()] = partition;
   }
 
   public Collection<Partition> getAllPartitions() {
@@ -54,7 +45,7 @@ public class PartitionAssignment {
   }
 
   public int getExpectedNumberOfPartitions() {
-    return expectedNumberOfPartitions;
+    return this.partitionsArrayIndexedById.length;
   }
 
   public int getAssignedNumberOfPartitions() {
@@ -62,7 +53,7 @@ public class PartitionAssignment {
   }
 
   public boolean isMissingAssignedPartitions() {
-    return getAssignedNumberOfPartitions() < expectedNumberOfPartitions;
+    return getAssignedNumberOfPartitions() < getExpectedNumberOfPartitions();
   }
 
   public String getTopic() {
@@ -72,7 +63,7 @@ public class PartitionAssignment {
   @Override
   public String toString() {
     return this.getClass().getSimpleName() + " {" + "\n\ttopic: " + topic + ", " + "\n\texpectedNumberOfPartitions: "
-        + expectedNumberOfPartitions + ", " + "\n\tidToPartitionMap: " + idToPartitionMap.toString() + "\n}";
+        + getExpectedNumberOfPartitions() + ", " + "\n\tidToPartitionMap: " + idToPartitionMap + "\n}";
   }
 
   @Override
@@ -93,7 +84,7 @@ public class PartitionAssignment {
     int result = 1;
     result = 31 * result + topic.hashCode();
     result = 31 * result + idToPartitionMap.hashCode();
-    result = 31 * result + expectedNumberOfPartitions;
+    result = 31 * result + getExpectedNumberOfPartitions();
     return result;
   }
 }

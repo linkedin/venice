@@ -572,8 +572,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
       VenicePath path,
       Consumer<PortableHttpResponse> completedCallBack,
       Consumer<Throwable> failedCallBack,
-      BooleanSupplier cancelledCallBack,
-      long queryStartTimeInNS) throws RouterException {
+      BooleanSupplier cancelledCallBack) throws RouterException {
     /*
      * This function call is used to populate per-storage-node stats gradually since the connection pool
      * is empty at the very beginning.

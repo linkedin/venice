@@ -52,7 +52,6 @@ public class TestPartition {
         p.getInstancesInState(HelixState.ERROR_STATE).size(),
         stateToInstancesMap.get(HelixState.ERROR_STATE).size());
 
-    Assert.assertEquals(p.getInstancesInState(HelixState.OFFLINE_STATE), p.getOfflineInstances());
     Assert.assertEquals(p.getInstancesInState(HelixState.OFFLINE_STATE).size(), 0);
 
     Assert.assertEquals(
