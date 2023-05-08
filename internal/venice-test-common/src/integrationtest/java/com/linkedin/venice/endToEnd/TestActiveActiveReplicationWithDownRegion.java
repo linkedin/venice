@@ -27,7 +27,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.NearlineProducer;
-import com.linkedin.venice.producer.ProducerMessageEnvelope;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -211,17 +210,13 @@ public class TestActiveActiveReplicationWithDownRegion {
 
     // Send a few keys, and close out the system writer
     for (int rowIncrement = 0; rowIncrement < RECORDS_TO_POPULATE; rowIncrement++) {
-      String value1 = "value" + rowIncrement;
-      ProducerMessageEnvelope envelope1 = new ProducerMessageEnvelope(rowIncrement, value1);
-      producerInDC0.send(envelope1);
+      producerInDC0.send(rowIncrement, "value" + rowIncrement);
     }
     producerInDC0.stop();
 
     // Send a few keys, and close out the system writer
     for (int rowIncrement = 0; rowIncrement < RECORDS_TO_POPULATE; rowIncrement++) {
-      String value1 = "value1" + rowIncrement;
-      ProducerMessageEnvelope envelope1 = new ProducerMessageEnvelope(rowIncrement + 10, value1);
-      producerInDC1.send(envelope1);
+      producerInDC1.send(rowIncrement + 10, "value1" + rowIncrement);
     }
     producerInDC1.stop();
 
@@ -260,9 +255,7 @@ public class TestActiveActiveReplicationWithDownRegion {
     // Execute a new push by writing some rows and sending an endOfPushMessage
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       for (int rowIncrement = 0; rowIncrement < RECORDS_TO_POPULATE; rowIncrement++) {
-        String value1 = "value" + rowIncrement;
-        ProducerMessageEnvelope envelope1 = new ProducerMessageEnvelope(rowIncrement, value1);
-        batchProducer.send(envelope1);
+        batchProducer.send(rowIncrement, "value" + rowIncrement);
       }
       // close out the push
       parentControllerClient.writeEndOfPush(storeName, 2);

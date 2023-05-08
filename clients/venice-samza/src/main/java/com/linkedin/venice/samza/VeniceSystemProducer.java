@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.producer.NearlineProducerExitMode;
-import com.linkedin.venice.producer.ProducerMessageEnvelope;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -193,9 +192,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           "The store of the incoming message: " + storeOfIncomingMessage + " is unexpected, and it should be "
               + storeName);
     }
-    ProducerMessageEnvelope producerMessageEnvelope =
-        new ProducerMessageEnvelope(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
-    delegate.send(producerMessageEnvelope);
+    delegate.send(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
   }
 
   /**

@@ -68,7 +68,6 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.producer.NearlineProducerFactory;
-import com.linkedin.venice.producer.ProducerMessageEnvelope;
 import com.linkedin.venice.producer.VeniceObjectWithTimestamp;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockCircularTime;
@@ -622,26 +621,23 @@ public class ActiveActiveReplicationForHybridTest {
         producerInDC0.start();
 
         // Send <Key1, Value1>
-        ProducerMessageEnvelope envelope1 = new ProducerMessageEnvelope(
-            key1,
-            useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1);
-        producerInDC0.send(envelope1);
+        Object writeValue1 =
+            useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1;
+        producerInDC0.send(key1, writeValue1);
 
         // Send <Key1, Value2>, which will be ignored by Servers if DCR is properly supported
-        ProducerMessageEnvelope envelope2 = new ProducerMessageEnvelope(
-            key1,
-            useLogicalTimestamp ? new VeniceObjectWithTimestamp(value2, mockTime.getMilliseconds()) : value2);
-        producerInDC0.send(envelope2);
+        Object writeValue2 =
+            useLogicalTimestamp ? new VeniceObjectWithTimestamp(value2, mockTime.getMilliseconds()) : value2;
+        producerInDC0.send(key1, writeValue2);
 
         // Send <Key1, Value1> with same timestamp to trigger direct object comparison
-        producerInDC0.send(envelope1);
+        producerInDC0.send(key1, writeValue1);
 
         // Send <Key2, Value1>, which is used to verify that servers have consumed and processed till the end of all
         // real-time messages
-        ProducerMessageEnvelope envelope3 = new ProducerMessageEnvelope(
-            key2,
-            useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1);
-        producerInDC0.send(envelope3);
+        Object writeValue3 =
+            useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1;
+        producerInDC0.send(key2, writeValue3);
       }
 
       // Verify data in dc-0
@@ -702,17 +698,15 @@ public class ActiveActiveReplicationForHybridTest {
         producerInDC1.start();
 
         // Send <Key1, Value3>, which will be ignored if DCR is implemented properly
-        ProducerMessageEnvelope envelope4 = new ProducerMessageEnvelope(
-            key1,
-            useLogicalTimestamp ? new VeniceObjectWithTimestamp(value3, mockTime.getMilliseconds()) : value3);
-        producerInDC1.send(envelope4);
+        Object writeValue4 =
+            useLogicalTimestamp ? new VeniceObjectWithTimestamp(value3, mockTime.getMilliseconds()) : value3;
+        producerInDC1.send(key1, writeValue4);
 
         // Send <Key3, Value1>, which is used to verify that servers have consumed and processed till the end of all
         // real-time messages from dc-1
-        ProducerMessageEnvelope envelope5 = new ProducerMessageEnvelope(
-            key3,
-            useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1);
-        producerInDC1.send(envelope5);
+        Object writeValue5 =
+            useLogicalTimestamp ? new VeniceObjectWithTimestamp(value1, mockTime.getMilliseconds()) : value1;
+        producerInDC1.send(key3, writeValue5);
       }
 
       // Verify data in dc-0

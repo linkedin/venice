@@ -479,7 +479,7 @@ public class NearlineProducer implements AutoCloseable, Closeable {
     d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
   }
 
-  public void send(ProducerMessageEnvelope producerMessageEnvelope) {
+  public CompletableFuture<Void> send(Object keyObject, Object valueObject) {
     if (!isStarted) {
       throw new VeniceException("Send called on Venice Nearline Producer that is not started yet!");
     }
@@ -497,7 +497,7 @@ public class NearlineProducer implements AutoCloseable, Closeable {
         case END_OF_PUSH_RECEIVED:
         case COMPLETED:
           LOGGER.info("Stream reprocessing for resource {} has finished. No message will be sent.", topicName);
-          return;
+          return CompletableFuture.completedFuture(null);
         default:
           // no-op
       }
@@ -521,10 +521,6 @@ public class NearlineProducer implements AutoCloseable, Closeable {
       }
     }
 
-    send(producerMessageEnvelope.getKey(), producerMessageEnvelope.getValue());
-  }
-
-  private CompletableFuture<Void> send(Object keyObject, Object valueObject) {
     Schema keyObjectSchema = getSchemaFromObject(keyObject);
     String canonicalSchemaStr = canonicalSchemaStrCache
         .computeIfAbsent(keyObjectSchema, k -> AvroCompatibilityHelper.toParsingForm(keyObjectSchema));

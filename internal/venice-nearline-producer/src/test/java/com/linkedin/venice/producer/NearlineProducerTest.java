@@ -96,9 +96,7 @@ public class NearlineProducerTest {
     Assert.assertEquals(result.get("lastName"), partialUpdateRecord.get("lastName"));
     Assert.assertEquals(result.get("age"), -1);
 
-    ProducerMessageEnvelope envelope = new ProducerMessageEnvelope("key1", partialUpdateRecord);
-
-    Assert.assertThrows(() -> producerInDC0.send(envelope));
+    Assert.assertThrows(() -> producerInDC0.send("key1", partialUpdateRecord));
   }
 
   @Test(dataProvider = "BatchOrStreamReprocessing")

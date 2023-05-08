@@ -42,7 +42,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.producer.NearlineProducerFactory;
-import com.linkedin.venice.producer.ProducerMessageEnvelope;
 import com.linkedin.venice.producer.VeniceObjectWithTimestamp;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
@@ -369,13 +368,7 @@ public class IntegrationTestPushUtils {
   }
 
   public static void sendStreamingRecord(NearlineProducer producer, Object key, Object message, Long logicalTimeStamp) {
-    ProducerMessageEnvelope envelope;
-    if (logicalTimeStamp == null) {
-      envelope = new ProducerMessageEnvelope(key, message);
-    } else {
-      envelope = new ProducerMessageEnvelope(key, new VeniceObjectWithTimestamp(message, logicalTimeStamp));
-    }
-    producer.send(envelope);
+    producer.send(key, logicalTimeStamp == null ? message : new VeniceObjectWithTimestamp(message, logicalTimeStamp));
     producer.flush();
   }
 
