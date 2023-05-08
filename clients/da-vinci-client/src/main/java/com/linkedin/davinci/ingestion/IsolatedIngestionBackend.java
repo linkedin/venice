@@ -58,6 +58,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   private final VeniceConfigLoader configLoader;
   private final ExecutorService completionReportHandlingExecutor = Executors.newFixedThreadPool(10);
   private Process isolatedIngestionServiceProcess;
+  private boolean isShuttingDown = false;
 
   public IsolatedIngestionBackend(
       VeniceConfigLoader configLoader,
@@ -113,7 +114,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         topicName,
         partition,
         STOP_CONSUMPTION,
-        () -> mainIngestionRequestClient.stopConsumption(storeConfig.getStoreVersionName(), partition),
+        () -> getMainIngestionRequestClient().stopConsumption(storeConfig.getStoreVersionName(), partition),
         () -> super.stopConsumption(storeConfig, partition));
   }
 
@@ -228,6 +229,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     }
   }
 
+  @Override
+  public void prepareForShutdown() {
+    isShuttingDown = true;
+  }
+
   public void setIsolatedIngestionServiceProcess(Process process) {
     isolatedIngestionServiceProcess = process;
   }
@@ -242,6 +248,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
 
   public MainIngestionRequestClient getMainIngestionRequestClient() {
     return mainIngestionRequestClient;
+  }
+
+  public boolean isShuttingDown() {
+    return isShuttingDown;
   }
 
   void removeTopicPartitionLocally(
@@ -375,6 +385,19 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         localCommandRunnable.run();
         return;
       }
+      /**
+       * This is an extra safeguard during server shutdown to make sure we will not stuck in any state transition when
+       * resource metadata is out of sync between main and child process. We will log and skip the stopConsumption action.
+       * In fact, the resources will actually be stopped when {@link KafkaStoreIngestionService} is stopped in both
+       * processed.
+       */
+      if (isShuttingDown()) {
+        LOGGER.warn(
+            "Command {} rejected by remote ingestion process, but will not retry since server is shutting down.",
+            command);
+        return;
+      }
+
       LOGGER.info(
           "Command {} rejected by remote ingestion process, will retry in {} ms.",
           command,

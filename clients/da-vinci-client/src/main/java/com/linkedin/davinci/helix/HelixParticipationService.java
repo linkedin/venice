@@ -224,6 +224,7 @@ public class HelixParticipationService extends AbstractVeniceService
   @Override
   public void stopInner() throws IOException {
     LOGGER.info("Attempting to stop HelixParticipation service.");
+    ingestionBackend.prepareForShutdown();
     if (helixManager != null) {
       try {
         helixManager.disconnect();
