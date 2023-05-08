@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Venice Improvement Plan
-parent: Developer Guides
+parent: Community Guides
 permalink: /docs/proposals/VIP_TEMPLATE.md
 ---
 

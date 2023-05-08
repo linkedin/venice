@@ -29,7 +29,10 @@ Please read existing GitHub issues or development work that is in progress or in
 
 For any PR, a GitHub issue is required.
 
-If you want to contribute something new, and it's not tracked in existing GitHub issues, please create a new GitHub issue and the community will help review the idea. Please state `why` in your GitHub issue. If you already have a short design in mind, you can provide a one pager in the GitHub issue. If the idea in general make sense, then we can proceed to the design or development work. If the change is not small, an [RFC](https://en.wikipedia.org/wiki/Request_for_Comments) should be reviewed and approved by the team.
+If you want to contribute something new, and it's not tracked in existing GitHub issues, please create a new 
+GitHub issue and the community will help review the idea. Please state `why` in your GitHub issue. 
+If you already have a short design in mind or change is not small please check the 
+[Venice Improvement Proposal](./dev_guide/design_doc.md) 
 
 If you have any feature request, please create a new GitHub issue and the community will collect your feature request and work on it.
 
