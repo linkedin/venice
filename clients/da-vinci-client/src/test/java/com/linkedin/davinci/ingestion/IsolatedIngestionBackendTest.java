@@ -287,7 +287,12 @@ public class IsolatedIngestionBackendTest {
       when(backend.getStoreIngestionService()).thenReturn(storeIngestionService);
       when(ingestionRequestClient.stopConsumption(anyString(), anyInt())).thenReturn(false);
       when(backend.isShuttingDown()).thenReturn(true);
+
+      // Make the actual call and verify that it is actually calling remote process and execute only once and quit.
       backend.stopConsumption(storeVersionConfig, partition);
+      verify(storeIngestionService, times(1)).isPartitionConsuming(anyString(), anyInt());
+      verify(ingestionRequestClient, times(1)).stopConsumption(anyString(), anyInt());
+
     }
   }
 }
