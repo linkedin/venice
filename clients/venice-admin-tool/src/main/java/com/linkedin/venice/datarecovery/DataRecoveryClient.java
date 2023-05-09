@@ -67,6 +67,7 @@ public class DataRecoveryClient {
     }
 
     getEstimator().perform(storeNames, cmdParams);
+    getEstimator().shutdownAndAwaitTermination();
     Long totalRecoveryTime = 0L;
     for (DataRecoveryTask t: getEstimator().getTasks()) {
       totalRecoveryTime += ((EstimateDataRecoveryTimeCommand.Result) t.getTaskResult().getCmdResult())
