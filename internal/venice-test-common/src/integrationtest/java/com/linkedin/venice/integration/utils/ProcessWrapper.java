@@ -53,9 +53,7 @@ public abstract class ProcessWrapper implements Closeable {
     }
     if (firstUselessElement > 0) {
       StackTraceElement[] prunedStackTraceElements = new StackTraceElement[firstUselessElement];
-      for (int i = 0; i < prunedStackTraceElements.length; i++) {
-        prunedStackTraceElements[i] = stackTraceElements[i];
-      }
+      System.arraycopy(stackTraceElements, 0, prunedStackTraceElements, 0, prunedStackTraceElements.length);
       this.constructionCallstack.setStackTrace(prunedStackTraceElements);
     }
 

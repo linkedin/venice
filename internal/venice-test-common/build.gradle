@@ -5,6 +5,29 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 
 
+apply {
+  plugin 'me.champeau.jmh'
+}
+
+jmh {
+  fork = 3
+  warmupForks = 1
+  iterations = 10
+  warmupIterations = 5
+  timeUnit = 'ns'
+  resultFormat = 'json'
+  failOnError = true
+  includeTests = false
+  profilers = ['gc']
+  benchmarkMode = ['sample']
+  includes = ['DaVinciClientBenchmark']
+  jvmArgs = ['-Xms4G', '-Xmx4G', '-Djmh.shutdownTimeout=0', '-Djmh.shutdownTimeout.step=0']
+}
+
+jmhJar {
+  zip64 = true
+}
+
 configurations {
   all {
     resolutionStrategy {
@@ -16,16 +39,11 @@ configurations {
     exclude group: 'org.apache.kafka'
     exclude group: 'org.mortbay.jetty', module: 'servlet-api'
   }
-  jmhImplementation.extendsFrom testImplementation
   integrationTestImplementation.extendsFrom testImplementation
   integrationTestUtils
 }
 
 sourceSets {
-  jmh {
-    java.srcDirs = ['src/jmh/java']
-  }
-
   integrationTest {
     java.srcDirs = ['src/integrationtest/java']
     resources.srcDirs = ['src/integrationtest/resources']
@@ -58,7 +76,9 @@ dependencies {
   implementation libraries.commonsCli
   implementation libraries.conscrypt
   implementation libraries.fastUtil
-  implementation libraries.hadoopCommon
+  implementation (libraries.hadoopCommon) {
+    exclude group: 'javax.servlet'
+  }
   implementation libraries.helix
   implementation libraries.httpAsyncClient
   implementation libraries.javax
@@ -77,21 +97,10 @@ dependencies {
   }
   testImplementation project(':clients:venice-admin-tool')
   testImplementation project(':internal:alpini:common:alpini-common-base')
-  testImplementation project(":internal:venice-common").sourceSets.test.output
+  testImplementation project(':internal:venice-common').sourceSets.test.output
 
-  jmhAnnotationProcessor libraries.jmhGenerator
-  jmhImplementation libraries.jmhCore
-
+  jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:' + jmh.jmhVersion.get()
   jmhImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
-}
-
-task jmh(type: JavaExec, dependsOn: jmhClasses) {
-  main = 'org.openjdk.jmh.Main'
-
-  // In order to run just one test from the command line, specify it here, and run ./gradlew internal:venice-test-common:jmh
-  // main = 'com.linkedin.venice.benchmark.ZstdDecompressionBenchmark'
-
-  classpath = sourceSets.jmh.runtimeClasspath
 }
 
 def integrationTestConfigs = {
@@ -325,7 +334,6 @@ ext {
   jacocoCoverageThreshold = 0.00
   diffCoverageThreshold = 0.00
 }
-
 
 publishing {
   publications {

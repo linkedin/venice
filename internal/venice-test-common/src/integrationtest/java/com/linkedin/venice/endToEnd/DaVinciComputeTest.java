@@ -168,15 +168,14 @@ public class DaVinciComputeTest {
   // @Test(timeOut = TEST_TIMEOUT * 2)
   public void testComputeOnStoreWithQTFDScompliantSchema() throws Exception {
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(
-              storeName,
-              getClass().getName(),
-              DEFAULT_KEY_SCHEMA,
-              VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(
+                storeName,
+                getClass().getName(),
+                DEFAULT_KEY_SCHEMA,
+                VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD)));
+    cluster.createMetaSystemStore(storeName);
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
@@ -278,11 +277,12 @@ public class DaVinciComputeTest {
   public void testReadComputeMissingField() throws Exception {
     // Create DaVinci store
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE))
+
+    );
+    cluster.createMetaSystemStore(storeName);
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
@@ -411,11 +411,14 @@ public class DaVinciComputeTest {
   public void testReadComputeSwappedFields() throws Exception {
     // Create DaVinci store
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE_SWAPPED));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(
+                storeName,
+                getClass().getName(),
+                DEFAULT_KEY_SCHEMA,
+                VALUE_SCHEMA_FOR_COMPUTE_SWAPPED)));
+    cluster.createMetaSystemStore(storeName);
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
@@ -520,15 +523,14 @@ public class DaVinciComputeTest {
   public void testComputeStreamingExecute() throws ExecutionException, InterruptedException {
     // Setup Store
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(
-              storeName,
-              getClass().getName(),
-              KEY_SCHEMA_STEAMING_COMPUTE,
-              VALUE_SCHEMA_STREAMING_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(
+                storeName,
+                getClass().getName(),
+                KEY_SCHEMA_STEAMING_COMPUTE,
+                VALUE_SCHEMA_STREAMING_COMPUTE)));
+    cluster.createMetaSystemStore(storeName);
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
@@ -619,15 +621,14 @@ public class DaVinciComputeTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testPartialKeyLookupWithRocksDBBlockBasedTable() throws ExecutionException, InterruptedException {
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(
-              storeName,
-              getClass().getName(),
-              KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
-              VALUE_SCHEMA_FOR_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(
+                storeName,
+                getClass().getName(),
+                KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
+                VALUE_SCHEMA_FOR_COMPUTE)));
+    cluster.createMetaSystemStore(storeName);
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
@@ -720,15 +721,14 @@ public class DaVinciComputeTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testPartialKeyLookupWithRocksDBPlainTable() throws ExecutionException, InterruptedException {
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(
-              storeName,
-              getClass().getName(),
-              KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
-              VALUE_SCHEMA_FOR_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(
+                storeName,
+                getClass().getName(),
+                KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
+                VALUE_SCHEMA_FOR_COMPUTE)));
+    cluster.createMetaSystemStore(storeName);
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
