@@ -20,6 +20,7 @@ import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
 import com.linkedin.venice.fastclient.meta.ClientRoutingStrategy;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -596,6 +597,16 @@ public class TestClientSimulator implements Client {
       @Override
       public Integer getLatestValueSchemaId() {
         return 0;
+      }
+
+      @Override
+      public Schema getUpdateSchema(int valueSchemaId) {
+        return null;
+      }
+
+      @Override
+      public DerivedSchemaEntry getLatestUpdateSchema() {
+        return null;
       }
     };
 

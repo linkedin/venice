@@ -77,7 +77,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       ControllerRoute.MASTER_CONTROLLER.getPath().replace("/", "");
   public static final String TYPE_KEY_SCHEMA = RouterResourceType.TYPE_KEY_SCHEMA.toString();
   public static final String TYPE_VALUE_SCHEMA = RouterResourceType.TYPE_VALUE_SCHEMA.toString();
-  public static final String TYPE_UPDATE_SCHEMA = RouterResourceType.TYPE_UPDATE_SCHEMA.toString();
+  public static final String TYPE_GET_UPDATE_SCHEMA = RouterResourceType.TYPE_GET_UPDATE_SCHEMA.toString();
   public static final String TYPE_CLUSTER_DISCOVERY = RouterResourceType.TYPE_CLUSTER_DISCOVERY.toString();
   public static final String TYPE_REQUEST_TOPIC = RouterResourceType.TYPE_REQUEST_TOPIC.toString();
   public static final String TYPE_HEALTH_CHECK = RouterResourceType.TYPE_ADMIN.toString();

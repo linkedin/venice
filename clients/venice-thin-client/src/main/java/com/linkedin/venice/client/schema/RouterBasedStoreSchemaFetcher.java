@@ -33,7 +33,7 @@ import org.apache.commons.lang.Validate;
 public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
-  public static final String TYPE_UPDATE_SCHEMA = "update_schema";
+  public static final String TYPE_GET_UPDATE_SCHEMA = "update_schema";
   public static final String TYPE_LATEST_VALUE_SCHEMA = "latest_value_schema";
   private final AbstractAvroStoreClient storeClient;
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
@@ -81,8 +81,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   }
 
   private Schema getLatestValueSchemaFromAllValueSchemas() {
-    String valueSchemaRequestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName();
-    MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas(valueSchemaRequestPath);
+    MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas();
     int targetSchemaId = multiSchemaResponse.getSuperSetSchemaId();
     int largestSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
     String schemaStr = null;
@@ -106,8 +105,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
 
   @Override
   public Set<Schema> getAllValueSchemas() {
-    String valueSchemaRequestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName();
-    MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas(valueSchemaRequestPath);
+    MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas();
     Set<Schema> schemaSet = new HashSet<>();
     try {
       for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
@@ -123,7 +121,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   public Schema getUpdateSchema(Schema valueSchema) throws VeniceException {
     int valueSchemaId = getValueSchemaId(valueSchema);
     // Fetch the latest update schema for the specified value schema.
-    String updateSchemaRequestPath = TYPE_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
+    String updateSchemaRequestPath = TYPE_GET_UPDATE_SCHEMA + "/" + storeClient.getStoreName() + "/" + valueSchemaId;
     String updateSchemaStr = fetchSingleSchemaString(updateSchemaRequestPath);
     Schema updateSchema;
     try {
@@ -154,8 +152,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
           "Input value schema is not a record type schema. Update schema can only be derived from record schema.");
     }
     // Locate value schema ID for input value schema.
-    String valueSchemaRequestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName();
-    MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas(valueSchemaRequestPath);
+    MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas();
     Schema retrievedValueSchema;
     int valueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
     for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
@@ -178,7 +175,8 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
     return valueSchemaId;
   }
 
-  private MultiSchemaResponse fetchAllValueSchemas(String requestPath) {
+  private MultiSchemaResponse fetchAllValueSchemas() {
+    String requestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName();
     MultiSchemaResponse multiSchemaResponse;
     byte[] response = executeRequest(requestPath);
     try {

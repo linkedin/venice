@@ -442,6 +442,79 @@ public class TestMetaDataHandler {
   }
 
   @Test
+  public void testAllUpdateSchemaLookup() throws IOException {
+    String storeName = "test_store";
+    String valueSchemaStr1 = "\"string\"";
+    String valueSchemaStr2 = "\"long\"";
+    String updateSchemaStr1 = "\"long\"";
+    String updateSchemaStr2 = "\"string\"";
+    String clusterName = "test-cluster";
+    int valueSchemaId1 = 1;
+    int valueSchemaId2 = 2;
+    // Mock ReadOnlySchemaRepository
+    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
+    SchemaEntry valueSchemaEntry1 = new SchemaEntry(valueSchemaId1, valueSchemaStr1);
+    SchemaEntry valueSchemaEntry2 = new SchemaEntry(valueSchemaId2, valueSchemaStr2);
+    Mockito.doReturn(Arrays.asList(valueSchemaEntry1, valueSchemaEntry2)).when(schemaRepo).getValueSchemas(storeName);
+
+    DerivedSchemaEntry updateSchemaEntry1 = new DerivedSchemaEntry(valueSchemaId1, 1, updateSchemaStr1);
+    DerivedSchemaEntry updateSchemaEntry2 = new DerivedSchemaEntry(valueSchemaId2, 1, updateSchemaStr2);
+    Mockito.doReturn(Arrays.asList(updateSchemaEntry1, updateSchemaEntry2))
+        .when(schemaRepo)
+        .getDerivedSchemas(storeName);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/update_schema/" + storeName,
+        null,
+        schemaRepo,
+        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
+        Collections.emptyMap());
+
+    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    MultiSchemaResponse multiSchemaResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaResponse.class);
+
+    Assert.assertEquals(multiSchemaResponse.getName(), storeName);
+    Assert.assertEquals(multiSchemaResponse.getCluster(), clusterName);
+    Assert.assertFalse(multiSchemaResponse.isError());
+    MultiSchemaResponse.Schema[] schemas = multiSchemaResponse.getSchemas();
+    Assert.assertEquals(schemas.length, 2);
+    Assert.assertEquals(schemas[0].getId(), valueSchemaId1);
+    Assert.assertEquals(schemas[0].getSchemaStr(), updateSchemaStr1);
+    Assert.assertEquals(schemas[0].getDerivedSchemaId(), 1);
+    Assert.assertEquals(schemas[1].getId(), valueSchemaId2);
+    Assert.assertEquals(schemas[1].getSchemaStr(), updateSchemaStr2);
+    Assert.assertEquals(schemas[1].getDerivedSchemaId(), 1);
+  }
+
+  @Test
+  public void testAllUpdateSchemaLookupWithNoValueSchema() throws IOException {
+    String storeName = "test_store";
+    String clusterName = "test-cluster";
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/update_schema/" + storeName,
+        null,
+        null,
+        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
+        Collections.emptyMap());
+
+    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    MultiSchemaResponse multiSchemaResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaResponse.class);
+
+    Assert.assertEquals(multiSchemaResponse.getName(), storeName);
+    Assert.assertEquals(multiSchemaResponse.getCluster(), clusterName);
+    Assert.assertFalse(multiSchemaResponse.isError());
+    MultiSchemaResponse.Schema[] schemas = multiSchemaResponse.getSchemas();
+    Assert.assertEquals(schemas.length, 0);
+  }
+
+  @Test
   public void testD2ServiceLookup() throws IOException {
     String storeName = "test-store";
     String clusterName = "test-cluster";

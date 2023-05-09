@@ -7,6 +7,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
@@ -17,6 +18,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -371,6 +373,18 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   }
 
   @Override
+  public Schema getUpdateSchema(int valueSchemaId) {
+    // Ideally, we can fetch this information from the SchemaData object, but we're not yet populating these schemas
+    throw new VeniceUnsupportedOperationException("getUpdateSchema");
+  }
+
+  @Override
+  public DerivedSchemaEntry getLatestUpdateSchema() {
+    // Ideally, we can fetch this information from the SchemaData object, but we're not yet populating these schemas
+    throw new VeniceUnsupportedOperationException("getLatestUpdateSchema");
+  }
+
+  @Override
   public boolean isReady() {
     return isReady;
   }
@@ -379,7 +393,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * Used for test only
    * @param d2ServiceDiscovery
    */
-  public synchronized void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
+  synchronized void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
     this.d2ServiceDiscovery = d2ServiceDiscovery;
   }
 }
