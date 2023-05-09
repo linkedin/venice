@@ -9,6 +9,7 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.Unpooled;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -34,6 +35,7 @@ import org.apache.logging.log4j.Logger;
 
 public class HttpClient5StorageNodeClient implements StorageNodeClient {
   private static final Logger LOGGER = LogManager.getLogger(HttpClient5StorageNodeClient.class);
+  private static final byte[] EMPTY_BUFFER = new byte[0];
 
   private final Random random = new Random();
   private final List<CloseableHttpAsyncClient> clientList = new ArrayList<>();
@@ -128,12 +130,23 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
     }
 
     @Override
-    public ByteBuf getContentInByteBuf() throws IOException {
+    public ByteBuf getContentInByteBuf(boolean usePooledBuffer) throws IOException {
+      if (usePooledBuffer) {
+        ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT.directBuffer(getRawByteArray().length);
+        byteBuf.writeBytes(getRawByteArray());
+        return byteBuf;
+      }
+
+      byte[] body = response.getBodyBytes();
+      return body == null ? Unpooled.EMPTY_BUFFER : Unpooled.wrappedBuffer(body);
+    }
+
+    private byte[] getRawByteArray() {
       /**
        * {@link SimpleHttpResponse#getBodyBytes()} will return null if the content length is 0.
        */
       byte[] body = response.getBodyBytes();
-      return body == null ? Unpooled.EMPTY_BUFFER : Unpooled.wrappedBuffer(body);
+      return (body == null) ? EMPTY_BUFFER : body;
     }
 
     @Override

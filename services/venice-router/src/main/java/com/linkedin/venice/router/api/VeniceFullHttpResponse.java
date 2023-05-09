@@ -21,6 +21,10 @@ public class VeniceFullHttpResponse extends DefaultFullHttpResponse {
     this.decompressionTimeInNs = decompressionTimeInNs;
   }
 
+  public ByteBuf getContent() {
+    return content();
+  }
+
   public long getDecompressionTimeInNs() {
     return decompressionTimeInNs;
   }

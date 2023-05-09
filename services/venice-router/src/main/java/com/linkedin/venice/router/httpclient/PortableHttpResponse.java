@@ -19,7 +19,7 @@ public interface PortableHttpResponse {
    * @return
    * @throws IOException
    */
-  ByteBuf getContentInByteBuf() throws IOException;
+  ByteBuf getContentInByteBuf(boolean usePooledBuffer) throws IOException;
 
   /**
    *

@@ -270,17 +270,17 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
   protected VeniceFullHttpResponse buildResponse(VenicePath path, PortableHttpResponse serverResponse)
       throws IOException {
     int statusCode = serverResponse.getStatusCode();
-    ByteBuf content = serverResponse.getContentInByteBuf();
 
     if (PASS_THROUGH_ERROR_CODES.contains(statusCode)) {
-      return buildPlainTextResponse(HttpResponseStatus.valueOf(statusCode), content);
+      return buildPlainTextResponse(HttpResponseStatus.valueOf(statusCode), serverResponse.getContentInByteBuf(false));
     }
 
     CompressionStrategy contentCompression =
         VeniceResponseDecompressor.getCompressionStrategy(serverResponse.getFirstHeader(VENICE_COMPRESSION_STRATEGY));
 
-    long decompressionTimeInNs = 0;
+    ByteBuf content = serverResponse.getContentInByteBuf(contentCompression == CompressionStrategy.NO_OP);
 
+    long decompressionTimeInNs = 0;
     if (statusCode != HttpStatus.SC_OK && statusCode != HttpStatus.SC_NOT_FOUND) {
       statusCode = HttpStatus.SC_BAD_GATEWAY;
     }
@@ -329,7 +329,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
     VeniceFullHttpResponse response = new VeniceFullHttpResponse(
         HttpVersion.HTTP_1_1,
         HttpResponseStatus.valueOf(statusCode),
-        content,
+        content.retain(),
         decompressionTimeInNs);
     response.headers()
         .set(HttpHeaderNames.CONTENT_TYPE, serverResponse.getFirstHeader(HttpHeaders.CONTENT_TYPE))

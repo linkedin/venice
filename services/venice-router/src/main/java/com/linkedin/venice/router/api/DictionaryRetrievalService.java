@@ -254,7 +254,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       if (code != SC_OK) {
         LOGGER.warn("Dictionary fetch returns {} for {}", code, instanceUrl);
       } else {
-        ByteBuf byteBuf = response.getContentInByteBuf();
+        ByteBuf byteBuf = response.getContentInByteBuf(false);
         byte[] bytes = new byte[byteBuf.readableBytes()];
         byteBuf.readBytes(bytes);
         return bytes;

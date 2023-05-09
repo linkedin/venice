@@ -642,7 +642,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
     }
 
     @Override
-    public ByteBuf getContentInByteBuf() throws IOException {
+    public ByteBuf getContentInByteBuf(boolean userPooledBuffer) throws IOException {
       byte[] contentToByte;
       try (InputStream contentStream = httpResponse.getEntity().getContent()) {
         contentToByte = IOUtils.toByteArray(contentStream);
