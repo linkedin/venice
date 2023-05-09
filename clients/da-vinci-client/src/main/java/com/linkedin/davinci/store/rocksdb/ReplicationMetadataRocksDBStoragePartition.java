@@ -3,7 +3,6 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.DEFAULT_COLUMN_FAMILY_INDEX;
 import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.REPLICATION_METADATA_COLUMN_FAMILY_INDEX;
 
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -182,13 +181,13 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   public synchronized void beginBatchWrite(
       Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> expectedChecksumSupplier,
-      PartitionConsumptionState partitionConsumptionState) {
+      Runnable updateRestartIngestionFlag) {
     if (!deferredWrite) {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
     }
-    super.beginBatchWrite(checkpointedInfo, expectedChecksumSupplier, partitionConsumptionState);
-    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier, partitionConsumptionState);
+    super.beginBatchWrite(checkpointedInfo, expectedChecksumSupplier, updateRestartIngestionFlag);
+    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier, updateRestartIngestionFlag);
   }
 
   @Override
@@ -233,5 +232,25 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   public synchronized void drop() {
     super.deleteSSTFiles(fullPathForTempSSTFileDir);
     super.drop();
+  }
+
+  // only visible for testing
+  public String getFullPathForTempSSTFileDir() {
+    return fullPathForTempSSTFileDir;
+  }
+
+  // only visible for testing
+  public RocksDBSstFileWriter getRocksDBSstFileWriter() {
+    return rocksDBSstFileWriter;
+  }
+
+  // only visible for testing
+  public String getValueFullPathForTempSSTFileDir() {
+    return super.getFullPathForTempSSTFileDir();
+  }
+
+  // only visible for testing
+  public RocksDBSstFileWriter getValueRocksDBSstFileWriter() {
+    return super.getRocksDBSstFileWriter();
   }
 }

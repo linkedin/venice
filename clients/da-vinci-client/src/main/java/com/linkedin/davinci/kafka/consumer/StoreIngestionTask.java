@@ -563,7 +563,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void beginBatchWrite(int partitionId, boolean sorted, PartitionConsumptionState partitionConsumptionState) {
+  private void beginBatchWrite(
+      int partitionId,
+      boolean sorted,
+      PartitionConsumptionState partitionConsumptionState,
+      Runnable updateRestartIngestionFlag) {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
     StoragePartitionConfig storagePartitionConfig =
         getStoragePartitionConfig(partitionId, sorted, partitionConsumptionState);
@@ -583,14 +587,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return checksum;
       });
     }
+
     storageEngine.beginBatchWrite(
         storagePartitionConfig,
         checkpointedDatabaseInfo,
         partitionChecksumSupplier,
-        partitionConsumptionState);
-    if (partitionConsumptionState.isRestartIngestionRequired()) {
-      return;
-    }
+        updateRestartIngestionFlag);
+
     if (cacheBackend.isPresent()) {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
         cacheBackend.get()
@@ -599,7 +602,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 storagePartitionConfig,
                 checkpointedDatabaseInfo,
                 partitionChecksumSupplier,
-                partitionConsumptionState);
+                updateRestartIngestionFlag);
       }
     }
   }
@@ -1394,7 +1397,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void checkConsumptionStateWhenStart(
       OffsetRecord offsetRecord,
-      PartitionConsumptionState newPartitionConsumptionState) {
+      PartitionConsumptionState newPartitionConsumptionState,
+      Runnable updateRestartIngestionFlag) {
     int partition = newPartitionConsumptionState.getPartition();
     // Once storage node restart, send the "START" status to controller to rebuild the task status.
     // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
@@ -1417,11 +1421,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Notify the underlying store engine about starting batch push.
          */
-        beginBatchWrite(partition, sorted, newPartitionConsumptionState);
-
-        if (newPartitionConsumptionState.isRestartIngestionRequired()) {
-          return;
-        }
+        beginBatchWrite(partition, sorted, newPartitionConsumptionState, updateRestartIngestionFlag);
 
         newPartitionConsumptionState.setStartOfPushTimestamp(storeVersionState.startOfPushTimestamp);
         newPartitionConsumptionState.setEndOfPushTimestamp(storeVersionState.endOfPushTimestamp);
@@ -1531,9 +1531,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           producerTracker.setPartitionState(partition, entry.getValue());
         });
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
-        checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
 
-        if (newPartitionConsumptionState.isRestartIngestionRequired()) {
+        /**
+         * Indicates whether to restart the ingestion from scratch or not. The default
+         * value is false. This variable is set to true during
+         * {@link StoreIngestionTask#checkConsumptionStateWhenStart} if there is a mismatch
+         * between the number of SST files found and the checkpointed information, which
+         * implies that the process crashed during or after the ingestion but before syncing
+         * OffsetRecord with EOP.
+         */
+        AtomicBoolean isRestartIngestionRequired = new AtomicBoolean(false);
+        Runnable updateRestartIngestionFlag = () -> {
+          isRestartIngestionRequired.set(true);
+        };
+
+        checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState, updateRestartIngestionFlag);
+
+        if (isRestartIngestionRequired.get()) {
           LOGGER.warn(
               "Restart ingestion from the beginning by resetting " + "OffsetRecord for topic: {} and partition: {}",
               topicPartition.getPubSubTopic().getName(),
@@ -1541,12 +1555,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           resetOffset(partition, topicPartition, true);
           newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
           offsetRecord = newPartitionConsumptionState.getOffsetRecord();
-          checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
-          if (newPartitionConsumptionState.isRestartIngestionRequired()) {
-            throw new VeniceException(
-                "Restarting ingestion can happen after process restarts only once for topic: "
-                    + topicPartition.getPubSubTopic().getName() + " and partition: " + partition);
-          }
+          checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState, () -> {});
         }
 
         reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
@@ -2186,7 +2195,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Notify the underlying store engine about starting batch push.
      */
-    beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
+    beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState, () -> {});
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
     statusReportAdapter.reportStarted(partitionConsumptionState);

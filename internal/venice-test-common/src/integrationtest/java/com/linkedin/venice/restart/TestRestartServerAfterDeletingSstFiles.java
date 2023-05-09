@@ -163,10 +163,10 @@ public class TestRestartServerAfterDeletingSstFiles {
     rocksDBStoragePartitions.add((RocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(2));
 
     LOGGER.info("Waiting for the process to Finish ingesting all the data to sst files");
-    // 1. wait for rocksDBSstFileWritter to be opened
+    // 1. wait for rocksDBSstFileWriter to be opened
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       rocksDBStoragePartitions.stream().forEach(partition -> {
-        Assert.assertNotNull(partition.getRocksDBSstFileWritter());
+        Assert.assertNotNull(partition.getRocksDBSstFileWriter());
       });
     });
 
@@ -174,7 +174,7 @@ public class TestRestartServerAfterDeletingSstFiles {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       AtomicInteger totalIngestedKeys = new AtomicInteger();
       rocksDBStoragePartitions.stream().forEach(partition -> {
-        totalIngestedKeys.addAndGet((int) partition.getRocksDBSstFileWritter().getRecordNumInAllSSTFiles());
+        totalIngestedKeys.addAndGet((int) partition.getRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
       });
       Assert.assertEquals(totalIngestedKeys.get(), numKeys);
     });

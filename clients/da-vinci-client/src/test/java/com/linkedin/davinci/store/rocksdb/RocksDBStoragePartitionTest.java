@@ -138,7 +138,7 @@ public class RocksDBStoragePartitionTest {
       });
     }
     if (sorted) {
-      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier, null);
+      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier, () -> {});
     }
     int currentRecordNum = 0;
     int currentFileNo = 0;
@@ -178,7 +178,7 @@ public class RocksDBStoragePartitionTest {
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
           if (sorted) {
-            storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier, null);
+            storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier, () -> {});
           }
 
           // Pass last checkpointed info.
@@ -273,7 +273,7 @@ public class RocksDBStoragePartitionTest {
 
     Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
     if (sorted) {
-      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier, null);
+      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier, () -> {});
     }
     int currentRecordNum = 0;
     int currentFileNo = 0;
@@ -311,7 +311,7 @@ public class RocksDBStoragePartitionTest {
         Options storeOptions = storagePartition.getOptions();
         Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
         if (sorted) {
-          storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier, null);
+          storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier, () -> {});
         }
 
         // Pass last checkpointed info.
@@ -425,7 +425,7 @@ public class RocksDBStoragePartitionTest {
       });
     }
     if (sorted) {
-      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier, null);
+      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier, () -> {});
     }
     int currentRecordNum = 0;
     int currentFileNo = 0;
@@ -464,7 +464,7 @@ public class RocksDBStoragePartitionTest {
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
           if (sorted) {
-            storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier, null);
+            storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier, () -> {});
           }
 
           // Pass last checkpointed info.
@@ -550,7 +550,7 @@ public class RocksDBStoragePartitionTest {
         rocksDBServerConfig);
 
     Optional<Supplier<byte[]>> checksumSupplier = Optional.of(() -> new byte[16]);
-    storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier, null);
+    storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier, () -> {});
 
     Map<String, String> inputRecords = generateInput(1024, true, 230);
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {

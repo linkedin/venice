@@ -1,7 +1,6 @@
 package com.linkedin.davinci.store;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
@@ -364,7 +363,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       StoragePartitionConfig storagePartitionConfig,
       Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> checksumSupplier,
-      PartitionConsumptionState partitionConsumptionState) {
+      Runnable updateRestartIngestionFlag) {
     LOGGER.info(
         "Begin batch write for storage partition config: {}  with checkpoint info: {}",
         storagePartitionConfig,
@@ -375,7 +374,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
      */
     adjustStoragePartition(storagePartitionConfig);
     getPartitionOrThrow(storagePartitionConfig.getPartitionId())
-        .beginBatchWrite(checkpointedInfo, checksumSupplier, partitionConsumptionState);
+        .beginBatchWrite(checkpointedInfo, checksumSupplier, updateRestartIngestionFlag);
   }
 
   /**

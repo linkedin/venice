@@ -3,7 +3,6 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
@@ -132,7 +131,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
   protected final List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
 
-  private RocksDBSstFileWriter rocksDBSstFileWritter = null;
+  private RocksDBSstFileWriter rocksDBSstFileWriter = null;
 
   protected RocksDBStoragePartition(
       StoragePartitionConfig storagePartitionConfig,
@@ -183,7 +182,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
     if (deferredWrite) {
-      this.rocksDBSstFileWritter = new RocksDBSstFileWriter(
+      this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
           storeName,
           partitionId,
           dbDir,
@@ -348,13 +347,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public synchronized void beginBatchWrite(
       Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> expectedChecksumSupplier,
-      PartitionConsumptionState partitionConsumptionState) {
+      Runnable updateRestartIngestionFlag) {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
     }
-    rocksDBSstFileWritter.open(checkpointedInfo, expectedChecksumSupplier, partitionConsumptionState);
+    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier, updateRestartIngestionFlag);
   }
 
   @Override
@@ -374,7 +373,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * Note: this function should be invoked after {@link #sync()} to make sure
      * the last SST file written is finished.
      */
-    rocksDBSstFileWritter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
+    rocksDBSstFileWriter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
   }
 
   @Override
@@ -392,7 +391,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     try {
       if (deferredWrite) {
-        rocksDBSstFileWritter.put(key, valueBuffer);
+        rocksDBSstFileWriter.put(key, valueBuffer);
       } else {
         rocksDB.put(
             writeOptions,
@@ -504,7 +503,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (!deferredWrite) {
       return true;
     }
-    return rocksDBSstFileWritter.validateBatchIngestion();
+    return rocksDBSstFileWriter.validateBatchIngestion();
   }
 
   private ReadOptions getReadOptionsForIteration(byte[] keyPrefix) {
@@ -585,7 +584,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       return Collections.emptyMap();
     }
 
-    return rocksDBSstFileWritter.sync();
+    return rocksDBSstFileWriter.sync();
   }
 
   private void deleteFilesInAGivenDirectory(String fullPath) {
@@ -613,7 +612,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   public void deleteSSTFiles(String fullPathForTempSSTFileDir) {
     deleteFilesInAGivenDirectory(fullPathForTempSSTFileDir);
-    // removeFilesAndTheGivenDirectory(fullPathForTempSSTFileDir);
   }
 
   private void deleteDBDirectory(String dBFullPath) {
@@ -661,7 +659,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       envOptions.close();
     }
     if (deferredWrite) {
-      rocksDBSstFileWritter.close();
+      rocksDBSstFileWriter.close();
     }
     options.close();
     if (writeOptions != null) {
@@ -781,7 +779,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return fullPathForTempSSTFileDir;
   }
 
-  public RocksDBSstFileWriter getRocksDBSstFileWritter() {
-    return rocksDBSstFileWritter;
+  public RocksDBSstFileWriter getRocksDBSstFileWriter() {
+    return rocksDBSstFileWriter;
   }
 }

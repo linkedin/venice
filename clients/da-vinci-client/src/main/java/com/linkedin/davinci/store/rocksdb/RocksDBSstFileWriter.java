@@ -3,7 +3,6 @@ package com.linkedin.davinci.store.rocksdb;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.extractTempSSTFileNo;
 import static com.linkedin.venice.store.rocksdb.RocksDBUtils.isTempSSTFile;
 
-import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -139,7 +138,7 @@ public class RocksDBSstFileWriter {
   public void open(
       Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> expectedChecksumSupplier,
-      PartitionConsumptionState partitionConsumptionState) {
+      Runnable updateRestartIngestionFlag) {
     LOGGER.info(
         "'beginBatchWrite' got invoked for RocksDB store: {}, partition: {} with checkpointed info: {} ",
         storeName,
@@ -181,13 +180,9 @@ public class RocksDBSstFileWriter {
       } else {
         // remove all the temp sst files if found any as we will start fresh
         removeAllSSTFiles();
-        if (partitionConsumptionState != null) {
-          partitionConsumptionState.setRestartIngestion(true);
-          LOGGER.info(
-              "Ingestion will restart from the beginning for store: " + "{} partition: {}",
-              storeName,
-              partitionId);
-        }
+        updateRestartIngestionFlag.run();
+        LOGGER
+            .info("Ingestion will restart from the beginning for store: " + "{} partition: {}", storeName, partitionId);
       }
     }
 
@@ -299,7 +294,8 @@ public class RocksDBSstFileWriter {
 
     if (currFileNo > lastFinishedSSTFileNo) {
       LOGGER.info(
-          "Number of SST files matches with the checkpoint for store: " + "{} partition: {}",
+          "Number of {} files matches with the checkpoint for store: " + "{} partition: {}",
+          isRMD ? "RMD SST" : "SST",
           storeName,
           partitionId);
       return true;
@@ -319,7 +315,8 @@ public class RocksDBSstFileWriter {
      *    a safer approach and starting the ingestion from beginning in this case.
      */
     LOGGER.info(
-        "Number of SST files does not match with the checkpoint for store: " + "{} partition: {}",
+        "Number of {} files don't match with the checkpoint for store: {} partition: {}",
+        isRMD ? "RMD SST" : "SST",
         storeName,
         partitionId);
     return false;
@@ -420,12 +417,18 @@ public class RocksDBSstFileWriter {
   private void deleteOldIngestion(RocksDB rocksDB, ColumnFamilyHandle columnFamilyHandle) throws RocksDBException {
     List<LiveFileMetaData> oldIngestedSSTFiles = rocksDB.getLiveFilesMetaData();
     if (oldIngestedSSTFiles.size() != 0) {
+      int count = 0;
       for (LiveFileMetaData file: oldIngestedSSTFiles) {
         if (Arrays.equals(file.columnFamilyName(), columnFamilyHandle.getName())) {
-          LOGGER.info("Deleting ingested sst file {} in rocksDB", file.fileName());
+          count++;
           rocksDB.deleteFile(file.fileName());
         }
       }
+      LOGGER.info(
+          "Deleting {} ingested {} file in rocksDB for store: {}",
+          count,
+          columnFamilyHandle.getID() == DEFAULT_COLUMN_FAMILY_INDEX ? "SST" : "RMD SST",
+          storeName);
     }
   }
 
