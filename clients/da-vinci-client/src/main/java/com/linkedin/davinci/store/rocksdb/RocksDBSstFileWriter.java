@@ -174,15 +174,14 @@ public class RocksDBSstFileWriter {
         removeSSTFilesAfterCheckpointing(this.lastFinishedSSTFileNo);
         currentSSTFileNo = lastFinishedSSTFileNo + 1;
         LOGGER.info(
-            "Ingestion will continue from the last checkpoint for store: " + "{} partition: {}",
+            "Ingestion will continue from the last checkpoint for store: {} partition: {}",
             storeName,
             partitionId);
       } else {
         // remove all the temp sst files if found any as we will start fresh
         removeAllSSTFiles();
         updateRestartIngestionFlag.run();
-        LOGGER
-            .info("Ingestion will restart from the beginning for store: " + "{} partition: {}", storeName, partitionId);
+        LOGGER.info("Ingestion will restart from the beginning for store: {} partition: {}", storeName, partitionId);
       }
     }
 

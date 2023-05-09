@@ -1549,7 +1549,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         if (isRestartIngestionRequired.get()) {
           LOGGER.warn(
-              "Restart ingestion from the beginning by resetting " + "OffsetRecord for topic: {} and partition: {}",
+              "Restart ingestion from the beginning by resetting OffsetRecord for topic: {} and partition: {}",
               topicPartition.getPubSubTopic().getName(),
               partition);
           resetOffset(partition, topicPartition, true);
@@ -1695,7 +1695,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       partitionIngestionExceptionList.set(partition, null);
     } else {
       LOGGER.info(
-          "{} No need to reset offset by Kafka consumer, since the consumer is not " + "subscribing: {}",
+          "{} No need to reset offset by Kafka consumer, since the consumer is not subscribing: {}",
           consumerTaskId,
           topicPartition);
     }
