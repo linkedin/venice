@@ -16,6 +16,9 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngine;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -35,6 +38,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -84,6 +88,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private VeniceServerWrapper serverWrapper;
   private AvroSerializer serializer;
   private final int numKeys = 1000;
+  private final String KEY_PREFIX = "key";
+  private final String VALUE_PREFIX = "value";
+  private final String METADATA_PREFIX = "metadata";
 
   @BeforeClass
   public void setUp() {
@@ -126,7 +133,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       int startIndex,
       int endIndex,
       boolean sorted,
-      boolean createTombStone,
       AvroSerializer serializer) {
     Map<byte[], Pair<byte[], byte[]>> records;
     if (sorted) {
@@ -140,10 +146,10 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       records = new HashMap<>();
     }
     for (int i = startIndex; i < endIndex; ++i) {
-      String value = createTombStone && i % 100 == 0 ? null : "value" + i;
-      String metadata = "metadata" + i;
+      String value = VALUE_PREFIX + i;
+      String metadata = METADATA_PREFIX + i;
       records.put(
-          serializer.serialize("key" + i),
+          serializer.serialize(KEY_PREFIX + i),
           Pair.create(serializer.serialize(value), serializer.serialize(metadata)));
     }
     return records;
@@ -161,6 +167,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testActiveActiveStoreWithRMDAndRestartServer(boolean deleteSSTFiles, boolean deleteRMDSSTFiles)
       throws Exception {
+    // if (deleteSSTFiles == true && deleteRMDSSTFiles == false) return;
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
@@ -182,104 +189,134 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .setHybridRewindSeconds(5)
         .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true);
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
-    // Create a new version
-    VersionCreationResponse versionCreationResponse;
-    versionCreationResponse = TestUtils.assertCommand(
-        parentControllerClient.requestTopicForWrites(
-            storeName,
-            1024 * 1024,
-            Version.PushType.BATCH,
-            Version.guidBasedDummyPushId(),
-            true,
-            true,
-            false,
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            false,
-            -1));
+    AvroGenericStoreClient<String, Object> storeClient = null;
+    try {
+      createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+      // Create a new version
+      VersionCreationResponse versionCreationResponse;
+      versionCreationResponse = TestUtils.assertCommand(
+          parentControllerClient.requestTopicForWrites(
+              storeName,
+              1024 * 1024,
+              Version.PushType.BATCH,
+              Version.guidBasedDummyPushId(),
+              true,
+              true,
+              false,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              false,
+              -1));
 
-    String topic = versionCreationResponse.getKafkaTopic();
-    String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
-    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
-        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
-      veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
+      String topic = versionCreationResponse.getKafkaTopic();
+      String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
+      VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
+      try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
+          veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
+        veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
 
-      /**
-       * Restart storage node during batch ingestion.
-       */
-      Map<byte[], Pair<byte[], byte[]>> inputRecords = generateInputWithMetadata(0, numKeys, true, false, serializer);
+        /**
+         * Restart storage node during batch ingestion.
+         */
+        Map<byte[], Pair<byte[], byte[]>> inputRecords = generateInputWithMetadata(0, numKeys, true, serializer);
 
-      for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecords.entrySet()) {
+        for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecords.entrySet()) {
 
-        byte[] replicationMetadataWitValueSchemaIdBytes =
-            getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
+          byte[] replicationMetadataWitValueSchemaIdBytes =
+              getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
 
-        PutMetadata putMetadata = (new PutMetadata(1, ByteBuffer.wrap(replicationMetadataWitValueSchemaIdBytes)));
-        veniceWriter.put(entry.getKey(), entry.getValue().getFirst(), 1, null, putMetadata).get();
+          PutMetadata putMetadata = (new PutMetadata(1, ByteBuffer.wrap(replicationMetadataWitValueSchemaIdBytes)));
+          veniceWriter.put(entry.getKey(), entry.getValue().getFirst(), 1, null, putMetadata).get();
+        }
+
+        serverWrapper = clusterWrapper.getVeniceServers().get(0);
+        TestVeniceServer testVeniceServer = serverWrapper.getVeniceServer();
+        StorageService storageService = testVeniceServer.getStorageService();
+
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+          Assert.assertNotNull(
+              storageService.getStorageEngineRepository()
+                  .getLocalStorageEngine(versionCreationResponse.getKafkaTopic()));
+        });
+
+        RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) storageService.getStorageEngineRepository()
+            .getLocalStorageEngine(versionCreationResponse.getKafkaTopic());
+        List<ReplicationMetadataRocksDBStoragePartition> rocksDBStoragePartitions = new ArrayList<>();
+        rocksDBStoragePartitions
+            .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(0));
+
+        LOGGER.info("Waiting for the process to Finish ingesting all the data to sst files");
+        // 1. wait for rocksDBSstFileWriter to be opened
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          rocksDBStoragePartitions.stream().forEach(partition -> {
+            Assert.assertNotNull(partition.getValueRocksDBSstFileWriter());
+            Assert.assertNotNull(partition.getRocksDBSstFileWriter());
+          });
+        });
+
+        // 2. verify the total number of records ingested
+        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+          AtomicInteger totalIngestedKeys = new AtomicInteger();
+          AtomicInteger totalIngestedRMDKeys = new AtomicInteger();
+          rocksDBStoragePartitions.stream().forEach(partition -> {
+            totalIngestedKeys.addAndGet((int) partition.getValueRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
+            totalIngestedRMDKeys.addAndGet((int) partition.getRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
+          });
+          Assert.assertEquals(totalIngestedKeys.get(), numKeys);
+          Assert.assertEquals(totalIngestedRMDKeys.get(), numKeys);
+        });
+
+        // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
+        LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
+        rocksDBStoragePartitions.stream().forEach(partition -> {
+          if (deleteSSTFiles) {
+            partition.deleteSSTFiles(partition.getValueFullPathForTempSSTFileDir());
+          }
+          if (deleteRMDSSTFiles) {
+            partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
+          }
+        });
+
+        // Restart server
+        clusterWrapper.stopVeniceServer(serverWrapper.getPort());
+        clusterWrapper.restartVeniceServer(serverWrapper.getPort());
+
+        veniceWriter.broadcastEndOfPush(Collections.emptyMap());
       }
 
-      serverWrapper = clusterWrapper.getVeniceServers().get(0);
-      TestVeniceServer testVeniceServer = serverWrapper.getVeniceServer();
-      StorageService storageService = testVeniceServer.getStorageService();
-      RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) storageService.getStorageEngineRepository()
-          .getLocalStorageEngine(versionCreationResponse.getKafkaTopic());
-      List<ReplicationMetadataRocksDBStoragePartition> rocksDBStoragePartitions = new ArrayList<>();
-      rocksDBStoragePartitions
-          .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(0));
-
-      LOGGER.info("Waiting for the process to Finish ingesting all the data to sst files");
-      // 1. wait for rocksDBSstFileWriter to be opened
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        rocksDBStoragePartitions.stream().forEach(partition -> {
-          Assert.assertNotNull(partition.getValueRocksDBSstFileWriter());
-          Assert.assertNotNull(partition.getRocksDBSstFileWriter());
-        });
+      // Wait for push to be push completed.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(
+            clusterWrapper.getLeaderVeniceController()
+                .getVeniceAdmin()
+                .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
+                .getExecutionStatus()
+                .equals(ExecutionStatus.COMPLETED));
       });
 
-      // 2. verify the total number of records ingested
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        AtomicInteger totalIngestedKeys = new AtomicInteger();
-        AtomicInteger totalIngestedRMDKeys = new AtomicInteger();
-        rocksDBStoragePartitions.stream().forEach(partition -> {
-          totalIngestedKeys.addAndGet((int) partition.getValueRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
-          totalIngestedRMDKeys.addAndGet((int) partition.getRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
-        });
-        Assert.assertEquals(totalIngestedKeys.get(), numKeys);
-        Assert.assertEquals(totalIngestedRMDKeys.get(), numKeys);
-      });
+      // validate the data that was ingested properly
+      storeClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(clusterWrapper.getRandomRouterURL())
+              .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
 
-      // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
-      LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
-      rocksDBStoragePartitions.stream().forEach(partition -> {
-        if (deleteSSTFiles) {
-          partition.deleteSSTFiles(partition.getValueFullPathForTempSSTFileDir());
-        }
-        if (deleteRMDSSTFiles) {
-          partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
-        }
-      });
+      int currkey = 0;
+      int endKey = numKeys;
 
-      // Restart server
-      clusterWrapper.stopVeniceServer(serverWrapper.getPort());
-      clusterWrapper.restartVeniceServer(serverWrapper.getPort());
+      // 1. invalid key
+      Assert.assertNull(storeClient.get(KEY_PREFIX + (currkey - 1)).get());
 
-      veniceWriter.broadcastEndOfPush(Collections.emptyMap());
-
-      // Wait push completed.
-      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-        try {
-          return clusterWrapper.getLeaderVeniceController()
-              .getVeniceAdmin()
-              .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
-              .getExecutionStatus()
-              .equals(ExecutionStatus.COMPLETED);
-        } catch (Exception e) {
-          return false;
-        }
-      });
+      // 2. all valid keys
+      while (currkey < endKey) {
+        Assert.assertEquals(storeClient.get(KEY_PREFIX + currkey).get().toString(), VALUE_PREFIX + currkey);
+        currkey++;
+      }
+    } finally {
+      if (storeClient != null) {
+        storeClient.close();
+      }
+      parentControllerClient.disableAndDeleteStore(storeName);
     }
   }
 }
