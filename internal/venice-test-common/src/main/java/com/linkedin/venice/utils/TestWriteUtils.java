@@ -55,10 +55,13 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 
 
 public class TestWriteUtils {
+  public static final Logger LOGGER = LogManager.getLogger(TestWriteUtils.class);
   public static final String USER_SCHEMA_STRING =
       "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
           + "  \"fields\": [           " + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP
@@ -958,6 +961,17 @@ public class TestWriteUtils {
     return IOUtils.toString(
         Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
         StandardCharsets.UTF_8);
+  }
+
+  public static String loadFileAsStringQuietlyWithErrorLogged(String fileName) {
+    try {
+      return IOUtils.toString(
+          Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
+          StandardCharsets.UTF_8);
+    } catch (Exception e) {
+      LOGGER.error(e);
+      return null;
+    }
   }
 
   public static void updateStore(String storeName, ControllerClient controllerClient, UpdateStoreQueryParams params) {

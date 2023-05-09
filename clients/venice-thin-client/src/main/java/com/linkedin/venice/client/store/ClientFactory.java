@@ -90,6 +90,7 @@ public class ClientFactory {
         () -> new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig),
         Optional.empty(),
         clientConfig.getPreferredSchemaFilter(),
+        clientConfig.getSchemaRefreshPeriod(),
         icProvider);
   }
 

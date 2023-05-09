@@ -279,6 +279,7 @@
       <Class name="com.linkedin.davinci.store.blackhole.BlackHoleStorageEnginePartition"/>
       <Class name="com.linkedin.davinci.store.memory.InMemoryStoragePartition"/>
       <Class name="com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition"/>
+      <Class name="com.linkedin.venice.client.schema.RouterBackedSchemaReader"/>
     </Or>
   </Match>
   <Match>

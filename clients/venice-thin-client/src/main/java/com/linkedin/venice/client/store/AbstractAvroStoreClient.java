@@ -704,6 +704,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           this::getStoreClientForSchemaReader,
           getReaderSchema(),
           clientConfig.getPreferredSchemaFilter(),
+          clientConfig.getSchemaRefreshPeriod(),
           null);
     }
     warmUpVeniceClient();

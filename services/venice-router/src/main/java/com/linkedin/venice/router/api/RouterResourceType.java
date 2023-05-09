@@ -7,7 +7,7 @@ import java.util.Map;
 public enum RouterResourceType {
   TYPE_LEADER_CONTROLLER("leader_controller"), @Deprecated
   TYPE_LEADER_CONTROLLER_LEGACY("master_controller"), TYPE_KEY_SCHEMA("key_schema"), TYPE_VALUE_SCHEMA("value_schema"),
-  TYPE_LATEST_VALUE_SCHEMA("latest_value_schema"), TYPE_UPDATE_SCHEMA("update_schema"),
+  TYPE_LATEST_VALUE_SCHEMA("latest_value_schema"), TYPE_GET_UPDATE_SCHEMA("update_schema"),
   TYPE_CLUSTER_DISCOVERY("discover_cluster"), TYPE_REQUEST_TOPIC("request_topic"),
   TYPE_STREAM_HYBRID_STORE_QUOTA("stream_hybrid_store_quota"),
   TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA("stream_reprocessing_hybrid_store_quota"),
