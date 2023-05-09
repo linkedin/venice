@@ -7,6 +7,14 @@ permalink: /docs/dev_guide/recommended_development_workflow
 
 # Venice Recommended Development Workflow
 
+## Create a Design Document
+
+If your change is relatively minor, you can skip this step. If you are adding new major functionality, we suggest that 
+you add a design document and solicit comments from the community before submitting any code.
+
+Please follow the [Design Document Guide](../dev_guide/design_doc.md). 
+
+
 ## Creating GitHub issue
 
 Every PR should be preceded by a GitHub issue to explain the problem statement unless it's a trivial bug fixes or a
@@ -64,7 +72,7 @@ Please list the new dependencies in the PR description and answer these question
 1. Other reviewers, including committers, may comment on the changes and suggest modifications. Changes can be added by simply pushing more commits to the same branch.
 2. Please add a comment and "@" the reviewer in the PR if you have addressed reviewers' comments. Even though GitHub sends notifications when new commits are pushed, it is helpful to know that the PR is ready for review once again.
 3. Lively, polite, rapid technical debate is encouraged from everyone in the community. The outcome may be a rejection of the entire change.
-4. Reviewers can indicate that a change looks suitable for merging by approving it via GitHub's review interface. This indicates the strongest level of technical sign-off on a patch and it means: "I've looked at this thoroughly and take as much ownership as if I wrote the patch myself". If you approve a pull request, you will be expected to help with bugs or follow-up issues on the patch. Consistent, judicious use of pull request approvals is a great way to gain credibility as a reviewer with the broader community. Venice reviewers will typically include the acronym LGTM in their approval comment. This was the convention used to approve pull requests before the "approve" feature was introduced by GitHub.
+4. Reviewers can indicate that a change looks suitable for merging by approving it via GitHub's review interface. This indicates the strongest level of technical sign-off on a patch and it means: "I've looked at this thoroughly and take as much ownership as if I wrote the patch myself". If you approve a pull request, you will be expected to help with bugs or follow-up issues on the patch. Consistent, judicious use of pull request approvals is a great way to gain credibility as a reviewer with the broader community. Venice reviewers will typically include the acronym LGTM in their approval comment. This was the convention used to approve pull requests before the "approve" functionality was introduced by GitHub.
 5. Sometimes, other changes will be merged which conflict with your pull request's changes. The PR can't be merged until the conflict is resolved. This can be resolved with `"git fetch upstream"` followed by `"git rebase upstream/main"` and resolving the conflicts by hand, then pushing the result to your branch.
 6. Try to be responsive to the discussion rather than let days pass between replies.
 
