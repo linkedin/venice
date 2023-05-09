@@ -348,7 +348,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
     aggStatistics.ifPresent(options::setStatistics);
 
-    if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+    if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled() && !isRMD) {
       PlainTableConfig tableConfig = new PlainTableConfig();
       tableConfig.setStoreIndexInFile(rocksDBServerConfig.isRocksDBStoreIndexInFile());
       tableConfig.setHugePageTlbSize(rocksDBServerConfig.getRocksDBHugePageTlbSize());
@@ -363,6 +363,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
       tableConfig.setBlockCache(factory.getSharedCache(isRMD));
       tableConfig.setCacheIndexAndFilterBlocks(rocksDBServerConfig.isRocksDBSetCacheIndexAndFilterBlocks());
+      tableConfig.setCacheIndexAndFilterBlocksWithHighPriority(true);
+      tableConfig.setPinL0FilterAndIndexBlocksInCache(true);
 
       // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in
       // memory.
