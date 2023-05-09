@@ -33,7 +33,7 @@ public class JobRoutesTest {
     String cluster = Utils.getUniqueString("cluster");
     String store = Utils.getUniqueString("store");
     int version = 5;
-    JobRoutes jobRoutes = new JobRoutes(false, Optional.empty());
+    JobRoutes jobRoutes = new JobRoutes(false, Optional.empty(), Optional.empty(), Optional.empty());
     JobStatusQueryResponse response =
         jobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty(), null);
 

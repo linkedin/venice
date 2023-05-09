@@ -40,7 +40,8 @@ public class ControllerRoutesTest {
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
 
     Route leaderControllerRoute =
-        new ControllerRoutes(false, Optional.empty(), pubSubTopicRepository).getLeaderController(mockAdmin);
+        new ControllerRoutes(false, Optional.empty(), pubSubTopicRepository, Optional.empty(), Optional.empty())
+            .getLeaderController(mockAdmin);
     LeaderControllerResponse leaderControllerResponse = ObjectMapperFactory.getInstance()
         .readValue(
             leaderControllerRoute.handle(request, mock(Response.class)).toString(),
@@ -50,7 +51,8 @@ public class ControllerRoutesTest {
     Assert.assertEquals(leaderControllerResponse.getSecureUrl(), "https://" + TEST_HOST + ":" + TEST_SSL_PORT);
 
     Route leaderControllerSslRoute =
-        new ControllerRoutes(true, Optional.empty(), pubSubTopicRepository).getLeaderController(mockAdmin);
+        new ControllerRoutes(true, Optional.empty(), pubSubTopicRepository, Optional.empty(), Optional.empty())
+            .getLeaderController(mockAdmin);
     LeaderControllerResponse leaderControllerResponseSsl = ObjectMapperFactory.getInstance()
         .readValue(
             leaderControllerSslRoute.handle(request, mock(Response.class)).toString(),

@@ -53,7 +53,7 @@ public class CreateStoreTest {
     doReturn("\"long\"").when(request).queryParams(KEY_SCHEMA);
     doReturn("\"string\"").when(request).queryParams(VALUE_SCHEMA);
 
-    CreateStore createStoreRoute = new CreateStore(false, Optional.empty());
+    CreateStore createStoreRoute = new CreateStore(false, Optional.empty(), Optional.empty(), Optional.empty());
     Route createStoreRouter = createStoreRoute.createStore(admin);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
@@ -82,7 +82,7 @@ public class CreateStoreTest {
     doReturn("\"long\"").when(request).queryParams(KEY_SCHEMA);
     doReturn("\"string\"").when(request).queryParams(VALUE_SCHEMA);
 
-    CreateStore createStoreRoute = new CreateStore(false, Optional.empty());
+    CreateStore createStoreRoute = new CreateStore(false, Optional.empty(), Optional.empty(), Optional.empty());
     Route createStoreRouter = createStoreRoute.createStore(admin);
     createStoreRouter.handle(request, response);
   }
@@ -102,7 +102,7 @@ public class CreateStoreTest {
 
     doReturn(clusterName).when(request).queryParams(CLUSTER);
 
-    CreateStore createStoreRoute = new CreateStore(false, Optional.empty());
+    CreateStore createStoreRoute = new CreateStore(false, Optional.empty(), Optional.empty(), Optional.empty());
     Route createStoreRouter = createStoreRoute.createStore(admin);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpStatus.SC_BAD_REQUEST);
@@ -127,7 +127,7 @@ public class CreateStoreTest {
     doReturn("\"long\"").when(request).queryParams(KEY_SCHEMA);
     doReturn("\"string\"").when(request).queryParams(VALUE_SCHEMA);
 
-    CreateStore createStoreRoute = new CreateStore(false, Optional.empty());
+    CreateStore createStoreRoute = new CreateStore(false, Optional.empty(), Optional.empty(), Optional.empty());
     Route createStoreRouter = createStoreRoute.createStore(admin);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpConstants.SC_MISDIRECTED_REQUEST);

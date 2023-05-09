@@ -24,7 +24,7 @@ public class SchemaRoutesTest {
     Admin admin = mock(Admin.class);
     when(admin.getValueSchemaId(cluster, store, schemaStr)).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
     when(admin.getStore(cluster, store)).thenReturn(null);
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty());
+    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty(), Optional.empty(), Optional.empty());
     try {
       schemaRoutes.populateSchemaResponseForValueOrDerivedSchemaID(admin, cluster, store, schemaStr);
     } catch (VeniceNoStoreException e) {
