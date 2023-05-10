@@ -149,7 +149,8 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
-            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory())
+            .setRetryOnAllErrors(true));
   }
 
   @AfterClass
@@ -221,6 +222,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     RocksDBStorageEngine rocksDBStorageEngine =
         (RocksDBStorageEngine) storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
     assertNotNull(rocksDBStorageEngine);
+    assertEquals(rocksDBStorageEngine.getNumberOfPartitions(), 1);
 
     rocksDBStoragePartitions.clear();
     rocksDBStoragePartitions
@@ -237,7 +239,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
             storeName,
             1024 * 1024,
             Version.PushType.BATCH,
-            Version.guidBasedDummyPushId(),
+            System.currentTimeMillis() + "_test_server_restart_push",
             true,
             true,
             false,

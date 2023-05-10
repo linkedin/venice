@@ -645,7 +645,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    *
    * @return the number of non-null partitions in {@link #partitionList}
    */
-  protected synchronized long getNumberOfPartitions() {
+  public synchronized long getNumberOfPartitions() {
     return this.partitionList.stream().filter(Objects::nonNull).count();
   }
 

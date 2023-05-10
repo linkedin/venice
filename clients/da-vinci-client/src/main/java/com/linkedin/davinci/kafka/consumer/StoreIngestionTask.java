@@ -588,9 +588,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Creating a runnable to set partitionConsumptionState.restartRequired
      * to not leak partitionConsumptionState out of StoreIngestionTask
       */
-    AtomicBoolean isRestartIngestionRequired = new AtomicBoolean(false);
     Runnable updateRestartIngestionFlag = () -> {
-      isRestartIngestionRequired.set(true);
+      partitionConsumptionState.restartIngestion(true);
     };
 
     storageEngine.beginBatchWrite(
@@ -599,9 +598,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionChecksumSupplier,
         updateRestartIngestionFlag);
 
-    // copy the restartIngestion state over to partitionConsumptionState
-    if (isRestartIngestionRequired.get()) {
-      partitionConsumptionState.restartIngestion(true);
+    if (partitionConsumptionState.isRestartIngestionRequired()) {
       return;
     }
 
@@ -614,9 +611,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 checkpointedDatabaseInfo,
                 partitionChecksumSupplier,
                 updateRestartIngestionFlag);
-        if (isRestartIngestionRequired.get()) {
-          partitionConsumptionState.restartIngestion(true);
-        }
       }
     }
   }

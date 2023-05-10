@@ -135,6 +135,34 @@ public class RocksDBSstFileWriter {
     ++recordNumInAllSSTFiles;
   }
 
+  /**
+   * This functions checks whether there is any discrepancy between the checkpoint vs the current state.
+   * If the number of SST files and the checkpoint do not match:
+   * 1. delete all the temporary SST files to be able to start ingestion from beginning
+   * 2. the files that are already ingested to the DB will be removed during re-ingestion
+   *    in {@link #deleteOldIngestion}
+   * 3. run updateRestartIngestionFlag for the upstream to reset its state and start ingesting again
+   */
+  private boolean checkPreviousIngestionIntegrity(Runnable updateRestartIngestionFlag) {
+    if (lastFinishedSSTFileNo < 0) {
+      throw new VeniceException("Last finished sst file no: " + lastFinishedSSTFileNo + " shouldn't be negative");
+    }
+    if (doesAllPreviousSSTFilesBeforeCheckpointingExist()) {
+      // remove the unwanted sst files, as flow will continue from the checkpointed info
+      removeSSTFilesAfterCheckpointing(this.lastFinishedSSTFileNo);
+      currentSSTFileNo = lastFinishedSSTFileNo + 1;
+      LOGGER
+          .info("Ingestion will continue from the last checkpoint for store: {} partition: {}", storeName, partitionId);
+    } else {
+      // remove all the temp sst files if found any as we will start fresh
+      removeAllSSTFiles();
+      updateRestartIngestionFlag.run();
+      LOGGER.info("Ingestion will restart from the beginning for store: {} partition: {}", storeName, partitionId);
+      return false;
+    }
+    return true;
+  }
+
   public void open(
       Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> expectedChecksumSupplier,
@@ -166,22 +194,11 @@ public class RocksDBSstFileWriter {
           lastFinishedSSTFileNo,
           storeName,
           partitionId);
-      if (lastFinishedSSTFileNo < 0) {
-        throw new VeniceException("Last finished sst file no: " + lastFinishedSSTFileNo + " shouldn't be negative");
-      }
-      if (doesAllPreviousSSTFilesBeforeCheckpointingExist()) {
-        // remove the unwanted sst files, as flow will continue from the checkpointed info
-        removeSSTFilesAfterCheckpointing(this.lastFinishedSSTFileNo);
-        currentSSTFileNo = lastFinishedSSTFileNo + 1;
-        LOGGER.info(
-            "Ingestion will continue from the last checkpoint for store: {} partition: {}",
-            storeName,
-            partitionId);
-      } else {
-        // remove all the temp sst files if found any as we will start fresh
-        removeAllSSTFiles();
-        updateRestartIngestionFlag.run();
-        LOGGER.info("Ingestion will restart from the beginning for store: {} partition: {}", storeName, partitionId);
+
+      // This is not the first time this process is ingesting this partition,
+      // check the integrity before proceeding
+      if (checkPreviousIngestionIntegrity(updateRestartIngestionFlag) == false) {
+        return;
       }
     }
 
