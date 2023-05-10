@@ -120,7 +120,7 @@ public class TestPartialUpdateWithActiveActiveReplication {
   public void setUp() throws IOException {
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+    serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true);
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1);

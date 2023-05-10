@@ -137,7 +137,7 @@ public class ActiveActiveReplicationForHybridTest {
      */
     serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+    serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true);
     serverProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
     serverProperties.put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
     serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, true);
