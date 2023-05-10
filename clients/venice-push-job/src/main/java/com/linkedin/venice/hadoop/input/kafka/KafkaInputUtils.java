@@ -20,6 +20,7 @@ import java.nio.ByteBuffer;
 import java.util.Properties;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 
 
 public class KafkaInputUtils {
@@ -47,7 +48,7 @@ public class KafkaInputUtils {
      * Use a large receive buffer size: 4MB since Kafka re-push could consume remotely.
      */
     consumerFactoryProperties.setProperty(CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
-    consumerFactoryProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
+    consumerFactoryProperties.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
 
     return new VeniceProperties(consumerFactoryProperties);
   }
