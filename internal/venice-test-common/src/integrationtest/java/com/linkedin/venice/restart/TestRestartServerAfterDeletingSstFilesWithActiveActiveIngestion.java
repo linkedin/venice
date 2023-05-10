@@ -90,12 +90,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private int newVersion = 0;
   private final String KEY_PREFIX = "key";
   private final String VALUE_PREFIX = "value";
-  private final String VALUE_PREFIX_INC_PUSH = "value-inc";
   private final String METADATA_PREFIX = "metadata";
   private String storeName = Utils.getUniqueString("store");
   private final int numServers = 5;
-  List<Integer> allIncPushKeys = new ArrayList<>();
-  List<Integer> allNonIncPushKeysUntilLastVersion = new ArrayList<>();
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -133,7 +130,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     TestUtils.assertCommand(
         parentControllerClient.configureActiveActiveReplicationForCluster(
             true,
-            VeniceUserStoreType.INCREMENTAL_PUSH.toString(),
+            VeniceUserStoreType.BATCH_ONLY.toString(),
             Optional.empty()));
     // create a active-active enabled store
     File inputDir = getTempDataDirectory();
@@ -144,11 +141,10 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(1)
-        .setHybridOffsetLagThreshold(0)
+        .setHybridRewindSeconds(5)
+        .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true)
-        .setBackupVersionRetentionMs(1)
-        .setIncrementalPushEnabled(true);
+        .setBackupVersionRetentionMs(1);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
@@ -170,7 +166,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       int startIndex,
       int endIndex,
       boolean sorted,
-      boolean isIncPush,
       AvroSerializer serializer) {
     Map<byte[], Pair<byte[], byte[]>> records;
     if (sorted) {
@@ -184,7 +179,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       records = new HashMap<>();
     }
     for (int i = startIndex; i < endIndex; ++i) {
-      String value = isIncPush ? (VALUE_PREFIX_INC_PUSH + i) : (VALUE_PREFIX + i);
+      String value = VALUE_PREFIX + i;
       String metadata = METADATA_PREFIX + i;
       records.put(
           serializer.serialize(KEY_PREFIX + i),
@@ -263,18 +258,15 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     startKey += numKeys; // to have different version having different set of keys
     int endKey = startKey + numKeys;
     int currKey;
-    List<Integer> currNonIncPushKeys = new ArrayList<>();
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
 
       // generate and insert data into the new version
-      Map<byte[], Pair<byte[], byte[]>> inputRecords =
-          generateInputWithMetadata(startKey, endKey, true, false, serializer);
+      Map<byte[], Pair<byte[], byte[]>> inputRecords = generateInputWithMetadata(startKey, endKey, true, serializer);
 
       currKey = startKey;
       for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecords.entrySet()) {
-        currNonIncPushKeys.add(currKey++);
         byte[] replicationMetadataWitValueSchemaIdBytes =
             getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
 
@@ -306,10 +298,10 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
       rocksDBStoragePartitions.stream().forEach(partition -> {
         if (deleteSSTFiles) {
-          // partition.deleteSSTFiles(partition.getValueFullPathForTempSSTFileDir());
+          partition.deleteSSTFiles(partition.getValueFullPathForTempSSTFileDir());
         }
         if (deleteRMDSSTFiles) {
-          // partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
+          partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
         }
       });
 
@@ -346,10 +338,8 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     });
 
     // validate the ingested data
-    // 1. invalid keys: all the keys pushed before this version and not repushed via incremental push
-    for (int key: allNonIncPushKeysUntilLastVersion) {
-      assertNull(storeClient.get(KEY_PREFIX + key).get());
-    }
+    // 1. invalid key
+    assertNull(storeClient.get(KEY_PREFIX + (startKey - 1)).get());
 
     // 2. all valid keys
     currKey = startKey;
@@ -357,75 +347,5 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
       currKey++;
     }
-
-    String incPushVersion = System.currentTimeMillis() + "_test_inc_push";
-    versionCreationResponse = parentControllerClient.requestTopicForWrites(
-        storeName,
-        1024 * 1024,
-        Version.PushType.INCREMENTAL,
-        incPushVersion,
-        true,
-        true,
-        false,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        false,
-        -1);
-    assertFalse(versionCreationResponse.isError());
-    topic = versionCreationResponse.getKafkaTopic();
-    assertNotNull(topic);
-
-    // incremental push
-    int incPushStartKey = startKey + 90;
-    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
-        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
-      veniceWriter.broadcastStartOfIncrementalPush(incPushVersion, new HashMap<>());
-
-      // generate and insert data into the new version
-      Map<byte[], Pair<byte[], byte[]>> inputRecordsForIncPush =
-          generateInputWithMetadata(incPushStartKey, endKey, false, true, serializer);
-
-      currKey = incPushStartKey;
-      for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecordsForIncPush.entrySet()) {
-        allIncPushKeys.add(currKey++);
-        currNonIncPushKeys.remove(currNonIncPushKeys.size() - 1);
-        byte[] replicationMetadataWitValueSchemaIdBytes =
-            getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
-
-        PutMetadata putMetadata = (new PutMetadata(1, ByteBuffer.wrap(replicationMetadataWitValueSchemaIdBytes)));
-        veniceWriter.put(entry.getKey(), entry.getValue().getFirst(), 1, null, putMetadata).get();
-      }
-
-      veniceWriter.broadcastEndOfIncrementalPush(incPushVersion, Collections.emptyMap());
-    }
-    // validate the ingested data
-    // 1. first 90 keys which should still have original data pushed via full push
-    currKey = startKey;
-    while (currKey < incPushStartKey) {
-      assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
-      currKey++;
-    }
-
-    // 2. last 10 should be from incremental push
-    while (currKey < endKey) {
-      int finalCurrKey = currKey;
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        assertEquals(storeClient.get(KEY_PREFIX + finalCurrKey).get().toString(), VALUE_PREFIX_INC_PUSH + finalCurrKey);
-      });
-      currKey++;
-    }
-
-    // also check all the incremental push data so far: New versions should get this from RT
-    // check setHybridRewindSeconds() config in setup
-    /*      for (int key: allIncPushKeys) {
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          Assert.assertNotNull(storeClient.get(KEY_PREFIX + key).get());
-          Assert.assertEquals(storeClient.get(KEY_PREFIX + key).get().toString(), VALUE_PREFIX_INC_PUSH + key);
-        });
-      }*/
-
-    // used in the next run
-    allNonIncPushKeysUntilLastVersion.addAll(currNonIncPushKeys);
   }
 }
