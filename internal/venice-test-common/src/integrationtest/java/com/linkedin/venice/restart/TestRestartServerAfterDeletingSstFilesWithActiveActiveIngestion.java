@@ -10,6 +10,10 @@ import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFA
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.storage.StorageService;
@@ -66,7 +70,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -92,7 +95,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private String storeName = Utils.getUniqueString("store");
   private final int numServers = 5;
   List<Integer> allIncPushKeys = new ArrayList<>();
-  List<Integer> allNonIncPushKeys = new ArrayList<>();
+  List<Integer> allNonIncPushKeysUntilLastVersion = new ArrayList<>();
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -215,14 +218,14 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
           break;
         }
       }
-      Assert.assertFalse(i == numServers);
+      assertFalse(i == numServers);
     });
 
     TestVeniceServer testVeniceServer = serverWrapper.getVeniceServer();
     StorageService storageService = testVeniceServer.getStorageService();
     RocksDBStorageEngine rocksDBStorageEngine =
         (RocksDBStorageEngine) storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
-    Assert.assertNotNull(rocksDBStorageEngine);
+    assertNotNull(rocksDBStorageEngine);
 
     rocksDBStoragePartitions.clear();
     rocksDBStoragePartitions
@@ -250,7 +253,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
             -1));
 
     int versionToBePushed = versionCreationResponse.getVersion();
-    Assert.assertEquals(newVersion + 1, versionToBePushed);
+    assertEquals(newVersion + 1, versionToBePushed);
     newVersion = versionToBePushed;
 
     String topic = versionCreationResponse.getKafkaTopic();
@@ -280,10 +283,11 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       }
 
       List<ReplicationMetadataRocksDBStoragePartition> rocksDBStoragePartitions = new ArrayList<>();
+      String finalTopic = topic;
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        getPartitionForTopic(topic, rocksDBStoragePartitions);
-        Assert.assertNotNull(rocksDBStoragePartitions.get(0).getValueRocksDBSstFileWriter());
-        Assert.assertNotNull(rocksDBStoragePartitions.get(0).getRocksDBSstFileWriter());
+        getPartitionForTopic(finalTopic, rocksDBStoragePartitions);
+        assertNotNull(rocksDBStoragePartitions.get(0).getValueRocksDBSstFileWriter());
+        assertNotNull(rocksDBStoragePartitions.get(0).getRocksDBSstFileWriter());
       });
 
       // 2. verify the total number of records ingested
@@ -294,18 +298,18 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
           totalIngestedKeys.addAndGet((int) partition.getValueRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
           totalIngestedRMDKeys.addAndGet((int) partition.getRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
         });
-        Assert.assertEquals(totalIngestedKeys.get(), numKeys);
-        Assert.assertEquals(totalIngestedRMDKeys.get(), numKeys);
+        assertEquals(totalIngestedKeys.get(), numKeys);
+        assertEquals(totalIngestedRMDKeys.get(), numKeys);
       });
 
       // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
       LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
       rocksDBStoragePartitions.stream().forEach(partition -> {
         if (deleteSSTFiles) {
-          partition.deleteSSTFiles(partition.getValueFullPathForTempSSTFileDir());
+          // partition.deleteSSTFiles(partition.getValueFullPathForTempSSTFileDir());
         }
         if (deleteRMDSSTFiles) {
-          partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
+          // partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
         }
       });
 
@@ -319,7 +323,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     // Wait for push to be push completed.
     String finalTopic1 = topic;
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      Assert.assertEquals(
+      assertEquals(
           clusterWrapper.getLeaderVeniceController()
               .getVeniceAdmin()
               .getOffLinePushStatus(clusterWrapper.getClusterName(), finalTopic1)
@@ -343,18 +347,17 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
 
     // validate the ingested data
     // 1. invalid keys: all the keys pushed before this version and not repushed via incremental push
-    for (int key: allNonIncPushKeys) {
-      Assert.assertNull(storeClient.get(KEY_PREFIX + key).get());
+    for (int key: allNonIncPushKeysUntilLastVersion) {
+      assertNull(storeClient.get(KEY_PREFIX + key).get());
     }
 
     // 2. all valid keys
     currKey = startKey;
     while (currKey < endKey) {
-      Assert.assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
+      assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
       currKey++;
     }
 
-    /*
     String incPushVersion = System.currentTimeMillis() + "_test_inc_push";
     versionCreationResponse = parentControllerClient.requestTopicForWrites(
         storeName,
@@ -371,49 +374,47 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         -1);
     assertFalse(versionCreationResponse.isError());
     topic = versionCreationResponse.getKafkaTopic();
-    Assert.assertNotNull(topic);
-    
+    assertNotNull(topic);
+
     // incremental push
     int incPushStartKey = startKey + 90;
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
       veniceWriter.broadcastStartOfIncrementalPush(incPushVersion, new HashMap<>());
-    
+
       // generate and insert data into the new version
       Map<byte[], Pair<byte[], byte[]>> inputRecordsForIncPush =
           generateInputWithMetadata(incPushStartKey, endKey, false, true, serializer);
-    
+
       currKey = incPushStartKey;
-      for (Map.Entry<byte[], Pair<byte[], byte[]>> entry : inputRecordsForIncPush.entrySet()) {
+      for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecordsForIncPush.entrySet()) {
         allIncPushKeys.add(currKey++);
         currNonIncPushKeys.remove(currNonIncPushKeys.size() - 1);
         byte[] replicationMetadataWitValueSchemaIdBytes =
             getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
-    
+
         PutMetadata putMetadata = (new PutMetadata(1, ByteBuffer.wrap(replicationMetadataWitValueSchemaIdBytes)));
         veniceWriter.put(entry.getKey(), entry.getValue().getFirst(), 1, null, putMetadata).get();
       }
-    
+
       veniceWriter.broadcastEndOfIncrementalPush(incPushVersion, Collections.emptyMap());
     }
-      // validate the ingested data
-      // 1. first 90 keys which should still have original data pushed via full push
-      currKey = startKey;
-      while (currKey < incPushStartKey) {
-        Assert.assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
-        currKey++;
-      }
-    
-      // 2. last 10 should be from incremental push
-      while (currKey < endKey) {
-        int finalCurrKey = currKey;
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          Assert.assertEquals(
-              storeClient.get(KEY_PREFIX + finalCurrKey).get().toString(),
-              VALUE_PREFIX_INC_PUSH + finalCurrKey);
-        });
-        currKey++;
-      }*/
+    // validate the ingested data
+    // 1. first 90 keys which should still have original data pushed via full push
+    currKey = startKey;
+    while (currKey < incPushStartKey) {
+      assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
+      currKey++;
+    }
+
+    // 2. last 10 should be from incremental push
+    while (currKey < endKey) {
+      int finalCurrKey = currKey;
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        assertEquals(storeClient.get(KEY_PREFIX + finalCurrKey).get().toString(), VALUE_PREFIX_INC_PUSH + finalCurrKey);
+      });
+      currKey++;
+    }
 
     // also check all the incremental push data so far: New versions should get this from RT
     // check setHybridRewindSeconds() config in setup
@@ -425,6 +426,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       }*/
 
     // used in the next run
-    allNonIncPushKeys.addAll(currNonIncPushKeys);
+    allNonIncPushKeysUntilLastVersion.addAll(currNonIncPushKeys);
   }
 }
