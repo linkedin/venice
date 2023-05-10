@@ -19,6 +19,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandlerContext;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
@@ -642,7 +643,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
     }
 
     @Override
-    public ByteBuf getContentInByteBuf(boolean userPooledBuffer) throws IOException {
+    public ByteBuf getContentInByteBuf(boolean userPooledBuffer, ChannelHandlerContext ctx) throws IOException {
       byte[] contentToByte;
       try (InputStream contentStream = httpResponse.getEntity().getContent()) {
         contentToByte = IOUtils.toByteArray(contentStream);

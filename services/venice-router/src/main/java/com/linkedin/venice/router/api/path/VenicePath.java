@@ -62,6 +62,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   private long requestId = -1;
   private int helixGroupId = -1;
 
+  private ChannelHandlerContext ctx;
+
   public VenicePath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
     this(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, new SystemTime());
   }
@@ -77,6 +79,14 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     this.smartLongTailRetryEnabled = smartLongTailRetryEnabled;
     this.smartLongTailRetryAbortThresholdMs = smartLongTailRetryAbortThresholdMs;
     this.time = time;
+  }
+
+  public void setChannelHandlerContext(ChannelHandlerContext ctx) {
+    this.ctx = ctx;
+  }
+
+  public ChannelHandlerContext getChannelHandlerContext() {
+    return this.ctx;
   }
 
   public synchronized long getRequestId() {

@@ -1,5 +1,7 @@
 package com.linkedin.alpini.router.impl.netty4;
 
+import static com.linkedin.alpini.base.safealloc.SafeAllocator.POOLED_ALLOCATOR;
+
 import com.linkedin.alpini.base.concurrency.AsyncFuture;
 import com.linkedin.alpini.base.concurrency.AsyncPromise;
 import com.linkedin.alpini.base.misc.ImmutableMapEntry;
@@ -132,7 +134,8 @@ public class Router4Impl<C extends Channel> implements Router, ResourceRegistry.
 
     _bootstrapInitializer = () -> {
       ServerBootstrap bootstrap = new ServerBootstrap().channel(Objects.requireNonNull(channelClass, "channelClass"))
-          .group(bossPool, workerPool);
+          .group(bossPool, workerPool)
+          .childOption(ChannelOption.ALLOCATOR, POOLED_ALLOCATOR);
 
       for (Map.Entry<String, Object> entry: Optional.ofNullable(serverSocketOptions)
           .orElse(Collections.emptyMap())

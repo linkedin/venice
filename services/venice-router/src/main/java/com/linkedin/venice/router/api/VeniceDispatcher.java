@@ -272,13 +272,16 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
     int statusCode = serverResponse.getStatusCode();
 
     if (PASS_THROUGH_ERROR_CODES.contains(statusCode)) {
-      return buildPlainTextResponse(HttpResponseStatus.valueOf(statusCode), serverResponse.getContentInByteBuf(false));
+      return buildPlainTextResponse(
+          HttpResponseStatus.valueOf(statusCode),
+          serverResponse.getContentInByteBuf(false, null));
     }
 
     CompressionStrategy contentCompression =
         VeniceResponseDecompressor.getCompressionStrategy(serverResponse.getFirstHeader(VENICE_COMPRESSION_STRATEGY));
 
-    ByteBuf content = serverResponse.getContentInByteBuf(contentCompression == CompressionStrategy.NO_OP);
+    ByteBuf content = serverResponse
+        .getContentInByteBuf(contentCompression == CompressionStrategy.NO_OP, path.getChannelHandlerContext());
 
     long decompressionTimeInNs = 0;
     if (statusCode != HttpStatus.SC_OK && statusCode != HttpStatus.SC_NOT_FOUND) {

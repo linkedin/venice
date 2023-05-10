@@ -145,7 +145,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
 
       Optional<RouterStats<AggRouterHttpRequestStats>> statsOptional =
           routerConfig.isKeyValueProfilingEnabled() ? Optional.of(routerStats) : Optional.empty();
-
+      ChannelHandlerContext ctx =
+          fullHttpRequest.attr(VeniceChunkedWriteHandler.CHANNEL_HANDLER_CONTEXT_ATTRIBUTE_KEY).get();
       String method = fullHttpRequest.method().name();
       if (VeniceRouterUtils.isHttpGet(method)) {
         // single-get request
@@ -195,8 +196,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           // Extract ChunkedWriteHandler reference
           VeniceChunkedWriteHandler chunkedWriteHandler =
               fullHttpRequest.attr(VeniceChunkedWriteHandler.CHUNKED_WRITE_HANDLER_ATTRIBUTE_KEY).get();
-          ChannelHandlerContext ctx =
-              fullHttpRequest.attr(VeniceChunkedWriteHandler.CHANNEL_HANDLER_CONTEXT_ATTRIBUTE_KEY).get();
+
           /**
            * If the streaming is disabled on Router, the following objects will be null since {@link VeniceChunkedWriteHandler}
            * won't be in the pipeline when streaming is disabled, check {@link RouterServer#addStreamingHandler} for more
@@ -232,7 +232,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           version,
           compressorFactory);
       path.setResponseDecompressor(responseDecompressor);
-
+      path.setChannelHandlerContext(ctx);
       AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
       if (!requestType.equals(SINGLE_GET)) {
         /**

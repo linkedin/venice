@@ -163,6 +163,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
         getLongTailRetryMaxRouteForMultiKeyReq());
     subPath.setupRetryRelatedInfo(this);
     subPath.setValueSchemaId(this.getValueSchemaId());
+    subPath.setChannelHandlerContext(this.getChannelHandlerContext());
     return subPath;
   }
 

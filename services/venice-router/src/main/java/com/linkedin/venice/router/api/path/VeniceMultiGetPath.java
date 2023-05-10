@@ -173,6 +173,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
         getSmartLongTailRetryAbortThresholdMs(),
         getLongTailRetryMaxRouteForMultiKeyReq());
     subPath.setupRetryRelatedInfo(this);
+    subPath.setChannelHandlerContext(this.getChannelHandlerContext());
     return subPath;
   }
 
