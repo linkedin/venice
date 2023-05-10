@@ -230,7 +230,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
 
   @Override
   public synchronized void drop() {
-    super.deleteSSTFiles(fullPathForTempSSTFileDir);
+    super.deleteFilesInDirectory(fullPathForTempSSTFileDir);
     super.drop();
   }
 

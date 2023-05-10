@@ -265,7 +265,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       // generate and insert data into the new version
       Map<byte[], Pair<byte[], byte[]>> inputRecords = generateInputWithMetadata(startKey, endKey, true, serializer);
 
-      currKey = startKey;
       for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecords.entrySet()) {
         byte[] replicationMetadataWitValueSchemaIdBytes =
             getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
@@ -298,10 +297,10 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
       rocksDBStoragePartitions.stream().forEach(partition -> {
         if (deleteSSTFiles) {
-          partition.deleteSSTFiles(partition.getValueFullPathForTempSSTFileDir());
+          partition.deleteFilesInDirectory(partition.getValueFullPathForTempSSTFileDir());
         }
         if (deleteRMDSSTFiles) {
-          partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
+          partition.deleteFilesInDirectory(partition.getFullPathForTempSSTFileDir());
         }
       });
 
@@ -339,7 +338,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
 
     // validate the ingested data
     // 1. invalid key
-    assertNull(storeClient.get(KEY_PREFIX + (startKey - 1)).get());
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertNull(storeClient.get(KEY_PREFIX + (startKey - 1)).get());
+    });
 
     // 2. all valid keys
     currKey = startKey;

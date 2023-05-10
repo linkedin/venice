@@ -587,10 +587,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return rocksDBSstFileWriter.sync();
   }
 
-  private void deleteFilesInAGivenDirectory(String fullPath) {
+  public void deleteFilesInDirectory(String fullPath) {
     File dir = new File(fullPath);
     if (dir.exists()) {
-      // Remove the files inside first
+      // Remove the files inside
       Arrays.stream(dir.list()).forEach(file -> {
         if (!(new File(fullPath, file).delete())) {
           LOGGER.warn("Failed to remove file: {} in dir: {}", file, fullPath);
@@ -599,8 +599,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
-  private void deleteDirectoryAndItsFiles(String fullPath) {
-    deleteFilesInAGivenDirectory(fullPath);
+  private void deleteDirectory(String fullPath) {
+    // Remove the files inside the directory
+    deleteFilesInDirectory(fullPath);
+    // Remove the directory
     File dir = new File(fullPath);
     if (dir.exists()) {
       // Remove file directory
@@ -608,14 +610,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         LOGGER.warn("Failed to remove dir: {}", fullPath);
       }
     }
-  }
-
-  public void deleteSSTFiles(String fullPathForTempSSTFileDir) {
-    deleteFilesInAGivenDirectory(fullPathForTempSSTFileDir);
-  }
-
-  private void deleteDBDirectory(String dBFullPath) {
-    deleteDirectoryAndItsFiles(dBFullPath);
   }
 
   @Override
@@ -632,9 +626,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * To avoid resource leaking, we will clean up all the database files anyway.
      */
     // Remove extra SST files first
-    deleteSSTFiles(fullPathForTempSSTFileDir);
+    deleteFilesInDirectory(fullPathForTempSSTFileDir);
     // Remove partition directory
-    deleteDBDirectory(fullPathForPartitionDB);
+    deleteDirectory(fullPathForPartitionDB);
     LOGGER.info("RocksDB for store: {}, partition: {} was dropped.", storeName, partitionId);
   }
 

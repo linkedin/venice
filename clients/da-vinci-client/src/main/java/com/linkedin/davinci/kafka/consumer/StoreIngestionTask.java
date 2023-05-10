@@ -585,8 +585,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     /**
-     * Creating a runnable that sets isRestartIngestionRequired to not leak
-     * partitionConsumptionState out of StoreIngestionTask
+     * Creating a runnable to set partitionConsumptionState.restartRequired
+     * to not leak partitionConsumptionState out of StoreIngestionTask
       */
     AtomicBoolean isRestartIngestionRequired = new AtomicBoolean(false);
     Runnable updateRestartIngestionFlag = () -> {

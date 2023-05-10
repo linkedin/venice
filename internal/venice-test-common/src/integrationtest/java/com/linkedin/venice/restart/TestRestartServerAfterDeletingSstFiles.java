@@ -182,7 +182,7 @@ public class TestRestartServerAfterDeletingSstFiles {
     // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
     LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
     rocksDBStoragePartitions.stream().forEach(partition -> {
-      partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
+      partition.deleteFilesInDirectory(partition.getFullPathForTempSSTFileDir());
     });
 
     // restart the venice servers: Mimic Process crash and restart after ingestExternalFile()
