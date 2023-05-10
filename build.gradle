@@ -16,6 +16,7 @@ plugins {
   id 'com.github.spotbugs' version '4.8.0' apply false
   id 'org.gradle.test-retry' version '1.5.0' apply false
   id 'com.form.diff-coverage' version '0.9.5' apply false
+  id 'me.champeau.jmh' version '0.6.7' apply false
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -78,8 +79,6 @@ ext.libraries = [
     javax: 'javax.servlet:javax.servlet-api:3.1.0',
     javaxActivation: 'com.sun.activation:javax.activation:1.2.0',
     jdom: 'org.jdom:jdom:1.1',
-    jmhCore: 'org.openjdk.jmh:jmh-core:1.28',
-    jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28',
     jna: 'net.java.dev.jna:jna:4.5.1',
     jsr305: 'com.google.code.findbugs:jsr305:3.0.2',
     joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',

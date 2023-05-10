@@ -27,7 +27,6 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.compression.NoopCompressor;
@@ -790,17 +789,6 @@ public class TestUtils {
     executor.shutdown();
     executor.shutdownNow();
     Assert.assertTrue(executor.awaitTermination(timeout, unit));
-  }
-
-  public static void createMetaSystemStore(
-      ControllerClient controllerClient,
-      String storeName,
-      Optional<Logger> logger) {
-    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VersionCreationResponse response =
-        assertCommand(controllerClient.emptyPush(metaSystemStoreName, "testEmptyPush", 1234321));
-    TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), controllerClient, 1, TimeUnit.MINUTES);
-    logger.ifPresent(value -> value.info("System store " + metaSystemStoreName + " is created."));
   }
 
   public static void addIngestionIsolationToProperties(Properties properties) {

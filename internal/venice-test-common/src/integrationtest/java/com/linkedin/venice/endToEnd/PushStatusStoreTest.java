@@ -107,7 +107,7 @@ public class PushStatusStoreTest {
     String owner = "test";
     // set up push status store
     TestUtils.assertCommand(controllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, "\"string\""));
-    TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(LOGGER));
+    cluster.createMetaSystemStore(storeName);
     TestUtils.assertCommand(
         controllerClient.updateStore(
             storeName,
