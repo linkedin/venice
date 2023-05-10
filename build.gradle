@@ -96,7 +96,7 @@ ext.libraries = [
     oss: 'org.sonatype.oss:oss-parent:7',
     r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
     restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
-    rocksdbjni: 'org.rocksdb:rocksdbjni:7.0.3',
+    rocksdbjni: 'org.rocksdb:rocksdbjni:7.9.2',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4',
