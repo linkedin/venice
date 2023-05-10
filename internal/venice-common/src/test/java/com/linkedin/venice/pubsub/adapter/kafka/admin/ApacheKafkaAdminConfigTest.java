@@ -32,6 +32,14 @@ public class ApacheKafkaAdminConfigTest {
     properties.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     properties.put("kafka.sasl.mechanism", SASL_MECHANISM);
     properties.put("kafka.security.protocol", securityProtocol.name);
+    if (securityProtocol.name.contains("SSL")) {
+      properties.put("ssl.truststore.location", "-");
+      properties.put("ssl.truststore.password", "");
+      properties.put("ssl.truststore.type", "JKS");
+      properties.put("ssl.keymanager.algorithm", SslConfigs.DEFAULT_SSL_KEYMANGER_ALGORITHM);
+      properties.put("ssl.trustmanager.algorithm", SslConfigs.DEFAULT_SSL_TRUSTMANAGER_ALGORITHM);
+      properties.put("ssl.secure.random.implementation", "SHA1PRNG");
+    }
     VeniceProperties veniceProperties = new VeniceProperties(properties);
     ApacheKafkaAdminConfig serverConfig = new ApacheKafkaAdminConfig(veniceProperties);
     Properties adminProperties = serverConfig.getAdminProperties();

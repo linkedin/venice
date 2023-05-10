@@ -11,6 +11,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -20,7 +21,6 @@ import java.nio.ByteBuffer;
 import java.util.Properties;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 
 
 public class KafkaInputUtils {
@@ -48,7 +48,9 @@ public class KafkaInputUtils {
      * Use a large receive buffer size: 4MB since Kafka re-push could consume remotely.
      */
     consumerFactoryProperties.setProperty(CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
-    consumerFactoryProperties.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
+    consumerFactoryProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
+
+    ApacheKafkaProducerConfig.copyKafkaSASLProperties(config::get, consumerFactoryProperties);
 
     return new VeniceProperties(consumerFactoryProperties);
   }
