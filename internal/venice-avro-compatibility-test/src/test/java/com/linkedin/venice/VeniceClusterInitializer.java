@@ -6,8 +6,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -95,38 +93,26 @@ public class VeniceClusterInitializer implements Closeable {
     this.storeName = storeName;
     // Create test store
     this.controllerClient = this.veniceCluster.getControllerClient();
-    NewStoreResponse newStoreResponse =
-        controllerClient.createNewStore(storeName, "test_owner", KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
-    if (newStoreResponse.isError()) {
-      throw new VeniceException(
-          "Failed to create the store: " + storeName + ", and the error: " + newStoreResponse.getError());
-    }
-    TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(LOGGER));
+    TestUtils.assertCommand(controllerClient.createNewStore(storeName, "test_owner", KEY_SCHEMA_STR, VALUE_SCHEMA_STR));
+    this.veniceCluster.createMetaSystemStore(storeName);
     // Enable read compute
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);
-    ControllerResponse updateStoreResponse = controllerClient.updateStore(storeName, params);
-    if (updateStoreResponse.isError()) {
-      throw new VeniceException(
-          "Failed to update store: " + storeName + ", and the error: " + updateStoreResponse.getError());
-    }
-    VersionCreationResponse newVersion = controllerClient.requestTopicForWrites(
-        storeName,
-        10240000,
-        Version.PushType.BATCH,
-        Version.guidBasedDummyPushId(),
-        true,
-        false,
-        false,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        false,
-        -1);
-    if (newVersion.isError()) {
-      throw new VeniceException(
-          "Failed to create a new version for store: " + storeName + ", and error is: " + newVersion.getError());
-    }
+    TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
+    VersionCreationResponse newVersion = TestUtils.assertCommand(
+        controllerClient.requestTopicForWrites(
+            storeName,
+            10240000,
+            Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(),
+            true,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1));
     this.pushVersion = newVersion.getVersion();
     this.pushVersionTopic = newVersion.getKafkaTopic();
     this.valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;

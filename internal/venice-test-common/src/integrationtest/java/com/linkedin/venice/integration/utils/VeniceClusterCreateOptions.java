@@ -1,7 +1,9 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_DELAYED_TO_REBALANCE_MS;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_CONTROLLERS;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_ROUTERS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_SERVERS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
@@ -25,6 +27,8 @@ public class VeniceClusterCreateOptions {
   private final int numberOfRouters;
   private final int replicationFactor;
   private final int partitionSize;
+  private final int numberOfPartitions;
+  private final int maxNumberOfPartitions;
   private final int minActiveReplica;
   private final long rebalanceDelayMs;
   private final boolean standalone;
@@ -49,6 +53,8 @@ public class VeniceClusterCreateOptions {
     this.numberOfRouters = builder.numberOfRouters;
     this.replicationFactor = builder.replicationFactor;
     this.partitionSize = builder.partitionSize;
+    this.numberOfPartitions = builder.numberOfPartitions;
+    this.maxNumberOfPartitions = builder.maxNumberOfPartitions;
     this.minActiveReplica = builder.minActiveReplica;
     this.rebalanceDelayMs = builder.rebalanceDelayMs;
     this.standalone = builder.standalone;
@@ -98,6 +104,14 @@ public class VeniceClusterCreateOptions {
 
   public int getPartitionSize() {
     return partitionSize;
+  }
+
+  public int getNumberOfPartitions() {
+    return numberOfPartitions;
+  }
+
+  public int getMaxNumberOfPartitions() {
+    return maxNumberOfPartitions;
   }
 
   public int getMinActiveReplica() {
@@ -182,6 +196,12 @@ public class VeniceClusterCreateOptions {
         .append("partitionSize:")
         .append(partitionSize)
         .append(", ")
+        .append("numberOfPartitions:")
+        .append(numberOfPartitions)
+        .append(", ")
+        .append("maxNumberOfPartitions:")
+        .append(maxNumberOfPartitions)
+        .append(", ")
         .append("minActiveReplica:")
         .append(minActiveReplica)
         .append(", ")
@@ -233,6 +253,8 @@ public class VeniceClusterCreateOptions {
     private int numberOfRouters = DEFAULT_NUMBER_OF_ROUTERS;
     private int replicationFactor = DEFAULT_REPLICATION_FACTOR;
     private int partitionSize = DEFAULT_PARTITION_SIZE_BYTES;
+    private int numberOfPartitions = DEFAULT_NUMBER_OF_PARTITIONS;
+    private int maxNumberOfPartitions = DEFAULT_MAX_NUMBER_OF_PARTITIONS;
     private int minActiveReplica;
     private long rebalanceDelayMs = DEFAULT_DELAYED_TO_REBALANCE_MS;
     private boolean standalone = true; // set to false for multi-cluster
@@ -290,6 +312,16 @@ public class VeniceClusterCreateOptions {
 
     public Builder partitionSize(int partitionSize) {
       this.partitionSize = partitionSize;
+      return this;
+    }
+
+    public Builder numberOfPartitions(int numberOfPartitions) {
+      this.numberOfPartitions = numberOfPartitions;
+      return this;
+    }
+
+    public Builder maxNumberOfPartitions(int maxNumberOfPartitions) {
+      this.maxNumberOfPartitions = maxNumberOfPartitions;
       return this;
     }
 

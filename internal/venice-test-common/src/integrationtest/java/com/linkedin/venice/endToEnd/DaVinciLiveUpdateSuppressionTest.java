@@ -14,7 +14,6 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -93,13 +92,9 @@ public class DaVinciLiveUpdateSuppressionTest {
   public void testLiveUpdateSuppression(IngestionMode ingestionMode) throws Exception {
     final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
-      NewStoreResponse response =
-          client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
-      if (response.isError()) {
-        throw new VeniceException(response.getError());
-      }
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-      // Update to hybrid store
+      TestUtils.assertCommand(
+          client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA));
+      cluster.createMetaSystemStore(storeName);
       client.updateStore(
           storeName,
           new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10));
