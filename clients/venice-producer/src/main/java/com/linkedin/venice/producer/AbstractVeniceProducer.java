@@ -142,7 +142,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   }
 
   // Visible for testing
-  VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(Properties properties, VeniceWriterOptions writerOptions) {
+  protected VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
+      Properties properties,
+      VeniceWriterOptions writerOptions) {
     return new VeniceWriterFactory(properties).createVeniceWriter(writerOptions);
   }
 
