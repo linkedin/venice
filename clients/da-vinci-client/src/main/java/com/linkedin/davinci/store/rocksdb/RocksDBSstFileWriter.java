@@ -293,7 +293,7 @@ public class RocksDBSstFileWriter {
 
     if (currFileNo > lastFinishedSSTFileNo) {
       LOGGER.info(
-          "Number of {} files matches with the checkpoint for store: " + "{} partition: {}",
+          "Number of {} files matches with the checkpoint for store: {} partition: {}",
           isRMD ? "RMD SST" : "SST",
           storeName,
           partitionId);

@@ -61,7 +61,6 @@ import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -77,23 +76,23 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private static final Logger LOGGER =
       LogManager.getLogger(TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion.class);
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
-  private String clusterName;
   private VeniceClusterWrapper clusterWrapper;
   private VeniceServerWrapper serverWrapper;
+  private ControllerClient parentControllerClient;
   private AvroSerializer serializer;
+  AvroGenericStoreClient<String, Object> storeClient = null;
   private final int numKeys = 1000;
+  private int startKey = 0;
+  private int newVersion = 0;
   private final String KEY_PREFIX = "key";
   private final String VALUE_PREFIX = "value";
   private final String METADATA_PREFIX = "metadata";
+  private String storeName = Utils.getUniqueString("store");
+  private final int numServers = 3;
 
   @BeforeClass
-  public void setUp() {
+  public void setUp() throws Exception {
     String stringSchemaStr = "\"string\"";
     serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
     Properties serverProperties = new Properties();
@@ -109,7 +108,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         1,
         1,
         1,
-        1,
+        numServers,
         1,
         1,
         Optional.empty(),
@@ -117,14 +116,46 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-    clusterName = CLUSTER_NAMES[0];
+    List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    String clusterName = "venice-cluster0";
     clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);
+
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    TestUtils.assertCommand(
+        parentControllerClient.configureActiveActiveReplicationForCluster(
+            true,
+            VeniceUserStoreType.BATCH_ONLY.toString(),
+            Optional.empty()));
+    // create a active-active enabled store and run batch push job
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(5)
+        .setHybridOffsetLagThreshold(2)
+        .setNativeReplicationEnabled(true)
+        .setBackupVersionRetentionMs(1000); // delete the backup version as fast as possible to make space for the later
+                                            // versions
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+    storeClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
   }
 
   @AfterClass
   public void cleanUp() {
+    if (storeClient != null) {
+      storeClient.close();
+    }
+    parentControllerClient.disableAndDeleteStore(storeName);
     multiRegionMultiClusterWrapper.close();
     TestView.resetCounters();
   }
@@ -167,156 +198,145 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testActiveActiveStoreWithRMDAndRestartServer(boolean deleteSSTFiles, boolean deleteRMDSSTFiles)
       throws Exception {
-    // if (deleteSSTFiles == true && deleteRMDSSTFiles == false) return;
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
+    // Create a new version
+    VersionCreationResponse versionCreationResponse;
+    versionCreationResponse = TestUtils.assertCommand(
+        parentControllerClient.requestTopicForWrites(
+            storeName,
+            1024 * 1024,
+            Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(),
             true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
-            Optional.empty()));
-    // create a active-active enabled store and run batch push job
-    File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
-    String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
-    Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(5)
-        .setHybridOffsetLagThreshold(2)
-        .setNativeReplicationEnabled(true);
-    AvroGenericStoreClient<String, Object> storeClient = null;
-    try {
-      createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
-      // Create a new version
-      VersionCreationResponse versionCreationResponse;
-      versionCreationResponse = TestUtils.assertCommand(
-          parentControllerClient.requestTopicForWrites(
-              storeName,
-              1024 * 1024,
-              Version.PushType.BATCH,
-              Version.guidBasedDummyPushId(),
-              true,
-              true,
-              false,
-              Optional.empty(),
-              Optional.empty(),
-              Optional.empty(),
-              false,
-              -1));
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1));
 
-      String topic = versionCreationResponse.getKafkaTopic();
-      String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-      VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
-      try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
-          veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
-        veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
+    int versionToBePushed = versionCreationResponse.getVersion();
+    Assert.assertEquals(newVersion + 1, versionToBePushed);
+    newVersion = versionToBePushed;
 
-        /**
-         * Restart storage node during batch ingestion.
-         */
-        Map<byte[], Pair<byte[], byte[]>> inputRecords = generateInputWithMetadata(0, numKeys, true, serializer);
+    String topic = versionCreationResponse.getKafkaTopic();
+    String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
 
-        for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecords.entrySet()) {
+    startKey += numKeys; // to have different version having different set of keys
+    int endKey = startKey + numKeys;
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
+        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
+      veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
 
-          byte[] replicationMetadataWitValueSchemaIdBytes =
-              getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
+      // generate and insert data into the new version
+      Map<byte[], Pair<byte[], byte[]>> inputRecords = generateInputWithMetadata(startKey, endKey, true, serializer);
 
-          PutMetadata putMetadata = (new PutMetadata(1, ByteBuffer.wrap(replicationMetadataWitValueSchemaIdBytes)));
-          veniceWriter.put(entry.getKey(), entry.getValue().getFirst(), 1, null, putMetadata).get();
-        }
+      for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecords.entrySet()) {
 
-        serverWrapper = clusterWrapper.getVeniceServers().get(0);
-        TestVeniceServer testVeniceServer = serverWrapper.getVeniceServer();
-        StorageService storageService = testVeniceServer.getStorageService();
+        byte[] replicationMetadataWitValueSchemaIdBytes =
+            getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
 
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-          Assert.assertNotNull(
-              storageService.getStorageEngineRepository()
-                  .getLocalStorageEngine(versionCreationResponse.getKafkaTopic()));
-        });
-
-        RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) storageService.getStorageEngineRepository()
-            .getLocalStorageEngine(versionCreationResponse.getKafkaTopic());
-        List<ReplicationMetadataRocksDBStoragePartition> rocksDBStoragePartitions = new ArrayList<>();
-        rocksDBStoragePartitions
-            .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(0));
-
-        LOGGER.info("Waiting for the process to Finish ingesting all the data to sst files");
-        // 1. wait for rocksDBSstFileWriter to be opened
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-          rocksDBStoragePartitions.stream().forEach(partition -> {
-            Assert.assertNotNull(partition.getValueRocksDBSstFileWriter());
-            Assert.assertNotNull(partition.getRocksDBSstFileWriter());
-          });
-        });
-
-        // 2. verify the total number of records ingested
-        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-          AtomicInteger totalIngestedKeys = new AtomicInteger();
-          AtomicInteger totalIngestedRMDKeys = new AtomicInteger();
-          rocksDBStoragePartitions.stream().forEach(partition -> {
-            totalIngestedKeys.addAndGet((int) partition.getValueRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
-            totalIngestedRMDKeys.addAndGet((int) partition.getRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
-          });
-          Assert.assertEquals(totalIngestedKeys.get(), numKeys);
-          Assert.assertEquals(totalIngestedRMDKeys.get(), numKeys);
-        });
-
-        // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
-        LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
-        rocksDBStoragePartitions.stream().forEach(partition -> {
-          if (deleteSSTFiles) {
-            partition.deleteSSTFiles(partition.getValueFullPathForTempSSTFileDir());
-          }
-          if (deleteRMDSSTFiles) {
-            partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
-          }
-        });
-
-        // Restart server
-        clusterWrapper.stopVeniceServer(serverWrapper.getPort());
-        clusterWrapper.restartVeniceServer(serverWrapper.getPort());
-
-        veniceWriter.broadcastEndOfPush(Collections.emptyMap());
+        PutMetadata putMetadata = (new PutMetadata(1, ByteBuffer.wrap(replicationMetadataWitValueSchemaIdBytes)));
+        veniceWriter.put(entry.getKey(), entry.getValue().getFirst(), 1, null, putMetadata).get();
       }
 
-      // Wait for push to be push completed.
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        Assert.assertTrue(
-            clusterWrapper.getLeaderVeniceController()
-                .getVeniceAdmin()
-                .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
-                .getExecutionStatus()
-                .equals(ExecutionStatus.COMPLETED));
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+        int i;
+        for (i = 0; i < numServers; i++) {
+          serverWrapper = clusterWrapper.getVeniceServers().get(i);
+          if (serverWrapper.getVeniceServer()
+              .getStorageService()
+              .getStorageEngineRepository()
+              .getLocalStorageEngine(versionCreationResponse.getKafkaTopic()) != null) {
+            break;
+          }
+        }
+        Assert.assertFalse(i == numServers);
       });
 
-      // validate the data that was ingested properly
-      storeClient = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName)
-              .setVeniceURL(clusterWrapper.getRandomRouterURL())
-              .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+      TestVeniceServer testVeniceServer = serverWrapper.getVeniceServer();
+      StorageService storageService = testVeniceServer.getStorageService();
+      RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) storageService.getStorageEngineRepository()
+          .getLocalStorageEngine(versionCreationResponse.getKafkaTopic());
+      Assert.assertNotNull(rocksDBStorageEngine);
 
-      int currkey = 0;
-      int endKey = numKeys;
+      List<ReplicationMetadataRocksDBStoragePartition> rocksDBStoragePartitions = new ArrayList<>();
+      rocksDBStoragePartitions
+          .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(0));
 
-      // 1. invalid key
-      Assert.assertNull(storeClient.get(KEY_PREFIX + (currkey - 1)).get());
+      LOGGER.info("Waiting for the process to Finish ingesting all the data to sst files");
+      // 1. wait for rocksDBSstFileWriter to be opened
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        rocksDBStoragePartitions.stream().forEach(partition -> {
+          Assert.assertNotNull(partition.getValueRocksDBSstFileWriter());
+          Assert.assertNotNull(partition.getRocksDBSstFileWriter());
+        });
+      });
 
-      // 2. all valid keys
-      while (currkey < endKey) {
-        Assert.assertEquals(storeClient.get(KEY_PREFIX + currkey).get().toString(), VALUE_PREFIX + currkey);
-        currkey++;
-      }
-    } finally {
-      if (storeClient != null) {
-        storeClient.close();
-      }
-      parentControllerClient.disableAndDeleteStore(storeName);
+      // 2. verify the total number of records ingested
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+        AtomicInteger totalIngestedKeys = new AtomicInteger();
+        AtomicInteger totalIngestedRMDKeys = new AtomicInteger();
+        rocksDBStoragePartitions.stream().forEach(partition -> {
+          totalIngestedKeys.addAndGet((int) partition.getValueRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
+          totalIngestedRMDKeys.addAndGet((int) partition.getRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
+        });
+        Assert.assertEquals(totalIngestedKeys.get(), numKeys);
+        Assert.assertEquals(totalIngestedRMDKeys.get(), numKeys);
+      });
+
+      // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
+      LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
+      rocksDBStoragePartitions.stream().forEach(partition -> {
+        if (deleteSSTFiles) {
+          partition.deleteSSTFiles(partition.getValueFullPathForTempSSTFileDir());
+        }
+        if (deleteRMDSSTFiles) {
+          partition.deleteSSTFiles(partition.getFullPathForTempSSTFileDir());
+        }
+      });
+
+      // Restart server
+      clusterWrapper.stopVeniceServer(serverWrapper.getPort());
+      clusterWrapper.restartVeniceServer(serverWrapper.getPort());
+
+      veniceWriter.broadcastEndOfPush(Collections.emptyMap());
+    }
+
+    // Wait for push to be push completed.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Assert.assertTrue(
+          clusterWrapper.getLeaderVeniceController()
+              .getVeniceAdmin()
+              .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
+              .getExecutionStatus()
+              .equals(ExecutionStatus.COMPLETED));
+    });
+
+    // Wait for storage node to finish consuming, and new version to be activated
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      int currentVersion =
+          ControllerClient
+              .getStore(
+                  clusterWrapper.getLeaderVeniceController().getControllerUrl(),
+                  clusterWrapper.getClusterName(),
+                  storeName)
+              .getStore()
+              .getCurrentVersion();
+      LOGGER.info("currentVersion {}, pushVersion {}", currentVersion, newVersion);
+      return currentVersion == newVersion;
+    });
+
+    // validate the ingested data
+    // 1. invalid key
+    Assert.assertNull(storeClient.get(KEY_PREFIX + (startKey - 1)).get());
+
+    // 2. all valid keys
+    int currKey = startKey;
+    while (currKey < endKey) {
+      Assert.assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
+      currKey++;
     }
   }
 }
