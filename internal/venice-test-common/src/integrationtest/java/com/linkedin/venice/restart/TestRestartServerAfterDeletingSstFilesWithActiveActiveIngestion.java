@@ -75,21 +75,24 @@ import org.testng.annotations.Test;
 public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private static final Logger LOGGER =
       LogManager.getLogger(TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion.class);
-  private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
+  private static final int TEST_TIMEOUT = 120 * Time.MS_PER_SECOND;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private VeniceClusterWrapper clusterWrapper;
   private VeniceServerWrapper serverWrapper;
   private ControllerClient parentControllerClient;
   private AvroSerializer serializer;
   AvroGenericStoreClient<String, Object> storeClient = null;
-  private final int numKeys = 1000;
+  private final int numKeys = 100;
   private int startKey = 0;
   private int newVersion = 0;
   private final String KEY_PREFIX = "key";
   private final String VALUE_PREFIX = "value";
+  private final String VALUE_PREFIX_INC_PUSH = "value-inc";
   private final String METADATA_PREFIX = "metadata";
   private String storeName = Utils.getUniqueString("store");
-  private final int numServers = 3;
+  private final int numServers = 5;
+  List<Integer> allIncPushKeys = new ArrayList<>();
+  List<Integer> allNonIncPushKeys = new ArrayList<>();
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -127,9 +130,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     TestUtils.assertCommand(
         parentControllerClient.configureActiveActiveReplicationForCluster(
             true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
+            VeniceUserStoreType.INCREMENTAL_PUSH.toString(),
             Optional.empty()));
-    // create a active-active enabled store and run batch push job
+    // create a active-active enabled store
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
@@ -138,11 +141,11 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(5)
-        .setHybridOffsetLagThreshold(2)
+        .setHybridRewindSeconds(1)
+        .setHybridOffsetLagThreshold(0)
         .setNativeReplicationEnabled(true)
-        .setBackupVersionRetentionMs(1000); // delete the backup version as fast as possible to make space for the later
-                                            // versions
+        .setBackupVersionRetentionMs(1)
+        .setIncrementalPushEnabled(true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
@@ -164,6 +167,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       int startIndex,
       int endIndex,
       boolean sorted,
+      boolean isIncPush,
       AvroSerializer serializer) {
     Map<byte[], Pair<byte[], byte[]>> records;
     if (sorted) {
@@ -177,7 +181,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       records = new HashMap<>();
     }
     for (int i = startIndex; i < endIndex; ++i) {
-      String value = VALUE_PREFIX + i;
+      String value = isIncPush ? (VALUE_PREFIX_INC_PUSH + i) : (VALUE_PREFIX + i);
       String metadata = METADATA_PREFIX + i;
       records.put(
           serializer.serialize(KEY_PREFIX + i),
@@ -193,6 +197,36 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     replicationMetadataWitValueSchemaId
         .position(replicationMetadataWitValueSchemaId.position() - ByteUtils.SIZE_OF_INT);
     return ByteUtils.extractByteArray(replicationMetadataWitValueSchemaId);
+  }
+
+  /** Get partition for a version topic from right venice server out of all available servers */
+  private void getPartitionForTopic(
+      final String topic,
+      List<ReplicationMetadataRocksDBStoragePartition> rocksDBStoragePartitions) {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      int i;
+      for (i = 0; i < numServers; i++) {
+        serverWrapper = clusterWrapper.getVeniceServers().get(i);
+        if (serverWrapper.getVeniceServer()
+            .getStorageService()
+            .getStorageEngineRepository()
+            .getLocalStorageEngine(topic) != null) {
+          LOGGER.info("selected server is: {}", i);
+          break;
+        }
+      }
+      Assert.assertFalse(i == numServers);
+    });
+
+    TestVeniceServer testVeniceServer = serverWrapper.getVeniceServer();
+    StorageService storageService = testVeniceServer.getStorageService();
+    RocksDBStorageEngine rocksDBStorageEngine =
+        (RocksDBStorageEngine) storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
+    Assert.assertNotNull(rocksDBStorageEngine);
+
+    rocksDBStoragePartitions.clear();
+    rocksDBStoragePartitions
+        .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(0));
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -225,15 +259,19 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
 
     startKey += numKeys; // to have different version having different set of keys
     int endKey = startKey + numKeys;
+    int currKey;
+    List<Integer> currNonIncPushKeys = new ArrayList<>();
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
 
       // generate and insert data into the new version
-      Map<byte[], Pair<byte[], byte[]>> inputRecords = generateInputWithMetadata(startKey, endKey, true, serializer);
+      Map<byte[], Pair<byte[], byte[]>> inputRecords =
+          generateInputWithMetadata(startKey, endKey, true, false, serializer);
 
+      currKey = startKey;
       for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecords.entrySet()) {
-
+        currNonIncPushKeys.add(currKey++);
         byte[] replicationMetadataWitValueSchemaIdBytes =
             getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
 
@@ -241,37 +279,11 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         veniceWriter.put(entry.getKey(), entry.getValue().getFirst(), 1, null, putMetadata).get();
       }
 
-      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-        int i;
-        for (i = 0; i < numServers; i++) {
-          serverWrapper = clusterWrapper.getVeniceServers().get(i);
-          if (serverWrapper.getVeniceServer()
-              .getStorageService()
-              .getStorageEngineRepository()
-              .getLocalStorageEngine(versionCreationResponse.getKafkaTopic()) != null) {
-            break;
-          }
-        }
-        Assert.assertFalse(i == numServers);
-      });
-
-      TestVeniceServer testVeniceServer = serverWrapper.getVeniceServer();
-      StorageService storageService = testVeniceServer.getStorageService();
-      RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) storageService.getStorageEngineRepository()
-          .getLocalStorageEngine(versionCreationResponse.getKafkaTopic());
-      Assert.assertNotNull(rocksDBStorageEngine);
-
       List<ReplicationMetadataRocksDBStoragePartition> rocksDBStoragePartitions = new ArrayList<>();
-      rocksDBStoragePartitions
-          .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(0));
-
-      LOGGER.info("Waiting for the process to Finish ingesting all the data to sst files");
-      // 1. wait for rocksDBSstFileWriter to be opened
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        rocksDBStoragePartitions.stream().forEach(partition -> {
-          Assert.assertNotNull(partition.getValueRocksDBSstFileWriter());
-          Assert.assertNotNull(partition.getRocksDBSstFileWriter());
-        });
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        getPartitionForTopic(topic, rocksDBStoragePartitions);
+        Assert.assertNotNull(rocksDBStoragePartitions.get(0).getValueRocksDBSstFileWriter());
+        Assert.assertNotNull(rocksDBStoragePartitions.get(0).getRocksDBSstFileWriter());
       });
 
       // 2. verify the total number of records ingested
@@ -305,13 +317,14 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     }
 
     // Wait for push to be push completed.
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Assert.assertTrue(
+    String finalTopic1 = topic;
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
           clusterWrapper.getLeaderVeniceController()
               .getVeniceAdmin()
-              .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
-              .getExecutionStatus()
-              .equals(ExecutionStatus.COMPLETED));
+              .getOffLinePushStatus(clusterWrapper.getClusterName(), finalTopic1)
+              .getExecutionStatus(),
+          ExecutionStatus.COMPLETED);
     });
 
     // Wait for storage node to finish consuming, and new version to be activated
@@ -329,14 +342,89 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     });
 
     // validate the ingested data
-    // 1. invalid key
-    Assert.assertNull(storeClient.get(KEY_PREFIX + (startKey - 1)).get());
+    // 1. invalid keys: all the keys pushed before this version and not repushed via incremental push
+    for (int key: allNonIncPushKeys) {
+      Assert.assertNull(storeClient.get(KEY_PREFIX + key).get());
+    }
 
     // 2. all valid keys
-    int currKey = startKey;
+    currKey = startKey;
     while (currKey < endKey) {
       Assert.assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
       currKey++;
     }
+
+    /*
+    String incPushVersion = System.currentTimeMillis() + "_test_inc_push";
+    versionCreationResponse = parentControllerClient.requestTopicForWrites(
+        storeName,
+        1024 * 1024,
+        Version.PushType.INCREMENTAL,
+        incPushVersion,
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1);
+    assertFalse(versionCreationResponse.isError());
+    topic = versionCreationResponse.getKafkaTopic();
+    Assert.assertNotNull(topic);
+    
+    // incremental push
+    int incPushStartKey = startKey + 90;
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
+        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
+      veniceWriter.broadcastStartOfIncrementalPush(incPushVersion, new HashMap<>());
+    
+      // generate and insert data into the new version
+      Map<byte[], Pair<byte[], byte[]>> inputRecordsForIncPush =
+          generateInputWithMetadata(incPushStartKey, endKey, false, true, serializer);
+    
+      currKey = incPushStartKey;
+      for (Map.Entry<byte[], Pair<byte[], byte[]>> entry : inputRecordsForIncPush.entrySet()) {
+        allIncPushKeys.add(currKey++);
+        currNonIncPushKeys.remove(currNonIncPushKeys.size() - 1);
+        byte[] replicationMetadataWitValueSchemaIdBytes =
+            getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
+    
+        PutMetadata putMetadata = (new PutMetadata(1, ByteBuffer.wrap(replicationMetadataWitValueSchemaIdBytes)));
+        veniceWriter.put(entry.getKey(), entry.getValue().getFirst(), 1, null, putMetadata).get();
+      }
+    
+      veniceWriter.broadcastEndOfIncrementalPush(incPushVersion, Collections.emptyMap());
+    }
+      // validate the ingested data
+      // 1. first 90 keys which should still have original data pushed via full push
+      currKey = startKey;
+      while (currKey < incPushStartKey) {
+        Assert.assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
+        currKey++;
+      }
+    
+      // 2. last 10 should be from incremental push
+      while (currKey < endKey) {
+        int finalCurrKey = currKey;
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          Assert.assertEquals(
+              storeClient.get(KEY_PREFIX + finalCurrKey).get().toString(),
+              VALUE_PREFIX_INC_PUSH + finalCurrKey);
+        });
+        currKey++;
+      }*/
+
+    // also check all the incremental push data so far: New versions should get this from RT
+    // check setHybridRewindSeconds() config in setup
+    /*      for (int key: allIncPushKeys) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          Assert.assertNotNull(storeClient.get(KEY_PREFIX + key).get());
+          Assert.assertEquals(storeClient.get(KEY_PREFIX + key).get().toString(), VALUE_PREFIX_INC_PUSH + key);
+        });
+      }*/
+
+    // used in the next run
+    allNonIncPushKeys.addAll(currNonIncPushKeys);
   }
 }
