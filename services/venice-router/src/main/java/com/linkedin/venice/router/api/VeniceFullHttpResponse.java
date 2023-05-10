@@ -39,4 +39,10 @@ public class VeniceFullHttpResponse extends DefaultFullHttpResponse {
   public int hashCode() {
     return super.hashCode() * 31 * Long.hashCode(decompressionTimeInNs);
   }
+
+  @Override
+  public VeniceFullHttpResponse retain() {
+    super.retain();
+    return this;
+  }
 }

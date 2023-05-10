@@ -9,8 +9,8 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.ChannelHandlerContext;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -130,16 +130,15 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
     }
 
     @Override
-    public ByteBuf getContentInByteBuf(boolean usePooledBuffer, ChannelHandlerContext ctx) throws IOException {
+    public ByteBuf getContentInByteBuf(boolean usePooledBuffer, ByteBufAllocator allocator) throws IOException {
       if (usePooledBuffer) {
-        // ByteBuf byteBuf = PooledByteBufAllocator.DEFAULT.directBuffer(getRawByteArray().length);
-        ByteBuf byteBuf = ctx.alloc().buffer(getRawByteArray().length);
+        ByteBuf byteBuf = allocator.buffer(getRawByteArray().length);
         byteBuf.writeBytes(getRawByteArray());
         return byteBuf;
       }
 
       byte[] body = response.getBodyBytes();
-      return body == null ? Unpooled.EMPTY_BUFFER : Unpooled.wrappedBuffer(body);
+      return body == null || body.length == 0 ? Unpooled.EMPTY_BUFFER : Unpooled.wrappedBuffer(body);
     }
 
     private byte[] getRawByteArray() {

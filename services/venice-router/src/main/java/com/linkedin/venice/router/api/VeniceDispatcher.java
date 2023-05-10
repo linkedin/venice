@@ -279,70 +279,80 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
 
     CompressionStrategy contentCompression =
         VeniceResponseDecompressor.getCompressionStrategy(serverResponse.getFirstHeader(VENICE_COMPRESSION_STRATEGY));
+    boolean usePooledAllocator = contentCompression == CompressionStrategy.NO_OP && !path.isStreamingRequest();
 
-    ByteBuf content = serverResponse
-        .getContentInByteBuf(contentCompression == CompressionStrategy.NO_OP, path.getChannelHandlerContext());
+    ByteBuf content = serverResponse.getContentInByteBuf(usePooledAllocator, path.getChannelHandlerContext().alloc());
 
     long decompressionTimeInNs = 0;
     if (statusCode != HttpStatus.SC_OK && statusCode != HttpStatus.SC_NOT_FOUND) {
       statusCode = HttpStatus.SC_BAD_GATEWAY;
     }
 
-    if (statusCode == HttpStatus.SC_OK) {
-      VeniceResponseDecompressor responseDecompressor = path.getResponseDecompressor();
-      if (path.isStreamingRequest()) {
-        VeniceChunkedResponse chunkedResponse = path.getChunkedResponse().get();
-        if (path.getRequestType().equals(RequestType.MULTI_GET_STREAMING)) {
-          Pair<ByteBuf, CompressionStrategy> chunk =
-              responseDecompressor.processMultiGetResponseForStreaming(contentCompression, content);
-          chunkedResponse.write(chunk.getFirst(), chunk.getSecond());
+    try {
+      if (statusCode == HttpStatus.SC_OK) {
+        VeniceResponseDecompressor responseDecompressor = path.getResponseDecompressor();
+        if (path.isStreamingRequest()) {
+          VeniceChunkedResponse chunkedResponse = path.getChunkedResponse().get();
+          if (path.getRequestType().equals(RequestType.MULTI_GET_STREAMING)) {
+            Pair<ByteBuf, CompressionStrategy> chunk =
+                responseDecompressor.processMultiGetResponseForStreaming(contentCompression, content);
+            chunkedResponse.write(chunk.getFirst(), chunk.getSecond());
+          } else {
+            chunkedResponse.write(content);
+          }
+          content = Unpooled.EMPTY_BUFFER;
         } else {
-          chunkedResponse.write(content);
+          final ContentDecompressResult contentDecompressResult;
+          switch (path.getRequestType()) {
+            case SINGLE_GET:
+              contentDecompressResult = responseDecompressor.decompressSingleGetContent(contentCompression, content);
+              break;
+            case MULTI_GET:
+              contentDecompressResult = responseDecompressor.decompressMultiGetContent(contentCompression, content);
+              break;
+            case COMPUTE:
+              // Compute requests are decompressed on the SN
+              contentDecompressResult = new ContentDecompressResult(content, CompressionStrategy.NO_OP, 0);
+              break;
+            default:
+              throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+                  Optional.empty(),
+                  Optional.empty(),
+                  INTERNAL_SERVER_ERROR,
+                  "Unknown request type: " + path.getRequestType());
+          }
+
+          content = contentDecompressResult.getContent();
+          contentCompression = contentDecompressResult.getCompressionStrategy();
+          decompressionTimeInNs = contentDecompressResult.getDecompressionTimeInNs();
         }
-        content = Unpooled.EMPTY_BUFFER;
       } else {
-        final ContentDecompressResult contentDecompressResult;
-        switch (path.getRequestType()) {
-          case SINGLE_GET:
-            contentDecompressResult = responseDecompressor.decompressSingleGetContent(contentCompression, content);
-            break;
-          case MULTI_GET:
-            contentDecompressResult = responseDecompressor.decompressMultiGetContent(contentCompression, content);
-            break;
-          case COMPUTE:
-            // Compute requests are decompressed on the SN
-            contentDecompressResult = new ContentDecompressResult(content, CompressionStrategy.NO_OP, 0);
-            break;
-          default:
-            throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-                Optional.empty(),
-                Optional.empty(),
-                INTERNAL_SERVER_ERROR,
-                "Unknown request type: " + path.getRequestType());
-        }
-
-        content = contentDecompressResult.getContent();
-        contentCompression = contentDecompressResult.getCompressionStrategy();
-        decompressionTimeInNs = contentDecompressResult.getDecompressionTimeInNs();
+        contentCompression = CompressionStrategy.NO_OP;
       }
-    } else {
-      contentCompression = CompressionStrategy.NO_OP;
-    }
 
-    VeniceFullHttpResponse response = new VeniceFullHttpResponse(
-        HttpVersion.HTTP_1_1,
-        HttpResponseStatus.valueOf(statusCode),
-        content.retain(),
-        decompressionTimeInNs);
-    response.headers()
-        .set(HttpHeaderNames.CONTENT_TYPE, serverResponse.getFirstHeader(HttpHeaders.CONTENT_TYPE))
-        .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes())
-        .set(HttpConstants.VENICE_SCHEMA_ID, serverResponse.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID))
-        .set(HttpConstants.VENICE_COMPRESSION_STRATEGY, contentCompression.getValue())
-        .set(
-            VENICE_REQUEST_RCU,
-            serverResponse.containsHeader(VENICE_REQUEST_RCU) ? serverResponse.getFirstHeader(VENICE_REQUEST_RCU) : 1);
-    return response;
+      VeniceFullHttpResponse response = new VeniceFullHttpResponse(
+          HttpVersion.HTTP_1_1,
+          HttpResponseStatus.valueOf(statusCode),
+          content,
+          decompressionTimeInNs);
+      response.headers()
+          .set(HttpHeaderNames.CONTENT_TYPE, serverResponse.getFirstHeader(HttpHeaders.CONTENT_TYPE))
+          .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes())
+          .set(HttpConstants.VENICE_SCHEMA_ID, serverResponse.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID))
+          .set(HttpConstants.VENICE_COMPRESSION_STRATEGY, contentCompression.getValue())
+          .set(
+              VENICE_REQUEST_RCU,
+              serverResponse.containsHeader(VENICE_REQUEST_RCU)
+                  ? serverResponse.getFirstHeader(VENICE_REQUEST_RCU)
+                  : 1);
+      // if (usePooledAllocator && !path.())
+      // response.retain();
+      return usePooledAllocator ? response.retain() : response;
+    } finally {
+      if (usePooledAllocator) {
+        content.release();
+      }
+    }
   }
 
   /**

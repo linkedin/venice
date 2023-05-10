@@ -1,7 +1,7 @@
 package com.linkedin.venice.router.httpclient;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelHandlerContext;
+import io.netty.buffer.ByteBufAllocator;
 import java.io.IOException;
 
 
@@ -20,7 +20,7 @@ public interface PortableHttpResponse {
    * @return
    * @throws IOException
    */
-  ByteBuf getContentInByteBuf(boolean usePooledBuffer, ChannelHandlerContext ctx) throws IOException;
+  ByteBuf getContentInByteBuf(boolean usePooledBuffer, ByteBufAllocator allocator) throws IOException;
 
   /**
    *
