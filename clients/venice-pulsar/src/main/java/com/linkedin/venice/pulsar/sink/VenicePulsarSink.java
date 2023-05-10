@@ -39,10 +39,10 @@ import org.apache.samza.config.MapConfig;
  *
  * Available configuration parameters: see VeniceSinkConfig class.
  */
-public class VeniceSink implements Sink<GenericObject> {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceSink.class);
+public class VenicePulsarSink implements Sink<GenericObject> {
+  private static final Logger LOGGER = LogManager.getLogger(VenicePulsarSink.class);
 
-  VeniceSinkConfig config;
+  VenicePulsarSinkConfig config;
   VeniceSystemProducer producer;
 
   private final AtomicInteger pendingRecordsCount = new AtomicInteger(0);
@@ -58,7 +58,7 @@ public class VeniceSink implements Sink<GenericObject> {
 
   @Override
   public void open(Map<String, Object> cfg, SinkContext sinkContext) throws Exception {
-    VeniceSinkConfig veniceCfg = VeniceSinkConfig.load(cfg, sinkContext);
+    VenicePulsarSinkConfig veniceCfg = VenicePulsarSinkConfig.load(cfg, sinkContext);
     LOGGER.info("Starting, Venice config {}", veniceCfg);
 
     VeniceSystemFactory factory = new VeniceSystemFactory();
@@ -74,7 +74,7 @@ public class VeniceSink implements Sink<GenericObject> {
   }
 
   /** to simplify unit testing **/
-  public void open(VeniceSinkConfig config, VeniceSystemProducer startedProducer, SinkContext sinkContext)
+  public void open(VenicePulsarSinkConfig config, VeniceSystemProducer startedProducer, SinkContext sinkContext)
       throws Exception {
     this.config = config;
     this.producer = startedProducer;
@@ -225,7 +225,7 @@ public class VeniceSink implements Sink<GenericObject> {
     }
   }
 
-  private static Map<String, String> getConfig(VeniceSinkConfig veniceCfg, String systemName) {
+  private static Map<String, String> getConfig(VenicePulsarSinkConfig veniceCfg, String systemName) {
     Map<String, String> config = new HashMap<>();
     String configPrefix = SYSTEMS_PREFIX + systemName + DOT;
     config.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.INCREMENTAL.toString());

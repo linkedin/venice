@@ -29,7 +29,7 @@ import org.testng.annotations.Test;
 
 
 public class VeniceSinkTest {
-  VeniceSinkConfig config;
+  VenicePulsarSinkConfig config;
   VeniceSystemProducer producer;
 
   ScheduledExecutorService executor;
@@ -37,7 +37,7 @@ public class VeniceSinkTest {
   @BeforeTest
   public void setUp() {
     executor = Executors.newScheduledThreadPool(20);
-    config = new VeniceSinkConfig();
+    config = new VenicePulsarSinkConfig();
     config.setVeniceDiscoveryUrl("http://test:5555")
         .setVeniceRouterUrl("http://test:7777")
         .setStoreName("t1_n1_s1")
@@ -87,7 +87,7 @@ public class VeniceSinkTest {
       return null;
     }).when(producer).flush(anyString());
 
-    VeniceSink sink = new VeniceSink();
+    VenicePulsarSink sink = new VenicePulsarSink();
     sink.open(config, producer, null);
 
     List<Record<GenericObject>> records = new LinkedList<>();
@@ -133,7 +133,7 @@ public class VeniceSinkTest {
 
     doAnswer((InvocationOnMock invocation) -> null).when(producer).flush(anyString());
 
-    VeniceSink sink = new VeniceSink();
+    VenicePulsarSink sink = new VenicePulsarSink();
     sink.open(config, producer, null);
 
     try {

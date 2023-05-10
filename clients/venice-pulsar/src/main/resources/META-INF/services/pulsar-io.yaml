@@ -19,5 +19,5 @@
 
 name: venice
 description: Writes data into LinkedIn Venice
-sinkClass: com.linkedin.venice.pulsar.sink.VeniceSink
-sinkConfigClass: com.linkedin.venice.pulsar.sink.VeniceSinkConfig
+sinkClass: com.linkedin.venice.pulsar.sink.VenicePulsarSink
+sinkConfigClass: com.linkedin.venice.pulsar.sink.VenicePulsarSinkConfig
