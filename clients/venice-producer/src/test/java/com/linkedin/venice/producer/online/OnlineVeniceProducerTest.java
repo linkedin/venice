@@ -1,4 +1,4 @@
-package com.linkedin.venice.producer;
+package com.linkedin.venice.producer.online;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsStringQuietlyWithErrorLogged;
@@ -38,6 +38,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;

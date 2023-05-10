@@ -37,12 +37,9 @@ import static org.testng.Assert.assertTrue;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
-import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
-import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.client.store.DelegatingStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -82,8 +79,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.producer.OnlineVeniceProducer;
 import com.linkedin.venice.producer.VeniceProducer;
+import com.linkedin.venice.producer.online.OnlineProducerFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
@@ -92,8 +89,6 @@ import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
-import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
@@ -110,7 +105,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -122,7 +116,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -1062,12 +1055,8 @@ public class TestHybrid {
         DEFAULT_KEY_SCHEMA,
         DEFAULT_VALUE_SCHEMA,
         IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
-    try (
-        AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()));
-        AvroGenericStoreClient kmeClient = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
-                .setVeniceURL(cluster.getRandomRouterURL()))) {
+    try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
       TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
         for (Integer i = 0; i < keyCount; i++) {
           assertEquals(client.get(i).get(), i);
@@ -1079,26 +1068,11 @@ public class TestHybrid {
       }
       producer.stop();
 
-      AbstractAvroStoreClient avroStoreClient =
-          (AbstractAvroStoreClient<String, Object>) ((DelegatingStoreClient) client).getInnerStoreClient();
-
-      AbstractAvroStoreClient kmeStoreClient =
-          (AbstractAvroStoreClient<String, Object>) ((DelegatingStoreClient) kmeClient).getInnerStoreClient();
-
       Properties onlineProducerProps = new Properties();
-      try (
-          SchemaReader kmeSchemaReader = new RouterBackedSchemaReader(
-              kmeStoreClient,
-              Optional.empty(),
-              Optional.empty(),
-              ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD,
-              null);
-          VeniceProducer veniceOnlineProducer = new OnlineVeniceProducer(
-              avroStoreClient,
-              kmeSchemaReader,
-              new VeniceProperties(onlineProducerProps),
-              new MetricsRepository(),
-              null)) {
+      try (VeniceProducer veniceOnlineProducer = OnlineProducerFactory.createProducer(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()),
+          new VeniceProperties(onlineProducerProps),
+          null)) {
         for (int i = keyCount; i < keyCount * 2; i++) {
           veniceOnlineProducer.asyncPut(i, i * 2).get();
         }

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaData;
@@ -57,7 +58,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final Map<Integer, DerivedSchemaEntry> valueSchemaIdToUpdateSchemaMap = new VeniceConcurrentHashMap<>();
 
   private final String storeName;
-  private final AbstractAvroStoreClient storeClient;
+  private final InternalAvroStoreClient storeClient;
   private final boolean externalClient;
   /**
    * In Venice, schemas are Avro schemas that allow setting arbitrary field-level attributes.
@@ -111,7 +112,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   public RouterBackedSchemaReader(
-      AbstractAvroStoreClient storeClient,
+      InternalAvroStoreClient storeClient,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
       Duration valueSchemaRefreshPeriod,
@@ -120,7 +121,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   private RouterBackedSchemaReader(
-      AbstractAvroStoreClient storeClient,
+      InternalAvroStoreClient storeClient,
       boolean externalClient,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,

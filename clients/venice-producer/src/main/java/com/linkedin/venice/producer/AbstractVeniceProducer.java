@@ -99,7 +99,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         "ClientProducer",
         Integer.MAX_VALUE,
         BlockingQueueType.LINKED_BLOCKING_QUEUE);
-    new ThreadPoolStats(metricsRepository, producerExecutor, "client_producer_thread_pool");
+    if (metricsRepository != null) {
+      new ThreadPoolStats(metricsRepository, producerExecutor, "client_producer_thread_pool");
+    }
     this.keySerializer = getSerializer(schemaReader.getKeySchema());
 
     VersionCreationResponse versionCreationResponse = requestTopic();

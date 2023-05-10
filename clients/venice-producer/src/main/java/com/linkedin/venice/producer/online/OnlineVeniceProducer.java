@@ -1,13 +1,15 @@
-package com.linkedin.venice.producer;
+package com.linkedin.venice.producer.online;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
-import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.producer.AbstractVeniceProducer;
+import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -34,13 +36,13 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private final String storeName;
-  private final AbstractAvroStoreClient storeClient;
+  private final InternalAvroStoreClient<K, V> storeClient;
 
   private final SchemaReader schemaReader;
   private final ICProvider icProvider;
 
-  public OnlineVeniceProducer(
-      AbstractAvroStoreClient storeClient,
+  OnlineVeniceProducer(
+      InternalAvroStoreClient<K, V> storeClient,
       SchemaReader kmeSchemaReader,
       VeniceProperties producerConfigs,
       MetricsRepository metricsRepository,
@@ -113,5 +115,6 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
   public void close() throws IOException {
     super.close();
     Utils.closeQuietlyWithErrorLogged(schemaReader);
+    Utils.closeQuietlyWithErrorLogged(storeClient);
   }
 }
