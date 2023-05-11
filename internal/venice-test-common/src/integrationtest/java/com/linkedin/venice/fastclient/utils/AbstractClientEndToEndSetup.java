@@ -54,6 +54,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.Properties;
@@ -75,6 +76,7 @@ public abstract class AbstractClientEndToEndSetup {
   protected String storeVersionName;
   protected int valueSchemaId;
   protected String storeName;
+  protected String dataPath;
 
   protected VeniceKafkaSerializer keySerializer;
   protected VeniceKafkaSerializer valueSerializer;
@@ -166,6 +168,8 @@ public abstract class AbstractClientEndToEndSetup {
 
     d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
 
+    dataPath = Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString();
+
     prepareData();
     prepareMetaSystemStore();
     waitForRouterD2();
@@ -228,6 +232,7 @@ public abstract class AbstractClientEndToEndSetup {
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
+        .put(DATA_BASE_PATH, dataPath)
         .build();
 
     // Verify meta system store received the snapshot writes.
