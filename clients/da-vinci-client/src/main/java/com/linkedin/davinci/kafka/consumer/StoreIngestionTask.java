@@ -564,11 +564,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Checks if there is a previous ingestion and the state of that ingestion.
-   * This returns false if there is a mismatch between the checkpointed information
-   * and the current state, which implies that the process crashed during or after
-   * the ingestion but before syncing OffsetRecord with EOP and the upstream
-   * should restart the ingestion from scratch based on this return.
+   * This method checks if there was a previous ingestion and what its state was. If there is a mismatch
+   * between the checkpointed information and the current state, this method returns false. This implies
+   * that the process crashed during or after the ingestion but before syncing the OffsetRecord with EOP.
+   * In this case, the upstream should restart the ingestion from scratch.
    */
   private boolean checkDatabaseIntegrity(
       PubSubTopicPartition topicPartition,
@@ -576,22 +575,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) {
     int partitionId = topicPartition.getPartitionNumber();
     String topic = topicPartition.getPubSubTopic().getName();
+    boolean returnStatus = true;
     if (offsetRecord.getLocalVersionTopicOffset() > 0) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         LOGGER.info(
-            "storeVersionState found for {}, partition: {}: checkDatabaseIntegrity will check the state",
+            "storeVersionState found for {}, partition: {}: checkDatabaseIntegrity will proceed",
             topic,
             partitionId);
-        return storageEngine.checkDatabaseIntegrity(
+        returnStatus = storageEngine.checkDatabaseIntegrity(
             topicPartition.getPartitionNumber(),
             offsetRecord.getDatabaseInfo(),
             getStoragePartitionConfig(partitionId, storeVersionState.sorted, partitionConsumptionState));
+        LOGGER.info(
+            "checkDatabaseIntegrity {} for {}, partition: {}",
+            returnStatus ? "succeeded" : "failed",
+            topic,
+            partitionId);
       } else {
-
+        LOGGER.info(
+            "storeVersionState not found for {}, partition: {}: checkDatabaseIntegrity will be skipped",
+            topic,
+            partitionId);
       }
+    } else {
+      LOGGER.info(
+          "Local topic offset not found for {}, partition: {}: checkDatabaseIntegrity will be skipped",
+          topic,
+          partitionId);
     }
-    LOGGER.info("checkDatabaseIntegrity succeeded for {}, partition: {}", topic, partitionId);
     return true;
   }
 
@@ -615,9 +627,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return checksum;
       });
     }
-
     storageEngine.beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo, partitionChecksumSupplier);
-
     if (cacheBackend.isPresent()) {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
         cacheBackend.get()
@@ -1441,6 +1451,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Notify the underlying store engine about starting batch push.
          */
         beginBatchWrite(partition, sorted, newPartitionConsumptionState);
+
         newPartitionConsumptionState.setStartOfPushTimestamp(storeVersionState.startOfPushTimestamp);
         newPartitionConsumptionState.setEndOfPushTimestamp(storeVersionState.endOfPushTimestamp);
 
@@ -1548,6 +1559,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
           producerTracker.setPartitionState(partition, entry.getValue());
         });
+
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
 
         if (!checkDatabaseIntegrity(topicPartition, offsetRecord, newPartitionConsumptionState)) {
@@ -1562,7 +1574,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
-
         reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
         versionedIngestionStats.recordSubscribePrepLatency(
             storeName,
@@ -1667,7 +1678,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionState != null
         && (restartIngestion || consumerHasSubscription(topicPartition.getPubSubTopic(), partitionConsumptionState))) {
       if (restartIngestion) {
-        LOGGER.info("Reset offset before subscribing to restart ingestion for: {}", topicPartition);
+        LOGGER.info("Reset offset to restart ingestion for: {}", topicPartition);
       } else {
         LOGGER.error(
             "This shouldn't happen since unsubscription should happen before reset offset for: {}",
