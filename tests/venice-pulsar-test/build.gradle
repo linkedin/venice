@@ -1,0 +1,49 @@
+
+configurations {
+    pulsarIntegrationTestImplementation.extendsFrom testImplementation
+
+    pulsarIntegrationTestCompile.extendsFrom testCompile
+    pulsarIntegrationTestCompileOnly.extendsFrom testCompileOnly
+    pulsarIntegrationTestRuntime.extendsFrom testRuntime
+    pulsarIntegrationTestAnnotationProcessor.extendsFrom testAnnotationProcessor
+
+}
+
+sourceSets {
+    pulsarIntegrationTest {
+        java.srcDirs = ['src/pulsarintegrationtest/java']
+        resources.srcDirs = ['src/pulsarintegrationtest/resources']
+    }
+}
+
+dependencies {
+    testImplementation project(':clients:venice-pulsar')
+
+    testImplementation libraries.log4j2api
+
+    testImplementation libraries.testng
+    testImplementation libraries.testcontainers
+
+    testImplementation libraries.pulsarClient
+}
+
+def pulsarIntegrationTestConfigs = {
+
+    classpath = sourceSets.pulsarIntegrationTest.runtimeClasspath
+    testClassesDirs = sourceSets.pulsarIntegrationTest.output.classesDirs
+}
+
+task pulsarIntegrationTest(type: Test) {
+    configure pulsarIntegrationTestConfigs
+}
+
+idea {
+    module {
+        testSourceDirs += project.sourceSets.pulsarIntegrationTest.java.srcDirs
+        testResourceDirs += project.sourceSets.pulsarIntegrationTest.resources.srcDirs
+    }
+}
+
+ext {
+    jacocoCoverageThreshold = 0.01
+}

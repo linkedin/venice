@@ -3,7 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import static com.linkedin.venice.VeniceConstants.TYPE_PUSH_STATUS;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.client.store.transport.D2TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.routerapi.PushStatusResponse;
@@ -40,7 +40,7 @@ public class RouterBasedPushMonitor implements Closeable {
   private ExecutionStatus currentStatus = ExecutionStatus.UNKNOWN;
 
   public RouterBasedPushMonitor(
-      D2TransportClient d2TransportClient,
+      TransportClient d2TransportClient,
       String resourceName,
       VeniceSystemFactory factory,
       SystemProducer producer) {
@@ -75,7 +75,7 @@ public class RouterBasedPushMonitor implements Closeable {
 
     private final AtomicBoolean isRunning;
     private final String topicName;
-    private final D2TransportClient transportClient;
+    private final TransportClient transportClient;
     private final String requestPath;
     private final RouterBasedPushMonitor pushMonitorService;
     private final VeniceSystemFactory factory;
@@ -84,7 +84,7 @@ public class RouterBasedPushMonitor implements Closeable {
     private SamzaExitMode exitMode = SamzaExitMode.SUCCESS_EXIT;
 
     public PushMonitorTask(
-        D2TransportClient transportClient,
+        TransportClient transportClient,
         String topicName,
         RouterBasedPushMonitor pushMonitorService,
         VeniceSystemFactory factory,

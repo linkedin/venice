@@ -28,6 +28,7 @@ import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -261,6 +262,12 @@ public class DaVinciBackend implements Closeable {
     for (AbstractStorageEngine storageEngine: storageEngines) {
       String kafkaTopicName = storageEngine.getStoreName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+      if (VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
+        // Do not bootstrap meta system store via DaVinci backend initialization since the operation is not supported by
+        // ThinClientMetaStoreBasedRepository. This shouldn't happen normally, but it's possible if the user was using
+        // DVC based metadata for the same store and switched to thin client based metadata.
+        continue;
+      }
 
       try {
         StoreBackend storeBackend = getStoreOrThrow(storeName); // throws VeniceNoStoreException
