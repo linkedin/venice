@@ -100,6 +100,11 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
   }
 
   @Override
+  public void clear() {
+    this.resourceToPartitionCountMap.clear();
+  }
+
+  @Override
   protected void onCustomizedViewDataChange(RoutingTableSnapshot routingTableSnapshot) {
     Collection<CustomizedView> customizedViewCollection = routingTableSnapshot.getCustomizeViews();
     if (customizedViewCollection == null) {
@@ -128,15 +133,14 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
             LOGGER.warn("Cannot find store for resource: {}.", resourceName);
             continue;
           }
-          boolean isValidVersion = store.getVersions().stream().anyMatch(v -> v.getNumber() == version);
-          if (!isValidVersion) {
+
+          if (!store.getVersion(version).isPresent()) {
             LOGGER.warn("Version not found in store for resource: {}.", resourceName);
             continue;
           }
           partitionCount = store.getVersion(version).get().getPartitionCount();
           resourceToPartitionCountMap.put(resourceName, partitionCount);
         }
-
         PartitionAssignment partitionAssignment = new PartitionAssignment(resourceName, partitionCount);
         for (String partitionName: customizedView.getPartitionSet()) {
           // Get instance to customized state map for this partition from local memory.
