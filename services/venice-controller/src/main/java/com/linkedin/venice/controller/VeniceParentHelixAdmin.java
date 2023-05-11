@@ -3446,7 +3446,7 @@ public class VeniceParentHelixAdmin implements Admin {
     statuses.sort(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf));
 
     ExecutionStatus currentReturnStatus = ExecutionStatus.NEW;
-    String currentReturnStatusDetails = null;
+    StringBuilder currentReturnStatusDetails = new StringBuilder();
     if (isCanaryRegionPush) {
       // for canary region push, ignore other child regions' status and canary region is expected to
       // be ERROR/COMPLETED, which has higher priority, as end states
@@ -3471,7 +3471,10 @@ public class VeniceParentHelixAdmin implements Admin {
         if (!isCanaryRegionPush) {
           currentReturnStatus = ExecutionStatus.ERROR;
         }
-        currentReturnStatusDetails = failCount + "/" + childRegions.size() + " DCs unreachable. ";
+        currentReturnStatusDetails.append(failCount)
+            .append("/")
+            .append(childRegions.size())
+            .append(" DCs unreachable. ");
       }
       truncateTopicsOptionally(
           clusterName,
@@ -3481,7 +3484,11 @@ public class VeniceParentHelixAdmin implements Admin {
           currentReturnStatusDetails);
     }
 
-    return new OfflinePushStatusInfo(currentReturnStatus, extraInfo, currentReturnStatusDetails, extraDetails);
+    return new OfflinePushStatusInfo(
+        currentReturnStatus,
+        extraInfo,
+        currentReturnStatusDetails.toString(),
+        extraDetails);
   }
 
   /**
@@ -3497,14 +3504,13 @@ public class VeniceParentHelixAdmin implements Admin {
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       ExecutionStatus currentReturnStatus,
-      String currentReturnStatusDetails) {
+      StringBuilder currentReturnStatusDetails) {
     // TODO: Set parent controller's version status based on currentReturnStatus
     // COMPLETED -> ONLINE
     // ERROR -> ERROR
     // TODO: remove this if statement since it was only for debugging purpose
     if (maxErroredTopicNumToKeep > 0 && currentReturnStatus.equals(ExecutionStatus.ERROR)) {
-      currentReturnStatusDetails =
-          Optional.ofNullable(currentReturnStatusDetails).orElse("") + "Parent Kafka topic won't be truncated";
+      currentReturnStatusDetails.append("Parent Kafka topic won't be truncated");
       LOGGER.info(
           "The errored kafka topic {} won't be truncated since it will be used to investigate some Kafka related issue",
           kafkaTopic);
@@ -3529,8 +3535,7 @@ public class VeniceParentHelixAdmin implements Admin {
         if (version.isPresent() && version.get().getPushType().isStreamReprocessing()) {
           truncateKafkaTopic(Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()));
         }
-        currentReturnStatusDetails =
-            Optional.ofNullable(currentReturnStatusDetails).orElse("") + "Parent Kafka topic truncated";
+        currentReturnStatusDetails.append("Parent Kafka topic truncated");
       }
     }
   }
