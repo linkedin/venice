@@ -178,16 +178,26 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   }
 
   @Override
+  public boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
+    makeSureRocksDBIsStillOpen();
+    if (!deferredWrite) {
+      LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
+      return true;
+    }
+    return super.checkDatabaseIntegrity(checkpointedInfo)
+        && rocksDBSstFileWriter.checkPreviousIngestionIntegrity(checkpointedInfo);
+  }
+
+  @Override
   public synchronized void beginBatchWrite(
       Map<String, String> checkpointedInfo,
-      Optional<Supplier<byte[]>> expectedChecksumSupplier,
-      Runnable updateRestartIngestionFlag) {
+      Optional<Supplier<byte[]>> expectedChecksumSupplier) {
     if (!deferredWrite) {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
     }
-    super.beginBatchWrite(checkpointedInfo, expectedChecksumSupplier, updateRestartIngestionFlag);
-    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier, updateRestartIngestionFlag);
+    super.beginBatchWrite(checkpointedInfo, expectedChecksumSupplier);
+    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier);
   }
 
   @Override

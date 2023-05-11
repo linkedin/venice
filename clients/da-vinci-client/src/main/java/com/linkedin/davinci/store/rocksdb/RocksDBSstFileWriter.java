@@ -143,30 +143,60 @@ public class RocksDBSstFileWriter {
    *    in {@link #deleteOldIngestion}
    * 3. run updateRestartIngestionFlag for the upstream to reset its state and start ingesting again
    */
-  private boolean checkPreviousIngestionIntegrity(Runnable updateRestartIngestionFlag) {
-    if (lastFinishedSSTFileNo < 0) {
-      throw new VeniceException("Last finished sst file no: " + lastFinishedSSTFileNo + " shouldn't be negative");
+  boolean checkPreviousIngestionIntegrity(Map<String, String> checkpointedInfo) {
+    LOGGER.info("checkDatabaseIntegrity inside 8");
+    LOGGER.info("Inside checkPreviousIngestionIntegrity");
+    // Create temp SST file dir if it doesn't exist
+    File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
+    if (!tempSSTFileDir.exists()) {
+      tempSSTFileDir.mkdirs();
     }
-    if (doesAllPreviousSSTFilesBeforeCheckpointingExist()) {
-      // remove the unwanted sst files, as flow will continue from the checkpointed info
-      removeSSTFilesAfterCheckpointing(this.lastFinishedSSTFileNo);
-      currentSSTFileNo = lastFinishedSSTFileNo + 1;
-      LOGGER
-          .info("Ingestion will continue from the last checkpoint for store: {} partition: {}", storeName, partitionId);
-    } else {
-      // remove all the temp sst files if found any as we will start fresh
+
+    if (!checkpointedInfo.containsKey(lastCheckPointedSSTFileNum)) {
+      LOGGER.info("checkDatabaseIntegrity inside 9");
+      LOGGER.info(
+          "No checkpointed info for store: {}, partition id: {} so RocksDB will start building sst file from beginning",
+          storeName,
+          partitionId);
+      lastFinishedSSTFileNo = -1;
+      currentSSTFileNo = 0;
+      // Blindly remove all the temp sst files if found any. Will be recreated.
       removeAllSSTFiles();
-      updateRestartIngestionFlag.run();
-      LOGGER.info("Ingestion will restart from the beginning for store: {} partition: {}", storeName, partitionId);
-      return false;
+    } else {
+      LOGGER.info("checkDatabaseIntegrity inside 10");
+      lastFinishedSSTFileNo = Integer.parseInt(checkpointedInfo.get(lastCheckPointedSSTFileNum));
+      LOGGER.info(
+          "Received last finished sst file no: {} for store: {}, partition id: {}",
+          lastFinishedSSTFileNo,
+          storeName,
+          partitionId);
+
+      // This is not the first time this process is ingesting this partition,
+      // check the integrity before proceeding
+      if (lastFinishedSSTFileNo < 0) {
+        throw new VeniceException("Last finished sst file no: " + lastFinishedSSTFileNo + " shouldn't be negative");
+      }
+      if (doesAllPreviousSSTFilesBeforeCheckpointingExist()) {
+        LOGGER.info("checkDatabaseIntegrity inside 11");
+        // remove the unwanted sst files, as flow will continue from the checkpointed info
+        removeSSTFilesAfterCheckpointing(this.lastFinishedSSTFileNo);
+        currentSSTFileNo = lastFinishedSSTFileNo + 1;
+        LOGGER.info(
+            "Ingestion will continue from the last checkpoint for store: {} partition: {}",
+            storeName,
+            partitionId);
+      } else {
+        LOGGER.info("checkDatabaseIntegrity inside 12");
+        // remove all the temp sst files if found any as ingestion will be restarted from beginning
+        removeAllSSTFiles();
+        LOGGER.info("Ingestion will restart from the beginning for store: {} partition: {}", storeName, partitionId);
+        return false;
+      }
     }
     return true;
   }
 
-  public void open(
-      Map<String, String> checkpointedInfo,
-      Optional<Supplier<byte[]>> expectedChecksumSupplier,
-      Runnable updateRestartIngestionFlag) {
+  public void open(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> expectedChecksumSupplier) {
     LOGGER.info(
         "'beginBatchWrite' got invoked for RocksDB store: {}, partition: {} with checkpointed info: {} ",
         storeName,
@@ -178,30 +208,9 @@ public class RocksDBSstFileWriter {
       tempSSTFileDir.mkdirs();
     }
 
-    if (!checkpointedInfo.containsKey(lastCheckPointedSSTFileNum)) {
-      LOGGER.info(
-          "No checkpointed info for store: {}, partition id: {} so RocksDB will start building sst file from beginning",
-          storeName,
-          partitionId);
-      lastFinishedSSTFileNo = -1;
-      currentSSTFileNo = 0;
-      // remove all the temp sst files if found any
-      removeAllSSTFiles();
-    } else {
-      lastFinishedSSTFileNo = Integer.parseInt(checkpointedInfo.get(lastCheckPointedSSTFileNum));
-      LOGGER.info(
-          "Received last finished sst file no: {} for store: {}, partition id: {}",
-          lastFinishedSSTFileNo,
-          storeName,
-          partitionId);
-
-      // This is not the first time this process is ingesting this partition,
-      // check the integrity before proceeding
-      if (!checkPreviousIngestionIntegrity(updateRestartIngestionFlag)) {
-        return;
-      }
-    }
-
+    /*        if (!checkPreviousIngestionIntegrity(checkpointedInfo)) {
+      throw new VeniceException("FAILLLLLLLLLLL");
+    }*/
     String fullPathForCurrentSSTFile = composeFullPathForSSTFile(currentSSTFileNo);
     currentSSTFileWriter = new SstFileWriter(envOptions, options);
     try {

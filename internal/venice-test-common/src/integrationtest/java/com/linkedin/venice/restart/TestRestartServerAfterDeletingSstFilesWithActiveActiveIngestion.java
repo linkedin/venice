@@ -21,6 +21,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngine;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -92,9 +93,12 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private int newVersion = 0;
   private final String KEY_PREFIX = "key";
   private final String VALUE_PREFIX = "value";
+  private final String VALUE_PREFIX_INC_PUSH = "value-inc";
   private final String METADATA_PREFIX = "metadata";
   private String storeName = Utils.getUniqueString("store");
   private final int numServers = 5;
+  List<Integer> allIncPushKeys = new ArrayList<>();
+  List<Integer> allNonIncPushKeysUntilLastVersion = new ArrayList<>();
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -121,6 +125,16 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
+    /*childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    
+    // Set up a d2 client for DC0 region
+    d2ClientForDC0Region = new D2ClientBuilder().setZkHosts(childDatacenters.get(0).getZkServerWrapper().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2ClientForDC0Region);*/
+
     List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     String clusterName = "venice-cluster0";
@@ -132,7 +146,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     TestUtils.assertCommand(
         parentControllerClient.configureActiveActiveReplicationForCluster(
             true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
+            VeniceUserStoreType.INCREMENTAL_PUSH.toString(),
             Optional.empty()));
     // create a active-active enabled store
     File inputDir = getTempDataDirectory();
@@ -143,10 +157,11 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(5)
+        .setHybridRewindSeconds(500)
         .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true)
-        .setBackupVersionRetentionMs(1);
+        .setBackupVersionRetentionMs(1)
+        .setIncrementalPushEnabled(true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
   }
 
@@ -161,6 +176,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       int startIndex,
       int endIndex,
       boolean sorted,
+      boolean isIncPush,
       AvroSerializer serializer) {
     Map<byte[], Pair<byte[], byte[]>> records;
     if (sorted) {
@@ -174,7 +190,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
       records = new HashMap<>();
     }
     for (int i = startIndex; i < endIndex; ++i) {
-      String value = VALUE_PREFIX + i;
+      String value = isIncPush ? VALUE_PREFIX_INC_PUSH + i : VALUE_PREFIX + i;
       String metadata = METADATA_PREFIX + i;
       records.put(
           serializer.serialize(KEY_PREFIX + i),
@@ -223,7 +239,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(0));
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, invocationCount = 2)
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testActiveActiveStoreWithRMDAndRestartServer(boolean deleteSSTFiles, boolean deleteRMDSSTFiles)
       throws Exception {
     // Create a new version
@@ -254,14 +270,19 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     startKey += numKeys; // to have different version having different set of keys
     int endKey = startKey + numKeys;
     int currKey;
+    List<Integer> currNonIncPushKeys = new ArrayList<>();
+
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
 
       // generate and insert data into the new version
-      Map<byte[], Pair<byte[], byte[]>> inputRecords = generateInputWithMetadata(startKey, endKey, true, serializer);
+      Map<byte[], Pair<byte[], byte[]>> inputRecords =
+          generateInputWithMetadata(startKey, endKey, true, false, serializer);
 
+      currKey = startKey;
       for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecords.entrySet()) {
+        currNonIncPushKeys.add(currKey++);
         byte[] replicationMetadataWitValueSchemaIdBytes =
             getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
 
@@ -335,8 +356,8 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     // validate the ingested data
     AvroGenericStoreClient<String, Object> storeClient = null;
     try {
-      D2Client d2Client =
-          D2TestUtils.getD2Client(multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress(), false);
+      D2Client d2Client = D2TestUtils.getD2Client(clusterWrapper.getZk().getAddress(), false);
+      D2ClientUtils.startClient(d2Client);
       storeClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
               .setForceClusterDiscoveryAtStartTime(true)
@@ -347,9 +368,12 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
               .setRetryOnAllErrors(true));
 
       // 1. invalid key
+      // 1. invalid keys: all the keys pushed before this version and not repushed via incremental push
       AvroGenericStoreClient<String, Object> finalStoreClient = storeClient;
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        assertNull(finalStoreClient.get(KEY_PREFIX + (startKey - 1)).get());
+        for (int key: allNonIncPushKeysUntilLastVersion) {
+          assertNull(finalStoreClient.get(KEY_PREFIX + key).get());
+        }
       });
 
       // 2. all valid keys
@@ -363,5 +387,96 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         storeClient.close();
       }
     }
+
+    String incPushVersion = System.currentTimeMillis() + "_test_inc_push";
+    versionCreationResponse = parentControllerClient.requestTopicForWrites(
+        storeName,
+        1024 * 1024,
+        Version.PushType.INCREMENTAL,
+        incPushVersion,
+        true,
+        true,
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false,
+        -1);
+    assertFalse(versionCreationResponse.isError());
+    topic = versionCreationResponse.getKafkaTopic();
+    assertNotNull(topic);
+
+    // incremental push
+    int incPushStartKey = startKey + 90;
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
+        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
+      veniceWriter.broadcastStartOfIncrementalPush(incPushVersion, new HashMap<>());
+
+      // generate and insert data into the new version
+      Map<byte[], Pair<byte[], byte[]>> inputRecordsForIncPush =
+          generateInputWithMetadata(incPushStartKey, endKey, false, true, serializer);
+
+      currKey = incPushStartKey;
+      for (Map.Entry<byte[], Pair<byte[], byte[]>> entry: inputRecordsForIncPush.entrySet()) {
+        allIncPushKeys.add(currKey++);
+        currNonIncPushKeys.remove(currNonIncPushKeys.size() - 1);
+        byte[] replicationMetadataWitValueSchemaIdBytes =
+            getReplicationMetadataWithValueSchemaId(entry.getValue().getSecond(), 1);
+
+        PutMetadata putMetadata = (new PutMetadata(1, ByteBuffer.wrap(replicationMetadataWitValueSchemaIdBytes)));
+        veniceWriter.put(entry.getKey(), entry.getValue().getFirst(), 1, null, putMetadata).get();
+      }
+
+      veniceWriter.broadcastEndOfIncrementalPush(incPushVersion, Collections.emptyMap());
+    }
+
+    storeClient = null;
+    try {
+      D2Client d2Client = D2TestUtils.getD2Client(clusterWrapper.getZk().getAddress(), false);
+      D2ClientUtils.startClient(d2Client);
+      storeClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setForceClusterDiscoveryAtStartTime(true)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setD2Client(d2Client)
+              .setVeniceURL(clusterWrapper.getRandomRouterURL())
+              .setSslFactory(SslUtils.getVeniceLocalSslFactory())
+              .setRetryOnAllErrors(true));
+      // validate the ingested data
+      // 1. first 90 keys which should still have original data pushed via full push
+      currKey = startKey;
+      while (currKey < incPushStartKey) {
+        assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
+        currKey++;
+      }
+
+      // 2. last 10 should be from incremental push
+      while (currKey < endKey) {
+        int finalCurrKey = currKey;
+        AvroGenericStoreClient<String, Object> finalStoreClient1 = storeClient;
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          assertEquals(
+              finalStoreClient1.get(KEY_PREFIX + finalCurrKey).get().toString(),
+              VALUE_PREFIX_INC_PUSH + finalCurrKey);
+        });
+        currKey++;
+      }
+
+      // also check all the incremental push data so far: New versions should get this from RT
+      // check setHybridRewindSeconds() config in setup
+      for (int key: allIncPushKeys) {
+        AvroGenericStoreClient<String, Object> finalStoreClient2 = storeClient;
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          assertNotNull(finalStoreClient2.get(KEY_PREFIX + key).get());
+          assertEquals(finalStoreClient2.get(KEY_PREFIX + key).get().toString(), VALUE_PREFIX_INC_PUSH + key);
+        });
+      }
+    } finally {
+      if (storeClient != null) {
+        storeClient.close();
+      }
+    }
+    // used in the next run
+    allNonIncPushKeysUntilLastVersion.addAll(currNonIncPushKeys);
   }
 }

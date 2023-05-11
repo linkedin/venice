@@ -2028,7 +2028,7 @@ public abstract class StoreIngestionTaskTest {
           deferredWritePartitionConfig.setDeferredWrite(true);
           // SOP control message and restart
           verify(mockAbstractStorageEngine, atLeast(1))
-              .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()), any());
+              .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
           StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, partition);
           // only happen after EOP control message
           verify(mockAbstractStorageEngine, times(1)).endBatchWrite(transactionalPartitionConfig);
@@ -2155,7 +2155,7 @@ public abstract class StoreIngestionTaskTest {
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       deferredWritePartitionConfig.setDeferredWrite(true);
       verify(mockAbstractStorageEngine, times(1))
-          .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()), any());
+          .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
       StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       verify(mockAbstractStorageEngine, times(1)).endBatchWrite(transactionalPartitionConfig);
     }, isActiveActiveReplicationEnabled);
@@ -2191,7 +2191,7 @@ public abstract class StoreIngestionTaskTest {
 
       // verify the checksum matches.
       verify(mockAbstractStorageEngine, times(1))
-          .beginBatchWrite(eq(deferredWritePartitionConfig), any(), checksumCaptor.capture(), any());
+          .beginBatchWrite(eq(deferredWritePartitionConfig), any(), checksumCaptor.capture());
       Optional<Supplier<byte[]>> checksumSupplier = checksumCaptor.getValue();
       Assert.assertTrue(checksumSupplier.isPresent());
       Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.get().getCheckSum()));

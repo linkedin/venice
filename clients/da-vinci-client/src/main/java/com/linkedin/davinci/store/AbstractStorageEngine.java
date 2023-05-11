@@ -354,6 +354,16 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     closeMetadataPartition();
   }
 
+  public boolean checkDatabaseIntegrity(
+      int partitionId,
+      Map<String, String> checkpointedInfo,
+      StoragePartitionConfig storagePartitionConfig) {
+    LOGGER.info("checkDatabaseIntegrity inside 3");
+    adjustStoragePartition(storagePartitionConfig);
+    LOGGER.info("checkDatabaseIntegrity inside 4");
+    return getPartitionOrThrow(partitionId).checkDatabaseIntegrity(checkpointedInfo);
+  }
+
   /**
    * A lot of storage engines support efficient methods for performing large
    * number of writes (puts/deletes) against the data source. This method puts
@@ -362,8 +372,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public synchronized void beginBatchWrite(
       StoragePartitionConfig storagePartitionConfig,
       Map<String, String> checkpointedInfo,
-      Optional<Supplier<byte[]>> checksumSupplier,
-      Runnable updateRestartIngestionFlag) {
+      Optional<Supplier<byte[]>> checksumSupplier) {
     LOGGER.info(
         "Begin batch write for storage partition config: {}  with checkpoint info: {}",
         storagePartitionConfig,
@@ -373,8 +382,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
      * different mode.
      */
     adjustStoragePartition(storagePartitionConfig);
-    getPartitionOrThrow(storagePartitionConfig.getPartitionId())
-        .beginBatchWrite(checkpointedInfo, checksumSupplier, updateRestartIngestionFlag);
+    getPartitionOrThrow(storagePartitionConfig.getPartitionId()).beginBatchWrite(checkpointedInfo, checksumSupplier);
   }
 
   /**

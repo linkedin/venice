@@ -563,10 +563,34 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private boolean beginBatchWrite(
+  /**
+   * Checks if there is a previous ingestion and the state of that ingestion.
+   * This returns false if there is a mismatch between the checkpointed information
+   * and the current state, which implies that the process crashed during or after
+   * the ingestion but before syncing OffsetRecord with EOP and the upstream
+   * should restart the ingestion from scratch.
+   */
+  private boolean checkDatabaseIntegrity(
       int partitionId,
-      boolean sorted,
+      OffsetRecord offsetRecord,
       PartitionConsumptionState partitionConsumptionState) {
+    LOGGER.info("checkDatabaseIntegrity inside 0");
+    if (offsetRecord.getLocalVersionTopicOffset() > 0) {
+      LOGGER.info("checkDatabaseIntegrity inside 1");
+      StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
+      if (storeVersionState != null) {
+        LOGGER.info("checkDatabaseIntegrity inside 2");
+        boolean sorted = storeVersionState.sorted;
+        StoragePartitionConfig storagePartitionConfig =
+            getStoragePartitionConfig(partitionId, sorted, partitionConsumptionState);
+        Map<String, String> checkpointedDatabaseInfo = offsetRecord.getDatabaseInfo();
+        return storageEngine.checkDatabaseIntegrity(partitionId, checkpointedDatabaseInfo, storagePartitionConfig);
+      }
+    }
+    return true;
+  }
+
+  private void beginBatchWrite(int partitionId, boolean sorted, PartitionConsumptionState partitionConsumptionState) {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
     StoragePartitionConfig storagePartitionConfig =
         getStoragePartitionConfig(partitionId, sorted, partitionConsumptionState);
@@ -587,45 +611,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       });
     }
 
-    /**
-     * Indicates whether to restart the ingestion from scratch or not. The default
-     * value is false. This variable is set to true during beginBatchWrite if there
-     * is a mismatch between the checkpointed information and the current state, which
-     * implies that the process crashed during or after the ingestion but before syncing
-     * OffsetRecord with EOP.
-     */
-    AtomicBoolean isRestartIngestionRequired = new AtomicBoolean(false);
-    Runnable updateRestartIngestionFlag = () -> {
-      isRestartIngestionRequired.set(true);
-    };
-
-    storageEngine.beginBatchWrite(
-        storagePartitionConfig,
-        checkpointedDatabaseInfo,
-        partitionChecksumSupplier,
-        updateRestartIngestionFlag);
-
-    if (isRestartIngestionRequired.get()) {
-      return false;
-    }
+    storageEngine.beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo, partitionChecksumSupplier);
 
     if (cacheBackend.isPresent()) {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
-        isRestartIngestionRequired.set(false);
         cacheBackend.get()
             .getStorageEngine(kafkaVersionTopic)
-            .beginBatchWrite(
-                storagePartitionConfig,
-                checkpointedDatabaseInfo,
-                partitionChecksumSupplier,
-                updateRestartIngestionFlag);
-        if (isRestartIngestionRequired.get()) {
-          return false;
-        }
+            .beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo, partitionChecksumSupplier);
       }
     }
-
-    return true;
   }
 
   private StoragePartitionConfig getStoragePartitionConfig(
@@ -1416,7 +1410,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return originalTopicSwitch;
   }
 
-  private boolean checkConsumptionStateWhenStart(
+  private void checkConsumptionStateWhenStart(
       OffsetRecord offsetRecord,
       PartitionConsumptionState newPartitionConsumptionState) {
     int partition = newPartitionConsumptionState.getPartition();
@@ -1441,10 +1435,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Notify the underlying store engine about starting batch push.
          */
-        if (!beginBatchWrite(partition, sorted, newPartitionConsumptionState)) {
-          return false;
-        }
-
+        beginBatchWrite(partition, sorted, newPartitionConsumptionState);
         newPartitionConsumptionState.setStartOfPushTimestamp(storeVersionState.startOfPushTimestamp);
         newPartitionConsumptionState.setEndOfPushTimestamp(storeVersionState.endOfPushTimestamp);
 
@@ -1522,7 +1513,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       kafkaDataIntegrityValidator.clearPartition(partition);
       throw e;
     }
-    return true;
   }
 
   protected void processCommonConsumerAction(
@@ -1555,7 +1545,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         });
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
 
-        if (!checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState)) {
+        if (!checkDatabaseIntegrity(partition, offsetRecord, newPartitionConsumptionState)) {
           LOGGER.warn(
               "Restart ingestion from the beginning by resetting OffsetRecord for topic: {} and partition: {}",
               topicPartition.getPubSubTopic().getName(),
@@ -1563,12 +1553,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           resetOffset(partition, topicPartition, true);
           newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
           offsetRecord = newPartitionConsumptionState.getOffsetRecord();
-          if (!checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState)) {
-            throw new VeniceException(
-                "Restarting ingestion after the process restart can happen only once for topic: "
-                    + topicPartition.getPubSubTopic().getName() + " and partition: " + partition);
-          }
         }
+
+        newPartitionConsumptionState.setLeaderFollowerState(leaderState);
+        checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
 
         reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
         versionedIngestionStats.recordSubscribePrepLatency(
@@ -2207,10 +2195,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Notify the underlying store engine about starting batch push.
      */
-    if (beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState) == false) {
-      // should not happen, throwing an exception to catch if it happens
-      throw new VeniceException("Restarting ingestion for" + kafkaVersionTopic + "should not happen in the SOP path");
-    }
+    beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
     statusReportAdapter.reportStarted(partitionConsumptionState);

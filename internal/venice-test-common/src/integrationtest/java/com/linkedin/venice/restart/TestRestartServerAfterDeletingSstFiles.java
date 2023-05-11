@@ -134,8 +134,7 @@ public class TestRestartServerAfterDeletingSstFiles {
 
     VeniceServerWrapper server = veniceCluster.getVeniceServers().get(0);
 
-    // restart the venice servers: Mimic Process crash and restart after ingestExternalFile()
-    // completes but before EOP was synced to OffsetRecord
+    // restart the venice servers: Mimic Process crash and restart
     restartVeniceServer(server);
 
     endIngestion();
@@ -255,5 +254,4 @@ public class TestRestartServerAfterDeletingSstFiles {
     veniceCluster.stopVeniceServer(server.getPort());
     veniceCluster.restartVeniceServer(server.getPort());
   }
-
 }

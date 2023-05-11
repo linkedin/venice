@@ -323,7 +323,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       });
     }
     if (sorted) {
-      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier, () -> {});
+      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
     }
     int currentRecordNum = 0;
     int currentFileNo = 0;
@@ -372,7 +372,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
           if (sorted) {
-            storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier, () -> {});
+            storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier);
           }
 
           // Pass last checkpointed info.

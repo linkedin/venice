@@ -344,16 +344,28 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
+  public boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
+    LOGGER.info("checkDatabaseIntegrity inside 5");
+    makeSureRocksDBIsStillOpen();
+    LOGGER.info("checkDatabaseIntegrity inside 6");
+    if (!deferredWrite) {
+      LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
+      return true;
+    }
+    LOGGER.info("checkDatabaseIntegrity inside 7");
+    return rocksDBSstFileWriter.checkPreviousIngestionIntegrity(checkpointedInfo);
+  }
+
+  @Override
   public synchronized void beginBatchWrite(
       Map<String, String> checkpointedInfo,
-      Optional<Supplier<byte[]>> expectedChecksumSupplier,
-      Runnable updateRestartIngestionFlag) {
+      Optional<Supplier<byte[]>> expectedChecksumSupplier) {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
     }
-    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier, updateRestartIngestionFlag);
+    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier);
   }
 
   @Override

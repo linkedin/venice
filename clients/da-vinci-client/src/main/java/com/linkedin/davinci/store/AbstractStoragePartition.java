@@ -103,10 +103,11 @@ public abstract class AbstractStoragePartition {
    */
   public abstract boolean verifyConfig(StoragePartitionConfig storagePartitionConfig);
 
-  public void beginBatchWrite(
-      Map<String, String> checkpointedInfo,
-      Optional<Supplier<byte[]>> checksumSupplier,
-      Runnable updateRestartIngestionFlag) {
+  public boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
+    return true;
+  }
+
+  public void beginBatchWrite(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> checksumSupplier) {
   }
 
   public void endBatchWrite() {
