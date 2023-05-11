@@ -11,6 +11,10 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
+import com.linkedin.venice.client.store.transport.HttpTransportClient;
+import com.linkedin.venice.client.store.transport.HttpsTransportClient;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -140,7 +144,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   private D2Client primaryControllerColoD2Client;
   private D2Client childColoD2Client;
-  private D2ControllerClient controllerClient;
+  private ControllerClient controllerClient;
   // It can be version topic, real-time topic or stream reprocessing topic, depending on push type
   private String topicName;
   private String kafkaBootstrapServers;
@@ -149,6 +153,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private boolean isChunkingEnabled = false;
 
   private boolean isStarted = false;
+
+  private Optional<String> discoveryUrl = Optional.empty();
+  private Optional<String> routerUrl = Optional.empty();
 
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
@@ -280,6 +287,43 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.time = time;
   }
 
+  public VeniceSystemProducer(
+      String discoveryUrl,
+      String storeName,
+      Version.PushType pushType,
+      String samzaJobId,
+      String runningFabric,
+      boolean verifyLatestProtocolPresent,
+      VeniceSystemFactory factory,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners,
+      Time time) {
+
+    if (discoveryUrl == null || discoveryUrl.trim().isEmpty()) {
+      throw new IllegalStateException("Discovery URL is not present");
+    }
+
+    this.discoveryUrl = Optional.of(discoveryUrl);
+
+    this.veniceChildD2ZkHost = null;
+    this.primaryControllerColoD2ZKHost = null;
+    this.primaryControllerD2ServiceName = null;
+
+    this.storeName = storeName;
+    this.pushType = pushType;
+    this.samzaJobId = samzaJobId;
+    this.runningFabric = runningFabric;
+    this.verifyLatestProtocolPresent = verifyLatestProtocolPresent;
+    this.factory = factory;
+    this.sslFactory = sslFactory;
+    this.partitioners = partitioners;
+    this.time = time;
+  }
+
+  public void setRouterUrl(String routerUrl) {
+    this.routerUrl = Optional.of(routerUrl);
+  }
+
   public String getRunningFabric() {
     return this.runningFabric;
   }
@@ -311,6 +355,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
     }
     throw new SamzaException("Failed to send request to Controller, error: " + errorMsg, lastException);
+  }
+
+  public String getTopicName() {
+    return topicName;
   }
 
   /**
@@ -366,45 +414,82 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
     this.isStarted = true;
 
-    this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);
-    this.childColoD2Client = getStartedD2Client(veniceChildD2ZkHost);
+    final TransportClient transportClient;
+    if (discoveryUrl.isPresent()) {
+      this.controllerClient =
+          ControllerClient.discoverAndConstructControllerClient(storeName, discoveryUrl.get(), sslFactory, 1);
 
-    // Discover cluster
-    D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-        () -> D2ControllerClient
-            .discoverCluster(primaryControllerColoD2Client, primaryControllerD2ServiceName, this.storeName),
-        10);
-    String clusterName = discoveryResponse.getCluster();
-    LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
+      /**
+       * Verify that the latest {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#KAFKA_MESSAGE_ENVELOPE}
+       * version in the code base is registered in Venice backend; if not, fail fast in start phase before start writing
+       * Kafka messages that Venice backend couldn't deserialize.
+       */
+      if (verifyLatestProtocolPresent && routerUrl.isPresent()) {
+        LOGGER.info("Start verifying the latest protocols at runtime are valid in Venice backend.");
+        String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
+        ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
+            ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
+        clientConfigForKafkaMessageEnvelopeSchemaReader.setVeniceURL(routerUrl.get());
 
-    /**
-     * Verify that the latest {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#KAFKA_MESSAGE_ENVELOPE}
-     * version in the code base is registered in Venice backend; if not, fail fast in start phase before start writing
-     * Kafka messages that Venice backend couldn't deserialize.
-     */
-    if (verifyLatestProtocolPresent) {
-      LOGGER.info("Start verifying the latest protocols at runtime are valid in Venice backend.");
-      // Discover the D2 service name for the system store
-      String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
-      D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-          () -> D2ControllerClient.discoverCluster(
-              primaryControllerColoD2Client,
-              primaryControllerD2ServiceName,
-              kafkaMessageEnvelopSchemaSysStore),
-          2);
-      ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
-          ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
-      clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getD2Service());
-      clientConfigForKafkaMessageEnvelopeSchemaReader.setD2Client(childColoD2Client);
-      SchemaReader kafkaMessageEnvelopeSchemaReader =
-          ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader, null);
-      new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
-          .verifySchemaVersionPresentOrExit();
-      LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
+        SchemaReader kafkaMessageEnvelopeSchemaReader =
+            ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader, null);
+        new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
+            .verifySchemaVersionPresentOrExit();
+        LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
+      } else {
+        LOGGER.info("Skip verifying the latest protocols at runtime are valid in Venice backend.");
+      }
+
+      if (sslFactory.isPresent()) {
+        transportClient = new HttpsTransportClient(discoveryUrl.get(), sslFactory.get());
+      } else {
+        transportClient = new HttpTransportClient(discoveryUrl.get());
+      }
+    } else {
+      this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);
+      this.childColoD2Client = getStartedD2Client(veniceChildD2ZkHost);
+
+      // Discover cluster
+      D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
+          () -> D2ControllerClient
+              .discoverCluster(primaryControllerColoD2Client, primaryControllerD2ServiceName, this.storeName),
+          10);
+      String clusterName = discoveryResponse.getCluster();
+      LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
+
+      /**
+       * Verify that the latest {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#KAFKA_MESSAGE_ENVELOPE}
+       * version in the code base is registered in Venice backend; if not, fail fast in start phase before start writing
+       * Kafka messages that Venice backend couldn't deserialize.
+       */
+      if (verifyLatestProtocolPresent) {
+        LOGGER.info("Start verifying the latest protocols at runtime are valid in Venice backend.");
+        // Discover the D2 service name for the system store
+        String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
+        D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
+            () -> D2ControllerClient.discoverCluster(
+                primaryControllerColoD2Client,
+                primaryControllerD2ServiceName,
+                kafkaMessageEnvelopSchemaSysStore),
+            2);
+        ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
+            ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
+        clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getD2Service());
+        clientConfigForKafkaMessageEnvelopeSchemaReader.setD2Client(childColoD2Client);
+        SchemaReader kafkaMessageEnvelopeSchemaReader =
+            ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader, null);
+        new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
+            .verifySchemaVersionPresentOrExit();
+        LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
+      }
+
+      this.controllerClient = new D2ControllerClient(
+          primaryControllerD2ServiceName,
+          clusterName,
+          primaryControllerColoD2Client,
+          sslFactory);
+      transportClient = new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client);
     }
-
-    this.controllerClient =
-        new D2ControllerClient(primaryControllerD2ServiceName, clusterName, primaryControllerColoD2Client, sslFactory);
 
     // Request all the necessary info from Venice Controller
     VersionCreationResponse versionCreationResponse = (VersionCreationResponse) controllerRequestWithRetry(
@@ -443,12 +528,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      pushMonitor = Optional.of(
-          new RouterBasedPushMonitor(
-              new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client),
-              versionTopic,
-              factory,
-              this));
+      pushMonitor = Optional.of(new RouterBasedPushMonitor(transportClient, versionTopic, factory, this));
       pushMonitor.get().start();
     }
 
@@ -481,12 +561,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     if ((pushType.equals(Version.PushType.STREAM) || pushType.equals(Version.PushType.STREAM_REPROCESSING))
         && hybridStoreDiskQuotaEnabled) {
-      hybridStoreQuotaMonitor = Optional.of(
-          new RouterBasedHybridStoreQuotaMonitor(
-              new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client),
-              storeName,
-              pushType,
-              topicName));
+      hybridStoreQuotaMonitor =
+          Optional.of(new RouterBasedHybridStoreQuotaMonitor(transportClient, storeName, pushType, topicName));
       hybridStoreQuotaMonitor.get().start();
     }
   }

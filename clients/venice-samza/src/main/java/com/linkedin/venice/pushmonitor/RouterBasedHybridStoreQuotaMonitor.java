@@ -4,7 +4,7 @@ import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.client.store.transport.D2TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
@@ -38,7 +38,7 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
   private HybridStoreQuotaStatus currentStatus = HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED;
 
   public RouterBasedHybridStoreQuotaMonitor(
-      D2TransportClient transportClient,
+      TransportClient transportClient,
       String storeName,
       Version.PushType pushType,
       String topicName) {
@@ -87,12 +87,12 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
 
     private final AtomicBoolean isRunning;
     private final String storeName;
-    private final D2TransportClient transportClient;
+    private final TransportClient transportClient;
     private final String requestPath;
     private final RouterBasedHybridStoreQuotaMonitor hybridStoreQuotaMonitorService;
 
     public HybridQuotaMonitorTask(
-        D2TransportClient transportClient,
+        TransportClient transportClient,
         String storeName,
         String requestPath,
         RouterBasedHybridStoreQuotaMonitor hybridStoreQuotaMonitorService) {

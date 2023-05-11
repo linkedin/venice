@@ -9,6 +9,23 @@ pluginManagement {
   }
 }
 
+buildscript {
+//  repositories {
+//    mavenCentral()
+//    maven { url "https://plugins.gradle.org/m2/" }
+//  }
+  dependencies {
+    classpath "io.github.lhotari.gradle-nar-plugin:gradle-nar-plugin:0.5.1"
+    //classpath "gradle.plugin.com.github.johnrengelman:shadow:7.1.2"
+    //classpath "com.avast.gradle:gradle-docker-compose-plugin:0.14.9"
+
+    // workaround for issue https://github.com/n0mer/gradle-git-properties/issues/195
+    //classpath("org.eclipse.jgit:org.eclipse.jgit:5.13.0.202109080827-r") {
+    //  force = true
+    //}
+  }
+}
+
 plugins {
   id 'com.gradle.enterprise' version '3.10'
 }
@@ -39,6 +56,7 @@ include 'clients:da-vinci-client'
 include 'clients:venice-admin-tool'
 include 'clients:venice-client'
 include 'clients:venice-producer'
+include 'clients:venice-pulsar'
 include 'clients:venice-push-job'
 include 'clients:venice-samza'
 include 'clients:venice-thin-client'
@@ -68,6 +86,9 @@ include 'internal:alpini:netty4:alpini-netty4-base'
 include 'internal:alpini:router:alpini-router-api'
 include 'internal:alpini:router:alpini-router-base'
 include 'internal:alpini:router:alpini-router-impl'
+
+// integration tests
+include 'tests:venice-pulsar-test'
 
 // Depend-all module
 include 'all-modules'

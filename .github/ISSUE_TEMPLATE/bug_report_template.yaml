@@ -82,6 +82,8 @@ body:
           required: false
         - label: "`VenicePushJob`: This is the component that pushes derived data from Hadoop to Venice backend."
           required: false
+        - label: "`VenicePulsarSink`: This is a Sink connector for Apache Pulsar that pushes data from Pulsar into Venice."
+          required: false
         - label: "`Thin Client`: This is a stateless client users use to query Venice Router for reading store data."
           required: false
         - label: "`Fast Client`: This is a stateful client users use to query Venice Server for reading store data."
