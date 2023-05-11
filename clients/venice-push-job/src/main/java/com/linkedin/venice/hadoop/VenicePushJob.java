@@ -1249,7 +1249,7 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void runJobAndUpdateStatus() throws IOException {
+  void runJobAndUpdateStatus() throws IOException {
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_MAP_REDUCE_JOB);
     runningJob = runJobWithConfig(jobConf);
     validateCountersAfterPush();
@@ -2129,7 +2129,7 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * This method will validate the key schema in the input file against the one registered in Venice.
    */
-  private void validateKeySchema(
+  void validateKeySchema(
       ControllerClient controllerClient,
       PushJobSetting setting,
       PushJobSchemaInfo pushJobSchemaInfo,
@@ -2204,7 +2204,7 @@ public class VenicePushJob implements AutoCloseable {
   /***
    * This method will talk to controller to validate value schema.
    */
-  private void validateValueSchema(
+  void validateValueSchema(
       ControllerClient controllerClient,
       PushJobSetting setting,
       PushJobSchemaInfo pushJobSchemaInfo,
@@ -2368,7 +2368,7 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
    */
-  private void createNewStoreVersion(
+  void createNewStoreVersion(
       PushJobSetting setting,
       long inputFileDataSize,
       ControllerClient controllerClient,
@@ -2635,16 +2635,21 @@ public class VenicePushJob implements AutoCloseable {
       });
 
       if (overallStatus.isTerminal()) {
-        if (pushJobSetting.canaryRegionPush && completedDatacenters.size() == 1) {
-          LOGGER.info("Successfully pushed {} to {}", topicInfo.topic, completedDatacenters.iterator().next());
-          return;
+        if (pushJobSetting.canaryRegionPush) {
+          if (completedDatacenters.size() == 1) {
+            LOGGER.info("Successfully pushed {} to {}", topicInfo.topic, completedDatacenters.iterator().next());
+            return;
+          } else {
+            throw new VeniceException(
+                "Canary region push job ended up with zero or more than one region ending with unexpected COMPLETED status, "
+                    + "reported by controller: " + pushJobSetting.veniceControllerUrl + "\ncontroller response: "
+                    + response);
+          }
         }
         if (completedDatacenters.size() != regionSpecificInfo.size() || !successfulStatuses.contains(overallStatus)) {
-          // 1. One or more DC could have an UNKNOWN status and never successfully reported a completed status before,
+          // One or more DC could have an UNKNOWN status and never successfully reported a completed status before,
           // but if the majority of datacenters have completed, we give up on the unreachable datacenter
           // and start truncating the data topic.
-          // 2. The expected canary region push ends up with more than 1 region have completed status, which is
-          // unexpected
 
           throw new VeniceException(
               "Push job error reported by controller: " + pushJobSetting.veniceControllerUrl + "\ncontroller response: "
@@ -2716,7 +2721,7 @@ public class VenicePushJob implements AutoCloseable {
     return detailsPresentWhenPreviouslyAbsent || detailsDifferentFromPreviously;
   }
 
-  protected void setupMRConf(
+  void setupMRConf(
       JobConf jobConf,
       TopicInfo topicInfo,
       PushJobSetting pushJobSetting,

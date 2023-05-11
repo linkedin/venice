@@ -2618,7 +2618,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // only parent controller should handle this request. See @{link
       // VeniceParentHelixAdmin#incrementVersionIdempotent}
       throw new VeniceException(
-          "Request of creating versions/topics for canary colo push should only be sent to parent controller");
+          "Request of creating versions/topics for canary region push should only be sent to parent controller");
     }
     checkControllerLeadershipFor(clusterName);
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();

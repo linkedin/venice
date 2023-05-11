@@ -1857,8 +1857,6 @@ public class VeniceParentHelixAdmin implements Admin {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
       MultiStoreStatusResponse response = controllerClient.getFutureVersions(clusterName, storeName);
-      LOGGER.info("DEBUGGING_FUTURE_VERSIONS");
-      LOGGER.info(response);
       if (response.isError()) {
         LOGGER.error(
             "Could not query store from region: {} for cluster: {}. Error: {}",

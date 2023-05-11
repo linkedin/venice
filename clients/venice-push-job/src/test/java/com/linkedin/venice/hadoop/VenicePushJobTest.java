@@ -15,8 +15,12 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -27,18 +31,24 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -219,6 +229,38 @@ public class VenicePushJobTest {
     keySchemaResponse.setSchemaStr(Schema.create(Schema.Type.STRING).toString());
     doReturn(keySchemaResponse).when(client).getKeySchema(TEST_STORE);
 
+    // mock version creation
+    VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
+    versionCreationResponse.setKafkaTopic("kafka-topic");
+    versionCreationResponse.setVersion(1);
+    versionCreationResponse.setKafkaBootstrapServers("kafka-bootstrap-server");
+    versionCreationResponse.setPartitions(1);
+    versionCreationResponse.setEnableSSL(false);
+    versionCreationResponse.setCompressionStrategy(CompressionStrategy.NO_OP);
+    versionCreationResponse.setDaVinciPushStatusStoreEnabled(false);
+    versionCreationResponse.setPartitionerClass("PartitionerClass");
+    versionCreationResponse.setPartitionerParams(Collections.emptyMap());
+
+    doReturn(versionCreationResponse).when(client)
+        .requestTopicForWrites(
+            anyString(),
+            anyLong(),
+            any(),
+            anyString(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            anyBoolean(),
+            anyLong(),
+            anyBoolean(),
+            anyBoolean());
+
+    ControllerResponse response = new ControllerResponse();
+    doReturn(response).when(client).writeEndOfPush(anyString(), anyInt());
+    doReturn(response).when(client).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
     return client;
   }
 
@@ -237,6 +279,17 @@ public class VenicePushJobTest {
     storeInfo.setVersions(Collections.singletonList(version));
     info.accept(storeInfo);
     return storeInfo;
+  }
+
+  private InputDataInfoProvider getMockInputDataInfoProvider() throws Exception {
+    InputDataInfoProvider provider = mock(InputDataInfoProvider.class);
+    PushJobSchemaInfo pushJobSchemaInfo = new PushJobSchemaInfo();
+    pushJobSchemaInfo.setAvro(false); // skip the validation for the sake of unit testing
+    // Input file size cannot be zero.
+    InputDataInfoProvider.InputDataInfo info =
+        new InputDataInfoProvider.InputDataInfo(pushJobSchemaInfo, 10L, 1, false, System.currentTimeMillis());
+    doReturn(info).when(provider).validateInputAndGetInfo(anyString());
+    return provider;
   }
 
   @Test(expectedExceptions = NullPointerException.class)
@@ -458,6 +511,63 @@ public class VenicePushJobTest {
       Assert.fail("Test should fail, but doesn't.");
     } catch (VeniceException e) {
       assertEquals(e.getMessage(), "Incremental push is not supported while using canary region push mode");
+    }
+  }
+
+  @Test
+  public void testCanaryRegionPushReporting() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(CANARY_REGION_PUSH, true);
+    ControllerClient client = getClient(storeInfo -> {
+      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
+      storeInfo.setWriteComputationEnabled(true);
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
+    });
+    VenicePushJob pushJob = getSpyVenicePushJob(props, client);
+    doReturn(getMockInputDataInfoProvider()).when(pushJob).getInputDataInfoProvider();
+    doNothing().when(pushJob).validateKeySchema(any(), any(), any(), any());
+    doNothing().when(pushJob).validateValueSchema(any(), any(), any(), anyBoolean());
+    doNothing().when(pushJob).setupMRConf(any(), any(), any(), any(), any(), any(), anyString(), anyString());
+    doNothing().when(pushJob).runJobAndUpdateStatus();
+
+    JobStatusQueryResponse response = new JobStatusQueryResponse();
+    response.setStatus(ExecutionStatus.COMPLETED.toString());
+    response.setStatusDetails("nothing");
+    response.setVersion(1);
+    response.setName(TEST_STORE);
+    response.setCluster(TEST_CLUSTER);
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+    extraInfo.put("dc-1", ExecutionStatus.NOT_STARTED.toString());
+    response.setExtraInfo(extraInfo);
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyBoolean());
+    // only one region is completed, so should succeed
+    pushJob.run();
+
+    // none of the regions are completed, so should fail
+    extraInfo.put("dc-0", ExecutionStatus.NOT_STARTED.toString());
+    try {
+      pushJob.run();
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertTrue(
+          e.getMessage()
+              .contains(
+                  "Canary region push job ended up with zero or more than one region ending with unexpected COMPLETED status"));
+    }
+
+    // both regions are completed, so should fail
+    extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+    extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
+    try {
+      pushJob.run();
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertTrue(
+          e.getMessage()
+              .contains(
+                  "Canary region push job ended up with zero or more than one region ending with unexpected COMPLETED status"));
     }
   }
 }
