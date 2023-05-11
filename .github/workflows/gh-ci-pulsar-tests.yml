@@ -1,0 +1,84 @@
+
+name: PulsarVeniceIntegrationCI
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  ValidateGradleWrapper:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+      - name: Set up Docker
+        uses: crazy-max/ghaction-setup-docker@v1
+
+  PulsarVeniceIntegrationTests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+          cache: 'gradle'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+      - name: Build with gradle
+        run: ./gradlew assemble --stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
+
+      - name: Build docker images for Venice (latest-dev tag)
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/docker
+          ./build-venice-docker-images.sh
+          cd ${{ github.workspace }}
+
+      - name: Build docker images for Pulsar test (latest-dev tag)
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/tests/docker-images/pulsar-sink
+          docker build --tag=pulsar/venice-test:latest-dev ${{ github.workspace }} -f ./Dockerfile
+          cd ${{ github.workspace }}
+
+      - name: Run the test
+        shell: bash
+        run: |
+          ./gradlew :tests:venice-pulsar-test:pulsarIntegrationTest -i
+
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success() || failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30

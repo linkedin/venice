@@ -5,7 +5,6 @@ import org.gradle.internal.logging.text.StyledTextOutputFactory
 
 import java.nio.file.Files
 
-
 plugins {
   id 'idea'
   id 'java'
@@ -17,6 +16,7 @@ plugins {
   id 'org.gradle.test-retry' version '1.5.0' apply false
   id 'com.form.diff-coverage' version '0.9.5' apply false
   id 'me.champeau.jmh' version '0.6.7' apply false
+  id "io.github.lhotari.gradle-nar-plugin" apply false
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -90,17 +90,24 @@ ext.libraries = [
     mail: 'javax.mail:mail:1.4.4',
     mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
     mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
-    mockito: 'org.mockito:mockito-core:3.3.3',
+    mockito: 'org.mockito:mockito-core:3.12.4',
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
+    pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
+    pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
+    pulsarIoCommon: "${pulsarGroup}:pulsar-io-common:${pulsarVersion}",
     r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
     restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
     rocksdbjni: 'org.rocksdb:rocksdbjni:7.9.2',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
+    slf4j: 'org.slf4j:slf4j:1.7.36',
+    slf4jApi: 'org.slf4j:slf4j-api:1.7.36',
+    slf4jSimple: 'org.slf4j:slf4j-simple:1.7.36',
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4',
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
     tehuti: 'io.tehuti:tehuti:0.10.0',
+    testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
     // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
     xalan: 'xalan:xalan:2.7.1',
@@ -664,3 +671,8 @@ ext.parseJacocoXml = { filePath ->
         "the jacoco report is not generated.", e)
   }
 }
+
+allprojects {
+  task printAllDependencies(type: DependencyReportTask) {}
+}
+

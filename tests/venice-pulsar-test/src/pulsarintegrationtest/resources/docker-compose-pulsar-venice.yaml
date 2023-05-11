@@ -1,0 +1,188 @@
+version: '3.8'
+
+# testcontainers do not support container_name and ${TAG}
+
+networks:
+  pulsar:
+    driver: bridge
+
+# with help of
+# https://pulsar.apache.org/docs/next/getting-started-docker-compose/
+# https://github.com/apache/pulsar/blob/master/docker-compose/kitchen-sink/docker-compose.yml
+services:
+
+  zookeeper:
+    image: "pulsar/venice-test:latest-dev"
+    hostname: zookeeper
+    restart: on-failure
+    networks:
+      - pulsar
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - PULSAR_MEM=-Xms256m -Xmx256m -XX:MaxDirectMemorySize=256m
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/zookeeper.conf && \
+             bin/generate-zookeeper-config.sh conf/zookeeper.conf && \
+             exec bin/pulsar zookeeper"
+    healthcheck:
+      test: ["CMD", "bin/pulsar-zookeeper-ruok.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Init cluster metadata
+  pulsar-init:
+    hostname: pulsar-init
+    image: "pulsar/venice-test:latest-dev"
+    networks:
+      - pulsar
+    command: >
+      bin/pulsar initialize-cluster-metadata \
+               --cluster cluster-a \
+               --zookeeper zookeeper:2181 \
+               --configuration-store zookeeper:2181 \
+               --web-service-url http://broker:8080 \
+               --broker-service-url pulsar://broker:6650
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+
+  # Start bookie
+  bookie:
+    image: "pulsar/venice-test:latest-dev"
+    hostname: bookie
+    restart: on-failure
+    networks:
+      - pulsar
+    environment:
+      - clusterName=cluster-a
+      - zkServers=zookeeper:2181
+      - metadataServiceUri=metadata-store:zk:zookeeper:2181
+      - advertisedAddress=bookie
+      - BOOKIE_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      pulsar-init:
+        condition: service_completed_successfully
+    command: bash -c "bin/apply-config-from-env.py conf/bookkeeper.conf && exec bin/pulsar bookie"
+
+  # Start broker
+  broker:
+    image: "pulsar/venice-test:latest-dev"
+    hostname: broker
+    restart: on-failure
+    networks:
+      - pulsar
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - zookeeperServers=zookeeper:2181
+      - clusterName=cluster-a
+      - managedLedgerDefaultEnsembleSize=1
+      - managedLedgerDefaultWriteQuorum=1
+      - managedLedgerDefaultAckQuorum=1
+      - advertisedAddress=broker
+      - PULSAR_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
+      - functionsWorkerEnabled=true
+      - webSocketServiceEnabled=true
+    # uncomment for quick access to the Sink log:
+    #volumes:
+    #  - ./data/broker/logs:/pulsar/logs
+    depends_on:
+      bookie:
+        condition: service_started
+    command: bash -c "bin/apply-config-from-env.py conf/broker.conf && exec bin/pulsar broker"
+
+  proxy:
+    hostname: proxy
+    restart: on-failure
+    image: "pulsar/venice-test:latest-dev"
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/proxy.conf && \
+               bin/apply-config-from-env.py conf/pulsar_env.sh && \
+               exec bin/pulsar proxy"
+    environment:
+      - clusterName=cluster-a
+      - zookeeperServers=zookeeper:2181
+      - configurationStoreServers=zookeeper:2181
+      - webSocketServiceEnabled=true
+    ports:
+      - "6650:6650"
+      - "8080:8080"
+    depends_on:
+      broker:
+        condition: service_started
+      venice-client:
+        condition: service_started
+    networks:
+      - pulsar
+
+  kafka:
+    image: "venicedb/kafka:latest"
+    hostname: kafka
+    networks:
+      - pulsar
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "bash -x bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+        start_period: 60s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+  venice-controller:
+    image: "venicedb/venice-controller:latest-dev"
+    hostname: venice-controller
+    networks:
+      - pulsar
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+  venice-server:
+    image: "venicedb/venice-server:latest-dev"
+    hostname: venice-server
+    networks:
+      - pulsar
+    depends_on:
+      venice-controller:
+        condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+  venice-router:
+    image: "venicedb/venice-router:latest-dev"
+    hostname: venice-router
+    networks:
+      - pulsar
+    depends_on:
+      venice-server:
+        condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+  venice-client:
+    image: "venicedb/venice-client:latest-dev"
+    hostname: venice-client
+    networks:
+      - pulsar
+    tty: true
+    depends_on:
+      venice-router:
+        condition: service_healthy

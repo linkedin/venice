@@ -14,6 +14,8 @@ dependencies {
   implementation project(':internal:venice-client-common')
   implementation project(':clients:venice-thin-client')
 
+  implementation libraries.httpAsyncClient
+
   implementation libraries.kafka
   implementation libraries.log4j2api
   implementation libraries.samzaApi
