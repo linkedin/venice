@@ -347,10 +347,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
     makeSureRocksDBIsStillOpen();
     if (!deferredWrite) {
-      LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
+      LOGGER.info("checkDatabaseIntegrity will do nothing since 'deferredWrite' is disabled");
       return true;
     }
-    return rocksDBSstFileWriter.checkPreviousIngestionIntegrity(checkpointedInfo);
+    return rocksDBSstFileWriter.checkDatabaseIntegrity(checkpointedInfo);
   }
 
   @Override
@@ -614,7 +614,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     // Remove the directory
     File dir = new File(fullPath);
     if (dir.exists()) {
-      // Remove file directory
       if (!dir.delete()) {
         LOGGER.warn("Failed to remove dir: {}", fullPath);
       }
@@ -778,10 +777,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return options;
   }
 
+  // Visible for testing
   public String getFullPathForTempSSTFileDir() {
     return fullPathForTempSSTFileDir;
   }
 
+  // Visible for testing
   public RocksDBSstFileWriter getRocksDBSstFileWriter() {
     return rocksDBSstFileWriter;
   }

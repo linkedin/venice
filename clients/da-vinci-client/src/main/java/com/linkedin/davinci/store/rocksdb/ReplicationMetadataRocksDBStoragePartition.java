@@ -185,7 +185,7 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
       return true;
     }
     return (super.checkDatabaseIntegrity(checkpointedInfo)
-        && rocksDBSstFileWriter.checkPreviousIngestionIntegrity(checkpointedInfo));
+        && rocksDBSstFileWriter.checkDatabaseIntegrity(checkpointedInfo));
   }
 
   @Override
@@ -244,22 +244,22 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     super.drop();
   }
 
-  // only visible for testing
+  // Visible for testing
   public String getFullPathForTempSSTFileDir() {
     return fullPathForTempSSTFileDir;
   }
 
-  // only visible for testing
+  // Visible for testing
   public RocksDBSstFileWriter getRocksDBSstFileWriter() {
     return rocksDBSstFileWriter;
   }
 
-  // only visible for testing
+  // Visible for testing
   public String getValueFullPathForTempSSTFileDir() {
     return super.getFullPathForTempSSTFileDir();
   }
 
-  // only visible for testing
+  // Visible for testing
   public RocksDBSstFileWriter getValueRocksDBSstFileWriter() {
     return super.getRocksDBSstFileWriter();
   }

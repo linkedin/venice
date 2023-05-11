@@ -356,7 +356,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   /**
    * checks whether the current state of the database is valid
-   * during a restart before continuing ingestion.
+   * during the start of ingestion.
    */
   public boolean checkDatabaseIntegrity(
       int partitionId,

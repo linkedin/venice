@@ -283,12 +283,12 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     return ByteUtils.extractByteArray(replicationMetadataWitValueSchemaId);
   }
 
-  @Test(/*dataProvider = "testIngestionDataProvider"*/)
-  public void testReplicationMetadataIngestion() {
-    boolean sorted = true;
-    boolean interrupted = true;
-    boolean reopenDatabaseDuringInterruption = true;
-    boolean verifyChecksum = true;
+  @Test(dataProvider = "testIngestionDataProvider")
+  public void testReplicationMetadataIngestion(
+      boolean sorted,
+      boolean interrupted,
+      boolean reopenDatabaseDuringInterruption,
+      boolean verifyChecksum) {
     Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);

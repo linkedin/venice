@@ -97,8 +97,8 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private final String METADATA_PREFIX = "metadata";
   private String storeName = Utils.getUniqueString("store");
   private final int numServers = 5;
-  List<Integer> allIncPushKeys = new ArrayList<>();
-  List<Integer> allNonIncPushKeysUntilLastVersion = new ArrayList<>();
+  List<Integer> allIncPushKeys = new ArrayList<>(); // all keys ingested via incremental push
+  List<Integer> allNonIncPushKeysUntilLastVersion = new ArrayList<>(); // all keys ingested only via batch push
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -124,16 +124,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         Optional.empty(),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-
-    /*childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
-    
-    // Set up a d2 client for DC0 region
-    d2ClientForDC0Region = new D2ClientBuilder().setZkHosts(childDatacenters.get(0).getZkServerWrapper().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2ClientForDC0Region);*/
 
     List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
@@ -239,6 +229,16 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(0));
   }
 
+  /**
+   * This test include below steps:
+   * 1. Batch Push data without EOP (100 keys)
+   * 2. Delete SST files (based on params)
+   * 3. restart servers
+   * 4. Validate whether the data is ingested
+   * 5. Incremental push data (10 keys (90-100 of the batch push))
+   * 6. Validate whether the data is ingested
+   * 7. Validate whether all the data from RT is ingested to the new versions as well.
+   */
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testActiveActiveStoreWithRMDAndRestartServer(boolean deleteSSTFiles, boolean deleteRMDSSTFiles)
       throws Exception {
@@ -367,7 +367,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
               .setSslFactory(SslUtils.getVeniceLocalSslFactory())
               .setRetryOnAllErrors(true));
 
-      // 1. invalid key
       // 1. invalid keys: all the keys pushed before this version and not repushed via incremental push
       AvroGenericStoreClient<String, Object> finalStoreClient = storeClient;
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -406,7 +405,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     topic = versionCreationResponse.getKafkaTopic();
     assertNotNull(topic);
 
-    // incremental push
+    // incremental push: the last 10 keys from the batch push
     int incPushStartKey = startKey + 90;
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
@@ -450,7 +449,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         currKey++;
       }
 
-      // 2. last 10 should be from incremental push
+      // 2. last 10 keys should be from incremental push
       while (currKey < endKey) {
         int finalCurrKey = currKey;
         AvroGenericStoreClient<String, Object> finalStoreClient1 = storeClient;
@@ -476,7 +475,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         storeClient.close();
       }
     }
-    // used in the next run
+    // to be used in the next run
     allNonIncPushKeysUntilLastVersion.addAll(currNonIncPushKeys);
   }
 }

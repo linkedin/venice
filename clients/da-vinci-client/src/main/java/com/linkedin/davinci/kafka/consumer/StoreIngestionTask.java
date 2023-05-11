@@ -570,11 +570,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * In this case, the upstream should restart the ingestion from scratch.
    */
   private boolean checkDatabaseIntegrity(
-      PubSubTopicPartition topicPartition,
+      int partitionId,
+      String topic,
       OffsetRecord offsetRecord,
       PartitionConsumptionState partitionConsumptionState) {
-    int partitionId = topicPartition.getPartitionNumber();
-    String topic = topicPartition.getPubSubTopic().getName();
     boolean returnStatus = true;
     if (offsetRecord.getLocalVersionTopicOffset() > 0) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
@@ -584,7 +583,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             topic,
             partitionId);
         returnStatus = storageEngine.checkDatabaseIntegrity(
-            topicPartition.getPartitionNumber(),
+            partitionId,
             offsetRecord.getDatabaseInfo(),
             getStoragePartitionConfig(partitionId, storeVersionState.sorted, partitionConsumptionState));
         LOGGER.info(
@@ -604,7 +603,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           topic,
           partitionId);
     }
-    return true;
+    return returnStatus;
   }
 
   private void beginBatchWrite(int partitionId, boolean sorted, PartitionConsumptionState partitionConsumptionState) {
@@ -1536,6 +1535,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopicPartition topicPartition,
       LeaderFollowerStateType leaderState) throws InterruptedException {
     int partition = topicPartition.getPartitionNumber();
+    String topic = topicPartition.getPubSubTopic().getName();
     switch (operation) {
       case SUBSCRIBE:
         // Clear the error partition tracking
@@ -1545,8 +1545,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         subscribedCount++;
 
         // Get the last persisted Offset record from metadata service
-        OffsetRecord offsetRecord =
-            storageMetadataService.getLastOffset(topicPartition.getPubSubTopic().getName(), partition);
+        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
 
         // Let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState =
@@ -1561,11 +1560,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         });
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
-
-        if (!checkDatabaseIntegrity(topicPartition, offsetRecord, newPartitionConsumptionState)) {
+        if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
           LOGGER.warn(
               "Restart ingestion from the beginning by resetting OffsetRecord for topic: {} and partition: {}",
-              topicPartition.getPubSubTopic().getName(),
+              topic,
               partition);
           resetOffset(partition, topicPartition, true);
           newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
@@ -1663,10 +1661,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         resetOffset(partition, topicPartition, false);
         break;
       case KILL:
-        LOGGER.info("Kill this consumer task for Topic: {}", topicPartition.getPubSubTopic().getName());
+        LOGGER.info("Kill this consumer task for Topic: {}", topic);
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
-        throw new VeniceIngestionTaskKilledException(
-            "Received the signal to kill this consumer. Topic " + topicPartition.getPubSubTopic().getName());
+        throw new VeniceIngestionTaskKilledException("Received the signal to kill this consumer. Topic " + topic);
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }

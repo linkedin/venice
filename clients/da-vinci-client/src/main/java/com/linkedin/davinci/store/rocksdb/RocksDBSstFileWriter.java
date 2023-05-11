@@ -143,7 +143,7 @@ public class RocksDBSstFileWriter {
    *    in {@link #deleteOldIngestion}
    * 3. return false for the upstream to reset its state and restart ingestion.
    */
-  boolean checkPreviousIngestionIntegrity(Map<String, String> checkpointedInfo) {
+  boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
     // Create temp SST file dir if it doesn't exist
     File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
     if (!tempSSTFileDir.exists()) {
@@ -196,7 +196,7 @@ public class RocksDBSstFileWriter {
         storeName,
         partitionId,
         checkpointedInfo);
-    checkPreviousIngestionIntegrity(checkpointedInfo);
+    checkDatabaseIntegrity(checkpointedInfo);
     String fullPathForCurrentSSTFile = composeFullPathForSSTFile(currentSSTFileNo);
     currentSSTFileWriter = new SstFileWriter(envOptions, options);
     try {
@@ -485,6 +485,7 @@ public class RocksDBSstFileWriter {
     return sstFilePaths;
   }
 
+  // Visible for testing
   public long getRecordNumInAllSSTFiles() {
     return recordNumInAllSSTFiles;
   }
