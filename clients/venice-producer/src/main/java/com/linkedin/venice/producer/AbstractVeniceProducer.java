@@ -179,23 +179,24 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   @Override
   public CompletableFuture<DurableWrite> asyncPut(K key, V value) {
-    String error = validateProducer();
-    if (!StringUtils.isEmpty(error)) {
-      return getFutureCompletedExceptionally(error);
-    }
     return asyncPutInternal(APP_DEFAULT_LOGICAL_TS, key, value);
   }
 
   @Override
   public CompletableFuture<DurableWrite> asyncPut(long logicalTime, K key, V value) {
-    String error = validateProducerWithLogicalTime(logicalTime);
-    if (!StringUtils.isEmpty(error)) {
-      return getFutureCompletedExceptionally(error);
+    if (logicalTime < 0) {
+      return getFutureCompletedExceptionally("Logical time must be a non-negative value. Got: " + logicalTime);
     }
+
     return asyncPutInternal(logicalTime, key, value);
   }
 
   private CompletableFuture<DurableWrite> asyncPutInternal(long logicalTime, K key, V value) {
+    String error = validateProducer();
+    if (!StringUtils.isEmpty(error)) {
+      return getFutureCompletedExceptionally(error);
+    }
+
     producerMetrics.recordPutRequest();
     return CompletableFuture.supplyAsync(() -> {
       Schema valueSchema;
@@ -207,16 +208,19 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       }
       // Might block
       int valueSchemaId;
+      Exception schemaReadException = null;
       try {
         valueSchemaId = schemaReader.getValueSchemaId(valueSchema);
       } catch (Exception e) {
         valueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+        schemaReadException = e;
       }
       if (valueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
         producerMetrics.recordFailedRequest();
         throw new VeniceException(
             "Could not find a registered schema id for schema: " + valueSchema
-                + ". This might be transient if the schema has been registered recently.");
+                + ". This might be transient if the schema has been registered recently.",
+            schemaReadException);
       }
       final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
       final Instant sendStartTime = Instant.now();
@@ -234,11 +238,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       byte[] keyBytes = keySerializer.serialize(key);
       byte[] valueBytes = getSerializer(valueSchema).serialize(value);
 
-      if (logicalTime < 0) {
-        veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
-      } else {
-        veniceWriter.put(keyBytes, valueBytes, valueSchemaId, logicalTime, callback);
-      }
+      veniceWriter.put(keyBytes, valueBytes, valueSchemaId, logicalTime, callback);
 
       try {
         completableFuture.get();
@@ -252,23 +252,24 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   @Override
   public CompletableFuture<DurableWrite> asyncDelete(K key) {
-    String error = validateProducer();
-    if (!StringUtils.isEmpty(error)) {
-      return getFutureCompletedExceptionally(error);
-    }
     return asyncDeleteInternal(APP_DEFAULT_LOGICAL_TS, key);
   }
 
   @Override
   public CompletableFuture<DurableWrite> asyncDelete(long logicalTime, K key) {
-    String error = validateProducerWithLogicalTime(logicalTime);
-    if (!StringUtils.isEmpty(error)) {
-      return getFutureCompletedExceptionally(error);
+    if (logicalTime < 0) {
+      return getFutureCompletedExceptionally("Logical time must be a non-negative value. Got: " + logicalTime);
     }
+
     return asyncDeleteInternal(logicalTime, key);
   }
 
   private CompletableFuture<DurableWrite> asyncDeleteInternal(long logicalTime, K key) {
+    String error = validateProducer();
+    if (!StringUtils.isEmpty(error)) {
+      return getFutureCompletedExceptionally(error);
+    }
+
     producerMetrics.recordDeleteRequest();
     return CompletableFuture.supplyAsync(() -> {
       final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
@@ -286,11 +287,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
       byte[] keyBytes = keySerializer.serialize(key);
 
-      if (logicalTime < 0) {
-        veniceWriter.delete(keyBytes, callback);
-      } else {
-        veniceWriter.delete(keyBytes, logicalTime, callback);
-      }
+      veniceWriter.delete(keyBytes, logicalTime, callback);
 
       try {
         completableFuture.get();
@@ -304,19 +301,15 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   @Override
   public CompletableFuture<DurableWrite> asyncUpdate(K key, Consumer<UpdateBuilder> updateFunction) {
-    String error = validateProducer();
-    if (!StringUtils.isEmpty(error)) {
-      return getFutureCompletedExceptionally(error);
-    }
     return asyncUpdateInternal(APP_DEFAULT_LOGICAL_TS, key, updateFunction);
   }
 
   @Override
   public CompletableFuture<DurableWrite> asyncUpdate(long logicalTime, K key, Consumer<UpdateBuilder> updateFunction) {
-    String error = validateProducerWithLogicalTime(logicalTime);
-    if (!StringUtils.isEmpty(error)) {
-      return getFutureCompletedExceptionally(error);
+    if (logicalTime < 0) {
+      return getFutureCompletedExceptionally("Logical time must be a non-negative value. Got: " + logicalTime);
     }
+
     return asyncUpdateInternal(logicalTime, key, updateFunction);
   }
 
@@ -324,6 +317,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       long logicalTime,
       K key,
       Consumer<UpdateBuilder> updateFunction) {
+    String error = validateProducer();
+    if (!StringUtils.isEmpty(error)) {
+      return getFutureCompletedExceptionally(error);
+    }
+
     producerMetrics.recordUpdateRequest();
     return CompletableFuture.supplyAsync(() -> {
       // Caching to avoid race conditions during processing of the function
@@ -366,18 +364,13 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       byte[] keyBytes = keySerializer.serialize(key);
       byte[] updateBytes = getSerializer(updateSchema).serialize(updateRecord);
 
-      if (logicalTime < 0) {
-        veniceWriter
-            .update(keyBytes, updateBytes, updateSchemaEntry.getValueSchemaID(), updateSchemaEntry.getId(), callback);
-      } else {
-        veniceWriter.update(
-            keyBytes,
-            updateBytes,
-            updateSchemaEntry.getValueSchemaID(),
-            updateSchemaEntry.getId(),
-            callback,
-            logicalTime);
-      }
+      veniceWriter.update(
+          keyBytes,
+          updateBytes,
+          updateSchemaEntry.getValueSchemaID(),
+          updateSchemaEntry.getId(),
+          callback,
+          logicalTime);
 
       try {
         completableFuture.get();
@@ -407,21 +400,8 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     return StringUtils.EMPTY;
   }
 
-  private String validateProducerWithLogicalTime(long logicalTime) {
-    String error = validateProducer();
-    if (!StringUtils.isEmpty(error)) {
-      return error;
-    }
-
-    if (logicalTime < 0) {
-      return "Logical time must be a non-negative value. Got: " + logicalTime;
-    }
-
-    return StringUtils.EMPTY;
-  }
-
   private <D> CompletableFuture<D> getFutureCompletedExceptionally(String exceptionMessage) {
-    CompletableFuture future = new CompletableFuture();
+    CompletableFuture<D> future = new CompletableFuture<>();
     future.completeExceptionally(new VeniceException(exceptionMessage));
     return future;
   }

@@ -1,40 +1,47 @@
 package com.linkedin.venice.producer;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.Gauge;
+import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
-import io.tehuti.metrics.stats.Total;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class VeniceProducerMetrics extends AbstractVeniceStats {
   private final boolean enableMetrics;
-  private Sensor requestSensor = null;
-  private Sensor putRequestSensor = null;
-  private Sensor deleteRequestSensor = null;
-  private Sensor updateRequestSensor = null;
-  private Sensor successRequestSensor = null;
-  private Sensor failedRequestSensor = null;
+  private Sensor operationSensor = null;
+  private Sensor putOperationSensor = null;
+  private Sensor deleteOperationSensor = null;
+  private Sensor updateOperationSensor = null;
+  private Sensor successOperationSensor = null;
+  private Sensor failedOperationSensor = null;
   private Sensor produceLatencySensor = null;
-  private Sensor pendingRequestSensor = null;
+  private Sensor pendingOperationSensor = null;
+
+  private final AtomicInteger pendingOperationCounter = new AtomicInteger(0);
 
   public VeniceProducerMetrics(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
 
     if (metricsRepository != null) {
       enableMetrics = true;
-      requestSensor = registerSensor("write_request", new OccurrenceRate());
-      putRequestSensor = registerSensor("put_request", new OccurrenceRate());
-      deleteRequestSensor = registerSensor("delete_request", new OccurrenceRate());
-      updateRequestSensor = registerSensor("update_request", new OccurrenceRate());
+      operationSensor = registerSensor("write_operation", new OccurrenceRate());
+      putOperationSensor = registerSensor("put_operation", new OccurrenceRate());
+      deleteOperationSensor = registerSensor("delete_operation", new OccurrenceRate());
+      updateOperationSensor = registerSensor("update_operation", new OccurrenceRate());
 
-      successRequestSensor = registerSensor("success_write_request", new OccurrenceRate());
-      failedRequestSensor = registerSensor("failed_write_request", new OccurrenceRate());
-      produceLatencySensor = registerSensor("produce_latency", new Avg(), new Max());
+      successOperationSensor = registerSensor("success_write_operation", new OccurrenceRate());
+      failedOperationSensor = registerSensor("failed_write_operation", new OccurrenceRate());
+      String produceLatencySensorName = "produce_to_durable_buffer_latency";
+      produceLatencySensor = registerSensor(
+          produceLatencySensorName,
+          TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + produceLatencySensorName));
 
-      pendingRequestSensor = registerSensor("pending_write_request", new Total());
+      pendingOperationSensor = registerSensor("pending_write_operation", new Avg(), new Max(), new Gauge());
     } else {
       enableMetrics = false;
     }
@@ -42,44 +49,44 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
 
   private void recordRequest() {
     if (enableMetrics) {
-      requestSensor.record();
-      pendingRequestSensor.record(1);
+      operationSensor.record();
+      pendingOperationSensor.record(pendingOperationCounter.incrementAndGet());
     }
   }
 
   public void recordPutRequest() {
     if (enableMetrics) {
       recordRequest();
-      putRequestSensor.record();
+      putOperationSensor.record();
     }
   }
 
   public void recordDeleteRequest() {
     if (enableMetrics) {
       recordRequest();
-      deleteRequestSensor.record();
+      deleteOperationSensor.record();
     }
   }
 
   public void recordUpdateRequest() {
     if (enableMetrics) {
       recordRequest();
-      updateRequestSensor.record();
+      updateOperationSensor.record();
     }
   }
 
   public void recordSuccessfulRequestWithLatency(long latencyMs) {
     if (enableMetrics) {
-      successRequestSensor.record();
+      successOperationSensor.record();
       produceLatencySensor.record(latencyMs);
-      pendingRequestSensor.record(-1);
+      pendingOperationSensor.record(pendingOperationCounter.decrementAndGet());
     }
   }
 
   public void recordFailedRequest() {
     if (enableMetrics) {
-      failedRequestSensor.record();
-      pendingRequestSensor.record(-1);
+      failedOperationSensor.record();
+      pendingOperationSensor.record(pendingOperationCounter.decrementAndGet());
     }
   }
 }

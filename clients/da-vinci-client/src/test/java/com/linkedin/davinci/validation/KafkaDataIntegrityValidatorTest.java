@@ -27,7 +27,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -47,7 +46,7 @@ public class KafkaDataIntegrityValidatorTest {
      * Create a record that starts in the middle of a segment with sequence number 100 and the broken timestamp for this
      * record is 28 hours ago.
      */
-    GUID producerGUID = GuidUtils.getGUID(new VeniceProperties(new Properties()));
+    GUID producerGUID = GuidUtils.getGUID(VeniceProperties.empty());
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = buildConsumerRecord(
         kafkaTopic,
         0,

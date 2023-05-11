@@ -28,7 +28,7 @@ public class VeniceViewWriterFactoryTest {
 
   @Test
   public void testConstructStoreViewWriters() {
-    VeniceProperties props = new VeniceProperties();
+    VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
     Mockito.when(mockVeniceServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(urlMappingMap);

@@ -13,7 +13,6 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Properties;
 import java.util.concurrent.Future;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -38,7 +37,7 @@ public class VeniceWriterUnitTest {
         .setChunkingEnabled(isChunkingEnabled)
         .build();
     VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter(veniceWriterOptions, new VeniceProperties(new Properties()), mockedProducer);
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
 
     String valueString = "value-string";
     String key = "test-key";

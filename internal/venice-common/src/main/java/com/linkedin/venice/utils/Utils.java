@@ -138,7 +138,7 @@ public class Utils {
     boolean fileExists = propsFile.exists();
     if (!fileExists) {
       if (isFileOptional) {
-        return new VeniceProperties(new Properties());
+        return VeniceProperties.empty();
       } else {
         String fullFilePath = Utils.getCanonicalPath(propsFilePath);
         throw new ConfigurationException(fullFilePath + " does not exist.");
