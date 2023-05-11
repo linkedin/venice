@@ -1072,7 +1072,9 @@ public class VenicePushJob implements AutoCloseable {
         // Update and send push job details with new info to the controller
         pushJobDetails.pushId = pushId;
         pushJobDetails.partitionCount = kafkaTopicInfo.partitionCount;
-        pushJobDetails.valueCompressionStrategy = kafkaTopicInfo.compressionStrategy.getValue();
+        pushJobDetails.valueCompressionStrategy = kafkaTopicInfo.compressionStrategy != null
+            ? kafkaTopicInfo.compressionStrategy.getValue()
+            : CompressionStrategy.NO_OP.getValue();
         pushJobDetails.chunkingEnabled = kafkaTopicInfo.chunkingEnabled;
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.TOPIC_CREATED.getValue()));
         pushJobHeartbeatSender = createPushJobHeartbeatSender(isSslEnabled());
@@ -2789,7 +2791,9 @@ public class VenicePushJob implements AutoCloseable {
     conf.set(KAFKA_BOOTSTRAP_SERVERS, topicInfo.kafkaUrl);
     conf.set(PARTITIONER_CLASS, topicInfo.partitionerClass);
     // flatten partitionerParams since JobConf class does not support set an object
-    topicInfo.partitionerParams.forEach(conf::set);
+    if (topicInfo.partitionerParams != null) {
+      topicInfo.partitionerParams.forEach(conf::set);
+    }
     conf.setInt(AMPLIFICATION_FACTOR, topicInfo.amplificationFactor);
     if (topicInfo.sslToKafka) {
       conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
@@ -2853,7 +2857,11 @@ public class VenicePushJob implements AutoCloseable {
     // Compression related
     // Note that COMPRESSION_STRATEGY is from topic creation response as it might be different from the store config
     // (eg: for inc push)
-    conf.set(COMPRESSION_STRATEGY, topicInfo.compressionStrategy.toString());
+    conf.set(
+        COMPRESSION_STRATEGY,
+        topicInfo.compressionStrategy != null
+            ? topicInfo.compressionStrategy.toString()
+            : CompressionStrategy.NO_OP.toString());
     conf.set(
         ZSTD_COMPRESSION_LEVEL,
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
