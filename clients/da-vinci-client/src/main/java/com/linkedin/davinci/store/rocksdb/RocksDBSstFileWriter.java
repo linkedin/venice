@@ -141,11 +141,9 @@ public class RocksDBSstFileWriter {
    * 1. delete all the temporary SST files to be able to start ingestion from beginning
    * 2. the files that are already ingested to the DB will be removed during re-ingestion
    *    in {@link #deleteOldIngestion}
-   * 3. run updateRestartIngestionFlag for the upstream to reset its state and start ingesting again
+   * 3. return false for the upstream to reset its state and restart ingestion.
    */
   boolean checkPreviousIngestionIntegrity(Map<String, String> checkpointedInfo) {
-    LOGGER.info("checkDatabaseIntegrity inside 8");
-    LOGGER.info("Inside checkPreviousIngestionIntegrity");
     // Create temp SST file dir if it doesn't exist
     File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
     if (!tempSSTFileDir.exists()) {
@@ -153,7 +151,6 @@ public class RocksDBSstFileWriter {
     }
 
     if (!checkpointedInfo.containsKey(lastCheckPointedSSTFileNum)) {
-      LOGGER.info("checkDatabaseIntegrity inside 9");
       LOGGER.info(
           "No checkpointed info for store: {}, partition id: {} so RocksDB will start building sst file from beginning",
           storeName,
@@ -163,7 +160,6 @@ public class RocksDBSstFileWriter {
       // Blindly remove all the temp sst files if found any. Will be recreated.
       removeAllSSTFiles();
     } else {
-      LOGGER.info("checkDatabaseIntegrity inside 10");
       lastFinishedSSTFileNo = Integer.parseInt(checkpointedInfo.get(lastCheckPointedSSTFileNum));
       LOGGER.info(
           "Received last finished sst file no: {} for store: {}, partition id: {}",
@@ -177,7 +173,6 @@ public class RocksDBSstFileWriter {
         throw new VeniceException("Last finished sst file no: " + lastFinishedSSTFileNo + " shouldn't be negative");
       }
       if (doesAllPreviousSSTFilesBeforeCheckpointingExist()) {
-        LOGGER.info("checkDatabaseIntegrity inside 11");
         // remove the unwanted sst files, as flow will continue from the checkpointed info
         removeSSTFilesAfterCheckpointing(this.lastFinishedSSTFileNo);
         currentSSTFileNo = lastFinishedSSTFileNo + 1;
@@ -186,7 +181,6 @@ public class RocksDBSstFileWriter {
             storeName,
             partitionId);
       } else {
-        LOGGER.info("checkDatabaseIntegrity inside 12");
         // remove all the temp sst files if found any as ingestion will be restarted from beginning
         removeAllSSTFiles();
         LOGGER.info("Ingestion will restart from the beginning for store: {} partition: {}", storeName, partitionId);
@@ -202,15 +196,7 @@ public class RocksDBSstFileWriter {
         storeName,
         partitionId,
         checkpointedInfo);
-    // Create temp SST file dir if it doesn't exist
-    File tempSSTFileDir = new File(fullPathForTempSSTFileDir);
-    if (!tempSSTFileDir.exists()) {
-      tempSSTFileDir.mkdirs();
-    }
-
-    /*        if (!checkPreviousIngestionIntegrity(checkpointedInfo)) {
-      throw new VeniceException("FAILLLLLLLLLLL");
-    }*/
+    checkPreviousIngestionIntegrity(checkpointedInfo);
     String fullPathForCurrentSSTFile = composeFullPathForSSTFile(currentSSTFileNo);
     currentSSTFileWriter = new SstFileWriter(envOptions, options);
     try {

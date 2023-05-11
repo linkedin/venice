@@ -354,13 +354,15 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     closeMetadataPartition();
   }
 
+  /**
+   * checks whether the current state of the database is valid
+   * during a restart before continuing ingestion.
+   */
   public boolean checkDatabaseIntegrity(
       int partitionId,
       Map<String, String> checkpointedInfo,
       StoragePartitionConfig storagePartitionConfig) {
-    LOGGER.info("checkDatabaseIntegrity inside 3");
     adjustStoragePartition(storagePartitionConfig);
-    LOGGER.info("checkDatabaseIntegrity inside 4");
     return getPartitionOrThrow(partitionId).checkDatabaseIntegrity(checkpointedInfo);
   }
 

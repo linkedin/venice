@@ -237,9 +237,10 @@ public class TestRestartServerAfterDeletingSstFiles {
     });
 
     // use client to query for all the keys
-
     // 1. invalid key
-    Assert.assertNull(storeClient.get(keyPrefix + (startingKey - 1)).get());
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Assert.assertNull(storeClient.get(keyPrefix + (startingKey - 1)).get());
+    });
 
     // 2. all valid keys
     int currkey = startingKey;

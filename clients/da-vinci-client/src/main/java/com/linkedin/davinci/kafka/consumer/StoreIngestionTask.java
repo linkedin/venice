@@ -568,25 +568,30 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This returns false if there is a mismatch between the checkpointed information
    * and the current state, which implies that the process crashed during or after
    * the ingestion but before syncing OffsetRecord with EOP and the upstream
-   * should restart the ingestion from scratch.
+   * should restart the ingestion from scratch based on this return.
    */
   private boolean checkDatabaseIntegrity(
-      int partitionId,
+      PubSubTopicPartition topicPartition,
       OffsetRecord offsetRecord,
       PartitionConsumptionState partitionConsumptionState) {
-    LOGGER.info("checkDatabaseIntegrity inside 0");
+    int partitionId = topicPartition.getPartitionNumber();
+    String topic = topicPartition.getPubSubTopic().getName();
     if (offsetRecord.getLocalVersionTopicOffset() > 0) {
-      LOGGER.info("checkDatabaseIntegrity inside 1");
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
-        LOGGER.info("checkDatabaseIntegrity inside 2");
-        boolean sorted = storeVersionState.sorted;
-        StoragePartitionConfig storagePartitionConfig =
-            getStoragePartitionConfig(partitionId, sorted, partitionConsumptionState);
-        Map<String, String> checkpointedDatabaseInfo = offsetRecord.getDatabaseInfo();
-        return storageEngine.checkDatabaseIntegrity(partitionId, checkpointedDatabaseInfo, storagePartitionConfig);
+        LOGGER.info(
+            "storeVersionState found for {}, partition: {}: checkDatabaseIntegrity will check the state",
+            topic,
+            partitionId);
+        return storageEngine.checkDatabaseIntegrity(
+            topicPartition.getPartitionNumber(),
+            offsetRecord.getDatabaseInfo(),
+            getStoragePartitionConfig(partitionId, storeVersionState.sorted, partitionConsumptionState));
+      } else {
+
       }
     }
+    LOGGER.info("checkDatabaseIntegrity succeeded for {}, partition: {}", topic, partitionId);
     return true;
   }
 
@@ -1545,7 +1550,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         });
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
 
-        if (!checkDatabaseIntegrity(partition, offsetRecord, newPartitionConsumptionState)) {
+        if (!checkDatabaseIntegrity(topicPartition, offsetRecord, newPartitionConsumptionState)) {
           LOGGER.warn(
               "Restart ingestion from the beginning by resetting OffsetRecord for topic: {} and partition: {}",
               topicPartition.getPubSubTopic().getName(),
