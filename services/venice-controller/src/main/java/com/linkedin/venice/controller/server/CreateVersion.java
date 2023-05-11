@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CANARY_REGION_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_DICTIONARY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEFER_VERSION_SWAP;
@@ -246,6 +247,7 @@ public class CreateVersion extends AbstractRoute {
          */
         boolean deferVersionSwap = Boolean.parseBoolean(request.queryParams(DEFER_VERSION_SWAP));
 
+        boolean canaryColoPush = Boolean.parseBoolean(request.queryParams(CANARY_REGION_PUSH));
         switch (pushType) {
           case BATCH:
           case INCREMENTAL:
@@ -281,7 +283,8 @@ public class CreateVersion extends AbstractRoute {
                 certInRequest,
                 rewindTimeInSecondsOverride,
                 emergencySourceRegion,
-                deferVersionSwap);
+                deferVersionSwap,
+                canaryColoPush);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.

@@ -205,4 +205,9 @@ public class ControllerApiConstants {
   public static final String LATEST_SUPERSET_SCHEMA_ID = "latest_superset_schema_id";
   public static final String ENABLE_DISABLED_REPLICAS = "enable_disabled_replicas";
 
+  /**
+   * Boolean flag to indicate whether this is a topic requested for a canary region push
+   */
+  public static final String CANARY_REGION_PUSH = "canary_region_push";
+
 }

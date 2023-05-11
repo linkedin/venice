@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.CANARY_REGION_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
@@ -125,7 +126,7 @@ public class TestPushJobWithNativeReplication {
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
                                                                                                          // "venice-cluster1",
                                                                                                          // ...];
-  private final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
+  private static final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
 
   private static final String VPJ_HEARTBEAT_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"
   private static final String VPJ_HEARTBEAT_STORE_NAME =
@@ -876,6 +877,56 @@ public class TestPushJobWithNativeReplication {
       Assert.assertEquals(vcr2.getErrorType(), ErrorType.CONCURRENT_BATCH_PUSH);
       Assert.assertEquals(vcr2.getExceptionType(), ExceptionType.BAD_REQUEST);
     }
+  }
+
+  /**
+   * The canary region push should only push to the source region defined in the native replication, other regions should
+   * not receive any data.
+   * @throws IOException
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCanaryRegionPushJob() throws Exception {
+    motherOfAllTests(
+        "testCanaryRegionPushJob",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        100,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+          // start a regular push job
+          try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
+            job.run();
+            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              // Current version should become 1 at both 2 data centers
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 1);
+              }
+            });
+          }
+
+          // start a canary region push which should only increase the version to 2 in dc-0
+          props.setProperty(CANARY_REGION_PUSH, "true");
+          try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              Map<String, Integer> coloVersions =
+                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+              coloVersions.forEach((colo, version) -> {
+                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
+                  Assert.assertEquals((int) version, 2);
+                } else {
+                  Assert.assertEquals((int) version, 1);
+                }
+              });
+            });
+          }
+        });
   }
 
   private interface NativeReplicationTest {

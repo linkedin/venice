@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.CANARY_REGION_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
@@ -424,5 +425,39 @@ public class VenicePushJobTest {
     assertTrue(VenicePushJob.evaluateCompressionMetricCollectionEnabled(pushJobSetting, true));
     assertFalse(VenicePushJob.evaluateCompressionMetricCollectionEnabled(pushJobSetting, false));
 
+  }
+
+  @Test
+  public void testCanaryRegionPushConfig() {
+    Properties props = getVpjRequiredProperties();
+    props.put(SOURCE_KAFKA, true);
+    props.put(CANARY_REGION_PUSH, true);
+    // KIF should fail canary region push
+    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
+      // do nothing
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(e.getMessage(), "Canary region push is not supported while using Kafka Input Format");
+    }
+
+    props.put(SOURCE_KAFKA, false);
+    props.put(SOURCE_ETL, true);
+    // ETL should fail canary region push
+    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
+      // do nothing
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(e.getMessage(), "Source ETL is not supported while using canary region push mode");
+    }
+
+    props.put(SOURCE_ETL, false);
+    props.put(INCREMENTAL_PUSH, true);
+    // Incremental push should fail canary region push
+    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
+      // do nothing
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(e.getMessage(), "Incremental push is not supported while using canary region push mode");
+    }
   }
 }

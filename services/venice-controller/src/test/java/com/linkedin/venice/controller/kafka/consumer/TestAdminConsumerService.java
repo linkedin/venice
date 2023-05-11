@@ -73,7 +73,6 @@ public class TestAdminConsumerService {
 
     try {
       adminConsumerService1 = new AdminConsumerService(
-          "cluster1",
           admin,
           controllerConfig,
           metricsRepository,
@@ -86,7 +85,6 @@ public class TestAdminConsumerService {
        */
       try {
         adminConsumerService2 = new AdminConsumerService(
-            "cluster2",
             admin,
             controllerConfig,
             metricsRepository,

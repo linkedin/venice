@@ -247,7 +247,8 @@ public class AdminConsumptionTaskTest {
         adminConsumptionCycleTimeoutMs,
         1,
         pubSubTopicRepository,
-        pubSubMessageDeserializer);
+        pubSubMessageDeserializer,
+        "dc-0");
   }
 
   private PubSubTopicPartitionOffset getTopicPartitionOffsetPair(PubSubProduceResult produceResult) {
@@ -1376,6 +1377,62 @@ public class AdminConsumptionTaskTest {
         eq(schemaMeta.definition.toString()));
   }
 
+  @Test
+  public void testAddVersionMsgHandlingForCanaryRegionPush() throws Exception {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, stats, 10000);
+    executor.submit(task);
+    String mockPushJobId = "mock push job id";
+    int versionNumber = 1;
+    int numberOfPartitions = 1;
+
+    // sending two messages. One is for the canary region and the other is for different region, which should be
+    // discarded.
+    veniceWriter.put(
+        emptyKeyBytes,
+        getAddVersionMessage(
+            clusterName,
+            storeName,
+            mockPushJobId,
+            versionNumber,
+            numberOfPartitions,
+            1L,
+            true,
+            "dc-1"),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    veniceWriter.put(
+        emptyKeyBytes,
+        getAddVersionMessage(
+            clusterName,
+            storeName,
+            mockPushJobId,
+            versionNumber,
+            numberOfPartitions,
+            2L,
+            true,
+            "dc-0"),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      verify(admin, times(1)).addVersionAndStartIngestion(
+          clusterName,
+          storeName,
+          mockPushJobId,
+          versionNumber,
+          numberOfPartitions,
+          Version.PushType.BATCH,
+          null,
+          -1,
+          1,
+          false);
+    });
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
   private byte[] getStoreCreationMessage(
       String clusterName,
       String storeName,
@@ -1418,6 +1475,26 @@ public class AdminConsumptionTaskTest {
       int versionNum,
       int numberOfPartitions,
       long executionId) {
+    return getAddVersionMessage(
+        clusterName,
+        storeName,
+        pushJobId,
+        versionNum,
+        numberOfPartitions,
+        executionId,
+        false,
+        null);
+  }
+
+  private byte[] getAddVersionMessage(
+      String clusterName,
+      String storeName,
+      String pushJobId,
+      int versionNum,
+      int numberOfPartitions,
+      long executionId,
+      boolean isCanaryRegionPush,
+      String canaryRegion) {
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = clusterName;
     addVersion.storeName = storeName;
@@ -1426,6 +1503,8 @@ public class AdminConsumptionTaskTest {
     addVersion.numberOfPartitions = numberOfPartitions;
     addVersion.rewindTimeInSecondsOverride = -1;
     addVersion.timestampMetadataVersionId = 1;
+    addVersion.sourceRegion = canaryRegion;
+    addVersion.canaryRegionPush = isCanaryRegionPush;
 
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.ADD_VERSION.getValue();

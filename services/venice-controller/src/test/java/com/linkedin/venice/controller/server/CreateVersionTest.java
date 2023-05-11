@@ -163,6 +163,7 @@ public class CreateVersionTest {
             Optional.of(certificate),
             -1,
             Optional.empty(),
+            false,
             false);
 
     assertTrue(store.isHybrid());
@@ -215,6 +216,7 @@ public class CreateVersionTest {
             Optional.of(certificate),
             -1,
             Optional.empty(),
+            false,
             false);
 
     Assert.assertFalse(store.isHybrid());
@@ -266,6 +268,7 @@ public class CreateVersionTest {
             Optional.of(certificate),
             -1,
             emergencySrcRegion,
+            false,
             false);
 
     assertTrue(store.isHybrid());

@@ -44,7 +44,6 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final KafkaPubSubMessageDeserializer pubSubMessageDeserializer;
 
   public AdminConsumerService(
-      String cluster,
       VeniceHelixAdmin admin,
       VeniceControllerConfig config,
       MetricsRepository metricsRepository,
@@ -107,7 +106,8 @@ public class AdminConsumerService extends AbstractVeniceService {
         config.getAdminConsumptionCycleTimeoutMs(),
         config.getAdminConsumptionMaxWorkerThreadPoolSize(),
         pubSubTopicRepository,
-        pubSubMessageDeserializer);
+        pubSubMessageDeserializer,
+        config.getRegionName());
   }
 
   /**

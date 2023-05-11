@@ -208,6 +208,7 @@ public interface Admin extends AutoCloseable, Closeable {
         Optional.empty(),
         -1,
         Optional.empty(),
+        false,
         false);
   }
 
@@ -225,7 +226,8 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred);
+      boolean versionSwapDeferred,
+      boolean canaryRegionPush);
 
   String getRealTimeTopic(String clusterName, String storeName);
 
@@ -415,7 +417,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String clusterName,
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
-      String region);
+      String region,
+      boolean isCanaryRegionPush);
 
   /**
    * Return the ssl or non-ssl bootstrap servers based on the given flag.

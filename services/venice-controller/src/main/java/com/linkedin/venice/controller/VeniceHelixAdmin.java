@@ -2612,7 +2612,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred) {
+      boolean versionSwapDeferred,
+      boolean canaryRegionPush) {
+    if (canaryRegionPush) {
+      // only parent controller should handle this request. See @{link
+      // VeniceParentHelixAdmin#incrementVersionIdempotent}
+      throw new VeniceException(
+          "Request of creating versions/topics for canary colo push should only be sent to parent controller");
+    }
     checkControllerLeadershipFor(clusterName);
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersion();
@@ -5210,18 +5217,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic) {
-    return getOffLinePushStatus(clusterName, kafkaTopic, Optional.empty(), null);
+    return getOffLinePushStatus(clusterName, kafkaTopic, Optional.empty(), null, false);
   }
 
   /**
-   * @see Admin#getOffLinePushStatus(String, String, Optional, String)
+   * @see Admin#getOffLinePushStatus(String, String, Optional, String, boolean)
    */
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(
       String clusterName,
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
-      String region) {
+      String region,
+      boolean isCanaryRegionPush) {
     checkControllerLeadershipFor(clusterName);
     if (region != null) {
       checkCurrentFabricMatchesExpectedFabric(region);
@@ -5235,8 +5243,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int versionNumber = Version.parseVersionFromVersionTopicName(kafkaTopic);
 
     if (!incrementalPushVersion.isPresent()) {
-      OfflinePushStatusInfo offlinePushStatusInfo =
-          getOfflinePushStatusInfo(clusterName, kafkaTopic, incrementalPushVersion, monitor, store, versionNumber);
+      OfflinePushStatusInfo offlinePushStatusInfo = getOfflinePushStatusInfo(
+          clusterName,
+          kafkaTopic,
+          incrementalPushVersion,
+          monitor,
+          store,
+          versionNumber,
+          isCanaryRegionPush);
       if (region != null) {
         offlinePushStatusInfo.setUncompletedPartitions(monitor.getUncompletedPartitions(kafkaTopic));
       }
@@ -5257,7 +5271,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             incrementalPushVersion,
             monitor,
             store,
-            version.getNumber());
+            version.getNumber(),
+            false);
         list.add(offlinePushStatusInfoOtherVersion);
       } catch (VeniceNoHelixResourceException e) {
         LOGGER.warn("Resource for store: {} version: {} not found!", storeName, version, e);
@@ -5318,7 +5333,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> incrementalPushVersion,
       PushMonitor monitor,
       Store store,
-      int versionNumber) {
+      int versionNumber,
+      boolean isCanaryRegionPush) {
     Pair<ExecutionStatus, String> statusAndDetails;
     if (incrementalPushVersion.isPresent()) {
       statusAndDetails = getIncrementalPushStatus(clusterName, kafkaTopic, incrementalPushVersion.get(), monitor);
@@ -5332,6 +5348,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // Check whether cluster is in maintenance mode or not
       if (isClusterInMaintenanceMode(clusterName)) {
         moreDetailsBuilder.append("Cluster: ").append(clusterName).append(" is in maintenance mode");
+      } else if (isCanaryRegionPush) {
+        moreDetailsBuilder.append("Version for topic ")
+            .append(kafkaTopic)
+            .append(" isn't created since this is a canary region push");
       } else {
         moreDetailsBuilder.append("Version creation for topic: ").append(kafkaTopic).append(" got delayed");
       }
