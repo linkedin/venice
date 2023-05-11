@@ -95,12 +95,10 @@ public class VenicePulsarSink implements Sink<GenericObject> {
 
     if (doThrottle) {
       LOGGER.warn("Throttling, not accepting new records; {} records pending", pendingRecordsCount.get());
-
-      while (pendingRecordsCount.get() > maxNumberUnflushedRecords) {
-        Thread.sleep(1);
-      }
+      long start = System.currentTimeMillis();
+      throttle();
       doThrottle = false;
-      LOGGER.info("done throttling");
+      LOGGER.warn("Throttling is done, took {} ms", System.currentTimeMillis() - start);
     }
 
     Object nativeObject = record.getValue().getNativeObject();
@@ -157,14 +155,20 @@ public class VenicePulsarSink implements Sink<GenericObject> {
     maybeSubmitFlush();
   }
 
+  protected void throttle() throws InterruptedException {
+    while (pendingRecordsCount.get() > maxNumberUnflushedRecords) {
+      Thread.sleep(1);
+    }
+  }
+
   private void maybeSubmitFlush() {
     int sz = pendingRecordsCount.get();
     if (sz >= maxNumberUnflushedRecords) {
       scheduledExecutor.submit(() -> flush(false));
       if (sz > 2 * maxNumberUnflushedRecords) {
         LOGGER.info("Too many records pending: {}. Will throttle.", sz);
+        doThrottle = true;
       }
-      doThrottle = true;
     }
   }
 
@@ -216,16 +220,19 @@ public class VenicePulsarSink implements Sink<GenericObject> {
     if (producer != null) {
       Future<?> f = scheduledExecutor.submit(() -> flush(true));
       scheduledExecutor.shutdown();
-      f.get();
-      if (!scheduledExecutor.awaitTermination(1, TimeUnit.MINUTES)) {
-        LOGGER.error("Failed to shutdown scheduledExecutor");
-        scheduledExecutor.shutdownNow();
+      try {
+        f.get();
+      } finally {
+        if (!scheduledExecutor.awaitTermination(1, TimeUnit.MINUTES)) {
+          LOGGER.error("Failed to shutdown scheduledExecutor");
+          scheduledExecutor.shutdownNow();
+        }
+        producer.close();
       }
-      producer.close();
     }
   }
 
-  private static Map<String, String> getConfig(VenicePulsarSinkConfig veniceCfg, String systemName) {
+  public static Map<String, String> getConfig(VenicePulsarSinkConfig veniceCfg, String systemName) {
     Map<String, String> config = new HashMap<>();
     String configPrefix = SYSTEMS_PREFIX + systemName + DOT;
     config.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.INCREMENTAL.toString());
