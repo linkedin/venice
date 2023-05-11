@@ -16,6 +16,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngine;
@@ -26,11 +27,13 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
@@ -84,7 +87,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
   private VeniceServerWrapper serverWrapper;
   private ControllerClient parentControllerClient;
   private AvroSerializer serializer;
-  AvroGenericStoreClient<String, Object> storeClient = null;
   private final int numKeys = 100;
   private int startKey = 0;
   private int newVersion = 0;
@@ -146,18 +148,10 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .setNativeReplicationEnabled(true)
         .setBackupVersionRetentionMs(1);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
-    storeClient = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(clusterWrapper.getRandomRouterURL())
-            .setSslFactory(SslUtils.getVeniceLocalSslFactory())
-            .setRetryOnAllErrors(true));
   }
 
   @AfterClass
   public void cleanUp() {
-    if (storeClient != null) {
-      storeClient.close();
-    }
     parentControllerClient.disableAndDeleteStore(storeName);
     multiRegionMultiClusterWrapper.close();
     TestView.resetCounters();
@@ -229,7 +223,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(0));
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, invocationCount = 2)
   public void testActiveActiveStoreWithRMDAndRestartServer(boolean deleteSSTFiles, boolean deleteRMDSSTFiles)
       throws Exception {
     // Create a new version
@@ -339,16 +333,35 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     });
 
     // validate the ingested data
-    // 1. invalid key
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      assertNull(storeClient.get(KEY_PREFIX + (startKey - 1)).get());
-    });
+    AvroGenericStoreClient<String, Object> storeClient = null;
+    try {
+      D2Client d2Client =
+          D2TestUtils.getD2Client(multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress(), false);
+      storeClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setForceClusterDiscoveryAtStartTime(true)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setD2Client(d2Client)
+              .setVeniceURL(clusterWrapper.getRandomRouterURL())
+              .setSslFactory(SslUtils.getVeniceLocalSslFactory())
+              .setRetryOnAllErrors(true));
 
-    // 2. all valid keys
-    currKey = startKey;
-    while (currKey < endKey) {
-      assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
-      currKey++;
+      // 1. invalid key
+      AvroGenericStoreClient<String, Object> finalStoreClient = storeClient;
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        assertNull(finalStoreClient.get(KEY_PREFIX + (startKey - 1)).get());
+      });
+
+      // 2. all valid keys
+      currKey = startKey;
+      while (currKey < endKey) {
+        assertEquals(storeClient.get(KEY_PREFIX + currKey).get().toString(), VALUE_PREFIX + currKey);
+        currKey++;
+      }
+    } finally {
+      if (storeClient != null) {
+        storeClient.close();
+      }
     }
   }
 }
