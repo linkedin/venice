@@ -1004,7 +1004,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   private Properties getCommonKafkaConsumerProperties(VeniceServerConfig serverConfig) {
     Properties kafkaConsumerProperties = new Properties();
-    ApacheKafkaProducerConfig.copyKafkaSASLProperties(serverConfig.getClusterProperties(), kafkaConsumerProperties);
+    ApacheKafkaProducerConfig
+        .copyKafkaSASLProperties(serverConfig.getClusterProperties(), kafkaConsumerProperties, false);
     kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
     kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Venice is persisting offset in local offset db.
@@ -1042,7 +1043,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     VeniceProperties clusterProperties = serverConfig.getClusterProperties();
     Properties properties = new Properties();
-    ApacheKafkaProducerConfig.copyKafkaSASLProperties(key -> clusterProperties.getString(key, ""), properties);
+    ApacheKafkaProducerConfig.copyKafkaSASLProperties(clusterProperties, properties);
     kafkaBootstrapUrls = serverConfig.getKafkaBootstrapServers();
     String resolvedKafkaUrl = serverConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
     if (resolvedKafkaUrl != null) {

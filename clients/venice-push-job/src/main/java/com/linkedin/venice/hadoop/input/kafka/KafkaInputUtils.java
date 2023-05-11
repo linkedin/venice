@@ -50,7 +50,7 @@ public class KafkaInputUtils {
     consumerFactoryProperties.setProperty(CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
     consumerFactoryProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
 
-    ApacheKafkaProducerConfig.copyKafkaSASLProperties(config::get, consumerFactoryProperties);
+    ApacheKafkaProducerConfig.copyKafkaSASLProperties(HadoopUtils.getProps(config), consumerFactoryProperties, true);
 
     return new VeniceProperties(consumerFactoryProperties);
   }

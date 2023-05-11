@@ -6,7 +6,6 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
-import java.util.function.Function;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -208,18 +207,42 @@ public class ApacheKafkaProducerConfig {
   }
 
   public static void copyKafkaSASLProperties(VeniceProperties configuration, Properties properties) {
-    copyKafkaSASLProperties(key -> configuration.getString(key, ""), properties);
+    copyKafkaSASLProperties(configuration.toProperties(), properties, true);
   }
 
-  public static void copyKafkaSASLProperties(Function<String, String> configuration, Properties properties) {
-    String saslConfiguration = configuration.apply("kafka.sasl.jaas.config");
+  public static void copyKafkaSASLProperties(
+      VeniceProperties configuration,
+      Properties properties,
+      boolean stripPrefix) {
+    copyKafkaSASLProperties(configuration.toProperties(), properties, stripPrefix);
+  }
+
+  public static void copyKafkaSASLProperties(Properties configuration, Properties properties, boolean stripPrefix) {
+    String saslConfiguration = configuration.getProperty("kafka.sasl.jaas.config", "");
     if (saslConfiguration != null && !saslConfiguration.isEmpty()) {
-      properties.put("sasl.jaas.config", saslConfiguration);
+      if (stripPrefix) {
+        properties.put("sasl.jaas.config", saslConfiguration);
+      } else {
+        properties.put("kafka.sasl.jaas.config", saslConfiguration);
+      }
     }
 
-    String saslMechanism = configuration.apply("kafka.sasl.mechanism");
+    String saslMechanism = configuration.getProperty("kafka.sasl.mechanism", "");
     if (saslMechanism != null && !saslMechanism.isEmpty()) {
-      properties.put("sasl.mechanism", saslMechanism);
+      if (stripPrefix) {
+        properties.put("sasl.mechanism", saslMechanism);
+      } else {
+        properties.put("kafka.sasl.mechanism", saslMechanism);
+      }
+    }
+
+    String securityProtocol = configuration.getProperty("kafka.security.protocol", "");
+    if (securityProtocol != null && !securityProtocol.isEmpty()) {
+      if (stripPrefix) {
+        properties.put("security.protocol", securityProtocol);
+      } else {
+        properties.put("kafka.security.protocol", securityProtocol);
+      }
     }
   }
 }
