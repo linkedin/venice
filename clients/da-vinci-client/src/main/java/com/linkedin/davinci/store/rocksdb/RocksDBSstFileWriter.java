@@ -197,7 +197,7 @@ public class RocksDBSstFileWriter {
 
       // This is not the first time this process is ingesting this partition,
       // check the integrity before proceeding
-      if (checkPreviousIngestionIntegrity(updateRestartIngestionFlag) == false) {
+      if (!checkPreviousIngestionIntegrity(updateRestartIngestionFlag)) {
         return;
       }
     }
