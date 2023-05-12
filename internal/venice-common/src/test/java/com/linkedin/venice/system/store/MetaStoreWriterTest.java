@@ -25,6 +25,7 @@ public class MetaStoreWriterTest {
     when(badWriter.delete(any(), any())).thenThrow(new VeniceException("Bad producer call"));
     VeniceWriter goodWriter = mock(VeniceWriter.class);
     when(metaStoreWriter.getOrCreateMetaStoreWriter(metaStoreName)).thenReturn(badWriter, goodWriter);
+    doCallRealMethod().when(metaStoreWriter).removeMetaStoreWriter(anyString());
     doCallRealMethod().when(metaStoreWriter).writeMessageWithRetry(anyString(), any());
     metaStoreWriter.writeMessageWithRetry(metaStoreName, vw -> vw.delete("a", null));
     verify(badWriter, times(1)).delete(any(), any());

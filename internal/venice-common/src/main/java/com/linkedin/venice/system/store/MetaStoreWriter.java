@@ -323,13 +323,12 @@ public class MetaStoreWriter implements Closeable {
    * @param metaStoreName
    */
   public void removeMetaStoreWriter(String metaStoreName) {
-    VeniceWriter writer = metaStoreWriterMap.get(metaStoreName);
+    VeniceWriter writer = getMetaStoreWriterMap().remove(metaStoreName);
     if (writer != null) {
       /**
        * Free the internal resource without sending any extra messages since the store is going to be deleted.
        */
       closeVeniceWriter(metaStoreName, writer, true);
-      metaStoreWriterMap.remove(metaStoreName);
       LOGGER.info("Removed the venice writer for meta store: {}", metaStoreName);
     }
   }
@@ -403,7 +402,12 @@ public class MetaStoreWriter implements Closeable {
               "Caught exception while trying to write message, will restart Venice Writer and retry {}/{}",
               messageProduceRetryCount,
               maxMessageProduceRetryCount);
-          closeVeniceWriter(metaStoreName, writer, true);
+          // Defensive coding to make sure close Venice Writer logic won't throw another exception.
+          try {
+            removeMetaStoreWriter(metaStoreName);
+          } catch (Exception ex) {
+            LOGGER.warn("Caught exception while trying to close Venice writer", e);
+          }
         } else {
           LOGGER.error("Fail to write message after {} attempts.", maxMessageProduceRetryCount, e);
           break;
@@ -416,6 +420,10 @@ public class MetaStoreWriter implements Closeable {
 
   ReentrantLock getOrCreateMetaStoreWriterLock(String metaStoreName) {
     return metaStoreWriterLockMap.computeIfAbsent(metaStoreName, k -> new ReentrantLock());
+  }
+
+  Map<String, VeniceWriter> getMetaStoreWriterMap() {
+    return metaStoreWriterMap;
   }
 
   VeniceWriter getOrCreateMetaStoreWriter(String metaStoreName) {
