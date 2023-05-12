@@ -122,7 +122,10 @@ public class VeniceChangelogConsumerImplTest {
 
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
-    verify(mockKafkaConsumer).assign(Arrays.asList(new TopicPartition(oldVersionTopic, 0)));
+    veniceChangelogConsumer.seekToEndOfPush();
+    HashSet<TopicPartition> topicPartitions = new HashSet<>();
+    topicPartitions.add(new TopicPartition(oldVersionTopic, 0));
+    verify(mockKafkaConsumer).assign(topicPartitions);
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
@@ -133,7 +136,9 @@ public class VeniceChangelogConsumerImplTest {
       Assert.assertEquals(changeEvent.getPreviousValue().toString(), "oldValue" + i);
     }
     // Verify version swap happened.
-    verify(mockKafkaConsumer).assign(Arrays.asList(new TopicPartition(newChangeCaptureTopic, 0)));
+    topicPartitions.clear();
+    topicPartitions.add(new TopicPartition(newChangeCaptureTopic, 0));
+    verify(mockKafkaConsumer).assign(topicPartitions);
     pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
     Assert.assertTrue(pubSubMessages.isEmpty());
@@ -176,7 +181,9 @@ public class VeniceChangelogConsumerImplTest {
     when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
-    verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(oldVersionTopic, 0)));
+    HashSet<TopicPartition> topicPartitionSet = new HashSet();
+    topicPartitionSet.add(new TopicPartition(oldVersionTopic, 0));
+    verify(kafkaConsumer).assign(topicPartitionSet);
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
@@ -186,7 +193,9 @@ public class VeniceChangelogConsumerImplTest {
       Assert.assertEquals(messageStr.toString(), "newValue" + i);
     }
     // Verify version swap from version topic to its corresponding change capture topic happened.
-    verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(oldChangeCaptureTopic, 0)));
+    topicPartitionSet.clear();
+    topicPartitionSet.add(new TopicPartition(oldChangeCaptureTopic, 0));
+    verify(kafkaConsumer).assign(topicPartitionSet);
     prepareChangeCaptureRecordsToBePolled(0L, 10L, kafkaConsumer, oldChangeCaptureTopic, 0, oldVersionTopic, "");
     pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
