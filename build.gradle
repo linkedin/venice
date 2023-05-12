@@ -61,7 +61,7 @@ ext.libraries = [
     commonsIo: 'commons-io:commons-io:2.11.0',
     commonsCli: 'commons-cli:commons-cli:1.5.0',
     commonsLang: 'commons-lang:commons-lang:2.6',
-    conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
+    conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.5.2',
     d2: 'com.linkedin.pegasus:d2:' + pegasusVersion,
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',

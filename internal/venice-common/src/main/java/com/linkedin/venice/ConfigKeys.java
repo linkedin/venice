@@ -549,11 +549,6 @@ public class ConfigKeys {
   public static final String SERVER_BLOCKING_QUEUE_TYPE = "server.blocking.queue.type";
 
   /**
-   * This config is used to control whether openssl is enabled for Kafka consumers in server.
-   */
-  public static final String SERVER_ENABLE_KAFKA_OPENSSL = "server.enable.kafka.openssl";
-
-  /**
    * This config is used to control how much time Server will wait for connection warming from Routers.
    * This is trying to avoid availability issue when router connection warming happens when Server restarts.
    * In theory, this config should be equal to or bigger than {@link #ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS}.
@@ -1401,6 +1396,11 @@ public class ConfigKeys {
    * header field.
    */
   public static final String ROUTER_HTTP2_MAX_HEADER_LIST_SIZE = "router.http2.max.header.list.size";
+
+  /**
+   * Whether to enable openssl in the Router http client when talking to server.
+   */
+  public static final String ROUTER_HTTP_CLIENT_OPENSSL_ENABLED = "router.http.client.openssl.enabled";
 
   /**
    * In Leader/Follower state transition model, in order to avoid split brain problem (multiple leaders) as much as possible,
