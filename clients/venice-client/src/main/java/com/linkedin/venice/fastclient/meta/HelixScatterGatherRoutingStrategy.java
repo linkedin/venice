@@ -15,8 +15,12 @@ import java.util.stream.Collectors;
 public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy {
   private Map<String, Integer> helixGroupInfo;
   private List<Integer> groupIds;
+  private final InstanceHealthMonitor instanceHealthMonitor;
 
-  public HelixScatterGatherRoutingStrategy(Map<String, Integer> helixGroupInfo) {
+  public HelixScatterGatherRoutingStrategy(
+      InstanceHealthMonitor instanceHealthMonitor,
+      Map<String, Integer> helixGroupInfo) {
+    this.instanceHealthMonitor = instanceHealthMonitor;
     this.helixGroupInfo = helixGroupInfo;
     this.groupIds = helixGroupInfo.values().stream().distinct().sorted().collect(Collectors.toList());
   }
@@ -36,7 +40,7 @@ public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy 
         if (selectedReplicas.size() == requiredReplicaCount) {
           return selectedReplicas;
         }
-        if (helixGroupInfo.get(replica) == groupId) {
+        if (helixGroupInfo.get(replica) == groupId && !instanceHealthMonitor.isInstanceBlocked(replica)) {
           selectedReplicas.add(replica);
         }
       }

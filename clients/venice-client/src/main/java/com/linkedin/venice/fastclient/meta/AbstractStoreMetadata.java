@@ -7,6 +7,7 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -23,8 +24,10 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
     this.instanceHealthMonitor = new InstanceHealthMonitor(clientConfig);
-    if (clientConfig.getClientRoutingStrategy() != null) {
-      this.routingStrategy = clientConfig.getClientRoutingStrategy();
+    ClientRoutingStrategyType clientRoutingStrategyType = clientConfig.getClientRoutingStrategyType();
+    if (clientRoutingStrategyType == ClientRoutingStrategyType.HELIX_ASSISTED) {
+      this.routingStrategy =
+          new HelixScatterGatherRoutingStrategy(instanceHealthMonitor, new VeniceConcurrentHashMap<>());
     } else {
       this.routingStrategy = new LeastLoadedClientRoutingStrategy(this.instanceHealthMonitor);
     }
