@@ -52,6 +52,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
     super(manager);
     dataSource.put(PropertyType.CUSTOMIZEDVIEW, Collections.singletonList(HelixPartitionState.OFFLINE_PUSH.name()));
     this.storeRepository = storeRepository;
+    this.storeRepository.registerStoreDataChangedListener(this);
   }
 
   @Override
