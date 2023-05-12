@@ -390,7 +390,17 @@ public class RouterServer extends AbstractVeniceService {
      */
     timeoutProcessor = new TimeoutProcessor(registry, true, 1);
 
-    Optional<SSLFactory> sslFactoryForRequests = config.isSslToStorageNodes() ? sslFactory : Optional.empty();
+    Optional<SSLFactory> sslFactoryForRequests = Optional.empty();
+    if (config.isSslToStorageNodes()) {
+      if (!sslFactory.isPresent()) {
+        throw new VeniceException("SSLFactory is required when enabling ssl to storage nodes");
+      }
+      if (config.isHttpClientOpensslEnabled()) {
+        sslFactoryForRequests = Optional.of(SslUtils.toSSLFactoryWithOpenSSLSupport(sslFactory.get()));
+      } else {
+        sslFactoryForRequests = sslFactory;
+      }
+    }
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
     Class<? extends AbstractChannel> serverSocketChannelClass;
     boolean useEpoll = true;

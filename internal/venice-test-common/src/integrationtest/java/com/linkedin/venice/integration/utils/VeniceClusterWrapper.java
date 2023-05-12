@@ -252,7 +252,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               .setSslFactory(SslUtils.getVeniceLocalSslFactory());
           featureProperties.put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
-        featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(options.isKafkaOpenSSLEnabled()));
 
         String serverName = "";
         if (!options.getRegionName().isEmpty() && !options.getClusterName().isEmpty()) {

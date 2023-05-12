@@ -50,6 +50,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPAYSNCCLIENT_CONNECTION_W
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT5_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT5_TOTAL_IO_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_OPENSSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS;
@@ -208,6 +209,7 @@ public class VeniceRouterConfig {
   private int routerIOWorkerCount;
   private boolean perRouterStorageNodeThrottlerEnabled;
   private double perStoreRouterQuotaBuffer;
+  private boolean httpClientOpensslEnabled;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -385,6 +387,7 @@ public class VeniceRouterConfig {
     routerIOWorkerCount = props.getInt(ROUTER_IO_WORKER_COUNT, 24);
     perRouterStorageNodeThrottlerEnabled = props.getBoolean(ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED, true);
     perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 1.5);
+    httpClientOpensslEnabled = props.getBoolean(ROUTER_HTTP_CLIENT_OPENSSL_ENABLED, true);
   }
 
   public double getPerStoreRouterQuotaBuffer() {
@@ -826,5 +829,9 @@ public class VeniceRouterConfig {
 
   public boolean isPerRouterStorageNodeThrottlerEnabled() {
     return perRouterStorageNodeThrottlerEnabled;
+  }
+
+  public boolean isHttpClientOpensslEnabled() {
+    return httpClientOpensslEnabled;
   }
 }
