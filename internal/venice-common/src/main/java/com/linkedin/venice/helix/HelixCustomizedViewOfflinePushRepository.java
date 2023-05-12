@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentChanges;
+import static com.linkedin.venice.meta.Store.*;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -9,6 +10,7 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
@@ -36,7 +38,8 @@ import org.apache.logging.log4j.Logger;
 /**
  * Extend {@link HelixBaseRoutingRepository} to leverage customized view data for offline push.
  */
-public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository {
+public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository
+    implements StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(HelixCustomizedViewOfflinePushRepository.class);
   private final ReentrantReadWriteLock resourceAssignmentRWLock = new ReentrantReadWriteLock();
   private static final String LEADER_FOLLOWER_VENICE_STATE_FILLER = "N/A";
@@ -209,6 +212,44 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
         listenerManager.trigger(kafkaTopic, listener -> listener.onRoutingDataDeleted(kafkaTopic));
       }
     }
+  }
+
+  @Override
+  public void handleStoreCreated(Store store) {
+    int currentVersion = store.getCurrentVersion();
+    if (currentVersion == NON_EXISTING_VERSION) {
+      return;
+    }
+
+    String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);
+    int partitionCount = store.getVersion(currentVersion).get().getPartitionCount();
+    resourceToPartitionCountMap.put(newResourceName, partitionCount);
+  }
+
+  @Override
+  public void handleStoreChanged(Store store) {
+    int currentVersion = store.getCurrentVersion();
+    if (currentVersion == NON_EXISTING_VERSION) {
+      return;
+    }
+
+    resourceToPartitionCountMap.entrySet().removeIf(entry -> {
+      String storeName = Version.parseStoreFromKafkaTopicName(entry.getKey());
+      int version = Version.parseVersionFromVersionTopicName(entry.getKey());
+      return store.getName().equals(storeName) && version != currentVersion;
+    });
+    String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);
+    int partitionCount = store.getVersion(currentVersion).get().getPartitionCount();
+    resourceToPartitionCountMap.put(newResourceName, partitionCount);
+  }
+
+  @Override
+  public void handleStoreDeleted(String storeName) {
+    resourceToPartitionCountMap.entrySet().removeIf(entry -> {
+      String name = Version.parseStoreFromKafkaTopicName(entry.getKey());
+      return storeName.equals(name);
+    });
+
   }
 
   @Override
