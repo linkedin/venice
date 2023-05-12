@@ -389,8 +389,8 @@ public class MetaStoreWriter implements Closeable {
     VeniceWriter writer = null;
     boolean messageProduced = false;
     while (!messageProduced) {
+      lock.lock();
       try {
-        lock.lock();
         writer = getOrCreateMetaStoreWriter(metaStoreName);
         writerConsumer.accept(writer);
         writer.flush();
