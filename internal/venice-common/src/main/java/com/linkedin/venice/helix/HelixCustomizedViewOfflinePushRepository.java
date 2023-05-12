@@ -38,8 +38,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * Extend {@link HelixBaseRoutingRepository} to leverage customized view data for offline push.
  */
-public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository
-    implements StoreDataChangedListener {
+public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository {
   private static final Logger LOGGER = LogManager.getLogger(HelixCustomizedViewOfflinePushRepository.class);
   private final ReentrantReadWriteLock resourceAssignmentRWLock = new ReentrantReadWriteLock();
   private static final String LEADER_FOLLOWER_VENICE_STATE_FILLER = "N/A";
@@ -52,7 +51,44 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
     super(manager);
     dataSource.put(PropertyType.CUSTOMIZEDVIEW, Collections.singletonList(HelixPartitionState.OFFLINE_PUSH.name()));
     this.storeRepository = storeRepository;
-    this.storeRepository.registerStoreDataChangedListener(this);
+    this.storeRepository.registerStoreDataChangedListener(new StoreDataChangedListener() {
+      @Override
+      public void handleStoreCreated(Store store) {
+        int currentVersion = store.getCurrentVersion();
+        if (currentVersion == NON_EXISTING_VERSION) {
+          return;
+        }
+
+        String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);
+        int partitionCount = store.getVersion(currentVersion).get().getPartitionCount();
+        resourceToPartitionCountMap.put(newResourceName, partitionCount);
+      }
+
+      @Override
+      public void handleStoreChanged(Store store) {
+        int currentVersion = store.getCurrentVersion();
+        if (currentVersion == NON_EXISTING_VERSION) {
+          return;
+        }
+
+        resourceToPartitionCountMap.entrySet().removeIf(entry -> {
+          String storeName = Version.parseStoreFromKafkaTopicName(entry.getKey());
+          int version = Version.parseVersionFromVersionTopicName(entry.getKey());
+          return store.getName().equals(storeName) && version != currentVersion;
+        });
+        String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);
+        int partitionCount = store.getVersion(currentVersion).get().getPartitionCount();
+        resourceToPartitionCountMap.put(newResourceName, partitionCount);
+      }
+
+      @Override
+      public void handleStoreDeleted(String storeName) {
+        resourceToPartitionCountMap.entrySet().removeIf(entry -> {
+          String name = Version.parseStoreFromKafkaTopicName(entry.getKey());
+          return storeName.equals(name);
+        });
+      }
+    });
   }
 
   @Override
@@ -213,44 +249,6 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
         listenerManager.trigger(kafkaTopic, listener -> listener.onRoutingDataDeleted(kafkaTopic));
       }
     }
-  }
-
-  @Override
-  public void handleStoreCreated(Store store) {
-    int currentVersion = store.getCurrentVersion();
-    if (currentVersion == NON_EXISTING_VERSION) {
-      return;
-    }
-
-    String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);
-    int partitionCount = store.getVersion(currentVersion).get().getPartitionCount();
-    resourceToPartitionCountMap.put(newResourceName, partitionCount);
-  }
-
-  @Override
-  public void handleStoreChanged(Store store) {
-    int currentVersion = store.getCurrentVersion();
-    if (currentVersion == NON_EXISTING_VERSION) {
-      return;
-    }
-
-    resourceToPartitionCountMap.entrySet().removeIf(entry -> {
-      String storeName = Version.parseStoreFromKafkaTopicName(entry.getKey());
-      int version = Version.parseVersionFromVersionTopicName(entry.getKey());
-      return store.getName().equals(storeName) && version != currentVersion;
-    });
-    String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);
-    int partitionCount = store.getVersion(currentVersion).get().getPartitionCount();
-    resourceToPartitionCountMap.put(newResourceName, partitionCount);
-  }
-
-  @Override
-  public void handleStoreDeleted(String storeName) {
-    resourceToPartitionCountMap.entrySet().removeIf(entry -> {
-      String name = Version.parseStoreFromKafkaTopicName(entry.getKey());
-      return storeName.equals(name);
-    });
-
   }
 
   @Override
