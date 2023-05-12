@@ -84,6 +84,12 @@ public class RocksDBSstFileWriter {
   private final Options options;
   private final boolean isRMD;
   private final RocksDBServerConfig rocksDBServerConfig;
+
+  // Visible for testing
+  public String getLastCheckPointedSSTFileNum() {
+    return lastCheckPointedSSTFileNum;
+  }
+
   private final String lastCheckPointedSSTFileNum;
 
   public RocksDBSstFileWriter(
