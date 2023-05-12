@@ -10,6 +10,7 @@ import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
+import org.antlr.v4.runtime.misc.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -113,13 +114,7 @@ public class RmdUtils {
    * @param advancedOffset  The vector has should be advanced along.
    * @return                True if the advancedOffset vector has grown beyond the baseOffset
    */
-  static public boolean hasOffsetAdvanced(List<Long> baseOffset, List<Long> advancedOffset) {
-    if (baseOffset == null && advancedOffset != null) {
-      return true;
-    }
-    if (baseOffset != null && advancedOffset == null) {
-      return false;
-    }
+  static public boolean hasOffsetAdvanced(@NotNull List<Long> baseOffset, @NotNull List<Long> advancedOffset) {
     if (baseOffset.size() > advancedOffset.size()) {
       // the baseoffset has more entries then the advanced one, meaning that it's seen entries from more colos
       // meaning that it's automatically further along then the second argument. We break early to avoid any

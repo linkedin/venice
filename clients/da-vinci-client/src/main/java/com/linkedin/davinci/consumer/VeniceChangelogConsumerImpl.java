@@ -646,7 +646,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // handle this gracefully, we instate the below condition that says the hwm in the client should never go
       // backwards.
       if (RmdUtils.hasOffsetAdvanced(
-          currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber()),
+          currentVersionHighWatermarks.getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_LIST),
           versionSwap.getLocalHighWatermarks())) {
         currentVersionHighWatermarks
             .put(pubSubTopicPartition.getPartitionNumber(), versionSwap.getLocalHighWatermarks());
@@ -704,7 +704,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubTopicPartition pubSubTopicPartition) {
     int partitionId = pubSubTopicPartition.getPartitionNumber();
     if (recordCheckpointVector != null && currentVersionHighWatermarks.containsKey(partitionId)) {
-      List<Long> partitionCurrentVersionHighWatermarks = currentVersionHighWatermarks.get(partitionId);
+      List<Long> partitionCurrentVersionHighWatermarks =
+          currentVersionHighWatermarks.getOrDefault(partitionId, Collections.EMPTY_LIST);
       return !RmdUtils.hasOffsetAdvanced(partitionCurrentVersionHighWatermarks, recordCheckpointVector);
     }
     // Has not met version swap message after client initialization.
