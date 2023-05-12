@@ -93,7 +93,6 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository impl
   public void refresh() {
     try {
       manager.addIdealStateChangeListener(this);
-      // manager.addControllerListener(this);
       super.refresh();
     } catch (Exception e) {
       String errorMessage = "Cannot refresh routing table from Helix for cluster " + manager.getClusterName();
@@ -103,7 +102,6 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository impl
   }
 
   public void clear() {
-    // manager.removeListener(keyBuilder.controller(), this);
     manager.removeListener(keyBuilder.idealStates(), this);
     super.clear();
   }

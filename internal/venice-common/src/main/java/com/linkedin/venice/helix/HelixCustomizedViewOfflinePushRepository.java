@@ -46,7 +46,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
 
   private final Map<String, Integer> resourceToPartitionCountMap = new VeniceConcurrentHashMap<>();
 
-  private ReadOnlyStoreRepository storeRepository;
+  private final ReadOnlyStoreRepository storeRepository;
 
   public HelixCustomizedViewOfflinePushRepository(SafeHelixManager manager, ReadOnlyStoreRepository storeRepository) {
     super(manager);
