@@ -105,4 +105,32 @@ public class RmdUtils {
     }
     return ((List<Long>) offsetVector).stream().reduce(0L, Long::sum);
   }
+
+  /**
+   * Checks to see if an offset vector has advanced completely beyond some base offset vector or not.
+   *
+   * @param baseOffset      The vector to compare against.
+   * @param advancedOffset  The vector has should be advanced along.
+   * @return                True if the advancedOffset vector has grown beyond the baseOffset
+   */
+  static public boolean hasOffsetAdvanced(List<Long> baseOffset, List<Long> advancedOffset) {
+    if (baseOffset == null && advancedOffset != null) {
+      return true;
+    }
+    if (baseOffset != null && advancedOffset == null) {
+      return false;
+    }
+    if (baseOffset.size() > advancedOffset.size()) {
+      // the baseoffset has more entries then the advanced one, meaning that it's seen entries from more colos
+      // meaning that it's automatically further along then the second argument. We break early to avoid any
+      // array out of bounds exception
+      return false;
+    }
+    for (int i = 0; i < baseOffset.size(); i++) {
+      if (advancedOffset.get(i) < baseOffset.get(i)) {
+        return false;
+      }
+    }
+    return true;
+  }
 }

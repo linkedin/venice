@@ -34,6 +34,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -177,17 +178,24 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       } else {
         topicToSubscribe = topic;
       }
-      Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
-      List<TopicPartition> topicPartitionList =
-          getPartitionListToSubscribe(partitions, topicPartitionSet, topicToSubscribe);
-      kafkaConsumer.assign(topicPartitionList);
-      for (TopicPartition topicPartition: topicPartitionList) {
-        if (!topicPartition.topic().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
-          compressorMap.put(topicPartition.partition(), getVersionCompressor(topicPartition));
+
+      synchronized (kafkaConsumer) {
+        Set<TopicPartition> topicPartitionSet = new HashSet<>(kafkaConsumer.assignment());
+        List<TopicPartition> topicPartitionList =
+            getPartitionListToSubscribe(partitions, topicPartitionSet, topicToSubscribe);
+        List<TopicPartition> topicPartitionListToSeek =
+            getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
+
+        topicPartitionSet.addAll(topicPartitionList);
+        kafkaConsumer.assign(topicPartitionSet);
+        for (TopicPartition topicPartition: topicPartitionList) {
+          if (!topicPartition.topic().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
+            compressorMap.put(topicPartition.partition(), getVersionCompressor(topicPartition));
+          }
         }
+        kafkaConsumer.seekToBeginning(topicPartitionListToSeek);
+        return null;
       }
-      kafkaConsumer.seekToBeginning(topicPartitionList);
-      return null;
     });
   }
 
@@ -216,10 +224,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
     // Get latest version topic
-    storeRepository.refresh();
-    Store store = storeRepository.getStore(storeName);
-    int currentVersion = store.getCurrentVersion();
-    String topic = Version.composeKafkaTopic(storeName, currentVersion);
+    String topic = getCurrentServingVersionTopic();
     return internalSeek(partitions, topic, kafkaConsumer::seekToBeginning);
   }
 
@@ -301,24 +306,26 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return CompletableFuture.supplyAsync(() -> {
       Set<TopicPartition> topicPartitionSet = new HashSet<>(kafkaConsumer.assignment());
       // Prune out current subscriptions
-      for (TopicPartition topicPartition: topicPartitionSet) {
+      for (TopicPartition topicPartition: kafkaConsumer.assignment()) {
         currentVersionHighWatermarks.remove(topicPartition.partition());
         if (partitions.contains(topicPartition.partition())) {
           topicPartitionSet.remove(topicPartition);
         }
       }
 
-      List<TopicPartition> topicPartitionListToAssign =
-          getPartitionListToSubscribe(partitions, topicPartitionSet, targetTopic);
-      List<TopicPartition> topicPartitionListToSeek =
-          getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
-      for (TopicPartition topicPartition: topicPartitionListToSeek) {
-        if (!topicPartition.topic().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
-          compressorMap.put(topicPartition.partition(), getVersionCompressor(topicPartition));
+      synchronized (kafkaConsumer) {
+        List<TopicPartition> topicPartitionListToAssign =
+            getPartitionListToSubscribe(partitions, topicPartitionSet, targetTopic);
+        List<TopicPartition> topicPartitionListToSeek =
+            getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
+        for (TopicPartition topicPartition: topicPartitionListToSeek) {
+          if (!topicPartition.topic().endsWith(ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
+            compressorMap.put(topicPartition.partition(), getVersionCompressor(topicPartition));
+          }
         }
+        kafkaConsumer.assign(topicPartitionListToAssign);
+        seekAction.apply(topicPartitionListToSeek);
       }
-      kafkaConsumer.assign(topicPartitionListToAssign);
-      seekAction.apply(topicPartitionListToSeek);
       return null;
     });
   }
@@ -339,18 +346,22 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         topicPartitionList.add(topicPartition);
       }
     }
+    topicPartitionList.addAll(topicPartitionSet);
     return topicPartitionList;
   }
 
   @Override
   public void unsubscribe(Set<Integer> partitions) {
-    Set<TopicPartition> topicPartitionSet = new HashSet<>(kafkaConsumer.assignment());
-    for (TopicPartition topicPartition: topicPartitionSet) {
-      if (partitions.contains(topicPartition.partition())) {
-        topicPartitionSet.remove(topicPartition);
+    synchronized (kafkaConsumer) {
+      Set<TopicPartition> topicPartitionSet = new HashSet<>(kafkaConsumer.assignment());
+      Set<TopicPartition> newTopicPartitionAssignment = new HashSet<>(topicPartitionSet);
+      for (TopicPartition topicPartition: topicPartitionSet) {
+        if (partitions.contains(topicPartition.partition())) {
+          newTopicPartitionAssignment.remove(topicPartition);
+        }
       }
+      kafkaConsumer.assign(newTopicPartitionAssignment);
     }
-    kafkaConsumer.assign(topicPartitionSet);
   }
 
   @Override
@@ -371,13 +382,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       long timeoutInMs,
       String topicSuffix) {
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
+    List<Integer> partitionsToFilter = new ArrayList<>();
     ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = kafkaConsumer.poll(timeoutInMs);
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord: consumerRecords) {
+      if (partitionsToFilter.contains(consumerRecord.partition())) {
+        continue;
+      }
       PubSubTopicPartition pubSubTopicPartition = getPubSubTopicPartitionFromConsumerRecord(consumerRecord);
       if (consumerRecord.key().isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
         if (handleControlMessage(controlMessage, pubSubTopicPartition, topicSuffix)) {
-          return pubSubMessages;
+          partitionsToFilter.add(consumerRecord.partition());
+          // return pubSubMessages;
         }
       } else {
         Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
@@ -622,7 +638,19 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           versionSwap,
           versionSwap.getLocalHighWatermarks());
       String newServingVersionTopic = versionSwap.newServingVersionTopic.toString();
-      currentVersionHighWatermarks.put(pubSubTopicPartition.getPartitionNumber(), versionSwap.getLocalHighWatermarks());
+
+      // TODO: There seems to exist a condition in the server where highwatermark offsets may regress when transmitting
+      // the version swap message
+      // it seems like this can potentially happen if a repush occurs and no data is consumed on that previous version.
+      // To make the client
+      // handle this gracefully, we instate the below condition that says the hwm in the client should never go
+      // backwards.
+      if (RmdUtils.hasOffsetAdvanced(
+          currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber()),
+          versionSwap.getLocalHighWatermarks())) {
+        currentVersionHighWatermarks
+            .put(pubSubTopicPartition.getPartitionNumber(), versionSwap.getLocalHighWatermarks());
+      }
       switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
       inMemoryStorageEngine.drop();
       return true;
@@ -677,16 +705,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     int partitionId = pubSubTopicPartition.getPartitionNumber();
     if (recordCheckpointVector != null && currentVersionHighWatermarks.containsKey(partitionId)) {
       List<Long> partitionCurrentVersionHighWatermarks = currentVersionHighWatermarks.get(partitionId);
-      if (recordCheckpointVector.size() > partitionCurrentVersionHighWatermarks.size()) {
-        return false;
-      }
-      // Only filter the record when all regions fall behind.
-      for (int i = 0; i < recordCheckpointVector.size(); i++) {
-        if (recordCheckpointVector.get(i) > partitionCurrentVersionHighWatermarks.get(i)) {
-          return false;
-        }
-      }
-      return true;
+      return !RmdUtils.hasOffsetAdvanced(partitionCurrentVersionHighWatermarks, recordCheckpointVector);
     }
     // Has not met version swap message after client initialization.
     return false;
