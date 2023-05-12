@@ -1567,10 +1567,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               partition);
           resetOffset(partition, topicPartition, true);
           newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
+          newPartitionConsumptionState.setLeaderFollowerState(leaderState);
           offsetRecord = newPartitionConsumptionState.getOffsetRecord();
         }
 
-        newPartitionConsumptionState.setLeaderFollowerState(leaderState);
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
         reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
         versionedIngestionStats.recordSubscribePrepLatency(

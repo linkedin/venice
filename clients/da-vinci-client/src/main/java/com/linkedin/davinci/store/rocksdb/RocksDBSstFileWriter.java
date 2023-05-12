@@ -196,7 +196,12 @@ public class RocksDBSstFileWriter {
         storeName,
         partitionId,
         checkpointedInfo);
-    checkDatabaseIntegrity(checkpointedInfo);
+    if (!checkDatabaseIntegrity(checkpointedInfo)) {
+      // defensive check: this issue should have been dealt with while subscribing to the partition
+      throw new VeniceException(
+          "Checkpointed info and SST files in " + fullPathForTempSSTFileDir
+              + " directory doesn't match for RocksDB store: " + storeName + " partition: " + partitionId);
+    }
     String fullPathForCurrentSSTFile = composeFullPathForSSTFile(currentSSTFileNo);
     currentSSTFileWriter = new SstFileWriter(envOptions, options);
     try {
