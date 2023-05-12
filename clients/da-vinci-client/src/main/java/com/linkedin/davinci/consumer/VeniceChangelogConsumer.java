@@ -29,7 +29,8 @@ public interface VeniceChangelogConsumer<K, V> {
    * Seek to the beginning of the push for a set of partitions.  This is analogous to doing a bootstrap of data for the consumer.
    * This seek will ONLY seek to the beginning of the version which is currently serving data, and the consumer will switch
    * to reading data from a new version (should one get created) once it has read up to the point in the change capture stream
-   * that indicates the version swap (which can only occur after consuming all the data in the last push).
+   * that indicates the version swap (which can only occur after consuming all the data in the last push). This instructs
+   * the consumer to consume data from the batch push.
    *
    * @param partitions the set of partitions to seek with
    * @return a future which completes when the operation has succeeded for all partitions.
@@ -64,7 +65,8 @@ public interface VeniceChangelogConsumer<K, V> {
   CompletableFuture<Void> seekToEndOfPush();
 
   /**
-   * Seek to the end of events which have been transmitted to Venice and start consuming new events.
+   * Seek to the end of events which have been transmitted to Venice and start consuming new events. This will ONLY
+   * consume events transmitted via nearline and incremental push. It will not read batch push data.
    *
    * @param partitions the set of partitions to seek with
    * @return a future which completes when the operation has succeeded for all partitions.
