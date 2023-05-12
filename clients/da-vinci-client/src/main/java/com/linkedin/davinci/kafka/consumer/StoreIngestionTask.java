@@ -563,6 +563,49 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  /**
+   * This method checks if there was a previous ingestion and what its state was. If there is a mismatch
+   * between the checkpointed information and the current state, this method returns false. This implies
+   * that the process crashed during or after the ingestion but before syncing the OffsetRecord with EOP.
+   * In this case, the upstream should restart the ingestion from scratch.
+   */
+  private boolean checkDatabaseIntegrity(
+      int partitionId,
+      String topic,
+      OffsetRecord offsetRecord,
+      PartitionConsumptionState partitionConsumptionState) {
+    boolean returnStatus = true;
+    if (offsetRecord.getLocalVersionTopicOffset() > 0) {
+      StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
+      if (storeVersionState != null) {
+        LOGGER.info(
+            "storeVersionState found for {}, partition: {}: checkDatabaseIntegrity will proceed",
+            topic,
+            partitionId);
+        returnStatus = storageEngine.checkDatabaseIntegrity(
+            partitionId,
+            offsetRecord.getDatabaseInfo(),
+            getStoragePartitionConfig(partitionId, storeVersionState.sorted, partitionConsumptionState));
+        LOGGER.info(
+            "checkDatabaseIntegrity {} for {}, partition: {}",
+            returnStatus ? "succeeded" : "failed",
+            topic,
+            partitionId);
+      } else {
+        LOGGER.info(
+            "storeVersionState not found for {}, partition: {}: checkDatabaseIntegrity will be skipped",
+            topic,
+            partitionId);
+      }
+    } else {
+      LOGGER.info(
+          "Local topic offset not found for {}, partition: {}: checkDatabaseIntegrity will be skipped",
+          topic,
+          partitionId);
+    }
+    return returnStatus;
+  }
+
   private void beginBatchWrite(int partitionId, boolean sorted, PartitionConsumptionState partitionConsumptionState) {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
     StoragePartitionConfig storagePartitionConfig =
@@ -1492,6 +1535,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopicPartition topicPartition,
       LeaderFollowerStateType leaderState) throws InterruptedException {
     int partition = topicPartition.getPartitionNumber();
+    String topic = topicPartition.getPubSubTopic().getName();
     switch (operation) {
       case SUBSCRIBE:
         // Clear the error partition tracking
@@ -1499,10 +1543,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
         subscribedCount++;
-        OffsetRecord offsetRecord =
-            storageMetadataService.getLastOffset(topicPartition.getPubSubTopic().getName(), partition);
 
-        // First let's try to restore the state retrieved from the OffsetManager
+        // Get the last persisted Offset record from metadata service
+        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
+
+        // Let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState =
             new PartitionConsumptionState(partition, amplificationFactor, offsetRecord, hybridStoreConfig.isPresent());
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
@@ -1515,6 +1560,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         });
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
+        if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
+          LOGGER.warn(
+              "Restart ingestion from the beginning by resetting OffsetRecord for topic: {} and partition: {}",
+              topic,
+              partition);
+          resetOffset(partition, topicPartition, true);
+          newPartitionConsumptionState = partitionConsumptionStateMap.get(partition);
+          newPartitionConsumptionState.setLeaderFollowerState(leaderState);
+          offsetRecord = newPartitionConsumptionState.getOffsetRecord();
+        }
+
         checkConsumptionStateWhenStart(offsetRecord, newPartitionConsumptionState);
         reportIfCatchUpVersionTopicOffset(newPartitionConsumptionState);
         versionedIngestionStats.recordSubscribePrepLatency(
@@ -1602,59 +1658,62 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         break;
       case RESET_OFFSET:
-        /*
-         * After auditing all the calls that can result in the RESET_OFFSET action, it turns out we always unsubscribe
-         * from the topic/partition before resetting offset, which is unnecessary; but we decided to keep this action
-         * for now in case that in future, we do want to reset the consumer without unsubscription.
-         */
-        PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
-        if (partitionConsumptionState != null
-            && consumerHasSubscription(topicPartition.getPubSubTopic(), partitionConsumptionState)) {
-          LOGGER.error(
-              "This shouldn't happen since unsubscription should happen before reset offset for: {}",
-              topicPartition);
-          /*
-           * Only update the consumer and partitionConsumptionStateMap when consumer actually has
-           * subscription to this topic/partition; otherwise, we would blindly update the StateMap
-           * and mess up other operations on the StateMap.
-           */
-          try {
-            consumerResetOffset(topicPartition.getPubSubTopic(), partitionConsumptionState);
-            LOGGER.info("{} Reset OffSet : {}", consumerTaskId, topicPartition);
-          } catch (UnsubscribedTopicPartitionException e) {
-            LOGGER.error(
-                "{} Kafka consumer should have subscribed to the partition already but it fails "
-                    + "on resetting offset for: {}",
-                consumerTaskId,
-                topicPartition);
-          }
-          partitionConsumptionStateMap.put(
-              partition,
-              new PartitionConsumptionState(
-                  partition,
-                  amplificationFactor,
-                  new OffsetRecord(partitionStateSerializer),
-                  hybridStoreConfig.isPresent()));
-          storageUtilizationManager.initPartition(partition);
-          // Reset the error partition tracking
-          partitionIngestionExceptionList.set(partition, null);
-        } else {
-          LOGGER.info(
-              "{} No need to reset offset by Kafka consumer, since the consumer is not " + "subscribing: {}",
-              consumerTaskId,
-              topicPartition);
-        }
-        kafkaDataIntegrityValidator.clearPartition(partition);
-        storageMetadataService.clearOffset(topicPartition.getPubSubTopic().getName(), partition);
+        resetOffset(partition, topicPartition, false);
         break;
       case KILL:
-        LOGGER.info("Kill this consumer task for Topic: {}", topicPartition.getPubSubTopic().getName());
+        LOGGER.info("Kill this consumer task for Topic: {}", topic);
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
-        throw new VeniceIngestionTaskKilledException(
-            "Received the signal to kill this consumer. Topic " + topicPartition.getPubSubTopic().getName());
+        throw new VeniceIngestionTaskKilledException("Received the signal to kill this consumer. Topic " + topic);
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }
+  }
+
+  private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+
+    if (partitionConsumptionState != null
+        && (restartIngestion || consumerHasSubscription(topicPartition.getPubSubTopic(), partitionConsumptionState))) {
+      if (restartIngestion) {
+        LOGGER.info("Reset offset to restart ingestion for: {}", topicPartition);
+      } else {
+        LOGGER.error(
+            "This shouldn't happen since unsubscription should happen before reset offset for: {}",
+            topicPartition);
+      }
+      /*
+       * Only update the consumer and partitionConsumptionStateMap when consumer actually has
+       * subscription to this topic/partition; otherwise, we would blindly update the StateMap
+       * and mess up other operations on the StateMap.
+       */
+      try {
+        consumerResetOffset(topicPartition.getPubSubTopic(), partitionConsumptionState);
+        LOGGER.info("{} Reset OffSet : {}", consumerTaskId, topicPartition);
+      } catch (UnsubscribedTopicPartitionException e) {
+        LOGGER.error(
+            "{} Kafka consumer should have subscribed to the partition already but it fails "
+                + "on resetting offset for: {}",
+            consumerTaskId,
+            topicPartition);
+      }
+      partitionConsumptionStateMap.put(
+          partition,
+          new PartitionConsumptionState(
+              partition,
+              amplificationFactor,
+              new OffsetRecord(partitionStateSerializer),
+              hybridStoreConfig.isPresent()));
+      storageUtilizationManager.initPartition(partition);
+      // Reset the error partition tracking
+      partitionIngestionExceptionList.set(partition, null);
+    } else {
+      LOGGER.info(
+          "{} No need to reset offset by Kafka consumer, since the consumer is not subscribing: {}",
+          consumerTaskId,
+          topicPartition);
+    }
+    kafkaDataIntegrityValidator.clearPartition(partition);
+    storageMetadataService.clearOffset(topicPartition.getPubSubTopic().getName(), partition);
   }
 
   /**

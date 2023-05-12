@@ -829,10 +829,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public VersionCreationResponse getNewVersion(String storeName) {
-    return getNewVersion(storeName, true);
+    return getNewVersion(storeName, true, false);
   }
 
   public VersionCreationResponse getNewVersion(String storeName, boolean sendStartOfPush) {
+    return getNewVersion(storeName, sendStartOfPush, false);
+  }
+
+  public VersionCreationResponse getNewVersion(String storeName, boolean sendStartOfPush, boolean sorted) {
     return assertCommand(
         controllerClient.get()
             .requestTopicForWrites(
@@ -841,9 +845,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                 Version.PushType.BATCH,
                 Version.guidBasedDummyPushId(),
                 sendStartOfPush,
-                // This function is expected to be called by tests that bypass the push job and write data directly,
-                // therefore, it's safe to assume that it'll be written in arbitrary order, rather than sorted...
-                false,
+                sorted,
                 false,
                 Optional.empty(),
                 Optional.empty(),

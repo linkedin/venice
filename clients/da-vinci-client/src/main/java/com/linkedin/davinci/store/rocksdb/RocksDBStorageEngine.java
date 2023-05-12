@@ -25,7 +25,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
+public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStorageEngine.class);
 
   public static final String SERVER_CONFIG_FILE_NAME = "rocksdbConfig";
