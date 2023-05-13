@@ -37,7 +37,7 @@ import org.apache.logging.log4j.Logger;
 public class HelixExternalViewRepository extends HelixBaseRoutingRepository implements IdealStateChangeListener {
   private static final Logger LOGGER = LogManager.getLogger(HelixExternalViewRepository.class);
 
-  protected volatile Map<String, Integer> resourceToIdealPartitionCountMap;
+  private volatile Map<String, Integer> resourceToIdealPartitionCountMap;
 
   private static final String ONLINE_OFFLINE_VENICE_STATE_FILLER = "N/A";
 

@@ -350,16 +350,15 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
               storeName,
               t);
         }
+
         String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-        SystemStore metaSystemStore = new SystemStore(
-            systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
-            VeniceSystemStoreType.META_STORE,
-            store);
-
         try {
-
           // Notify the meta system store deletion
-          listener.handleStoreDeleted(metaSystemStore);
+          Store metaStore = systemStoreRepository.getStore(VeniceSystemStoreType.META_STORE.getZkSharedStoreName());
+          if (metaStore != null) {
+            SystemStore metaSystemStore = new SystemStore(metaStore, VeniceSystemStoreType.META_STORE, store);
+            listener.handleStoreDeleted(metaSystemStore);
+          }
         } catch (Throwable t) {
           LOGGER.error(
               "Received exception while invoking `handleStoreDeleted` of listener: {} with system store: {}.",
