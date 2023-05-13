@@ -35,7 +35,8 @@ import com.linkedin.venice.schema.writecompute.WriteComputeHandlerV1;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.BoundedHashMap;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -129,12 +130,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   private final VeniceConcurrentHashMap<Pair<Integer, Integer>, Schema> valueSchemaIdsToSchemaMap =
       new VeniceConcurrentHashMap<>();
-
-  /**
-   * key is schema
-   * value is Avro serializer
-   */
-  private final Map<String, VeniceAvroKafkaSerializer> serializers = new VeniceConcurrentHashMap<>();
 
   // Mutable, lazily initialized, state
   private Schema keySchema;
@@ -687,7 +682,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
               + " which does not match Venice key schema " + canonicalKeySchemaStr + ".");
     }
 
-    byte[] key = serializeObject(topicName, keyObject);
+    byte[] key = serializeObject(keyObject);
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
     final PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
 
@@ -731,7 +726,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         valueSchemaIdPair = new Pair<>(baseSchemaId, -1);
       }
 
-      byte[] value = serializeObject(topicName, valueObject);
+      byte[] value = serializeObject(valueObject);
 
       if (valueSchemaIdPair.getSecond() == -1) {
         if (logicalTimestamp > 0) {
@@ -804,11 +799,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
   }
 
-  private byte[] serializeObject(String topic, Object input) {
+  private byte[] serializeObject(Object input) {
     if (input instanceof IndexedRecord) {
-      VeniceAvroKafkaSerializer serializer =
-          serializers.computeIfAbsent(((IndexedRecord) input).getSchema().toString(), VeniceAvroKafkaSerializer::new);
-      return serializer.serialize(topic, input);
+      RecordSerializer<Object> fastAvroSerializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(((IndexedRecord) input).getSchema());
+      return fastAvroSerializer.serialize(input);
     } else if (input instanceof CharSequence) {
       return serializePrimitive(new Utf8(input.toString()), STRING_DATUM_WRITER);
     } else if (input instanceof Integer) {
