@@ -221,7 +221,12 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
     throw new VeniceException("The function of refreshRoutingDataForResource is not implemented");
   }
 
-  private class StoreChangeListener implements StoreDataChangedListener {
+  // test only
+  public Map<String, Integer> getResourceToPartitionCountMap() {
+    return this.resourceToPartitionCountMap;
+  }
+
+  public class StoreChangeListener implements StoreDataChangedListener {
     @Override
     public void handleStoreCreated(Store store) {
       int currentVersion = store.getCurrentVersion();

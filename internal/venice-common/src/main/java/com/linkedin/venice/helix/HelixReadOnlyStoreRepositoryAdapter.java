@@ -84,6 +84,11 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
     return store;
   }
 
+  // test only
+  public Set<StoreDataChangedListener> getListeners() {
+    return listeners;
+  }
+
   @Override
   public boolean hasStore(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
@@ -270,7 +275,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
   /**
    * {@link StoreDataChangedListener} to handle all the events from {@link #regularStoreDataChangedListener}.
    */
-  private class VeniceStoreDataChangedListener implements StoreDataChangedListener {
+  public class VeniceStoreDataChangedListener implements StoreDataChangedListener {
     /**
      * Notify the store creation and maybe the corresponding system store creation.
      * TODO: so far, this function only supports {@link VeniceSystemStoreType#META_STORE}, and if you plan to support
@@ -339,7 +344,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
      */
     public void handleStoreDeleted(Store store) {
       String storeName = store.getName();
-      listeners.forEach(listener -> {
+      getListeners().forEach(listener -> {
         // Notify the regular store deletion
         try {
           listener.handleStoreDeleted(store);
