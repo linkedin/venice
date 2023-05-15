@@ -22,8 +22,15 @@ public class ResourceAssignment {
   private volatile Map<String, PartitionAssignment> resourceToAssignmentsMap = new HashMap<>();
 
   public PartitionAssignment getPartitionAssignment(String resource) {
-    checkResource(resource);
-    return resourceToAssignmentsMap.get(resource);
+    PartitionAssignment partitionAssignment = resourceToAssignmentsMap.get(resource);
+    if (partitionAssignment == null) {
+      String errorMessage = "Resource '" + resource + "' does not exist";
+      LOGGER.trace(errorMessage);
+      // TODO: Might want to add some (configurable) retries here or higher up the stack. If the Helix spectator is out
+      // of sync, this fails...
+      throw new VeniceNoHelixResourceException(resource);
+    }
+    return partitionAssignment;
   }
 
   public void setPartitionAssignment(String resource, PartitionAssignment partitionAssignment) {
@@ -40,16 +47,6 @@ public class ResourceAssignment {
 
   public Set<String> getAssignedResources() {
     return resourceToAssignmentsMap.keySet();
-  }
-
-  private void checkResource(String resourceName) {
-    if (!resourceToAssignmentsMap.containsKey(resourceName)) {
-      String errorMessage = "Resource '" + resourceName + "' does not exist";
-      LOGGER.trace(errorMessage);
-      // TODO: Might want to add some (configurable) retries here or higher up the stack. If the Helix spectator is out
-      // of sync, this fails...
-      throw new VeniceNoHelixResourceException(resourceName);
-    }
   }
 
   /**

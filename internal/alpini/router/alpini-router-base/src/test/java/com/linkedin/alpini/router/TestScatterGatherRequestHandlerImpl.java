@@ -1989,6 +1989,12 @@ public class TestScatterGatherRequestHandlerImpl {
     public int getNumPartitions(@Nonnull String resourceName) throws RouterException {
       return 1;
     }
+
+    @Override
+    public int findPartitionNumber(@Nonnull String partitionKey, int numPartitions, String storeName, int versionNumber)
+        throws RouterException {
+      return 0;
+    }
   }
 
   private enum State {

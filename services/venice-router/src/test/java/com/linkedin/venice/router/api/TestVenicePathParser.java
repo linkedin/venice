@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.api;
 
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -18,6 +19,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
@@ -197,6 +199,7 @@ public class TestVenicePathParser {
     AggRouterHttpRequestStats singleGetStats = mock(AggRouterHttpRequestStats.class);
     when(mockRouterStats.getStatsByType(RequestType.MULTI_GET)).thenReturn(multiGetStats);
     when(mockRouterStats.getStatsByType(RequestType.SINGLE_GET)).thenReturn(singleGetStats);
+    when(partitionFinder.findPartitioner(anyString(), anyInt())).thenReturn(mock(VenicePartitioner.class));
 
     VenicePathParser pathParser = new VenicePathParser(
         getVersionFinder(),

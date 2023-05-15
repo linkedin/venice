@@ -5,6 +5,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,10 +31,59 @@ public class Partition {
   private final int id;
 
   private final Map<String, List<Instance>> stateToInstancesMap;
+  private final Map<HelixState, List<Instance>> helixStateToInstancesMap;
+  private final Map<ExecutionStatus, List<Instance>> executionStatusToInstancesMap;
+  private final List<Instance> readyInstances;
+  private final List<Instance> workingInstances;
 
   public Partition(int id, Map<String, List<Instance>> stateToInstancesMap) {
     this.id = id;
     this.stateToInstancesMap = stateToInstancesMap;
+
+    // Populate enum maps which are more efficient than the string-based map
+    this.helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+    this.executionStatusToInstancesMap = new EnumMap<>(ExecutionStatus.class);
+    for (Map.Entry<String, List<Instance>> entry: stateToInstancesMap.entrySet()) {
+      /**
+       * N.B. The design of this class is that the {@param stateToInstancesMap} is keyed by strings which could
+       *      correspond to values of either {@link HelixState} of {@link ExecutionStatus}. That is why in the
+       *      code below we catch {@link IllegalArgumentException} since they would be thrown whenever the map
+       *      contains a key which is absent from either enum. This is not an ideal design, but refactoring it
+       *      would be a big undertaking. TODO: refactor it anyway
+       */
+      try {
+        HelixState helixState = HelixState.valueOf(entry.getKey());
+        this.helixStateToInstancesMap.put(helixState, Collections.unmodifiableList(entry.getValue()));
+      } catch (IllegalArgumentException e) {
+        // carry on
+      }
+      try {
+        ExecutionStatus executionStatus = ExecutionStatus.valueOf(entry.getKey());
+        this.executionStatusToInstancesMap.put(executionStatus, Collections.unmodifiableList(entry.getValue()));
+      } catch (IllegalArgumentException e) {
+        // carry on
+      }
+    }
+    for (HelixState helixState: HelixState.values()) {
+      this.helixStateToInstancesMap.putIfAbsent(helixState, Collections.emptyList());
+    }
+    for (ExecutionStatus executionStatus: ExecutionStatus.values()) {
+      this.executionStatusToInstancesMap.putIfAbsent(executionStatus, Collections.emptyList());
+    }
+
+    // Populate lists of multiple related states
+    List<Instance> instances = new ArrayList<>();
+    instances.addAll(this.helixStateToInstancesMap.get(HelixState.ONLINE));
+    instances.addAll(this.helixStateToInstancesMap.get(HelixState.STANDBY));
+    instances.addAll(this.helixStateToInstancesMap.get(HelixState.LEADER));
+    this.readyInstances = Collections.unmodifiableList(instances);
+
+    List<Instance> instances2 = new ArrayList<>();
+    instances2.addAll(this.helixStateToInstancesMap.get(HelixState.ONLINE));
+    instances2.addAll(this.helixStateToInstancesMap.get(HelixState.BOOTSTRAP));
+    instances2.addAll(this.helixStateToInstancesMap.get(HelixState.STANDBY));
+    instances2.addAll(this.helixStateToInstancesMap.get(HelixState.LEADER));
+    this.workingInstances = Collections.unmodifiableList(instances2);
   }
 
   public List<Instance> getInstancesInState(String state) {
@@ -50,42 +100,25 @@ public class Partition {
    * TODO: remove this API once we've fully migrate to L/F model.
    */
   public List<Instance> getReadyToServeInstances() {
-    return getInstancesInState(ExecutionStatus.COMPLETED.name()).size() > getInstancesInState(HelixState.ONLINE_STATE)
-        .size() ? getInstancesInState(ExecutionStatus.COMPLETED.name()) : getReadyInstances();
-  }
-
-  private List<Instance> getReadyInstances() {
-    List<Instance> instances = new ArrayList<>();
-    instances.addAll(getInstancesInState(HelixState.ONLINE_STATE));
-    instances.addAll(getInstancesInState(HelixState.STANDBY_STATE));
-    instances.addAll(getInstancesInState(HelixState.LEADER_STATE));
-    return Collections.unmodifiableList(instances);
+    List<Instance> completed = this.executionStatusToInstancesMap.get(ExecutionStatus.COMPLETED);
+    List<Instance> online = this.helixStateToInstancesMap.get(HelixState.ONLINE);
+    return completed.size() > online.size() ? completed : this.readyInstances;
   }
 
   public List<Instance> getWorkingInstances() {
-    List<Instance> instances = new ArrayList<>();
-    instances.addAll(getInstancesInState(HelixState.ONLINE_STATE));
-    instances.addAll(getInstancesInState(HelixState.BOOTSTRAP_STATE));
-
-    instances.addAll(getInstancesInState(HelixState.STANDBY_STATE));
-    instances.addAll(getInstancesInState(HelixState.LEADER_STATE));
-    return Collections.unmodifiableList(instances);
+    return this.workingInstances;
   }
 
   public List<Instance> getErrorInstances() {
-    return getInstancesInState(HelixState.ERROR_STATE);
+    return this.helixStateToInstancesMap.get(HelixState.ERROR);
   }
 
   public List<Instance> getBootstrapInstances() {
-    return getInstancesInState(HelixState.BOOTSTRAP_STATE);
-  }
-
-  public List<Instance> getOfflineInstances() {
-    return getInstancesInState(HelixState.OFFLINE_STATE);
+    return this.helixStateToInstancesMap.get(HelixState.BOOTSTRAP);
   }
 
   public Instance getLeaderInstance() {
-    List<Instance> instances = getInstancesInState(HelixState.LEADER_STATE);
+    List<Instance> instances = this.helixStateToInstancesMap.get(HelixState.LEADER);
 
     if (instances.isEmpty()) {
       return null;

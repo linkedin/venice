@@ -22,12 +22,12 @@ public interface StorageNodeClient extends Closeable {
 
   /**
    * Send a request to storage node
-   * @param host The target host to which the request will be sent
-   * @param path contains information like URI, request content, HTTP method, etc.
+   *
+   * @param host              The target host to which the request will be sent
+   * @param path              contains information like URI, request content, HTTP method, etc.
    * @param completedCallBack Callback function for a complete response
-   * @param failedCallBack if any exception thrown in the channel
+   * @param failedCallBack    if any exception thrown in the channel
    * @param cancelledCallBack for requests that are cancelled by the channel
-   * @param queryStartTimeInNS the start time of dispatch
    * @throws RouterException
    */
   void query(
@@ -35,8 +35,7 @@ public interface StorageNodeClient extends Closeable {
       VenicePath path,
       Consumer<PortableHttpResponse> completedCallBack,
       Consumer<Throwable> failedCallBack,
-      BooleanSupplier cancelledCallBack,
-      long queryStartTimeInNS) throws RouterException;
+      BooleanSupplier cancelledCallBack) throws RouterException;
 
   default boolean isInstanceReadyToServe(String instanceId) {
     return true;

@@ -17,8 +17,8 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -49,7 +49,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -89,14 +88,15 @@ public class VeniceChunkedResponse {
    * to include meta data info, which are only available after processing the full request.
    */
   private static final RecordSerializer<StreamingFooterRecordV1> STREAMING_FOOTER_SERIALIZER =
-      SerializerDeserializerFactory.getAvroGenericSerializer(StreamingFooterRecordV1.getClassSchema());
+      FastSerializerDeserializerFactory.getAvroGenericSerializer(StreamingFooterRecordV1.getClassSchema());
   private static final Map<CharSequence, CharSequence> EMPTY_MAP = new HashMap<>();
   private static final RecordSerializer<MultiGetResponseRecordV1> MULTI_GET_RESPONSE_SERIALIZER =
-      SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
+      FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
   private static final RecordSerializer<ComputeResponseRecordV1> COMPUTE_RESPONSE_SERIALIZER =
-      SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
+      FastSerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
 
-  private final VenicePath path;
+  private final String storeName;
+  private final RequestType requestType;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
   private final ChannelHandlerContext ctx;
   private final VeniceChunkedWriteHandler chunkedWriteHandler;
@@ -113,7 +113,7 @@ public class VeniceChunkedResponse {
 
   // Response metadata should be sent when everything is good.
   private HttpResponse responseMetadata;
-  private Optional<CompressionStrategy> responseCompression = Optional.empty();
+  private volatile CompressionStrategy responseCompression = null;
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -152,20 +152,19 @@ public class VeniceChunkedResponse {
   }
 
   public VeniceChunkedResponse(
-      VenicePath path,
+      String storeName,
+      RequestType requestType,
       ChannelHandlerContext ctx,
       VeniceChunkedWriteHandler handler,
       RouterStats<AggRouterHttpRequestStats> routerStats) {
-    this.path = path;
+    this.storeName = storeName;
+    this.requestType = requestType;
     this.routerStats = routerStats;
-    /**
-     * At this point, the request type is still be {@link RequestType#MULTI_GET} or {@link RequestType#COMPUTE}.
-     */
-    RequestType requestType = path.getRequestType();
-    if (!requestType.equals(RequestType.MULTI_GET) && !requestType.equals(RequestType.COMPUTE)) {
+    if (!requestType.equals(RequestType.MULTI_GET_STREAMING) && !requestType.equals(RequestType.COMPUTE_STREAMING)) {
       throw new VeniceException(
           "Unexpected request type for streaming: " + requestType + ", and currently only"
-              + " the following types are supported: [" + RequestType.MULTI_GET + ", " + RequestType.COMPUTE + "]");
+              + " the following types are supported: [" + RequestType.MULTI_GET_STREAMING + ", "
+              + RequestType.COMPUTE_STREAMING + "]");
     }
     this.ctx = ctx;
     this.chunkedWriteHandler = handler;
@@ -276,27 +275,28 @@ public class VeniceChunkedResponse {
       ByteBuf byteBuf,
       CompressionStrategy compression,
       StreamingCallback<Long> callback) {
-    if (path.getRequestType().equals(RequestType.MULTI_GET_STREAMING)) {
-      synchronized (this) {
-        if (responseCompression.isPresent()) {
-          if (!responseCompression.get().equals(compression)) {
-            // Defensive code, not expected
-            LOGGER.error(
-                "Received inconsistent compression for the new write: {}, and previous compression: {}",
-                compression,
-                responseCompression.get());
-            /**
-             * Skip the write with wrong compression.
-             * {@link VeniceResponseAggregator#buildStreamingResponse} will perform the same check
-             * when all the responses returned by storage nodes are ready, and when the inconsistency happens,
-             * {@link VeniceResponseAggregator} will return an error response instead to indicate the issue.
-             */
-            return CompletableFuture.completedFuture(0l);
+    if (this.requestType.equals(RequestType.MULTI_GET_STREAMING)) {
+      if (this.responseCompression == null) {
+        synchronized (this) {
+          if (this.responseCompression == null) {
+            this.responseCompression = compression;
+            this.responseMetadata = RESPONSE_META_MAP_FOR_MULTI_GET.get(compression);
           }
-        } else {
-          responseCompression = Optional.of(compression);
-          responseMetadata = RESPONSE_META_MAP_FOR_MULTI_GET.get(compression);
         }
+      }
+      if (!this.responseCompression.equals(compression)) {
+        // Defensive code, not expected
+        LOGGER.error(
+            "Received inconsistent compression for the new write: {}, and previous compression: {}",
+            compression,
+            this.responseCompression);
+        /**
+         * Skip the write with wrong compression.
+         * {@link VeniceResponseAggregator#buildStreamingResponse} will perform the same check
+         * when all the responses returned by storage nodes are ready, and when the inconsistency happens,
+         * {@link VeniceResponseAggregator} will return an error response instead to indicate the issue.
+         */
+        return CompletableFuture.completedFuture(0l);
       }
     } else {
       responseMetadata = RESPONSE_META_FOR_COMPUTE;
@@ -355,8 +355,7 @@ public class VeniceChunkedResponse {
   }
 
   private void reportResponseSize() {
-    RequestType requestType = path.getRequestType();
-    routerStats.getStatsByType(requestType).recordResponseSize(path.getStoreName(), totalBytesReceived.get());
+    routerStats.getStatsByType(this.requestType).recordResponseSize(this.storeName, totalBytesReceived.get());
   }
 
   /**
@@ -385,22 +384,21 @@ public class VeniceChunkedResponse {
     AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
     ByteBuffer footerByteBuffer = ByteBuffer.wrap(STREAMING_FOOTER_SERIALIZER.serialize(footerRecord, reusableObjects));
 
-    RequestType requestType = path.getRequestType();
     ByteBuf footerResponse;
-    if (requestType.equals(RequestType.MULTI_GET_STREAMING)) {
+    if (this.requestType.equals(RequestType.MULTI_GET_STREAMING)) {
       MultiGetResponseRecordV1 record = new MultiGetResponseRecordV1();
       record.keyIndex = KEY_ID_FOR_STREAMING_FOOTER;
       record.value = footerByteBuffer;
       record.schemaId = STREAMING_FOOTER_SCHEMA_ID;
       footerResponse = Unpooled.wrappedBuffer(MULTI_GET_RESPONSE_SERIALIZER.serialize(record, reusableObjects));
-    } else if (requestType.equals(RequestType.COMPUTE_STREAMING)) {
+    } else if (this.requestType.equals(RequestType.COMPUTE_STREAMING)) {
       ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
       record.keyIndex = KEY_ID_FOR_STREAMING_FOOTER;
       record.value = footerByteBuffer;
       footerResponse = Unpooled.wrappedBuffer(COMPUTE_RESPONSE_SERIALIZER.serialize(record, reusableObjects));
     } else {
       // not possible
-      LOGGER.error("Received unsupported request type: {} for streaming response", requestType);
+      LOGGER.error("Received unsupported request type: {} for streaming response", this.requestType);
       return;
     }
 

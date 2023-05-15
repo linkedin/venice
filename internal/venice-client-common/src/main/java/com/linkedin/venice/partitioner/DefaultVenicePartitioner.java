@@ -6,8 +6,6 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import org.apache.avro.Schema;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -17,8 +15,6 @@ import org.apache.logging.log4j.Logger;
  * for each message.
  */
 public class DefaultVenicePartitioner extends VenicePartitioner {
-  private static final Logger LOGGER = LogManager.getLogger(DefaultVenicePartitioner.class);
-
   public static final String MD5_HASH_ALGORITHM = "MD5";
   private static final int MD5_DIGEST_SIZE = 16;
 
@@ -75,10 +71,6 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
     }
 
     int partition = Math.abs(ps.modulo % numPartitions);
-
-    if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("Choose partitionId {} out of {}", partition, numPartitions);
-    }
 
     ps.md.reset();
     return partition;
