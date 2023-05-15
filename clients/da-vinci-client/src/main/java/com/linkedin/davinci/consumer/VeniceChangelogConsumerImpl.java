@@ -387,9 +387,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     synchronized (kafkaConsumer) {
       consumerRecords = kafkaConsumer.poll(timeoutInMs);
     }
-    if (consumerRecords == null) {
-      return pubSubMessages;
-    }
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord: consumerRecords) {
       if (partitionsToFilter.contains(consumerRecord.partition())) {
         continue;
