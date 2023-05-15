@@ -37,6 +37,13 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     this.storeName = clientConfig.getStoreName();
   }
 
+  /**
+   * For testing only.
+   */
+  public void setRoutingStrategy(ClientRoutingStrategy routingStrategy) {
+    this.routingStrategy = routingStrategy;
+  }
+
   @Override
   public String getStoreName() {
     return storeName;

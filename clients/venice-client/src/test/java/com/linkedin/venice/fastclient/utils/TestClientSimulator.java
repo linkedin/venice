@@ -239,7 +239,9 @@ public class TestClientSimulator implements Client {
       for (MultiGetRouterRequestKeyV1 keyRecord: multiGetRouterRequestKeyV1s) {
         Utf8 key = keyDeserializer.deserialize(keyRecord.keyBytes);
         LOGGER.info("t:{} Received key {} on route {} ", currentTimeTick.get(), key, route);
-        Assert.assertTrue(expectedKeys.contains(key.toString()), "Unexpected key received " + key);
+        Assert.assertTrue(
+            expectedKeys.contains(key.toString()),
+            "Unexpected key received: " + key + " Expected keys: " + expectedKeys);
         expectedKeys.remove(key.toString());
         expectedRequestEvent.info.orderedKeys.add(key.toString());
       }
@@ -598,6 +600,14 @@ public class TestClientSimulator implements Client {
         return null;
       }
     };
+
+    metadata.setRoutingStrategy((requestId, replicas, requiredReplicaCount) -> {
+      List<String> retReplicas = new ArrayList<>();
+      for (int i = 0; i < requiredReplicaCount && i < replicas.size(); i++) {
+        retReplicas.add(replicas.get(i));
+      }
+      return retReplicas;
+    });
 
     return ClientFactory.getAndStartGenericStoreClient(metadata, clientConfig);
   }
