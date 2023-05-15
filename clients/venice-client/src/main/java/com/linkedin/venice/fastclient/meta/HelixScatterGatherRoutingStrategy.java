@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
  */
 public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy {
   private Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
-  private List<Integer> groupIds;
+  private List<Integer> groupIds = new ArrayList<>();
   private final InstanceHealthMonitor instanceHealthMonitor;
 
   public HelixScatterGatherRoutingStrategy(InstanceHealthMonitor instanceHealthMonitor) {
