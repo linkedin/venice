@@ -304,16 +304,16 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   public CompletableFuture<Void> internalSeek(Set<Integer> partitions, String targetTopic, SeekFunction seekAction) {
     return CompletableFuture.supplyAsync(() -> {
-      Set<TopicPartition> topicPartitionSet = new HashSet<>(kafkaConsumer.assignment());
-      // Prune out current subscriptions
-      for (TopicPartition topicPartition: kafkaConsumer.assignment()) {
-        currentVersionHighWatermarks.remove(topicPartition.partition());
-        if (partitions.contains(topicPartition.partition())) {
-          topicPartitionSet.remove(topicPartition);
-        }
-      }
-
       synchronized (kafkaConsumer) {
+        Set<TopicPartition> topicPartitionSet = new HashSet<>(kafkaConsumer.assignment());
+        // Prune out current subscriptions
+        for (TopicPartition topicPartition: kafkaConsumer.assignment()) {
+          currentVersionHighWatermarks.remove(topicPartition.partition());
+          if (partitions.contains(topicPartition.partition())) {
+            topicPartitionSet.remove(topicPartition);
+          }
+        }
+
         List<TopicPartition> topicPartitionListToAssign =
             getPartitionListToSubscribe(partitions, topicPartitionSet, targetTopic);
         List<TopicPartition> topicPartitionListToSeek =
@@ -393,7 +393,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
         if (handleControlMessage(controlMessage, pubSubTopicPartition, topicSuffix)) {
           partitionsToFilter.add(consumerRecord.partition());
-          // return pubSubMessages;
         }
       } else {
         Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
