@@ -5,6 +5,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,7 +71,7 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   }
 
   public List<OnlineOfflineStateModel> getModelList(String resourceName, int partitionId) {
-    return modelToModelListMap.get(resourceName + "_" + partitionId);
+    return modelToModelListMap.getOrDefault(resourceName + "_" + partitionId, Collections.emptyList());
   }
 
   public void makeTransitionError(String resourceName, int partitionId) {
