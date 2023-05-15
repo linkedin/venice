@@ -120,7 +120,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.speculativeQueryEnabled = speculativeQueryEnabled;
     this.specificValueClass = specificValueClass;
     this.deserializationExecutor = deserializationExecutor;
-    this.clientRoutingStrategyType = clientRoutingStrategyType;
+    this.clientRoutingStrategyType =
+        clientRoutingStrategyType == null ? ClientRoutingStrategyType.LEAST_LOADED : clientRoutingStrategyType;
     this.dualReadEnabled = dualReadEnabled;
     this.genericThinClient = genericThinClient;
     this.specificThinClient = specificThinClient;

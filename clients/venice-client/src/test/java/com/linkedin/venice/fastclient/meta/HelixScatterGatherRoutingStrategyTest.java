@@ -1,7 +1,8 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -39,8 +40,8 @@ public class HelixScatterGatherRoutingStrategyTest {
   }
 
   public void runTest(List<String> replicas, long requestId, int requiredReplicaCount, List<String> expectedReplicas) {
-    HelixScatterGatherRoutingStrategy strategy =
-        new HelixScatterGatherRoutingStrategy(instanceHealthMonitor, getHelixGroupInfo());
+    HelixScatterGatherRoutingStrategy strategy = new HelixScatterGatherRoutingStrategy(instanceHealthMonitor);
+    strategy.updateHelixGroupInfo(getHelixGroupInfo());
     List<String> selectedReplicas = strategy.getReplicas(requestId, replicas, requiredReplicaCount);
     assertEquals(selectedReplicas, expectedReplicas);
   }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -13,21 +14,17 @@ import java.util.stream.Collectors;
  * found for a given partition, the instance with the next group in the assigned ordering will be used
  */
 public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy {
-  private Map<String, Integer> helixGroupInfo;
+  private Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
   private List<Integer> groupIds;
   private final InstanceHealthMonitor instanceHealthMonitor;
 
-  public HelixScatterGatherRoutingStrategy(
-      InstanceHealthMonitor instanceHealthMonitor,
-      Map<String, Integer> helixGroupInfo) {
+  public HelixScatterGatherRoutingStrategy(InstanceHealthMonitor instanceHealthMonitor) {
     this.instanceHealthMonitor = instanceHealthMonitor;
-    this.helixGroupInfo = helixGroupInfo;
-    this.groupIds = helixGroupInfo.values().stream().distinct().sorted().collect(Collectors.toList());
   }
 
   @Override
   public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
-    if (replicas.isEmpty()) {
+    if (replicas.isEmpty() || helixGroupInfo.isEmpty()) {
       return Collections.emptyList();
     }
     // select replicas from the selected group, going down the groups if more replicas are needed
