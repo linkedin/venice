@@ -222,8 +222,8 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
   }
 
   // test only
-  public Map<String, Integer> getResourceToPartitionCountMap() {
-    return this.resourceToPartitionCountMap;
+  Map<String, Integer> getResourceToPartitionCountMap() {
+    return Collections.unmodifiableMap(this.resourceToPartitionCountMap);
   }
 
   public class StoreChangeListener implements StoreDataChangedListener {

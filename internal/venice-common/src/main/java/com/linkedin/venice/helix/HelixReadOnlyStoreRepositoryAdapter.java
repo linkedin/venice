@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SystemStore;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -85,8 +86,8 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
   }
 
   // test only
-  public Set<StoreDataChangedListener> getListeners() {
-    return listeners;
+  Set<StoreDataChangedListener> getListeners() {
+    return Collections.unmodifiableSet(listeners);
   }
 
   @Override
