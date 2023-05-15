@@ -13,9 +13,9 @@ import org.testng.annotations.Test;
 
 
 public class AvroSerializerTest {
-  private final String value = "abc";
-  private final Schema schema = AvroCompatibilityHelper.parse("\"string\"");
-  private final RecordSerializer<String> serializer = new AvroSerializer<>(schema);
+  private static final String value = "abc";
+  private static final Schema schema = AvroCompatibilityHelper.parse("\"string\"");
+  private static final RecordSerializer<String> serializer = new AvroSerializer<>(schema);
 
   @Test
   public void testSerialize() {

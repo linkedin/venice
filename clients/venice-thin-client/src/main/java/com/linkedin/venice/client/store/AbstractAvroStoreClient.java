@@ -203,8 +203,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.batchGetDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
     this.computeDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
     this.compressorFactory = new CompressorFactory();
-    this.storageRequestPath = TYPE_STORAGE + "/" + getStoreName();
-    this.computeRequestPath = TYPE_COMPUTE + "/" + getStoreName();
+    this.storageRequestPath = TYPE_STORAGE + "/" + clientConfig.getStoreName();
+    this.computeRequestPath = TYPE_COMPUTE + "/" + clientConfig.getStoreName();
   }
 
   @Override
