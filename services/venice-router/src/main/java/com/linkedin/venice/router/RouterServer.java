@@ -288,7 +288,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metaStoreShadowReader = config.isMetaStoreShadowReadEnabled()
         ? Optional.of(new MetaStoreShadowReader(this.schemaRepository))
         : Optional.empty();
-    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager);
+    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager, metadataRepository);
     this.hybridStoreQuotaRepository = config.isHelixHybridStoreQuotaEnabled()
         ? Optional.of(new HelixHybridStoreQuotaRepository(manager))
         : Optional.empty();

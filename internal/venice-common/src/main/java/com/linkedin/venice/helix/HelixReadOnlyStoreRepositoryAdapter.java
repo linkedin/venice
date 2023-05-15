@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SystemStore;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -82,6 +83,11 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
       throw new VeniceNoStoreException(storeName);
     }
     return store;
+  }
+
+  // test only
+  Set<StoreDataChangedListener> getListeners() {
+    return Collections.unmodifiableSet(listeners);
   }
 
   @Override
@@ -270,7 +276,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
   /**
    * {@link StoreDataChangedListener} to handle all the events from {@link #regularStoreDataChangedListener}.
    */
-  private class VeniceStoreDataChangedListener implements StoreDataChangedListener {
+  public class VeniceStoreDataChangedListener implements StoreDataChangedListener {
     /**
      * Notify the store creation and maybe the corresponding system store creation.
      * TODO: so far, this function only supports {@link VeniceSystemStoreType#META_STORE}, and if you plan to support
@@ -339,7 +345,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
      */
     public void handleStoreDeleted(Store store) {
       String storeName = store.getName();
-      listeners.forEach(listener -> {
+      getListeners().forEach(listener -> {
         // Notify the regular store deletion
         try {
           listener.handleStoreDeleted(store);
@@ -350,16 +356,15 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
               storeName,
               t);
         }
+
         String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-        SystemStore metaSystemStore = new SystemStore(
-            systemStoreRepository.getStoreOrThrow(VeniceSystemStoreType.META_STORE.getZkSharedStoreName()),
-            VeniceSystemStoreType.META_STORE,
-            store);
-
         try {
-
           // Notify the meta system store deletion
-          listener.handleStoreDeleted(metaSystemStore);
+          Store metaStore = systemStoreRepository.getStore(VeniceSystemStoreType.META_STORE.getZkSharedStoreName());
+          if (metaStore != null) {
+            SystemStore metaSystemStore = new SystemStore(metaStore, VeniceSystemStoreType.META_STORE, store);
+            listener.handleStoreDeleted(metaSystemStore);
+          }
         } catch (Throwable t) {
           LOGGER.error(
               "Received exception while invoking `handleStoreDeleted` of listener: {} with system store: {}.",
