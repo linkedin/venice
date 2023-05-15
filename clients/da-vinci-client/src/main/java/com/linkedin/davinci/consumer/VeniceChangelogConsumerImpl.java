@@ -383,23 +383,27 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       String topicSuffix) {
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     List<Integer> partitionsToFilter = new ArrayList<>();
+    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords;
     synchronized (kafkaConsumer) {
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = kafkaConsumer.poll(timeoutInMs);
-      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord: consumerRecords) {
-        if (partitionsToFilter.contains(consumerRecord.partition())) {
-          continue;
+      consumerRecords = kafkaConsumer.poll(timeoutInMs);
+    }
+    if (consumerRecords == null) {
+      return pubSubMessages;
+    }
+    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord: consumerRecords) {
+      if (partitionsToFilter.contains(consumerRecord.partition())) {
+        continue;
+      }
+      PubSubTopicPartition pubSubTopicPartition = getPubSubTopicPartitionFromConsumerRecord(consumerRecord);
+      if (consumerRecord.key().isControlMessage()) {
+        ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
+        if (handleControlMessage(controlMessage, pubSubTopicPartition, topicSuffix)) {
+          partitionsToFilter.add(consumerRecord.partition());
         }
-        PubSubTopicPartition pubSubTopicPartition = getPubSubTopicPartitionFromConsumerRecord(consumerRecord);
-        if (consumerRecord.key().isControlMessage()) {
-          ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
-          if (handleControlMessage(controlMessage, pubSubTopicPartition, topicSuffix)) {
-            partitionsToFilter.add(consumerRecord.partition());
-          }
-        } else {
-          Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
-              convertConsumerRecordToPubSubChangeEventMessage(consumerRecord, pubSubTopicPartition);
-          pubSubMessage.ifPresent(pubSubMessages::add);
-        }
+      } else {
+        Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
+            convertConsumerRecordToPubSubChangeEventMessage(consumerRecord, pubSubTopicPartition);
+        pubSubMessage.ifPresent(pubSubMessages::add);
       }
     }
     return pubSubMessages;
