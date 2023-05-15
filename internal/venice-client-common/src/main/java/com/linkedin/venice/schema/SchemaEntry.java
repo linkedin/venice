@@ -7,6 +7,7 @@ import static com.linkedin.venice.schema.avro.SchemaCompatibility.SchemaCompatib
 import static com.linkedin.venice.schema.avro.SchemaCompatibility.checkReaderWriterCompatibility;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
@@ -47,7 +48,7 @@ public class SchemaEntry {
       this.schema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(schemaStr);
     } catch (Exception e) {
       if ((e instanceof AvroTypeException)
-          && (AvroCompatibilityHelper.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_8))) {
+          && (AvroCompatibilityHelperCommon.getRuntimeAvroVersion().laterThan(AvroVersion.AVRO_1_8))) {
         this.schema = Schema.create(Schema.Type.NULL);
         this.failedParsing = true;
         LOGGER.warn(

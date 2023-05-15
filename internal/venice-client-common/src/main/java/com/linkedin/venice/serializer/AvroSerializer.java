@@ -1,7 +1,7 @@
 package com.linkedin.venice.serializer;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.avroutil1.compatibility.AvroVersion;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -34,8 +34,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   }
 
   static {
-    AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
-    LOGGER.info("Detected: {} on the classpath.", version);
+    LOGGER.info("Detected: {} on the classpath.", AvroCompatibilityHelperCommon.getRuntimeAvroVersion());
   }
 
   public AvroSerializer(Schema schema) {
@@ -69,7 +68,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
       write(object, encoder);
       encoder.flush();
     } catch (IOException e) {
-      throw new VeniceException("Could not serialize the Avro object", e);
+      throw new VeniceException("Unable to serialize object", e);
     }
     return reusableObjects.outputStream.toByteArray();
   }
@@ -111,12 +110,12 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
         try {
           write(object, encoder);
         } catch (IOException e) {
-          throw new VeniceException("Could not serialize the Avro object", e);
+          throw new VeniceException("Unable to serialize object", e);
         }
       }
       encoder.flush();
     } catch (IOException e) {
-      throw new VeniceException("Could not flush BinaryEncoder", e);
+      throw new VeniceException("Unable to flush BinaryEncoder", e);
     }
     return outputStream.toByteArray();
   }

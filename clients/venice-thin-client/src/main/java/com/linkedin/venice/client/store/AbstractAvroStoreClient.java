@@ -5,7 +5,7 @@ import static com.linkedin.venice.HttpConstants.VENICE_KEY_COUNT;
 import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V2;
 import static com.linkedin.venice.streaming.StreamingConstants.KEY_ID_FOR_STREAMING_FOOTER;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
@@ -127,7 +127,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     COMPUTE_HEADER_MAP_FOR_STREAMING_V3 = new HashMap<>(COMPUTE_HEADER_MAP_V3);
     COMPUTE_HEADER_MAP_FOR_STREAMING_V3.put(HttpConstants.VENICE_STREAMING, "1");
 
-    AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
+    AvroVersion version = AvroCompatibilityHelperCommon.getRuntimeAvroVersion();
     LOGGER.info("Detected: {} on the classpath.", version);
   }
 
@@ -148,6 +148,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final BatchDeserializer<MultiGetResponseRecordV1, K, V> batchGetDeserializer;
   private final BatchDeserializer<ComputeResponseRecordV1, K, GenericRecord> computeDeserializer;
   private final CompressorFactory compressorFactory;
+  private final String storageRequestPath;
+  private final String computeRequestPath;
 
   private volatile boolean isServiceDiscovered;
 
@@ -201,6 +203,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.batchGetDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
     this.computeDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
     this.compressorFactory = new CompressorFactory();
+    this.storageRequestPath = TYPE_STORAGE + "/" + getStoreName();
+    this.computeRequestPath = TYPE_COMPUTE + "/" + getStoreName();
   }
 
   @Override
@@ -231,11 +235,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   private String getStorageRequestPath() {
-    return TYPE_STORAGE + "/" + getStoreName();
+    return storageRequestPath;
   }
 
   protected String getComputeRequestPath() {
-    return TYPE_COMPUTE + "/" + getStoreName();
+    return computeRequestPath;
   }
 
   // For testing

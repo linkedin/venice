@@ -7,8 +7,7 @@ import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
-import org.openjdk.jmh.annotations.Scope;
-import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
 import org.openjdk.jmh.runner.Runner;
@@ -21,14 +20,12 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 @Measurement(iterations = 3)
 @BenchmarkMode(Mode.SampleTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
-@State(Scope.Benchmark)
+@Threads(Threads.MAX)
 public class ThreadLocalBenchmark {
   private static final ThreadLocal<Object> threadLocal = ThreadLocal.withInitial(String::new);
 
   public static void main(String[] args) throws Exception {
-    Options options = new OptionsBuilder().include(ThreadLocalBenchmark.class.getSimpleName())
-        .threads(Runtime.getRuntime().availableProcessors())
-        .build();
+    Options options = new OptionsBuilder().include(ThreadLocalBenchmark.class.getSimpleName()).build();
     new Runner(options).run();
   }
 

@@ -453,6 +453,7 @@ subprojects {
         }
       }
 
+      diffCoverage.dependsOn jacocoTestReport
       diffCoverage.finalizedBy logDiffCoverage
     }
   }
