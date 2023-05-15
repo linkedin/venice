@@ -231,6 +231,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
           completableFuture.complete(null);
         } else {
           producerMetrics.recordFailedRequest();
+          LOGGER.error("Failed to write the requested data to the PubSub system", exception);
           completableFuture.completeExceptionally(exception);
         }
       };
@@ -281,6 +282,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
           completableFuture.complete(null);
         } else {
           producerMetrics.recordFailedRequest();
+          LOGGER.error("Failed to write the delete operation to the PubSub system", exception);
           completableFuture.completeExceptionally(exception);
         }
       };
@@ -357,6 +359,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
           completableFuture.complete(null);
         } else {
           producerMetrics.recordFailedRequest();
+          LOGGER.error("Failed to write the partial update record to the PubSub system", exception);
           completableFuture.completeExceptionally(exception);
         }
       };
