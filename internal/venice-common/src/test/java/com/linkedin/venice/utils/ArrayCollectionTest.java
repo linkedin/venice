@@ -2,8 +2,11 @@ package com.linkedin.venice.utils;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 import org.testng.annotations.Test;
 
 
@@ -35,6 +38,10 @@ public class ArrayCollectionTest {
       assertEquals(item.intValue(), 1);
     }
     assertEquals(numberOfIteration, 1);
+    Iterator<Integer> iterator = arrayCollection.iterator();
+    Integer firstItem = iterator.next();
+    assertEquals(firstItem.intValue(), 1);
+    assertThrows(NoSuchElementException.class, () -> iterator.next());
 
     // Add another before that
     array[2] = 100;
@@ -60,5 +67,11 @@ public class ArrayCollectionTest {
       }
     }
     assertEquals(numberOfIteration, 2);
+    Iterator<Integer> iterator2 = arrayCollection.iterator();
+    firstItem = iterator2.next();
+    assertEquals(firstItem.intValue(), 100);
+    Integer secondItem = iterator2.next();
+    assertEquals(secondItem.intValue(), 1);
+    assertThrows(NoSuchElementException.class, () -> iterator2.next());
   }
 }

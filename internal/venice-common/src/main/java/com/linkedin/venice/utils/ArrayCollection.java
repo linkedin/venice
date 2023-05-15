@@ -33,6 +33,11 @@ public class ArrayCollection<E> implements Collection<E> {
    * @param populatedSizeSupplier for when the caller has a more efficient way of knowing the populated size of the array
    */
   public ArrayCollection(E[] array, IntSupplier populatedSizeSupplier) {
+    if (array.length < populatedSizeSupplier.getAsInt()) {
+      throw new IllegalArgumentException(
+          "The populatedSizeSupplier cannot return a larger result than the array's length");
+    }
+
     this.array = array;
     this.populatedSizeSupplier = populatedSizeSupplier;
   }
@@ -121,27 +126,39 @@ public class ArrayCollection<E> implements Collection<E> {
     throw new UnsupportedOperationException("This collection is immutable.");
   }
 
+  /**
+   * This iterator traverses the entire backing array, while skipping over null entries.
+   *
+   * The null skipping is handled both in {@link #hasNext()} and {@link #next()}, so that various usages of
+   * iterators work as expected.
+   */
   class ArrayCollectionIterator implements Iterator<E> {
+    /** Index within the backing array */
     private int index = 0;
+    private E nextElement = null;
 
     @Override
     public boolean hasNext() {
-      while (this.index < array.length) {
-        if (array[this.index] == null) {
-          this.index++;
-        } else {
-          return true;
-        }
-      }
-      return false;
+      populateNext();
+      return this.nextElement != null;
     }
 
     @Override
     public E next() {
-      if (this.index == array.length) {
+      populateNext();
+      E elementToReturn = this.nextElement;
+      if (elementToReturn == null) {
+        // We've reached the end of the backing array.
         throw new NoSuchElementException();
       }
-      return array[this.index++];
+      this.nextElement = null;
+      return elementToReturn;
+    }
+
+    private void populateNext() {
+      while (this.nextElement == null && this.index < ArrayCollection.this.array.length) {
+        this.nextElement = ArrayCollection.this.array[this.index++];
+      }
     }
   }
 }

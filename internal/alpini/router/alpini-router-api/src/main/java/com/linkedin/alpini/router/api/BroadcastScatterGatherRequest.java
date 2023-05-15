@@ -8,6 +8,11 @@ import java.util.Set;
 import javax.annotation.Nonnull;
 
 
+/**
+ * This type of specialized {@link ScatterGatherRequest} does not use keys for routing, and carry some extra state.
+ *
+ * We have a separate subclass for it to avoid carrying extra overhead in all {@link ScatterGatherRequest} instances.
+ */
 public class BroadcastScatterGatherRequest<H, K> extends ScatterGatherRequest<H, K> {
   private @Nonnull Set<String> _partitionIdsToQuery = new HashSet<>();
 
