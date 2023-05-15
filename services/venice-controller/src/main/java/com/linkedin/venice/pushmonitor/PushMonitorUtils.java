@@ -112,15 +112,16 @@ public class PushMonitorUtils {
           .append(totalReplicaCount);
     }
     String statusDetail = statusDetailStringBuilder.toString();
+    boolean noDaVinciStatusReported = totalReplicaCount == 0;
     if (completedPartitions == partitionCount) {
-      return new ExecutionStatusWithDetails(completeStatus, statusDetail);
+      return new ExecutionStatusWithDetails(completeStatus, statusDetail, noDaVinciStatusReported);
     }
     if (allMiddleStatusReceived) {
-      return new ExecutionStatusWithDetails(middleStatus, statusDetail);
+      return new ExecutionStatusWithDetails(middleStatus, statusDetail, noDaVinciStatusReported);
     }
     if (erroredReplica.isPresent()) {
-      return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail);
+      return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail, noDaVinciStatusReported);
     }
-    return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail);
+    return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail, noDaVinciStatusReported);
   }
 }

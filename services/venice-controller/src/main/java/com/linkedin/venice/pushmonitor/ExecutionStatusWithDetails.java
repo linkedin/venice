@@ -3,10 +3,12 @@ package com.linkedin.venice.pushmonitor;
 public class ExecutionStatusWithDetails {
   private final ExecutionStatus status;
   private final String details;
+  private final boolean noDaVinciStatusReport;
 
-  public ExecutionStatusWithDetails(ExecutionStatus status, String details) {
+  public ExecutionStatusWithDetails(ExecutionStatus status, String details, boolean noDaVinciStatusReport) {
     this.status = status;
     this.details = details;
+    this.noDaVinciStatusReport = noDaVinciStatusReport;
   }
 
   public ExecutionStatus getStatus() {
@@ -15,5 +17,9 @@ public class ExecutionStatusWithDetails {
 
   public String getDetails() {
     return details;
+  }
+
+  public boolean isNoDaVinciStatusReport() {
+    return noDaVinciStatusReport;
   }
 }

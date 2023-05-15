@@ -719,4 +719,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     StoreVersionState svs = getStoreVersionState();
     return svs == null ? false : svs.chunked;
   }
+
+  public boolean hasMemorySpaceLeft() {
+    return true;
+  }
 }

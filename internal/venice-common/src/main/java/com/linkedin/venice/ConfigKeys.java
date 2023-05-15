@@ -1665,6 +1665,14 @@ public class ConfigKeys {
   public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER =
       "offline.push.monitor.davinci.push.status.scan.thread.number";
 
+  /**
+   * Max retry when not receiving any DaVinci status report.
+   * This is mainly for testing purpose since in local integration test, the push job runs too fast in the backend,
+   * and no DaVinci status report will mark the push job succeed right away.
+   */
+  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_NO_DAVINCI_STATUS_REPORT_RETRY_MAX_ATTEMPTS =
+      "offline.push.monitor.davinci.push.status.scan.no.davinci.status.report.retry.max.attempts";
+
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
 
@@ -1918,4 +1926,20 @@ public class ConfigKeys {
    */
   public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =
       "client.producer.schema.refresh.interval.seconds";
+
+  /*
+   * The memory up-limit for the ingestion path while using RocksDB Plaintable format.
+   * Currently, this option is only meaningful for DaVinci use cases.
+   */
+  public static final String INGESTION_MEMORY_LIMIT = "ingestion.memory.limit";
+
+  /**
+   * Whether the ingestion is using mlock or not.
+   * Currently, this option is only meaningful for DaVinci use cases.
+   *
+   * Actually, this config option is being actively used, and it is a placeholder for the future optimization.
+   * The memory limit logic implemented today is assuming mlock usage, and to make it backward compatible when
+   * we want to do more optimization for non-mlock usage, we will ask the mlock user to enable this flag.
+   */
+  public static final String INGESTION_MLOCK_ENABLED = "ingestion.mlock.enabled";
 }

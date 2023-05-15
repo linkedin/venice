@@ -109,6 +109,7 @@ public class StoreIngestionTaskFactory {
     private MetaStoreWriter metaStoreWriter;
     private StorageEngineBackedCompressorFactory compressorFactory;
     private PubSubTopicRepository pubSubTopicRepository;
+    private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
 
     private interface Setter {
       void apply();
@@ -302,6 +303,14 @@ public class StoreIngestionTaskFactory {
 
     public Builder setPubSubTopicRepository(PubSubTopicRepository pubSubTopicRepository) {
       return set(() -> this.pubSubTopicRepository = pubSubTopicRepository);
+    }
+
+    public Runnable getRunnableForKillIngestionTasksForNonCurrentVersions() {
+      return runnableForKillIngestionTasksForNonCurrentVersions;
+    }
+
+    public Builder setRunnableForKillIngestionTasksForNonCurrentVersions(Runnable runnable) {
+      return set(() -> this.runnableForKillIngestionTasksForNonCurrentVersions = runnable);
     }
   }
 }

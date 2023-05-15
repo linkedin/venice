@@ -257,6 +257,14 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
                         ? task.getStorageEngine().getCachedRMDSizeInBytes()
                         : task.getStorageEngine().getRMDSizeInBytes())
                 .sum()));
+    registerSensor(
+        "stuck_ingestion",
+        new Gauge(
+            () -> ingestionTaskMap.values()
+                .stream()
+                .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
+                .mapToLong(task -> task.isStuck() ? 1 : 0)
+                .sum()));
 
     // Stats which are per-store only:
     this.diskQuotaSensor =

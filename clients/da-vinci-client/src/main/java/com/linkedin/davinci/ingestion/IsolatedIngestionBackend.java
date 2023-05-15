@@ -314,25 +314,23 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
         if (isTopicPartitionHosted(kafkaTopic, partition)) {
           getCompletionHandlingExecutor().submit(() -> {
-            VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
-            config.setRestoreDataPartitions(false);
-            config.setRestoreMetadataPartition(false);
-            // Start partition consumption locally.
+            /**
+             * Start partition consumption locally.
+             * If any error happens when starting the consumption, error will be reported.
+             */
             try {
+              VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
+              config.setRestoreDataPartitions(false);
+              config.setRestoreMetadataPartition(false);
               startConsumptionLocally(config, partition, leaderState);
             } catch (Exception e) {
-              LOGGER.warn(
-                  "Caught exception when resuming ingestion of topic: {}, partition: {} in main process",
+              notifier.error(
                   kafkaTopic,
                   partition,
+                  "Failed to resume the ingestion in main process for topic: " + kafkaTopic,
                   e);
             } finally {
               getMainIngestionMonitorService().setVersionPartitionToLocalIngestion(kafkaTopic, partition);
-              LOGGER.warn(
-                  "Finally done when resuming ingestion of topic: {}, partition: {} in main process",
-                  kafkaTopic,
-                  partition);
-
             }
           });
         } else {
