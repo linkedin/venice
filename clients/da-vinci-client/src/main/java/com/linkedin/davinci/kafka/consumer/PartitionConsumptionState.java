@@ -534,10 +534,6 @@ public class PartitionConsumptionState {
     return transientRecordMap.size();
   }
 
-  public boolean hasSubPartitionStatus(String subPartitionStatus) {
-    return previousStatusSet.contains(subPartitionStatus);
-  }
-
   public void recordSubPartitionStatus(String subPartitionStatus) {
     if (this.getOffsetRecord() != null) {
       this.getOffsetRecord().recordSubPartitionStatus(subPartitionStatus);

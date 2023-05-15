@@ -39,7 +39,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_HEADER_TABLE_SIZE;
@@ -313,7 +312,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final String kafkaAdminClass;
   private final String kafkaWriteOnlyClass;
   private final String kafkaReadOnlyClass;
-  private final boolean kafkaOpenSSLEnabled;
   private final long routerConnectionWarmingDelayMs;
   private final boolean helixHybridStoreQuotaEnabled;
   private final long ssdHealthCheckShutdownTimeMs;
@@ -487,7 +485,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
             .put(storeName, Integer.parseInt(thresholdStr.trim())));
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
-    kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, false);
     helixHybridStoreQuotaEnabled = serverProperties.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
     ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
     sslHandshakeThreadPoolSize = serverProperties.getInt(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 0);
@@ -834,10 +831,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getKafkaReadOnlyClass() {
     return kafkaReadOnlyClass;
-  }
-
-  public boolean isKafkaOpenSSLEnabled() {
-    return kafkaOpenSSLEnabled;
   }
 
   public long getRouterConnectionWarmingDelayMs() {

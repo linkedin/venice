@@ -23,9 +23,7 @@ import org.apache.helix.PropertyKey;
 import org.apache.helix.PropertyType;
 import org.apache.helix.api.listeners.BatchMode;
 import org.apache.helix.api.listeners.ControllerChangeListener;
-import org.apache.helix.api.listeners.IdealStateChangeListener;
 import org.apache.helix.api.listeners.RoutingTableChangeListener;
-import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.spectator.RoutingTableProvider;
 import org.apache.helix.spectator.RoutingTableSnapshot;
@@ -47,7 +45,7 @@ import org.apache.logging.log4j.Logger;
  */
 @BatchMode
 public abstract class HelixBaseRoutingRepository
-    implements RoutingDataRepository, ControllerChangeListener, IdealStateChangeListener, RoutingTableChangeListener {
+    implements RoutingDataRepository, ControllerChangeListener, RoutingTableChangeListener {
   private static final Logger LOGGER = LogManager.getLogger(HelixBaseRoutingRepository.class);
 
   /**
@@ -69,8 +67,6 @@ public abstract class HelixBaseRoutingRepository
 
   protected final Lock liveInstancesMapLock = new ReentrantLock();
   protected Map<String, Instance> liveInstancesMap = new HashMap<>();
-
-  protected volatile Map<String, Integer> resourceToIdealPartitionCountMap;
 
   private long leaderControllerChangeTimeMs = -1;
 
@@ -95,7 +91,6 @@ public abstract class HelixBaseRoutingRepository
       // After adding the listener, helix will initialize the callback which will get the entire external view
       // and trigger the external view change event. In other words, venice will read the newest external view
       // immediately.
-      manager.addIdealStateChangeListener(this);
       manager.addControllerListener(this);
       // Use routing table provider to get the notification of the external view change, customized view change,
       // and live instances change.
@@ -126,7 +121,6 @@ public abstract class HelixBaseRoutingRepository
   public void clear() {
     // removeListener method is a thread safe method, we don't need to lock here again.
     manager.removeListener(keyBuilder.controller(), this);
-    manager.removeListener(keyBuilder.idealStates(), this);
     if (routingTableProvider != null) {
       routingTableProvider.removeRoutingTableChangeListener(this);
       try {
@@ -275,22 +269,6 @@ public abstract class HelixBaseRoutingRepository
         liveInstance.getId(),
         Utils.parseHostFromHelixNodeIdentifier(liveInstance.getId()),
         Utils.parsePortFromHelixNodeIdentifier(liveInstance.getId()));
-  }
-
-  @Override
-  public void onIdealStateChange(List<IdealState> idealStates, NotificationContext changeContext) {
-    refreshResourceToIdealPartitionCountMap(idealStates);
-  }
-
-  protected void refreshResourceToIdealPartitionCountMap(List<IdealState> idealStates) {
-    HashMap<String, Integer> partitionCountMap = new HashMap<>();
-    for (IdealState idealState: idealStates) {
-      // Ideal state could be null, if a resource has already been deleted.
-      if (idealState != null) {
-        partitionCountMap.put(idealState.getResourceName(), idealState.getNumPartitions());
-      }
-    }
-    this.resourceToIdealPartitionCountMap = Collections.unmodifiableMap(partitionCountMap);
   }
 
   @Override

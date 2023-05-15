@@ -22,19 +22,27 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.io.File;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -42,6 +50,7 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
@@ -106,7 +115,6 @@ public class TestHybridQuota {
   public void testHybridStoreQuota(boolean chunkingEnabled, boolean isStreamReprocessing, boolean recoverFromViolation)
       throws Exception {
     SystemProducer veniceProducer = null;
-
     long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
 
@@ -161,7 +169,29 @@ public class TestHybridQuota {
               InstanceType.SPECTATOR,
               sharedVenice.getZk().getAddress()));
       readManager.connect();
-      offlinePushRepository = new HelixCustomizedViewOfflinePushRepository(readManager);
+      String zkAddress = sharedVenice.getZk().getAddress();
+      ZkClient zkClient = ZkClientFactory.newZkClient(zkAddress);
+      HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+      HelixReadWriteStoreRepository writeStoreRepository = new HelixReadWriteStoreRepository(
+          zkClient,
+          adapter,
+          zkAddress,
+          Optional.empty(),
+          new ClusterLockManager(sharedVenice.getClusterName()));
+
+      Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+      store.setPartitionCount(3);
+      Version version = new VersionImpl(storeName, 1, "pushId");
+      version.setPartitionCount(3);
+      store.addVersion(version);
+      version = new VersionImpl(storeName, 2, "pushId");
+      version.setPartitionCount(3);
+      store.addVersion(version);
+      version = new VersionImpl(storeName, 3, "pushId");
+      version.setPartitionCount(3);
+      store.addVersion(version);
+      writeStoreRepository.addStore(store);
+      offlinePushRepository = new HelixCustomizedViewOfflinePushRepository(readManager, writeStoreRepository);
       hybridStoreQuotaOnlyRepository = new HelixHybridStoreQuotaRepository(readManager);
       offlinePushRepository.refresh();
       hybridStoreQuotaOnlyRepository.refresh();
