@@ -1,11 +1,8 @@
 package com.linkedin.venice.router.api.path;
 
 import com.linkedin.alpini.router.api.ResourcePath;
-import com.linkedin.r2.message.rest.RestRequest;
-import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceResponseDecompressor;
@@ -15,14 +12,9 @@ import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
-import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpMethod;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicLong;
@@ -36,8 +28,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   private final String resourceName;
   private Collection<RouterKey> partitionKeys;
-  private final String storeName;
-  private int versionNumber;
+  protected final String storeName;
+  protected final int versionNumber;
   private final Time time;
   private boolean retryRequest = false;
   private final boolean smartLongTailRetryEnabled;
@@ -56,24 +48,37 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
    */
   private Set<String> slowStorageNodeSet = new ConcurrentSkipListSet<>();
   // Whether the request supports streaming or not
-  private Optional<VeniceChunkedResponse> chunkedResponse = Optional.empty();
+  private VeniceChunkedResponse chunkedResponse = null;
   // Response decompressor
-  private Optional<VeniceResponseDecompressor> responseDecompressor = Optional.empty();
+  private VeniceResponseDecompressor responseDecompressor = null;
   private long requestId = -1;
   private int helixGroupId = -1;
 
-  public VenicePath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
-    this(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, new SystemTime());
+  public VenicePath(
+      String storeName,
+      int versionNumber,
+      String resourceName,
+      boolean smartLongTailRetryEnabled,
+      int smartLongTailRetryAbortThresholdMs) {
+    this(
+        storeName,
+        versionNumber,
+        resourceName,
+        smartLongTailRetryEnabled,
+        smartLongTailRetryAbortThresholdMs,
+        new SystemTime());
   }
 
   public VenicePath(
+      String storeName,
+      int versionNumber,
       String resourceName,
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
       Time time) {
     this.resourceName = resourceName;
-    this.storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-    this.versionNumber = Version.parseVersionFromKafkaTopicName(resourceName);
+    this.storeName = storeName;
+    this.versionNumber = versionNumber;
     this.smartLongTailRetryEnabled = smartLongTailRetryEnabled;
     this.smartLongTailRetryAbortThresholdMs = smartLongTailRetryAbortThresholdMs;
     this.time = time;
@@ -246,7 +251,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       setupHeaderFunc.accept(HttpConstants.VENICE_RETRY, "1");
     }
     // Streaming
-    if (chunkedResponse.isPresent()) {
+    if (chunkedResponse != null) {
       setupHeaderFunc.accept(HttpConstants.VENICE_STREAMING, "1");
     }
   }
@@ -255,61 +260,41 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     return composeRouterRequestInternal(storageNodeUri);
   }
 
-  public RestRequest composeRestRequest(String storageNodeUri) {
-    // set up header to pass map required by the Venice server
-    HashMap<String, String> headerMap = new HashMap<>();
-    setupVeniceHeaders(headerMap::put);
-
-    String uri = storageNodeUri + getLocation();
-    URI requestUri;
-
-    try {
-      requestUri = new URI(uri);
-    } catch (URISyntaxException e) {
-      throw new VeniceException("Failed to create URI for path " + uri, e);
-    }
-
-    RestRequestBuilder builder =
-        new RestRequestBuilder(requestUri).setMethod(getHttpMethod().toString()).setHeaders(headerMap);
-    setRestRequestEntity(builder);
-
-    return builder.build();
-  }
-
   public void setChunkedWriteHandler(
       ChannelHandlerContext ctx,
       VeniceChunkedWriteHandler chunkedWriteHandler,
       RouterStats<AggRouterHttpRequestStats> routerStats) {
-    if (chunkedResponse.isPresent()) {
+    if (chunkedResponse != null) {
       // Defensive code
       throw new IllegalStateException("VeniceChunkedWriteHandler has already been setup");
     }
-    this.chunkedResponse = Optional.of(new VeniceChunkedResponse(this, ctx, chunkedWriteHandler, routerStats));
+    this.chunkedResponse =
+        new VeniceChunkedResponse(storeName, getStreamingRequestType(), ctx, chunkedWriteHandler, routerStats);
   }
 
   public void setResponseDecompressor(VeniceResponseDecompressor decompressor) {
-    if (responseDecompressor.isPresent()) {
+    if (responseDecompressor != null) {
       throw new VeniceException("VeniceResponseDecompressor has already been setup");
     }
-    this.responseDecompressor = Optional.of(decompressor);
+    this.responseDecompressor = decompressor;
   }
 
   public VeniceResponseDecompressor getResponseDecompressor() {
-    if (!responseDecompressor.isPresent()) {
+    if (responseDecompressor == null) {
       // Defensive code
       throw new IllegalStateException(
           "VeniceResponseDecompressor is not available for current request, and there must be a bug"
               + " when this exception happens.");
     }
-    return responseDecompressor.get();
+    return responseDecompressor;
   }
 
-  public Optional<VeniceChunkedResponse> getChunkedResponse() {
+  public VeniceChunkedResponse getChunkedResponse() {
     return this.chunkedResponse;
   }
 
   public boolean isStreamingRequest() {
-    return getChunkedResponse().isPresent();
+    return getChunkedResponse() != null;
   }
 
   public boolean isLongTailRetryAllowedForNewRoute() {
@@ -317,6 +302,10 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   }
 
   public abstract RequestType getRequestType();
+
+  protected RequestType getStreamingRequestType() {
+    throw new IllegalStateException("This should not be called on " + this.getClass().getSimpleName());
+  }
 
   public abstract VenicePath substitutePartitionKey(RouterKey s);
 
@@ -326,12 +315,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public abstract HttpMethod getHttpMethod();
 
-  public abstract ByteBuf getRequestBody();
-
-  public abstract Optional<byte[]> getBody();
+  public abstract byte[] getBody();
 
   public abstract String getVeniceApiVersionHeader();
-
-  public void setRestRequestEntity(RestRequestBuilder builder) {
-  }
 }

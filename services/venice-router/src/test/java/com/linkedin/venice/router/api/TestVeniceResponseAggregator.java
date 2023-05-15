@@ -65,7 +65,7 @@ public class TestVeniceResponseAggregator {
     VenicePath path = mock(VenicePath.class);
     doReturn(requestType).when(path).getRequestType();
     doReturn(storeName).when(path).getStoreName();
-    doReturn(Optional.empty()).when(path).getChunkedResponse();
+    doReturn(null).when(path).getChunkedResponse();
     doReturn(new VeniceResponseDecompressor(false, routerStats, request, storeName, 1, compressorFactory)).when(path)
         .getResponseDecompressor();
     return path;

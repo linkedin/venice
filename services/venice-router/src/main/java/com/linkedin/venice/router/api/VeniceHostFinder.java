@@ -60,13 +60,23 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
       String partitionName,
       HostHealthMonitor<Instance> hostHealthMonitor,
       VeniceRole roles) {
-    List<Instance> hosts =
-        onlineInstanceFinder.getReadyToServeInstances(resourceName, HelixUtils.getPartitionId(partitionName));
+    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+    int partitionId = HelixUtils.getPartitionId(partitionName);
+    return findHosts(requestMethod, resourceName, storeName, partitionId, hostHealthMonitor);
+  }
+
+  public List<Instance> findHosts(
+      String requestMethod,
+      String resourceName,
+      String storeName,
+      int partitionNumber,
+      HostHealthMonitor<Instance> hostHealthMonitor) {
+    List<Instance> hosts = onlineInstanceFinder.getReadyToServeInstances(resourceName, partitionNumber);
     if (hosts.isEmpty()) {
       /**
        * Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.
        */
-      LOGGER.warn("No ready-to-serve host for resource:{} with partition: {}", resourceName, partitionName);
+      LOGGER.warn("No ready-to-serve host for resource:{} with partition: {}", resourceName, partitionNumber);
       return hosts;
     }
     /**
@@ -85,11 +95,6 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
      * of {@link HostFinder}.
      */
     AggRouterHttpRequestStats currentStats = routerStats.getStatsByType(isSingleGet ? SINGLE_GET : MULTI_GET);
-    /**
-     * It seems not clean to use the following method to extract store name, but inside Venice, Kafka topic name is same
-     * as Helix resource name.
-     */
-    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
     for (Instance instance: hosts) {
       // Filter out unhealthy hosts
       /**
@@ -98,11 +103,11 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
        * it is only being used for retry purpose, which means when {@link hostHealthMonitor} is returning false,
        * the current request is a retry request.
        */
-      if (!instanceHealthMonitor.isHostHealthy(instance, partitionName)) {
+      if (!instanceHealthMonitor.isHostHealthy(instance, null)) {
         currentStats.recordFindUnhealthyHostRequest(storeName);
         continue;
       }
-      if (hostHealthMonitor.isHostHealthy(instance, partitionName)) {
+      if (hostHealthMonitor.isHostHealthy(instance, null)) {
         newHosts.add(instance);
       }
     }
@@ -111,18 +116,23 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
       LOGGER.warn(
           "All host(s) for resource: {} with partition: {} are not healthy: {}",
           resourceName,
-          partitionName,
+          partitionNumber,
           hosts);
     }
     if (hostCount <= 1) {
+      /**
+       * Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline
+       * request'.
+       */
       return newHosts;
     }
 
-    // Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline
-    // request'.
+    /**
+     * Randomize order so that multiget using {@link VeniceMultiKeyRoutingStrategy.GROUP_BY_PRIMARY_HOST_ROUTING} or
+     * {@link VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING} results in an even distribution of partitions to hosts.
+     */
+    Collections.shuffle(newHosts);
 
-    Collections.shuffle(newHosts); // Randomize order so that multiget using ScatterGatherMode.GROUP_BY_PRIMARY_HOST or
-                                   // LEAST_LOADED_ROUTING results in an even distribution of partitions to hosts.
     return newHosts;
   }
 

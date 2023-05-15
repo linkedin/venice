@@ -1,12 +1,9 @@
 package com.linkedin.alpini.router.api;
 
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
 import javax.annotation.Nonnull;
 
 
@@ -19,46 +16,12 @@ import javax.annotation.Nonnull;
  * @author Jemiah Westerman<jwesterman@linkedin.com>
  */
 public class ScatterGatherRequest<H, K> {
-  private final List<H> _host;
-  private final @Nonnull SortedSet<K> _keys;
-  private final @Nonnull Set<String> _partitions;
-  // client specified partitionIds intended for table level query request.
-  private final @Nonnull Set<String> _partitionIdsToQuery;
+  private final List<H> _host; // TODO Make this a single instance since we always use it with just one item
+  private final @Nonnull Set<K> _keys;
 
-  public ScatterGatherRequest(List<H> host) {
-    this(host, new TreeSet<>(), new HashSet<>());
-  }
-
-  public ScatterGatherRequest(List<H> host, SortedSet<K> partitionKeys, String partitionName) {
-    this(host, partitionKeys, new HashSet<>(Collections.singleton(partitionName)));
-  }
-
-  public ScatterGatherRequest(List<H> host, SortedSet<K> partitionKeys, Set<String> partitionNames) {
-    this(
-        host,
-        Objects.requireNonNull(partitionKeys, "partitionKeys"),
-        Objects.requireNonNull(partitionNames, "partitionNames"),
-        new HashSet<>());
-  }
-
-  private ScatterGatherRequest(
-      List<H> host,
-      SortedSet<K> partitionKeys,
-      Set<String> partitionNames,
-      Set<String> partitionIdsToQuery) {
+  public ScatterGatherRequest(List<H> host, Set<K> partitionKeys) {
     _host = host;
-    _keys = partitionKeys;
-    _partitions = partitionNames;
-    _partitionIdsToQuery = partitionIdsToQuery;
-  }
-
-  public void addKeys(Set<K> partitionKeys, String partitionName) {
-    _keys.addAll(partitionKeys);
-    _partitions.add(partitionName);
-  }
-
-  public void addPartitionNameToQuery(String partitionName) {
-    _partitionIdsToQuery.add(Objects.requireNonNull(partitionName, "partitionName"));
+    _keys = Objects.requireNonNull(partitionKeys, "partitionKeys");
   }
 
   public List<H> getHosts() {
@@ -71,25 +34,13 @@ public class ScatterGatherRequest<H, K> {
     }
   }
 
-  public ScatterGatherRequest<H, K> substitutePartitionKeys(SortedSet<K> partitionKeys) {
-    if (partitionKeys == null || partitionKeys.isEmpty()) {
-      return this;
-    } else {
-      return new ScatterGatherRequest<H, K>(_host, partitionKeys, _partitions, _partitionIdsToQuery);
-    }
-  }
-
-  public SortedSet<K> getPartitionKeys() {
+  public Set<K> getPartitionKeys() {
     return _keys;
   }
 
-  public Set<String> getPartitionsNames() {
-    return _partitions;
-  }
-
-  /** For table level query requests, return the list of partitions that should be queried for this request. */
+  /** Only used by broadcast queries. See {@link BroadcastScatterGatherRequest}. */
   public Set<String> getPartitionNamesToQuery() {
-    return _partitionIdsToQuery.isEmpty() ? Collections.emptySet() : Collections.unmodifiableSet(_partitionIdsToQuery);
+    return Collections.emptySet();
   }
 
   @Override
@@ -98,8 +49,6 @@ public class ScatterGatherRequest<H, K> {
     int result = 1;
     result = prime * result + ((_host == null) ? 0 : _host.hashCode());
     result = prime * result + _keys.hashCode();
-    result = prime * result + _partitions.hashCode();
-    result = prime * result + _partitionIdsToQuery.hashCode();
     return result;
   }
 
@@ -122,13 +71,11 @@ public class ScatterGatherRequest<H, K> {
     } else if (!_host.equals(other._host)) {
       return false;
     }
-    return _keys.equals(other._keys) && _partitions.equals(other._partitions)
-        && _partitionIdsToQuery.equals(other._partitionIdsToQuery);
+    return _keys.equals(other._keys);
   }
 
   @Override
   public String toString() {
-    return "host=(" + _host + ") keys=(" + _keys + ") partitions=(" + _partitions + ") partitionIds=("
-        + _partitionIdsToQuery + ")";
+    return "host=(" + _host + ") keys=(" + _keys + ")";
   }
 }

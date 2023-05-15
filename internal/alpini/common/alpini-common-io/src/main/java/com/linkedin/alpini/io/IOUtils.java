@@ -1,15 +1,12 @@
 package com.linkedin.alpini.io;
 
-import com.linkedin.alpini.base.concurrency.CompletableFutureTask;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.StringWriter;
-import java.lang.reflect.Field;
 import java.nio.charset.Charset;
 import javax.annotation.WillClose;
 import org.apache.logging.log4j.LogManager;
@@ -25,8 +22,6 @@ public enum IOUtils {
   private static final Logger LOG = LogManager.getLogger(IOUtils.class);
 
   public static final int EOF = -1;
-
-  private static final Field FILTER_INPUT_STREAM_IN = getFilterInputStreamIn();
 
   public static void closeQuietly(@WillClose Closeable stream) {
     try (Closeable closeable = stream) {
@@ -79,23 +74,5 @@ public enum IOUtils {
       writer.write(buffer, 0, charsRead);
     }
     return writer.toString();
-  }
-
-  public static InputStream unwrapFilterInputStream(FilterInputStream inputStream) throws IOException {
-    try {
-      return InputStream.class.cast(FILTER_INPUT_STREAM_IN.get(inputStream));
-    } catch (IllegalAccessException e) {
-      throw new IOException(e);
-    }
-  }
-
-  private static Field getFilterInputStreamIn() {
-    CompletableFutureTask<Field> task = new CompletableFutureTask<Field>(() -> {
-      Field field = FilterInputStream.class.getDeclaredField("in");
-      field.setAccessible(true);
-      return field;
-    });
-    task.run();
-    return task.toCompletableFuture().join();
   }
 }

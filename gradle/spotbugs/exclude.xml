@@ -269,18 +269,6 @@
   <Match>
     <!--Spotbug suggests return empty array instead of null, but it'd require lots of refactoring-->
     <Bug pattern="PZLA_PREFER_ZERO_LENGTH_ARRAYS" />
-    <Or>
-      <Class name="com.linkedin.venice.hadoop.AbstractVeniceRecordReader"/>
-      <Class name="com.linkedin.venice.client.store.AvroComputeRequestBuilderV4"/>
-      <Class name="com.linkedin.venice.schema.vson.VsonAvroSerializer"/>
-      <Class name="com.linkedin.venice.router.api.DictionaryRetrievalService"/>
-      <Class name="com.linkedin.davinci.kafka.consumer.ActiveActiveStoreIngestionTask"/>
-      <Class name="com.linkedin.davinci.kafka.consumer.StoreWriteComputeProcessor"/>
-      <Class name="com.linkedin.davinci.store.blackhole.BlackHoleStorageEnginePartition"/>
-      <Class name="com.linkedin.davinci.store.memory.InMemoryStoragePartition"/>
-      <Class name="com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition"/>
-      <Class name="com.linkedin.venice.client.schema.RouterBackedSchemaReader"/>
-    </Or>
   </Match>
   <Match>
     <!--No need to serialize a class created for testing-->

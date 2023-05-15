@@ -9,6 +9,7 @@ import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.router.RouterThrottleHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
@@ -58,7 +59,9 @@ public class TestVeniceMultiGetPath {
 
   private VenicePartitionFinder getVenicePartitionFinder(int partitionId) {
     VenicePartitionFinder mockedPartitionFinder = mock(VenicePartitionFinder.class);
-    when(mockedPartitionFinder.findPartitionNumber(any(), anyInt(), any(), anyInt())).thenReturn(partitionId);
+    VenicePartitioner venicePartitioner = mock(VenicePartitioner.class);
+    when(venicePartitioner.getPartitionId(any(ByteBuffer.class), anyInt())).thenReturn(partitionId);
+    when(mockedPartitionFinder.findPartitioner(any(), anyInt())).thenReturn(venicePartitioner);
     return mockedPartitionFinder;
   }
 
@@ -88,7 +91,9 @@ public class TestVeniceMultiGetPath {
 
   @Test(expectedExceptions = VeniceKeyCountLimitException.class, expectedExceptionsMessageRegExp = ".*exceeds key count limit.*")
   public void testMultiGetReqWithTooManyKeys() throws RouterException {
-    String resourceName = Utils.getUniqueString("test_store") + "_v1";
+    String storeName = Utils.getUniqueString("test_store");
+    int version = 1;
+    String resourceName = storeName + "_v" + version;
 
     String keyPrefix = "key_";
     List<ByteBuffer> keys = new ArrayList<>();
@@ -100,12 +105,24 @@ public class TestVeniceMultiGetPath {
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
     request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)
         .set(multiGetRequestSerializer.serializeObjects(keys));
-    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3, false, -1, 1);
+    new VeniceMultiGetPath(
+        storeName,
+        version,
+        resourceName,
+        request,
+        getVenicePartitionFinder(-1),
+        3,
+        false,
+        -1,
+        null,
+        1);
   }
 
   @Test(expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*but received.*")
   public void testMultiGetReqWithInvalidAPIVersion() throws RouterException {
-    String resourceName = Utils.getUniqueString("test_store") + "_v1";
+    String storeName = Utils.getUniqueString("test_store");
+    int version = 1;
+    String resourceName = storeName + "_v" + version;
     String keyPrefix = "key_";
     List<ByteBuffer> keys = new ArrayList<>();
     for (int i = 0; i < 5; ++i) {
@@ -116,12 +133,24 @@ public class TestVeniceMultiGetPath {
         keys,
         Optional.of(VeniceMultiGetPath.EXPECTED_PROTOCOL.getProtocolVersion() + 1));
 
-    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3, false, -1, 1);
+    new VeniceMultiGetPath(
+        storeName,
+        version,
+        resourceName,
+        request,
+        getVenicePartitionFinder(-1),
+        3,
+        false,
+        -1,
+        null,
+        1);
   }
 
   @Test
   public void testAllowedRouteRetry() throws RouterException {
-    String resourceName = Utils.getUniqueString("test_store") + "_v1";
+    String storeName = Utils.getUniqueString("test_store");
+    int version = 1;
+    String resourceName = storeName + "_v" + version;
 
     String keyPrefix = "key_";
     List<ByteBuffer> keys = new ArrayList<>();
@@ -134,14 +163,34 @@ public class TestVeniceMultiGetPath {
     request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)
         .set(multiGetRequestSerializer.serializeObjects(keys));
 
-    VenicePath path = new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 10, false, -1, 1);
+    VenicePath path = new VeniceMultiGetPath(
+        storeName,
+        version,
+        resourceName,
+        request,
+        getVenicePartitionFinder(-1),
+        10,
+        false,
+        -1,
+        null,
+        1);
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
     Assert.assertFalse(path.isLongTailRetryAllowedForNewRoute());
 
     request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
     request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)
         .set(multiGetRequestSerializer.serializeObjects(keys));
-    path = new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 10, false, -1, -1);
+    path = new VeniceMultiGetPath(
+        storeName,
+        version,
+        resourceName,
+        request,
+        getVenicePartitionFinder(-1),
+        10,
+        false,
+        -1,
+        null,
+        -1);
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
   }

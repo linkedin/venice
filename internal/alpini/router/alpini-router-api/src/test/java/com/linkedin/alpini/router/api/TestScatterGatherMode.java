@@ -403,7 +403,6 @@ public class TestScatterGatherMode {
     Mockito.verifyNoMoreInteractions(scatter);
 
     ScatterGatherRequest<Host, Key> scatterGather = scatterGatherCaptor.getValue();
-    Assert.assertEquals(scatterGather.getPartitionsNames(), Collections.singletonList("OnePartition"));
     Assert.assertEquals(scatterGather.getPartitionKeys(), Collections.singletonList(key));
     Assert.assertEquals(scatterGather.getHosts(), Collections.emptyList());
   }
@@ -464,7 +463,6 @@ public class TestScatterGatherMode {
     Mockito.verifyNoMoreInteractions(scatter);
 
     ScatterGatherRequest<Host, Key> scatterGather = scatterGatherCaptor.getValue();
-    Assert.assertEquals(scatterGather.getPartitionsNames(), Collections.singletonList("OnePartition"));
     Assert.assertEquals(scatterGather.getPartitionKeys(), Collections.singletonList(key));
     Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host));
   }
@@ -546,19 +544,17 @@ public class TestScatterGatherMode {
     Mockito.verify(scatter).getPath();
     Mockito.verifyNoMoreInteractions(scatter);
 
-    Iterator<ScatterGatherRequest<Host, Key>> scatterGatherIterator = scatterGatherCaptor.getAllValues()
-        .stream()
-        .sorted(
-            (o1, o2) -> String.CASE_INSENSITIVE_ORDER
-                .compare(o1.getPartitionsNames().iterator().next(), o2.getPartitionsNames().iterator().next()))
-        .iterator();
+    Iterator<ScatterGatherRequest<Host, Key>> scatterGatherIterator =
+        scatterGatherCaptor.getAllValues().stream().iterator();
 
-    scatterGather = scatterGatherIterator.next();
-    Assert.assertEquals(scatterGather.getPartitionsNames(), Collections.singletonList("OnePartition"));
-    Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host1));
-    scatterGather = scatterGatherIterator.next();
-    Assert.assertEquals(scatterGather.getPartitionsNames(), Collections.singletonList("TwoPartition"));
-    Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host2));
+    while (scatterGatherIterator.hasNext()) {
+      scatterGather = scatterGatherIterator.next();
+      if (scatterGather.getPartitionKeys().contains(key1)) {
+        Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host1));
+      } else {
+        Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host2));
+      }
+    }
     Assert.assertFalse(scatterGatherIterator.hasNext());
   }
 
@@ -680,25 +676,23 @@ public class TestScatterGatherMode {
     Mockito.verify(scatter).getPath();
     Mockito.verifyNoMoreInteractions(scatter);
 
-    Iterator<ScatterGatherRequest<Host, Key>> scatterGatherIterator = scatterGatherCaptor.getAllValues()
-        .stream()
-        .sorted(
-            (o1, o2) -> String.CASE_INSENSITIVE_ORDER
-                .compare(o1.getPartitionsNames().iterator().next(), o2.getPartitionsNames().iterator().next()))
-        .iterator();
+    Iterator<ScatterGatherRequest<Host, Key>> scatterGatherIterator =
+        scatterGatherCaptor.getAllValues().stream().iterator();
 
-    scatterGather = scatterGatherIterator.next();
-    Assert.assertEqualsNoOrder(
-        scatterGather.getPartitionsNames().stream().toArray(String[]::new),
-        new String[] { "OnePartition", "ThreePartition" });
-    Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host1));
-    Assert.assertEqualsNoOrder(scatterGather.getPartitionKeys().stream().toArray(Key[]::new), new Key[] { key1, key3 });
-    scatterGather = scatterGatherIterator.next();
-    Assert.assertEqualsNoOrder(
-        scatterGather.getPartitionsNames().stream().toArray(String[]::new),
-        new String[] { "TwoPartition", "FourPartition" });
-    Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host2));
-    Assert.assertEqualsNoOrder(scatterGather.getPartitionKeys().stream().toArray(Key[]::new), new Key[] { key2, key4 });
+    while (scatterGatherIterator.hasNext()) {
+      scatterGather = scatterGatherIterator.next();
+      if (scatterGather.getPartitionKeys().contains(key1)) {
+        Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host1));
+        Assert.assertEqualsNoOrder(
+            scatterGather.getPartitionKeys().stream().toArray(Key[]::new),
+            new Key[] { key1, key3 });
+      } else {
+        Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host2));
+        Assert.assertEqualsNoOrder(
+            scatterGather.getPartitionKeys().stream().toArray(Key[]::new),
+            new Key[] { key2, key4 });
+      }
+    }
     Assert.assertFalse(scatterGatherIterator.hasNext());
   }
 
@@ -805,25 +799,21 @@ public class TestScatterGatherMode {
     Mockito.verify(scatter).getPath();
     Mockito.verifyNoMoreInteractions(scatter);
 
-    Iterator<ScatterGatherRequest<Host, Key>> scatterGatherIterator = scatterGatherCaptor.getAllValues()
-        .stream()
-        .sorted(
-            (o1, o2) -> String.CASE_INSENSITIVE_ORDER
-                .compare(o1.getPartitionsNames().iterator().next(), o2.getPartitionsNames().iterator().next()))
-        .iterator();
+    Iterator<ScatterGatherRequest<Host, Key>> scatterGatherIterator =
+        scatterGatherCaptor.getAllValues().stream().iterator();
 
-    scatterGather = scatterGatherIterator.next();
-    Assert.assertEquals(scatterGather.getPartitionsNames(), Collections.singletonList("OnePartition"));
-    Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host1));
-    Assert.assertEquals(scatterGather.getPartitionKeys(), Collections.singletonList(key1));
-    scatterGather = scatterGatherIterator.next();
-    Assert.assertEqualsNoOrder(
-        scatterGather.getPartitionsNames().stream().toArray(String[]::new),
-        new String[] { "TwoPartition", "ThreePartition", "FourPartition" });
-    Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host3));
-    Assert.assertEqualsNoOrder(
-        scatterGather.getPartitionKeys().stream().toArray(Key[]::new),
-        new Key[] { key2, key3, key4 });
+    while (scatterGatherIterator.hasNext()) {
+      scatterGather = scatterGatherIterator.next();
+      if (scatterGather.getPartitionKeys().contains(key1)) {
+        Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host1));
+        Assert.assertEquals(scatterGather.getPartitionKeys(), Collections.singletonList(key1));
+      } else {
+        Assert.assertEquals(scatterGather.getHosts(), Collections.singletonList(host3));
+        Assert.assertEqualsNoOrder(
+            scatterGather.getPartitionKeys().stream().toArray(Key[]::new),
+            new Key[] { key2, key3, key4 });
+      }
+    }
     Assert.assertFalse(scatterGatherIterator.hasNext());
   }
 
