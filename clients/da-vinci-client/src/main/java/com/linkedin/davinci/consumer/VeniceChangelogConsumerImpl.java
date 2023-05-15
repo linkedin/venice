@@ -286,9 +286,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         internalSeek(Collections.singleton(coordinate.getPartition()), coordinate.getTopic(), foo -> {
           // TODO: This is a hack until we refactor out kafkaConsumer, delete this.
           Long topicOffset = ((ApacheKafkaOffsetPosition) coordinate.getPosition()).getOffset();
-          synchronized (kafkaConsumer) {
-            kafkaConsumer.seek(new TopicPartition(coordinate.getTopic(), coordinate.getPartition()), topicOffset);
-          }
+          kafkaConsumer.seek(new TopicPartition(coordinate.getTopic(), coordinate.getPartition()), topicOffset);
         }).join();
       }
       return null;
