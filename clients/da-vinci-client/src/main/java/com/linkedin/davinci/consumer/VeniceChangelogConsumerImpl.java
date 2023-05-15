@@ -286,7 +286,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         internalSeek(Collections.singleton(coordinate.getPartition()), coordinate.getTopic(), foo -> {
           // TODO: This is a hack until we refactor out kafkaConsumer, delete this.
           Long topicOffset = ((ApacheKafkaOffsetPosition) coordinate.getPosition()).getOffset();
-          kafkaConsumer.seek(new TopicPartition(coordinate.getTopic(), coordinate.getPartition()), topicOffset);
+          synchronized (kafkaConsumer) {
+            kafkaConsumer.seek(new TopicPartition(coordinate.getTopic(), coordinate.getPartition()), topicOffset);
+          }
         }).join();
       }
       return null;
@@ -383,21 +385,23 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       String topicSuffix) {
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     List<Integer> partitionsToFilter = new ArrayList<>();
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = kafkaConsumer.poll(timeoutInMs);
-    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord: consumerRecords) {
-      if (partitionsToFilter.contains(consumerRecord.partition())) {
-        continue;
-      }
-      PubSubTopicPartition pubSubTopicPartition = getPubSubTopicPartitionFromConsumerRecord(consumerRecord);
-      if (consumerRecord.key().isControlMessage()) {
-        ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
-        if (handleControlMessage(controlMessage, pubSubTopicPartition, topicSuffix)) {
-          partitionsToFilter.add(consumerRecord.partition());
+    synchronized (kafkaConsumer) {
+      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = kafkaConsumer.poll(timeoutInMs);
+      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord: consumerRecords) {
+        if (partitionsToFilter.contains(consumerRecord.partition())) {
+          continue;
         }
-      } else {
-        Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
-            convertConsumerRecordToPubSubChangeEventMessage(consumerRecord, pubSubTopicPartition);
-        pubSubMessage.ifPresent(pubSubMessages::add);
+        PubSubTopicPartition pubSubTopicPartition = getPubSubTopicPartitionFromConsumerRecord(consumerRecord);
+        if (consumerRecord.key().isControlMessage()) {
+          ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
+          if (handleControlMessage(controlMessage, pubSubTopicPartition, topicSuffix)) {
+            partitionsToFilter.add(consumerRecord.partition());
+          }
+        } else {
+          Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
+              convertConsumerRecordToPubSubChangeEventMessage(consumerRecord, pubSubTopicPartition);
+          pubSubMessage.ifPresent(pubSubMessages::add);
+        }
       }
     }
     return pubSubMessages;
