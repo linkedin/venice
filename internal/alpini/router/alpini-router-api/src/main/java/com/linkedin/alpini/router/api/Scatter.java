@@ -17,8 +17,12 @@ import javax.annotation.Nonnull;
 public class Scatter<H, P extends ResourcePath<K>, K> {
   /** Requests for servers that are available. */
   private final Collection<ScatterGatherRequest<H, K>> _onlineRequests = new ArrayList<>();
+  private final Collection<ScatterGatherRequest<H, K>> _unmodifiableOnlineRequests =
+      Collections.unmodifiableCollection(_onlineRequests);
   /** Requests for servers that are offline. */
   private final Collection<ScatterGatherRequest<H, K>> _offlineRequests = new ArrayList<>();
+  private final Collection<ScatterGatherRequest<H, K>> _unmodifiableOfflineRequests =
+      Collections.unmodifiableCollection(_offlineRequests);
   private final P _path;
   private final Object _role;
   private final ResourcePathParser<P, K> _pathParser;
@@ -38,7 +42,7 @@ public class Scatter<H, P extends ResourcePath<K>, K> {
   }
 
   public @Nonnull Collection<ScatterGatherRequest<H, K>> getOnlineRequests() {
-    return Collections.unmodifiableCollection(_onlineRequests);
+    return _unmodifiableOnlineRequests;
   }
 
   public int getOnlineRequestCount() {
@@ -46,7 +50,7 @@ public class Scatter<H, P extends ResourcePath<K>, K> {
   }
 
   public @Nonnull Collection<ScatterGatherRequest<H, K>> getOfflineRequests() {
-    return Collections.unmodifiableCollection(_offlineRequests);
+    return _unmodifiableOfflineRequests;
   }
 
   public int getOfflineRequestCount() {

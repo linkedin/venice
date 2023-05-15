@@ -324,12 +324,12 @@ public abstract class ScatterGatherMode {
             HostHealthChecked<H> healthChecked = new HostHealthChecked<>(hostHealthMonitor);
             List<H> hosts =
                 hostFinder.findHosts(requestMethod, resourceName, partitionName, healthChecked, roles, initialHost);
-            ScatterGatherRequest<H, K> request;
+            BroadcastScatterGatherRequest<H, K> request;
             if ((hosts = healthChecked.check(hosts, partitionName)).isEmpty()) { // SUPPRESS CHECKSTYLE InnerAssignment
-              request = new ScatterGatherRequest<>(Collections.emptyList());
+              request = new BroadcastScatterGatherRequest<>(Collections.emptyList());
               scatter.addOfflineRequest(request);
             } else {
-              request = new ScatterGatherRequest<>(hosts);
+              request = new BroadcastScatterGatherRequest<>(hosts);
               scatter.addOnlineRequest(request);
             }
             request.addPartitionNameToQuery(partitionName);
@@ -429,7 +429,7 @@ public abstract class ScatterGatherMode {
             String initialHost) {
           return partitionFinder.getAllPartitionNames(resourceName).thenApply(partitions -> {
             try {
-              Map<H, ScatterGatherRequest<H, K>> hostMap = new HashMap<>();
+              Map<H, BroadcastScatterGatherRequest<H, K>> hostMap = new HashMap<>();
               for (String partitionName: partitions) {
                 HostHealthChecked<H> healthChecked = new HostHealthChecked<>(hostHealthMonitor);
                 Optional<H> host = Optional.empty();
@@ -444,15 +444,16 @@ public abstract class ScatterGatherMode {
                   }
                 }
 
-                ScatterGatherRequest<H, K> request;
+                BroadcastScatterGatherRequest<H, K> request;
                 if (host.isPresent()) {
                   request = hostMap.computeIfAbsent(host.get(), h -> {
-                    ScatterGatherRequest<H, K> r = new ScatterGatherRequest<>(Collections.singletonList(h));
+                    BroadcastScatterGatherRequest<H, K> r =
+                        new BroadcastScatterGatherRequest<>(Collections.singletonList(h));
                     scatter.addOnlineRequest(r);
                     return r;
                   });
                 } else {
-                  request = new ScatterGatherRequest<>(Collections.emptyList());
+                  request = new BroadcastScatterGatherRequest<>(Collections.emptyList());
                   scatter.addOfflineRequest(request);
                 }
                 request.addPartitionNameToQuery(partitionName);
@@ -571,10 +572,10 @@ public abstract class ScatterGatherMode {
                 hostFinder.findHosts(requestMethod, resourceName, entry.getKey(), healthChecked, roles, initialHost);
             ScatterGatherRequest<H, K> request;
             if ((hosts = healthChecked.check(hosts, entry.getKey())).isEmpty()) { // SUPPRESS CHECKSTYLE InnerAssignment
-              request = new ScatterGatherRequest<>(Collections.emptyList(), entry.getValue(), entry.getKey());
+              request = new ScatterGatherRequest<>(Collections.emptyList(), entry.getValue());
               scatter.addOfflineRequest(request);
             } else {
-              request = new ScatterGatherRequest<>(hosts, entry.getValue(), entry.getKey());
+              request = new ScatterGatherRequest<>(hosts, entry.getValue());
               scatter.addOnlineRequest(request);
             }
           }
@@ -829,8 +830,7 @@ public abstract class ScatterGatherMode {
                           .orElseGet(Stream::empty))
                   .collect(Collectors.toCollection(TreeSet::new));
 
-              scatter.addOnlineRequest(
-                  new ScatterGatherRequest<>(Collections.singletonList(next.host), keys, next.partitions));
+              scatter.addOnlineRequest(new ScatterGatherRequest<>(Collections.singletonList(next.host), keys));
 
               hostList.removeIf(hostInfo -> {
                 next.partitions.stream().filter(hostInfo.partitions::remove).forEach(partition -> hostInfo.count--);
@@ -840,10 +840,7 @@ public abstract class ScatterGatherMode {
 
             partitions.forEach(
                 (partition, pair) -> scatter.addOfflineRequest(
-                    new ScatterGatherRequest<H, K>(
-                        Collections.emptyList(),
-                        new TreeSet<>(pair.getSecond()),
-                        Collections.singleton(partition))));
+                    new ScatterGatherRequest<H, K>(Collections.emptyList(), new TreeSet<>(pair.getSecond()))));
 
             return scatter;
           });

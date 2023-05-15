@@ -44,6 +44,13 @@ public class Partition {
     this.helixStateToInstancesMap = new EnumMap<>(HelixState.class);
     this.executionStatusToInstancesMap = new EnumMap<>(ExecutionStatus.class);
     for (Map.Entry<String, List<Instance>> entry: stateToInstancesMap.entrySet()) {
+      /**
+       * N.B. The design of this class is that the {@param stateToInstancesMap} is keyed by strings which could
+       *      correspond to values of either {@link HelixState} of {@link ExecutionStatus}. That is why in the
+       *      code below we catch {@link IllegalArgumentException} since they would be thrown whenever the map
+       *      contains a key which is absent from either enum. This is not an ideal design, but refactoring it
+       *      would be a big undertaking. TODO: refactor it anyway
+       */
       try {
         HelixState helixState = HelixState.valueOf(entry.getKey());
         this.helixStateToInstancesMap.put(helixState, Collections.unmodifiableList(entry.getValue()));

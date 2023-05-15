@@ -28,11 +28,11 @@ import com.linkedin.venice.router.throttle.RouterThrottler;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.SortedSet;
-import java.util.TreeSet;
+import java.util.Set;
 import javax.annotation.Nonnull;
 
 
@@ -217,14 +217,18 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         RouterExceptionAndTrackingUtils
             .recordUnavailableReplicaStreamingRequest(storeName, venicePath.getRequestType());
       } else {
+        K firstKey = scatter.getOfflineRequests().iterator().next().getPartitionKeys().iterator().next();
+        int numPartitions = partitionFinder.getNumPartitions(resourceName);
+        int versionNumber = venicePath.getVersionNumber();
+        int partition = partitionFinder.findPartitionNumber(firstKey, numPartitions, storeName, versionNumber);
         RouterExceptionAndTrackingUtils.FailureType failureType = RouterExceptionAndTrackingUtils.FailureType.REGULAR;
         if (venicePath.isRetryRequest()) {
           // don't record it as unhealthy request.
           failureType = RouterExceptionAndTrackingUtils.FailureType.RETRY_ABORTED_BY_NO_AVAILABLE_REPLICA;
         }
         String isRetry = venicePath.isRetryRequest() ? "retry " : "";
-        String errMsg =
-            resourceName + " not available to serve " + isRetry + "request of type: " + venicePath.getRequestType();
+        String errMsg = resourceName + ", partition " + partition + " is not available to serve " + isRetry
+            + "request of type: " + venicePath.getRequestType();
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
             Optional.of(storeName),
             Optional.of(venicePath.getRequestType()),
@@ -389,8 +393,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           venicePath.getVersionNumber());
       List<H> hosts = (List<H>) veniceHostFinder
           .findHosts(requestMethod, resourceName, venicePath.getStoreName(), partitionNumber, veniceHostHealthMonitor);
-      SortedSet<K> keySet = new TreeSet<>();
-      keySet.add(key);
+      Set<K> keySet = Collections.singleton(key);
       if (hosts.isEmpty()) {
         scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), keySet));
       } else if (hosts.size() > 1) {
@@ -411,19 +414,16 @@ public class VeniceDelegateMode extends ScatterGatherMode {
      * This class contains all the partitions/keys belonging to the same host.
      */
     class KeyPartitionSet<H, K> {
-      public TreeSet<K> keySet = new TreeSet<>();
-      public List<H> hosts;
+      public final Set<K> keySet;
+      public final List<H> hosts;
 
-      public KeyPartitionSet(List<H> hosts) {
+      public KeyPartitionSet(List<H> hosts, List<K> initialKeys) {
         this.hosts = hosts;
+        this.keySet = new HashSet<>(initialKeys);
       }
 
       public void addKeys(List<K> keys) {
         this.keySet.addAll(keys);
-      }
-
-      public void addKey(K key) {
-        this.keySet.add(key);
       }
     }
 
@@ -533,12 +533,10 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
           if (hosts.isEmpty()) {
             veniceScatter.addOfflineRequest(
-                new ScatterGatherRequest<>(Collections.emptyList(), new TreeSet<>(keysForCurrentPartition)));
+                new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keysForCurrentPartition)));
           } else if (hosts.size() == 1) {
             Instance host = hosts.get(0);
-            KeyPartitionSet<Instance, RouterKey> keyPartitionSet =
-                hostMap.computeIfAbsent(host, k -> new KeyPartitionSet<>(Collections.singletonList(host)));
-            keyPartitionSet.addKeys(keysForCurrentPartition);
+            populateHostMap(hostMap, host, keysForCurrentPartition);
           } else {
             try {
               selectHostForPartition(
@@ -553,7 +551,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
                * We don't want to throw exception here to fail the whole request since for streaming, partial scatter is acceptable.
                */
               veniceScatter.addOfflineRequest(
-                  new ScatterGatherRequest<>(Collections.emptyList(), new TreeSet<>(keysForCurrentPartition)));
+                  new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keysForCurrentPartition)));
             }
           }
           // Important to clear the inner list since it is thread-local state, which will be re-used by the next request
@@ -577,6 +575,17 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
       return scatter;
     }
+
+    protected <H, K> void populateHostMap(Map<H, KeyPartitionSet<H, K>> hostMap, H selectedHost, List<K> keys) {
+      hostMap.compute(selectedHost, (h, keyPartitionSet) -> {
+        if (keyPartitionSet == null) {
+          return new KeyPartitionSet<>(Collections.singletonList(h), keys);
+        } else {
+          keyPartitionSet.addKeys(keys);
+          return keyPartitionSet;
+        }
+      });
+    }
   }
 
   /**
@@ -595,12 +604,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         Map<H, KeyPartitionSet<H, K>> hostMap,
         int groupNum,
         int assignedGroupId) throws RouterException {
-      for (K key: partitionKeys) {
-        H selectedHost = selectLeastLoadedHost(partitionReplicas, venicePath);
-        KeyPartitionSet<H, K> keyPartitionSet =
-            hostMap.computeIfAbsent(selectedHost, k -> new KeyPartitionSet<>(Collections.singletonList(k)));
-        keyPartitionSet.addKey(key);
-      }
+      H selectedHost = selectLeastLoadedHost(partitionReplicas, venicePath);
+      populateHostMap(hostMap, selectedHost, partitionKeys);
     }
   }
 
@@ -697,9 +702,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
               "Could not find any healthy replica.");
         }
       }
-      KeyPartitionSet<H, K> keyPartitionSet =
-          hostMap.computeIfAbsent(selectedHost, k -> new KeyPartitionSet<>(Collections.singletonList(k)));
-      keyPartitionSet.addKeys(partitionKeys);
+      populateHostMap(hostMap, selectedHost, partitionKeys);
     }
   }
 }

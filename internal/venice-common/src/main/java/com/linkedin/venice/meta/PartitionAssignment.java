@@ -1,9 +1,9 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.ArrayCollection;
+import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
 
 
 /**
@@ -12,8 +12,9 @@ import java.util.Map;
  */
 public class PartitionAssignment {
   private final String topic;
-  private final Map<Integer, Partition> idToPartitionMap;
   private final Partition[] partitionsArrayIndexedById;
+  private final ArrayCollection<Partition> partitionCollection;
+  private int populatedSize = 0;
 
   public PartitionAssignment(String topic, int numberOfPartition) {
     this.topic = topic;
@@ -22,8 +23,8 @@ public class PartitionAssignment {
           "Expected number of partition should be larger than 0 for resource '" + topic + "'. Current value:"
               + numberOfPartition);
     }
-    this.idToPartitionMap = new HashMap<>(numberOfPartition);
     this.partitionsArrayIndexedById = new Partition[numberOfPartition];
+    this.partitionCollection = new ArrayCollection<>(this.partitionsArrayIndexedById, () -> this.populatedSize);
   }
 
   public Partition getPartition(int partitionId) {
@@ -36,12 +37,14 @@ public class PartitionAssignment {
           "Invalid Partition id:" + partition.getId() + ". Partition id should be in the range of [0,"
               + getExpectedNumberOfPartitions() + "]");
     }
-    this.idToPartitionMap.put(partition.getId(), partition);
+    if (this.partitionsArrayIndexedById[partition.getId()] == null) {
+      this.populatedSize++;
+    }
     this.partitionsArrayIndexedById[partition.getId()] = partition;
   }
 
   public Collection<Partition> getAllPartitions() {
-    return idToPartitionMap.values();
+    return this.partitionCollection;
   }
 
   public int getExpectedNumberOfPartitions() {
@@ -49,7 +52,7 @@ public class PartitionAssignment {
   }
 
   public int getAssignedNumberOfPartitions() {
-    return idToPartitionMap.size();
+    return populatedSize;
   }
 
   public boolean isMissingAssignedPartitions() {
@@ -63,7 +66,8 @@ public class PartitionAssignment {
   @Override
   public String toString() {
     return this.getClass().getSimpleName() + " {" + "\n\ttopic: " + topic + ", " + "\n\texpectedNumberOfPartitions: "
-        + getExpectedNumberOfPartitions() + ", " + "\n\tidToPartitionMap: " + idToPartitionMap + "\n}";
+        + getExpectedNumberOfPartitions() + ", " + "\n\tpartitionsArrayIndexedById: "
+        + Arrays.toString(this.partitionsArrayIndexedById) + "\n}";
   }
 
   @Override
@@ -73,7 +77,7 @@ public class PartitionAssignment {
     }
 
     if (obj instanceof PartitionAssignment) {
-      return idToPartitionMap.equals(((PartitionAssignment) obj).idToPartitionMap);
+      return Arrays.equals(partitionsArrayIndexedById, ((PartitionAssignment) obj).partitionsArrayIndexedById);
     }
 
     return false;
@@ -83,7 +87,7 @@ public class PartitionAssignment {
   public int hashCode() {
     int result = 1;
     result = 31 * result + topic.hashCode();
-    result = 31 * result + idToPartitionMap.hashCode();
+    result = 31 * result + Arrays.hashCode(this.partitionsArrayIndexedById);
     result = 31 * result + getExpectedNumberOfPartitions();
     return result;
   }
