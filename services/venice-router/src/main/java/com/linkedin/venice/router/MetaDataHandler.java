@@ -4,6 +4,7 @@ import static com.linkedin.venice.VeniceConstants.TYPE_PUSH_STATUS;
 import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
@@ -188,7 +189,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         break;
       case TYPE_CLUSTER_DISCOVERY:
         // URI: /discover_cluster/${storeName}
-        handleD2ServiceLookup(ctx, helper, req.headers());
+        handleD2ServiceLookup(ctx, helper, req);
         break;
       case TYPE_RESOURCE_STATE:
         // URI: /resource_state
@@ -372,10 +373,17 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
   }
 
-  private void handleD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpHeaders headers)
+  private void handleD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpRequest request)
       throws IOException {
     String storeName = helper.getResourceName();
-    checkResourceName(storeName, "/" + TYPE_CLUSTER_DISCOVERY + "/${storeName}");
+    if (StringUtils.isEmpty(storeName)) {
+      Map<String, String> queryParams = helper.extractQueryParameters(request);
+      storeName = queryParams.get(NAME);
+    }
+    checkResourceName(
+        storeName,
+        "/" + TYPE_CLUSTER_DISCOVERY + "/${storeName} or /" + TYPE_CLUSTER_DISCOVERY + "?store_name=${storeName}");
+    HttpHeaders headers = request.headers();
     Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
     if (!config.isPresent() || StringUtils.isEmpty(config.get().getCluster())) {
       String errorMsg = "Cluster for store: " + storeName + " doesn't exist";

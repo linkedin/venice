@@ -58,10 +58,6 @@ public class ControllerTransport implements AutoCloseable {
     this.httpClient.start();
   }
 
-  public static ObjectMapper getObjectMapper() {
-    return OBJECT_MAPPER;
-  }
-
   @Override
   public void close() {
     Utils.closeQuietlyWithErrorLogged(this.httpClient);
