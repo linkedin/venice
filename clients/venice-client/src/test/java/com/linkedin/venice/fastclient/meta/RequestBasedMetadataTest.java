@@ -62,6 +62,7 @@ public class RequestBasedMetadataTest {
     doReturn(1L).when(clientConfig).getMetadataRefreshIntervalInSeconds();
     doReturn(storeName).when(clientConfig).getStoreName();
     doReturn(clusterStats).when(clientConfig).getClusterStats();
+    doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
     return clientConfig;
   }
 
