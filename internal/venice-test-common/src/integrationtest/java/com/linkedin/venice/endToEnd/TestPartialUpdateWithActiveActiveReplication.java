@@ -915,10 +915,6 @@ public class TestPartialUpdateWithActiveActiveReplication {
     // Put: add a full record
     String key1 = "key1";
     String regularFieldValue = "Foo";
-    Map<String, Integer> mapFieldValue = new HashMap<>();
-    mapFieldValue.put("one", 1);
-    mapFieldValue.put("two", 2);
-    mapFieldValue.put("three", 3);
     List<Integer> expectedArrayFieldVal = Arrays.asList(11, 22, 33);
     GenericRecord val1 = new GenericData.Record(valueSchema);
     val1.put(REGULAR_FIELD, regularFieldValue);
