@@ -269,8 +269,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       if (updateCache(false)) {
         if (routingStrategy instanceof HelixScatterGatherRoutingStrategy) {
           ((HelixScatterGatherRoutingStrategy) routingStrategy).updateHelixGroupInfo(helixGroupInfo);
-        } else {
-          routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
         }
       }
       isReady = true;
