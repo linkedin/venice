@@ -54,7 +54,7 @@ public class DataRecoveryClient {
       try {
         RegionPushDetailsResponse regionPushDetailsResponse = cli.getRegionPushDetails(s, false);
         String latestTimestamp = regionPushDetailsResponse.getRegionPushDetails().getPushStartTimestamp();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd-yyyy HH:mm:ss");
         LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, formatter);
         if (latestPushStartTime.compareTo(timestamp) > 0) {
           LOGGER.warn(

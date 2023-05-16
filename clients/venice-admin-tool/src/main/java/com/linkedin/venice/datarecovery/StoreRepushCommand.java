@@ -179,7 +179,7 @@ public class StoreRepushCommand extends Command {
     }
 
     public void setTimestamp(String timestamp) {
-      DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+      DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd-yyyy HH:mm:ss");
       LocalDateTime time = LocalDateTime.parse(timestamp, formatter);
       this.timestamp = time;
     }
