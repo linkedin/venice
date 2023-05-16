@@ -35,6 +35,9 @@ public class HttpConstants {
 
   public static final String VENICE_ALLOW_REDIRECT = "X-VENICE-ALLOW-REDIRECT";
 
+  public static final String VENICE_RESPONSE_TYPE = "X-VENICE-RESPONSE-TYPE";
+  public static final String VENICE_SUPPORTED_COMPUTATION_STRATEGY = "X-VENICE-SUPPORTED-COMPUTATION-STRATEGY";
+
   public static final int SC_MISDIRECTED_REQUEST = 421;
 
   private HttpConstants() {

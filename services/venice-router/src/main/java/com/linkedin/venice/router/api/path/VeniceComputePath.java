@@ -11,6 +11,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
@@ -22,6 +23,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
@@ -145,6 +147,29 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   @Override
   public final RequestType getStreamingRequestType() {
     return RequestType.COMPUTE_STREAMING;
+  }
+
+  public VeniceMultiGetPath toMultiGetPath() {
+    Map<RouterKey, MultiGetRouterRequestKeyV1> newRouterKeyMap = new HashMap<>();
+    for (Map.Entry<RouterKey, ComputeRouterRequestKeyV1> entry: routerKeyMap.entrySet()) {
+      ComputeRouterRequestKeyV1 computeRequestKey = entry.getValue();
+      newRouterKeyMap.put(
+          entry.getKey(),
+          new MultiGetRouterRequestKeyV1(
+              computeRequestKey.getKeyIndex(),
+              computeRequestKey.getKeyBytes(),
+              computeRequestKey.getPartitionId()));
+    }
+    VeniceMultiGetPath newPath = new VeniceMultiGetPath(
+        storeName,
+        versionNumber,
+        getResourceName(),
+        newRouterKeyMap,
+        isSmartLongTailRetryEnabled(),
+        getSmartLongTailRetryAbortThresholdMs(),
+        getLongTailRetryMaxRouteForMultiKeyReq());
+    newPath.setupRetryRelatedInfo(this);
+    return newPath;
   }
 
   /**

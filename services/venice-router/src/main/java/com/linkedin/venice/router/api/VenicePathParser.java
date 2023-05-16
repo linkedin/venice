@@ -10,6 +10,7 @@ import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
 import com.linkedin.alpini.router.api.ExtendedResourcePathParser;
 import com.linkedin.alpini.router.api.RouterException;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -18,6 +19,7 @@ import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.read.ComputationStrategy;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VeniceComputePath;
@@ -166,7 +168,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
         } else if (resourceType == RouterResourceType.TYPE_COMPUTE) {
           // read compute request
-          path = new VeniceComputePath(
+          VeniceComputePath computePath = new VeniceComputePath(
               storeName,
               version,
               resourceName,
@@ -177,6 +179,23 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               routerConfig.getSmartLongTailRetryAbortThresholdMs(),
               routerConfig.isComputeFastAvroEnabled(),
               routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
+          String supportedComputationStrategy =
+              request.headers().get(HttpConstants.VENICE_SUPPORTED_COMPUTATION_STRATEGY);
+          ComputationStrategy computationStrategy =
+              !storeRepository.isReadComputationEnabled(storeName) && supportedComputationStrategy != null
+                  ? ComputationStrategy.valueOf(Integer.parseInt(supportedComputationStrategy))
+                  : ComputationStrategy.SERVER_SIDE_COMPUTATION;
+          if (computationStrategy == ComputationStrategy.SERVER_SIDE_COMPUTATION) {
+            path = computePath;
+          } else if (computationStrategy == ComputationStrategy.CLIENT_SIDE_COMPUTATION) {
+            path = computePath.toMultiGetPath();
+          } else {
+            throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+                Optional.of(storeName),
+                Optional.empty(),
+                BAD_REQUEST,
+                "Unknown computation strategy: " + supportedComputationStrategy);
+          }
         } else {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
               Optional.of(storeName),

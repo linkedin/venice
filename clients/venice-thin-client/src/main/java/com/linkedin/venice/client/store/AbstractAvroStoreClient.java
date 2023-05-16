@@ -8,6 +8,7 @@ import static com.linkedin.venice.streaming.StreamingConstants.KEY_ID_FOR_STREAM
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
@@ -27,10 +28,16 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.ReadComputeOperator;
+import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.read.ComputationStrategy;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.schema.SchemaData;
@@ -67,8 +74,10 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
@@ -119,6 +128,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     COMPUTE_HEADER_MAP_V3.put(
         HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
+    COMPUTE_HEADER_MAP_V3.put(
+        HttpConstants.VENICE_SUPPORTED_COMPUTATION_STRATEGY,
+        Integer.toString(ComputationStrategy.CLIENT_SIDE_COMPUTATION.ordinal()));
 
     MULTI_GET_HEADER_MAP_FOR_STREAMING = new HashMap<>(MULTI_GET_HEADER_MAP);
     MULTI_GET_HEADER_MAP_FOR_STREAMING.put(HttpConstants.VENICE_STREAMING, "1");
@@ -814,6 +826,16 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     V deserialize(ENVELOPE envelope, CompressionStrategy compressionStrategy);
   }
 
+  private interface ResponseFormat<ENVELOPE, V> {
+    Function<Integer, ReadEnvelopeChunkedDeserializer<?>> envelopeDeserializerFunc();
+
+    DeserializerFunc<ENVELOPE, V> recordDeserializerFunc();
+
+    Function<ENVELOPE, Integer> indexRetrievalFunc();
+
+    Function<ENVELOPE, StreamingFooterRecordV1> streamingFooterRecordDeserializer();
+  }
+
   /**
    * Streaming callback for batch-get/compute.
    *
@@ -832,13 +854,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private class StoreClientStreamingCallback<ENVELOPE, K, V> implements TransportClientStreamingCallback {
     private final List<K> keyList;
     private final StreamingCallback<K, V> callback;
-    private final Function<Integer, ReadEnvelopeChunkedDeserializer<ENVELOPE>> envelopeDeserializerFunc;
-    private final DeserializerFunc<ENVELOPE, V> recordDeserializerFunc;
-    private final Function<ENVELOPE, Integer> indexRetrievalFunc;
-    private final Function<ENVELOPE, StreamingFooterRecordV1> streamingFooterRecordDeserializer;
+    private Function<Integer, ReadEnvelopeChunkedDeserializer<ENVELOPE>> envelopeDeserializerFunc;
+    private DeserializerFunc<ENVELOPE, V> recordDeserializerFunc;
+    private Function<ENVELOPE, Integer> indexRetrievalFunc;
+    private Function<ENVELOPE, StreamingFooterRecordV1> streamingFooterRecordDeserializer;
 
     private boolean isStreamingResponse = false;
     private int responseSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+    private int responseType = RequestType.SINGLE_GET.ordinal();
     private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     private ReadEnvelopeChunkedDeserializer<ENVELOPE> envelopeDeserializer = null;
     private List<CompletableFuture<Void>> deserializationFutures = new ArrayList<>();
@@ -851,6 +874,25 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     private final long preSubmitTimeInNS;
     private final Optional<ClientStats> clientStats;
     private final LongAdder deserializationTimeInNS = new LongAdder();
+
+    Function<RequestType, ResponseFormat<ENVELOPE, V>> responseFormatProvider;
+
+    public StoreClientStreamingCallback(
+        List<K> keyList,
+        StreamingCallback<K, V> callback,
+        Function<RequestType, ResponseFormat<ENVELOPE, V>> responseFormatProvider) {
+      this.keyList = keyList;
+      this.callback = callback;
+      this.preSubmitTimeInNS = System.nanoTime();
+      if (callback instanceof TrackingStreamingCallback) {
+        trackingStreamingCallback = Optional.of((TrackingStreamingCallback) callback);
+        this.clientStats = Optional.of(trackingStreamingCallback.get().getStats());
+      } else {
+        this.clientStats = Optional.empty();
+      }
+      this.receivedKeySet = new BitSet(keyList.size());
+      this.responseFormatProvider = responseFormatProvider;
+    }
 
     public StoreClientStreamingCallback(
         List<K> keyList,
@@ -883,6 +925,17 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       String schemaIdHeader = headers.get(HttpConstants.VENICE_SCHEMA_ID);
       if (schemaIdHeader != null) {
         responseSchemaId = Integer.parseInt(schemaIdHeader);
+      }
+      String responseTypeHeader = headers.get(HttpConstants.VENICE_RESPONSE_TYPE);
+      if (responseTypeHeader != null) {
+        responseType = Integer.parseInt(responseTypeHeader);
+      }
+      if (responseFormatProvider != null) {
+        ResponseFormat format = responseFormatProvider.apply(RequestType.valueOf(responseType));
+        this.envelopeDeserializerFunc = format.envelopeDeserializerFunc();
+        this.recordDeserializerFunc = format.recordDeserializerFunc();
+        this.indexRetrievalFunc = format.indexRetrievalFunc();
+        this.streamingFooterRecordDeserializer = format.streamingFooterRecordDeserializer();
       }
       envelopeDeserializer = envelopeDeserializerFunc.apply(responseSchemaId);
       String compressionHeader = headers.get(HttpConstants.VENICE_COMPRESSION_STRATEGY);
@@ -1063,13 +1116,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         stats -> stats.recordRequestSerializationTime(LatencyUtils.getLatencyInMS(preRequestSerializationNS)));
     Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
 
-    final Map<String, String> headerMap = new HashMap<>(MULTI_GET_HEADER_MAP_FOR_STREAMING);
+    Map<String, String> headerMap = new HashMap<>(MULTI_GET_HEADER_MAP_FOR_STREAMING);
     headerMap.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
 
-    transportClient.streamPost(
-        getStorageRequestPath(),
-        headerMap,
-        multiGetBody,
+    TransportClientStreamingCallback streamingCallback =
         new StoreClientStreamingCallback<>(keyList, callback, envelopeSchemaId -> {
           validateMultiGetResponseSchemaId(envelopeSchemaId);
           return new MultiGetResponseRecordV1ChunkedDeserializer();
@@ -1082,8 +1132,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
               deserializerCache.computeIfAbsent(envelope.schemaId, id -> getDataRecordDeserializer(id));
           ByteBuffer decompressedValue = decompressRecord(compressionStrategy, envelope.value);
           return recordDeserializer.deserialize(decompressedValue);
-        }, envelope -> envelope.keyIndex, envelope -> streamingFooterRecordDeserializer.deserialize(envelope.value)),
-        keyList.size());
+        }, envelope -> envelope.keyIndex, envelope -> streamingFooterRecordDeserializer.deserialize(envelope.value));
+
+    transportClient.streamPost(getStorageRequestPath(), headerMap, multiGetBody, streamingCallback, keyList.size());
   }
 
   @Override
@@ -1125,10 +1176,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     clientStats.ifPresent(
         stats -> stats.recordRequestSerializationTime(LatencyUtils.getLatencyInMS(preRequestSerializationNS)));
 
-    final Map<String, String> headerMap =
-        (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
-            ? new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V2)
-            : new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V3);
+    Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
+        ? new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V2)
+        : new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V3);
     int schemaId = getSchemaReader().getValueSchemaId(computeRequestWrapper.getValueSchema());
     headerMap.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
     headerMap.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));
@@ -1136,26 +1186,151 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
         getComputeResultRecordDeserializer(resultSchema);
 
+    TransportClientStreamingCallback streamingCallback =
+        new StoreClientStreamingCallback<>(keyList, callback, responseType -> {
+          if (responseType == RequestType.COMPUTE || responseType == RequestType.COMPUTE_STREAMING) {
+            return new ResponseFormat<SpecificRecord, ComputeGenericRecord>() {
+              @Override
+              public Function<Integer, ReadEnvelopeChunkedDeserializer<?>> envelopeDeserializerFunc() {
+                return envelopeSchemaId -> {
+                  validateComputeResponseSchemaId(envelopeSchemaId);
+                  return new ComputeResponseRecordV1ChunkedDeserializer();
+                };
+              }
+
+              @Override
+              public DeserializerFunc<SpecificRecord, ComputeGenericRecord> recordDeserializerFunc() {
+                return (rawEnvelope, compressionStrategy) -> {
+                  ComputeResponseRecordV1 envelope = (ComputeResponseRecordV1) rawEnvelope;
+                  // Compute doesn't support compression
+                  if (!envelope.value.hasRemaining()) {
+                    // Safeguard to handle empty value, which indicates non-existing key.
+                    return null;
+                  }
+                  return new ComputeGenericRecord(
+                      computeResultRecordDeserializer.deserialize(envelope.value),
+                      computeRequestWrapper.getValueSchema());
+                };
+              }
+
+              @Override
+              public Function<SpecificRecord, Integer> indexRetrievalFunc() {
+                return envelope -> ((ComputeResponseRecordV1) envelope).keyIndex;
+              }
+
+              @Override
+              public Function<SpecificRecord, StreamingFooterRecordV1> streamingFooterRecordDeserializer() {
+                return envelope -> streamingFooterRecordDeserializer
+                    .deserialize(((ComputeResponseRecordV1) envelope).value);
+              }
+            };
+          } else if (responseType == RequestType.MULTI_GET || responseType == RequestType.MULTI_GET_STREAMING) {
+            return new ResponseFormat<SpecificRecord, ComputeGenericRecord>() {
+              Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
+              Map<String, Object> globalContext = new HashMap<>();
+
+              @Override
+              public Function<Integer, ReadEnvelopeChunkedDeserializer<?>> envelopeDeserializerFunc() {
+                return envelopeSchemaId -> {
+                  validateMultiGetResponseSchemaId(envelopeSchemaId);
+                  return new MultiGetResponseRecordV1ChunkedDeserializer();
+                };
+              }
+
+              @Override
+              public DeserializerFunc<SpecificRecord, ComputeGenericRecord> recordDeserializerFunc() {
+                return (rawEnvelope, compressionStrategy) -> {
+                  MultiGetResponseRecordV1 envelope = (MultiGetResponseRecordV1) rawEnvelope;
+                  if (!envelope.value.hasRemaining()) {
+                    // Safeguard to handle empty value, which indicates non-existing key.
+                    return null;
+                  }
+                  RecordDeserializer<V> recordDeserializer =
+                      deserializerCache.computeIfAbsent(envelope.schemaId, id -> getDataRecordDeserializer(id));
+                  ByteBuffer decompressedValue = decompressRecord(compressionStrategy, envelope.value);
+                  GenericRecord result = getResultOfComputeOperations(
+                      computeRequestWrapper.getOperations(),
+                      computeRequestWrapper.getValueSchema(),
+                      (GenericRecord) recordDeserializer.deserialize(decompressedValue),
+                      globalContext,
+                      computeRequestWrapper.getComputeRequestVersion(),
+                      resultSchema);
+                  return new ComputeGenericRecord(result, computeRequestWrapper.getValueSchema());
+                };
+              }
+
+              @Override
+              public Function<SpecificRecord, Integer> indexRetrievalFunc() {
+                return envelope -> ((MultiGetResponseRecordV1) envelope).keyIndex;
+              }
+
+              @Override
+              public Function<SpecificRecord, StreamingFooterRecordV1> streamingFooterRecordDeserializer() {
+                return envelope -> streamingFooterRecordDeserializer
+                    .deserialize(((MultiGetResponseRecordV1) envelope).value);
+              }
+            };
+          } else {
+            throw new VeniceException("Unexpected response type: " + responseType);
+          }
+        });
+
     transportClient.streamPost(
         getComputeRequestPath(),
         headerMap,
         serializedFullComputeRequest,
-        new StoreClientStreamingCallback<>(keyList, callback, envelopeSchemaId -> {
-          validateComputeResponseSchemaId(envelopeSchemaId);
-          return new ComputeResponseRecordV1ChunkedDeserializer();
-        },
-            // Compute doesn't support compression
-            (envelope, compressionStrategy) -> {
-              if (!envelope.value.hasRemaining()) {
-                // Safeguard to handle empty value, which indicates non-existing key.
-                return null;
-              }
-              return new ComputeGenericRecord(
-                  computeResultRecordDeserializer.deserialize(envelope.value),
-                  computeRequestWrapper.getValueSchema());
-            },
-            envelope -> envelope.keyIndex,
-            envelope -> streamingFooterRecordDeserializer.deserialize(envelope.value)),
+        streamingCallback,
         keyList.size());
+  }
+
+  private GenericRecord getResultOfComputeOperations(
+      List<ComputeOperation> operations,
+      Schema valueSchema,
+      GenericRecord valueRecord,
+      Map<String, Object> globalContext,
+      int computeRequestVersion,
+      Schema computeResultSchema) {
+
+    if (valueRecord == null) {
+      return null;
+    }
+
+    Map<String, String> computationErrorMap = new HashMap<>();
+    GenericRecord resultRecord = new GenericData.Record(computeResultSchema);
+
+    // execute each operation
+    for (ComputeOperation computeOperation: operations) {
+      ReadComputeOperator operator = ComputeOperationType.valueOf(computeOperation).getOperator();
+      String operatorFieldName = operator.getOperatorFieldName(computeOperation);
+      String errorMessage =
+          ComputeOperationUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, operatorFieldName)
+              .orElse(null);
+      if (errorMessage != null) {
+        operator.putDefaultResult(resultRecord, operator.getResultFieldName(computeOperation));
+        computationErrorMap.put(operator.getResultFieldName(computeOperation), errorMessage);
+        continue;
+      }
+      operator.compute(
+          computeRequestVersion,
+          computeOperation,
+          valueRecord,
+          resultRecord,
+          computationErrorMap,
+          globalContext);
+    }
+
+    Schema.Field computationErrorMapField =
+        computeResultSchema.getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
+    if (computationErrorMapField != null && resultRecord.get(computationErrorMapField.pos()) == null) {
+      resultRecord.put(computationErrorMapField.pos(), computationErrorMap);
+    }
+
+    // fill empty fields in result schema
+    for (Schema.Field field: computeResultSchema.getFields()) {
+      if (resultRecord.get(field.pos()) == null) {
+        resultRecord.put(field.pos(), valueRecord.get(field.name()));
+      }
+    }
+    return resultRecord;
   }
 }

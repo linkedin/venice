@@ -27,12 +27,13 @@ import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
-import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
 import org.apache.avro.Schema;
+import org.apache.commons.lang.ArrayUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -43,7 +44,7 @@ public class TestVeniceComputePath {
       + "         { \"name\": \"id\", \"type\": \"string\" },       "
       + "         { \"name\": \"member_score\", \"type\": \"double\" }        " + "  ]       " + " }       ";
 
-  private ComputeRequestV1 getComputeRequest() {
+  private static ComputeRequestV1 getComputeRequest() {
     DotProduct dotProduct = new DotProduct();
     dotProduct.field = "member_feature";
     List<Float> featureVector = new ArrayList<>(3);
@@ -66,14 +67,28 @@ public class TestVeniceComputePath {
     return record;
   }
 
-  private BasicFullHttpRequest getComputeHttpRequest(String resourceName, byte[] content, int version) {
+  private static BasicFullHttpRequest getComputeHttpRequest(String resourceName, byte[] content, int apiVersion) {
     String uri = "/compute/" + resourceName;
-
     BasicFullHttpRequest request =
         new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, uri, Unpooled.wrappedBuffer(content), 0, 0);
-    request.headers().add(HttpConstants.VENICE_API_VERSION, version);
-
+    request.headers().add(HttpConstants.VENICE_API_VERSION, apiVersion);
     return request;
+  }
+
+  static BasicFullHttpRequest getComputeHttpRequest(
+      String resourceName,
+      ComputeRequestV1 request,
+      List<ByteBuffer> keys,
+      int apiVersion) {
+    RecordSerializer<ComputeRequestV1> computeRequestSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV1.getClassSchema());
+    byte[] serializedComputeRequest = computeRequestSerializer.serialize(request);
+
+    RecordSerializer<ByteBuffer> keySerializer = SerializerDeserializerFactory
+        .getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
+    byte[] serializedKeys = keySerializer.serializeObjects(keys);
+
+    return getComputeHttpRequest(resourceName, ArrayUtils.addAll(serializedComputeRequest, serializedKeys), apiVersion);
   }
 
   private VenicePartitionFinder getVenicePartitionFinder(int partitionId) {
@@ -96,28 +111,13 @@ public class TestVeniceComputePath {
       keys.add(ByteBuffer.wrap((keyPrefix + i).getBytes()));
     }
     ComputeRequestV1 computeRequest = getComputeRequest();
-
     RecordSerializer<ComputeRequestV1> computeRequestSerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV1.getClassSchema());
-    byte[] computeRequestInBytes = computeRequestSerializer.serialize(computeRequest);
-    int expectedLength = computeRequestInBytes.length;
-
-    RecordSerializer<ByteBuffer> keySerializer = SerializerDeserializerFactory
-        .getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
-    byte[] keysInBytes = keySerializer.serializeObjects(keys);
-
-    ByteArrayOutputStream output = new ByteArrayOutputStream();
-    try {
-      output.write(computeRequestInBytes);
-      output.write(keysInBytes);
-    } catch (Exception e) {
-      e.printStackTrace();
-      Assert.fail("Failed to write bytes to output stream", e);
-    }
+    int expectedLength = computeRequestSerializer.serialize(computeRequest).length;
 
     // test all compute request versions
-    for (int version = 1; version <= LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST; version++) {
-      BasicFullHttpRequest request = getComputeHttpRequest(resourceName, output.toByteArray(), version);
+    for (int apiVersion = 1; apiVersion <= LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST; apiVersion++) {
+      BasicFullHttpRequest request = getComputeHttpRequest(resourceName, computeRequest, keys, apiVersion);
 
       VeniceComputePath computePath = new VeniceComputePath(
           storeName,
@@ -198,5 +198,59 @@ public class TestVeniceComputePath {
     ComputeOperation computeOperation2 = (ComputeOperation) computeRequestV2.operations.get(1);
     Assert.assertEquals(computeOperation2.operationType, ComputeOperationType.COSINE_SIMILARITY.getValue());
     Assert.assertEquals(computeOperation2.operation, cosineSimilarity);
+  }
+
+  @Test
+  void testToMultiGetPath() throws RouterException {
+    String storeName = Utils.getUniqueString("test_store");
+    int versionNumber = 1;
+    String resourceName = storeName + "_v" + versionNumber;
+    List<ByteBuffer> keys = new ArrayList<>();
+    for (int i = 0; i < 5; ++i) {
+      keys.add(ByteBuffer.wrap(("key_" + i).getBytes()));
+    }
+
+    int maxKeyCount = 100;
+    boolean smartLongTailRetryEnabled = false;
+    int smartLongTailRetryAbortThresholdMs = -1;
+    int longTailRetryMaxRouteForMultiKeyReq = 1;
+
+    VeniceMultiGetPath multiGetPath = new VeniceMultiGetPath(
+        storeName,
+        versionNumber,
+        resourceName,
+        TestVeniceMultiGetPath.getMultiGetHttpRequest(resourceName, keys, Optional.empty()),
+        getVenicePartitionFinder(-1),
+        maxKeyCount,
+        smartLongTailRetryEnabled,
+        smartLongTailRetryAbortThresholdMs,
+        null,
+        longTailRetryMaxRouteForMultiKeyReq);
+    byte[] serializedMultiGetRequest = multiGetPath.serializeRouterRequest();
+
+    VeniceComputePath computePath = new VeniceComputePath(
+        storeName,
+        LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST,
+        resourceName,
+        getComputeHttpRequest(resourceName, getComputeRequest(), keys, LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST),
+        getVenicePartitionFinder(-1),
+        maxKeyCount,
+        smartLongTailRetryEnabled,
+        smartLongTailRetryAbortThresholdMs,
+        false,
+        longTailRetryMaxRouteForMultiKeyReq);
+    VeniceMultiGetPath syntheticMultiGetPath = computePath.toMultiGetPath();
+    Assert.assertEquals(syntheticMultiGetPath.serializeRouterRequest(), serializedMultiGetRequest);
+    Assert
+        .assertEquals(syntheticMultiGetPath.isSmartLongTailRetryEnabled(), multiGetPath.isSmartLongTailRetryEnabled());
+    Assert.assertEquals(
+        syntheticMultiGetPath.getSmartLongTailRetryAbortThresholdMs(),
+        multiGetPath.getSmartLongTailRetryAbortThresholdMs());
+    Assert.assertEquals(
+        syntheticMultiGetPath.getSmartLongTailRetryAbortThresholdMs(),
+        multiGetPath.getSmartLongTailRetryAbortThresholdMs());
+    Assert.assertEquals(
+        syntheticMultiGetPath.getLongTailRetryMaxRouteForMultiKeyReq(),
+        multiGetPath.getLongTailRetryMaxRouteForMultiKeyReq());
   }
 }

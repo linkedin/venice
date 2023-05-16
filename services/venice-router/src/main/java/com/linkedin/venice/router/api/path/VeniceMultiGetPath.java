@@ -77,7 +77,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
     initialize(storeName, resourceName, keys, partitionFinder, maxKeyCount, stats);
   }
 
-  private VeniceMultiGetPath(
+  VeniceMultiGetPath(
       String storeName,
       int versionNumber,
       String resourceName,

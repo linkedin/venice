@@ -127,7 +127,8 @@ public class TestStreaming {
     veniceCluster.useControllerClient(
         c -> c.updateStore(
             storeName,
-            new UpdateStoreQueryParams().setReadComputationEnabled(true)
+            new UpdateStoreQueryParams()
+                // .setReadComputationEnabled(true)
                 .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)));
 
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
@@ -343,9 +344,13 @@ public class TestStreaming {
         Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_latency.99thPercentile").value() > 0);
         Assert
             .assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_fanout_request_count.Avg").value() > 0);
-        Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() > 0);
-        Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_latency.99thPercentile").value() > 0);
-        Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_fanout_request_count.Avg").value() > 0);
+        // commented out because compute request is converted to multiget in this test.
+        // Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() >
+        // 0);
+        // Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_latency.99thPercentile").value() >
+        // 0);
+        // Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_fanout_request_count.Avg").value() >
+        // 0);
       }
     } finally {
       Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithHttpAsyncClient);

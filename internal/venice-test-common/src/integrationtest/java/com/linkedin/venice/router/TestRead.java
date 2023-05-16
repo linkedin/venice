@@ -247,7 +247,7 @@ public abstract class TestRead {
     controllerClient.updateStore(
         storeName,
         new UpdateStoreQueryParams().setReadQuotaInCU(readQuota)
-            .setReadComputationEnabled(true)
+            // .setReadComputationEnabled(true)
             .setBatchGetLimit(maxKeyLimit));
   }
 
@@ -390,7 +390,8 @@ public abstract class TestRead {
       // following 2 asserts fails with HTTP/2 probably due to http2 frames, needs to validate on venice-p
       if (!isRouterHttp2ClientEnabled()) {
         Assert.assertEquals(getMaxServerMetricValue(".total--multiget_request_part_count.Max"), 1.0);
-        Assert.assertEquals(getMaxServerMetricValue(".total--compute_request_part_count.Max"), 1.0);
+        // commented out because compute request is converted to multiget in this test.
+        // Assert.assertEquals(getMaxServerMetricValue(".total--compute_request_part_count.Max"), 1.0);
       }
       // Verify storage node metrics
       Assert.assertTrue(getMaxServerMetricValue(".total--records_consumed.Rate") > 0.0);
