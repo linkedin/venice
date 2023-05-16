@@ -340,7 +340,7 @@ public enum Command {
   ),
   EXECUTE_DATA_RECOVERY(
       "execute-data-recovery", "Execute data recovery for a group of stores",
-      new Arg[] { URL, RECOVERY_COMMAND, STORES, SOURCE_FABRIC, DATETIME },
+      new Arg[] { URL, RECOVERY_COMMAND, STORES, SOURCE_FABRIC, DATETIME, CLUSTER },
       new Arg[] { EXTRA_COMMAND_ARGS, DEBUG, NON_INTERACTIVE }
   ),
   ESTIMATE_DATA_RECOVERY_TIME(

@@ -3,10 +3,13 @@ package com.linkedin.venice.datarecovery;
 import static com.linkedin.venice.datarecovery.DataRecoveryWorker.INTERVAL_UNSET;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
+import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
+import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
+import java.util.Optional;
 import java.util.Scanner;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
@@ -49,12 +52,18 @@ public class DataRecoveryClient {
     return monitor;
   }
 
-  public void filterStoresWithOngoingRepush(Set<String> storesList, ControllerClient cli, LocalDateTime timestamp) {
+  public void filterStoresWithOngoingRepush(Set<String> storesList, StoreRepushCommand.Params params) {
+    String url = params.getUrl();
+    ControllerClient cli = params.getPCtrlCliWithoutCluster();
+    LocalDateTime timestamp = params.getTimestamp();
+    String sourceFabric = params.getSourceFabric();
     for (String s: storesList) {
-      try {
-        RegionPushDetailsResponse regionPushDetailsResponse = cli.getRegionPushDetails(s, false);
-        String latestTimestamp = regionPushDetailsResponse.getRegionPushDetails().getPushStartTimestamp();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd-yyyy HH:mm:ss");
+      String clusterName = cli.discoverCluster(s).getCluster();
+      try (ControllerClient parentCtrlCli = new ControllerClient(clusterName, url, Optional.empty())) {
+        StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(s, false);
+        RegionPushDetails regionPushDetails = storeHealthInfo.getRegionPushDetails().get(sourceFabric);
+        String latestTimestamp = regionPushDetails.getPushStartTimestamp();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSS");
         LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, formatter);
         if (latestPushStartTime.compareTo(timestamp) > 0) {
           LOGGER.warn(
@@ -71,7 +80,7 @@ public class DataRecoveryClient {
 
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
-    filterStoresWithOngoingRepush(storeNames, cmdParams.getPCtrlCliWithoutCluster(), cmdParams.getTimestamp());
+    filterStoresWithOngoingRepush(storeNames, cmdParams);
     if (storeNames == null || storeNames.isEmpty()) {
       LOGGER.warn("store list is empty, exit.");
       return;
@@ -139,7 +148,7 @@ public class DataRecoveryClient {
     private Set<String> calculateRecoveryStoreNames(String multiStores) {
       Set<String> storeNames = null;
       if (multiStores != null && !multiStores.isEmpty()) {
-        storeNames = Utils.parseCommaSeparatedStringToSet(multiStores);
+        storeNames = new HashSet<>(Utils.parseCommaSeparatedStringToSet(multiStores));
       }
       return storeNames;
     }
