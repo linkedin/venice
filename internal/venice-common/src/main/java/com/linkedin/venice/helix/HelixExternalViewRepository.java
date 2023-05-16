@@ -17,10 +17,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.PropertyType;
 import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
 import org.apache.helix.api.listeners.BatchMode;
+import org.apache.helix.api.listeners.IdealStateChangeListener;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.spectator.RoutingTableSnapshot;
@@ -32,8 +34,10 @@ import org.apache.logging.log4j.Logger;
  * Extend HelixBaseRoutingRepository to leverage external view data.
  */
 @BatchMode
-public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
+public class HelixExternalViewRepository extends HelixBaseRoutingRepository implements IdealStateChangeListener {
   private static final Logger LOGGER = LogManager.getLogger(HelixExternalViewRepository.class);
+
+  private volatile Map<String, Integer> resourceToIdealPartitionCountMap;
 
   private static final String ONLINE_OFFLINE_VENICE_STATE_FILLER = "N/A";
 
@@ -79,6 +83,27 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
       assignment.addPartition(new Partition(HelixUtils.getPartitionId(partition), stateToInstanceMap));
     }
     return assignment;
+  }
+
+  @Override
+  public void onIdealStateChange(List<IdealState> idealStates, NotificationContext changeContext) {
+    refreshResourceToIdealPartitionCountMap(idealStates);
+  }
+
+  public void refresh() {
+    try {
+      manager.addIdealStateChangeListener(this);
+      super.refresh();
+    } catch (Exception e) {
+      String errorMessage = "Cannot refresh routing table from Helix for cluster " + manager.getClusterName();
+      LOGGER.error(errorMessage, e);
+      throw new VeniceException(errorMessage, e);
+    }
+  }
+
+  public void clear() {
+    manager.removeListener(keyBuilder.idealStates(), this);
+    super.clear();
   }
 
   @Override
@@ -208,6 +233,17 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository {
     for (String kafkaTopic: updates.getDeletedResource()) {
       listenerManager.trigger(kafkaTopic, listener -> listener.onRoutingDataDeleted(kafkaTopic));
     }
+  }
+
+  private void refreshResourceToIdealPartitionCountMap(List<IdealState> idealStates) {
+    HashMap<String, Integer> partitionCountMap = new HashMap<>();
+    for (IdealState idealState: idealStates) {
+      // Ideal state could be null, if a resource has already been deleted.
+      if (idealState != null) {
+        partitionCountMap.put(idealState.getResourceName(), idealState.getNumPartitions());
+      }
+    }
+    this.resourceToIdealPartitionCountMap = Collections.unmodifiableMap(partitionCountMap);
   }
 
   protected void onCustomizedViewDataChange(RoutingTableSnapshot routingTableSnapshot) {

@@ -1,7 +1,11 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
-import static java.lang.Thread.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA_ID;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
+import static java.lang.Thread.currentThread;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClient;
@@ -10,6 +14,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
@@ -19,6 +24,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
@@ -160,7 +166,9 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
         Thread.currentThread().interrupt();
       }
     }
-    scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
+    // It might be helpful to add a random delay to offset the schema-refresh. However, this might be a premature
+    // optimization since given a large-enough fleet, the requests should get distributed inherently
+    scheduler.scheduleAtFixedRate(this::refresh, refreshIntervalInSeconds, refreshIntervalInSeconds, TimeUnit.SECONDS);
   }
 
   @Override
@@ -191,6 +199,18 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
       latestValueSchemaId = schemas.get().getMaxValueSchemaId();
     }
     return latestValueSchemaId;
+  }
+
+  @Override
+  public Schema getUpdateSchema(int valueSchemaId) {
+    // Ideally, we can fetch this information from the SchemaData object, but we're not yet populating these schemas
+    throw new VeniceUnsupportedOperationException("getUpdateSchema");
+  }
+
+  @Override
+  public DerivedSchemaEntry getLatestUpdateSchema() {
+    // Ideally, we can fetch this information from the SchemaData object, but we're not yet populating these schemas
+    throw new VeniceUnsupportedOperationException("getLatestUpdateSchema");
   }
 
   @Override

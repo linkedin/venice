@@ -323,9 +323,6 @@ public class TestPushJobWithNativeReplication {
             Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
           }
 
-          // Setup meta system store for Da Vinci usage.
-          TestUtils.createMetaSystemStore(parentControllerClient, storeName, Optional.of(LOGGER));
-
           // Test Da-vinci client is able to consume from NR region which is consuming remotely
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
 

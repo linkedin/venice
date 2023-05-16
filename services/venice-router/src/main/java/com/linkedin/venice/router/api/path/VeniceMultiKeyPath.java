@@ -6,7 +6,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
-import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
@@ -14,8 +14,6 @@ import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import java.nio.ByteBuffer;
 import java.util.Collection;
@@ -32,63 +30,67 @@ import org.apache.http.entity.ByteArrayEntity;
 public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   protected int keyNum;
   protected final Map<RouterKey, K> routerKeyMap;
-  protected final Map<Integer, RouterKey> keyIdxToRouterKey;
   private final int longTailRetryMaxRouteForMultiKeyReq;
   private AtomicInteger currentAllowedRetryRouteCnt = new AtomicInteger(0);
 
   public VeniceMultiKeyPath(
+      String storeName,
+      int versionNumber,
       String resourceName,
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
       int longTailRetryMaxRouteForMultiKeyReq) {
     // HashMap's performance is better than TreeMap
     this(
+        storeName,
+        versionNumber,
         resourceName,
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
-        new HashMap<>(),
         new HashMap<>(),
         longTailRetryMaxRouteForMultiKeyReq);
   }
 
   public VeniceMultiKeyPath(
+      String storeName,
+      int versionNumber,
       String resourceName,
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
       Map<RouterKey, K> routerKeyMap,
-      Map<Integer, RouterKey> keyIdxToRouterKey,
       int longTailRetryMaxRouteForMultiKeyReq) {
-    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
+    super(storeName, versionNumber, resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
     this.keyNum = routerKeyMap.size();
     this.routerKeyMap = routerKeyMap;
-    this.keyIdxToRouterKey = keyIdxToRouterKey;
     this.longTailRetryMaxRouteForMultiKeyReq = longTailRetryMaxRouteForMultiKeyReq;
   }
 
   /**
    * Fill the router key map and the index2routerKey map.
    *
+   * @param storeName
    * @param resourceName
-   * @param keys Multiple keys from client request; keys have been deserialized to ByteBuffer
+   * @param keys            Multiple keys from client request; keys have been deserialized to ByteBuffer
    * @param partitionFinder
    * @param maxKeyCount
    * @throws RouterException
    */
   public void initialize(
+      String storeName,
       String resourceName,
       Iterable<ByteBuffer> keys,
       VenicePartitionFinder partitionFinder,
       int maxKeyCount,
-      Optional<RouterStats<AggRouterHttpRequestStats>> stats) throws RouterException {
+      RouterStats<AggRouterHttpRequestStats> stats) throws RouterException {
     keyNum = 0;
     int keyIdx = 0;
-    int partitionNum = -1;
-    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-
+    int partitionNum;
+    VenicePartitioner partitioner;
     try {
       partitionNum = partitionFinder.getNumPartitions(resourceName);
+      partitioner = partitionFinder.findPartitioner(getStoreName(), getVersionNumber());
     } catch (VeniceNoHelixResourceException e) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTrackingResourceNotFound(
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
           Optional.of(getStoreName()),
           Optional.of(RequestType.COMPUTE),
           e.getHttpResponseStatus(),
@@ -99,24 +101,14 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
       RouterKey routerKey = new RouterKey(key);
 
       keyNum++;
-      this.keyIdxToRouterKey.put(keyIdx, routerKey);
 
-      if (stats.isPresent()) {
-        stats.get().getStatsByType(RequestType.MULTI_GET).recordKeySize(storeName, routerKey.getKeySize());
+      if (stats != null) {
+        stats.getStatsByType(RequestType.MULTI_GET).recordKeySize(storeName, routerKey.getKeySize());
       }
 
       // partition lookup
-      int partitionId;
-      try {
-        partitionId = partitionFinder.findPartitionNumber(routerKey, partitionNum, getStoreName(), getVersionNumber());
-        routerKey.setPartitionId(partitionId);
-      } catch (VeniceNoHelixResourceException e) {
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(getStoreName()),
-            Optional.of(RequestType.COMPUTE),
-            e.getHttpResponseStatus(),
-            e.getMessage());
-      }
+      int partitionId = partitioner.getPartitionId(routerKey.getKeyBuffer(), partitionNum);
+      routerKey.setPartitionId(partitionId);
       K routerRequestKey = createRouterRequestKey(key, keyIdx, partitionId);
       this.routerKeyMap.put(routerKey, routerRequestKey);
       ++keyIdx;
@@ -163,12 +155,10 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
           "RouterKey: " + s + " should exist in the original path");
     }
     Map<RouterKey, K> newRouterKeyMap = new HashMap<>();
-    Map<Integer, RouterKey> newKeyIdxToRouterKey = new HashMap<>();
 
     newRouterKeyMap.put(s, routerRequestKey);
-    newKeyIdxToRouterKey.put(getKeyIndex(routerRequestKey), s);
 
-    return fixRetryRequestForSubPath(newRouterKeyMap, newKeyIdxToRouterKey);
+    return fixRetryRequestForSubPath(newRouterKeyMap);
   }
 
   /**
@@ -182,8 +172,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
    */
   @Override
   public VenicePath substitutePartitionKey(@Nonnull Collection<RouterKey> s) {
-    Map<RouterKey, K> newRouterKeyMap = new HashMap<>();
-    Map<Integer, RouterKey> newKeyIdxToRouterKey = new HashMap<>();
+    Map<RouterKey, K> newRouterKeyMap = new HashMap<>(s.size());
     for (RouterKey key: s) {
       /**
        * Using {@link Map#get(Object)} and checking whether it is null is faster than the following statements:
@@ -206,10 +195,9 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
       }
 
       newRouterKeyMap.put(key, routerRequestKey);
-      newKeyIdxToRouterKey.put(getKeyIndex(routerRequestKey), key);
     }
 
-    return fixRetryRequestForSubPath(newRouterKeyMap, newKeyIdxToRouterKey);
+    return fixRetryRequestForSubPath(newRouterKeyMap);
   }
 
   @Override
@@ -232,13 +220,8 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   }
 
   @Override
-  public ByteBuf getRequestBody() {
-    return Unpooled.wrappedBuffer(serializeRouterRequest());
-  }
-
-  @Override
-  public Optional<byte[]> getBody() {
-    return Optional.of(serializeRouterRequest());
+  public byte[] getBody() {
+    return serializeRouterRequest();
   }
 
   public int getLongTailRetryMaxRouteForMultiKeyReq() {
@@ -280,21 +263,10 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   protected abstract K createRouterRequestKey(ByteBuffer key, int keyIdx, int partitionId);
 
   /**
-   *
-   * @param routerRequestKey
-   * @return the index of key
-   */
-  protected abstract int getKeyIndex(K routerRequestKey);
-
-  /**
-   *
    * @param routerKeyMap
-   * @param keyIdxToRouterKey
    * @return a sub-path with a new set of keys
    */
-  protected abstract VenicePath fixRetryRequestForSubPath(
-      Map<RouterKey, K> routerKeyMap,
-      Map<Integer, RouterKey> keyIdxToRouterKey);
+  protected abstract VenicePath fixRetryRequestForSubPath(Map<RouterKey, K> routerKeyMap);
 
   /**
    * For multi-get requests, simply serialize the set of RouterKey to bytes;

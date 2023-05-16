@@ -131,7 +131,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
   protected final List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
 
-  private RocksDBSstFileWriter rocksDBSstFileWritter;
+  private RocksDBSstFileWriter rocksDBSstFileWriter = null;
 
   protected RocksDBStoragePartition(
       StoragePartitionConfig storagePartitionConfig,
@@ -182,7 +182,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
     if (deferredWrite) {
-      this.rocksDBSstFileWritter = new RocksDBSstFileWriter(
+      this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
           storeName,
           partitionId,
           dbDir,
@@ -344,6 +344,16 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
+  public boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
+    makeSureRocksDBIsStillOpen();
+    if (!deferredWrite) {
+      LOGGER.info("checkDatabaseIntegrity will do nothing since 'deferredWrite' is disabled");
+      return true;
+    }
+    return rocksDBSstFileWriter.checkDatabaseIntegrity(checkpointedInfo);
+  }
+
+  @Override
   public synchronized void beginBatchWrite(
       Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> expectedChecksumSupplier) {
@@ -352,7 +362,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
     }
-    rocksDBSstFileWritter.open(checkpointedInfo, expectedChecksumSupplier);
+    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier);
   }
 
   @Override
@@ -372,7 +382,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * Note: this function should be invoked after {@link #sync()} to make sure
      * the last SST file written is finished.
      */
-    rocksDBSstFileWritter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
+    rocksDBSstFileWriter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
   }
 
   @Override
@@ -390,7 +400,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     try {
       if (deferredWrite) {
-        rocksDBSstFileWritter.put(key, valueBuffer);
+        rocksDBSstFileWriter.put(key, valueBuffer);
       } else {
         rocksDB.put(
             writeOptions,
@@ -502,7 +512,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (!deferredWrite) {
       return true;
     }
-    return rocksDBSstFileWritter.validateBatchIngestion();
+    return rocksDBSstFileWriter.validateBatchIngestion();
   }
 
   private ReadOptions getReadOptionsForIteration(byte[] keyPrefix) {
@@ -583,19 +593,27 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       return Collections.emptyMap();
     }
 
-    return rocksDBSstFileWritter.sync();
+    return rocksDBSstFileWriter.sync();
   }
 
-  private void removeDirWithTwoLayers(String fullPath) {
+  public void deleteFilesInDirectory(String fullPath) {
     File dir = new File(fullPath);
     if (dir.exists()) {
-      // Remove the files inside first
+      // Remove the files inside
       Arrays.stream(dir.list()).forEach(file -> {
         if (!(new File(fullPath, file).delete())) {
           LOGGER.warn("Failed to remove file: {} in dir: {}", file, fullPath);
         }
       });
-      // Remove file directory
+    }
+  }
+
+  private void deleteDirectory(String fullPath) {
+    // Remove the files inside the directory
+    deleteFilesInDirectory(fullPath);
+    // Remove the directory
+    File dir = new File(fullPath);
+    if (dir.exists()) {
       if (!dir.delete()) {
         LOGGER.warn("Failed to remove dir: {}", fullPath);
       }
@@ -616,26 +634,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * To avoid resource leaking, we will clean up all the database files anyway.
      */
     // Remove extra SST files first
-    deleteSSTFiles(fullPathForTempSSTFileDir);
+    deleteFilesInDirectory(fullPathForTempSSTFileDir);
     // Remove partition directory
-    removeDirWithTwoLayers(fullPathForPartitionDB);
+    deleteDirectory(fullPathForPartitionDB);
     LOGGER.info("RocksDB for store: {}, partition: {} was dropped.", storeName, partitionId);
-  }
-
-  public void deleteSSTFiles(String fullPathForTempSSTFile) {
-    File dir = new File(fullPathForTempSSTFile);
-    if (dir.exists()) {
-      // Remove the files inside first
-      Arrays.stream(dir.list()).forEach(file -> {
-        if (!(new File(fullPathForTempSSTFile, file).delete())) {
-          LOGGER.warn("Failed to remove file: {} in dir: {} ", file, fullPathForTempSSTFile);
-        }
-      });
-      // Remove file directory
-      if (!dir.delete()) {
-        LOGGER.warn("Failed to remove dir: {}", fullPathForTempSSTFile);
-      }
-    }
   }
 
   @Override
@@ -659,7 +661,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       envOptions.close();
     }
     if (deferredWrite) {
-      rocksDBSstFileWritter.close();
+      rocksDBSstFileWriter.close();
     }
     options.close();
     if (writeOptions != null) {
@@ -773,5 +775,15 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   protected Options getOptions() {
     return options;
+  }
+
+  // Visible for testing
+  public String getFullPathForTempSSTFileDir() {
+    return fullPathForTempSSTFileDir;
+  }
+
+  // Visible for testing
+  public RocksDBSstFileWriter getRocksDBSstFileWriter() {
+    return rocksDBSstFileWriter;
   }
 }

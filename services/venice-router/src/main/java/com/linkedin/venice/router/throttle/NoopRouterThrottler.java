@@ -45,12 +45,8 @@ public class NoopRouterThrottler
   }
 
   private void buildStoreReadQuotaStats(String storeName, long storeReadQuota) {
-    int routerCount = zkRoutersManager.isQuotaRebalanceEnabled()
-        ? zkRoutersManager.getLiveRoutersCount()
-        : zkRoutersManager.getExpectedRoutersCount();
-
+    int routerCount = zkRoutersManager.getLiveRoutersCount();
     long storeQuotaPerRouter = routerCount > 0 ? storeReadQuota / routerCount : 0;
-
     stats.recordQuota(storeName, storeQuotaPerRouter);
   }
 

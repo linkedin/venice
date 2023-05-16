@@ -13,7 +13,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
-import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -31,12 +30,11 @@ public class IsolatedIngestionServerAclHandler extends SimpleChannelInboundHandl
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws Exception {
-    Optional<SslHandler> sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
-    if (!sslHandler.isPresent()) {
+    SslHandler sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
+    if (sslHandler == null) {
       throw new VeniceException("No SSL handler in the incoming request.");
     }
-    X509Certificate clientCert =
-        SslUtils.getX509Certificate(sslHandler.get().engine().getSession().getPeerCertificates()[0]);
+    X509Certificate clientCert = SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
     String identity = identityParser.parseIdentityFromCert(clientCert);
     /**
      * Check if the principal identity name extracted from SSL session matches the allowed principal name.

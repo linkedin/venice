@@ -14,7 +14,6 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
-import java.util.Optional;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -56,13 +55,12 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
-    Optional<SslHandler> sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
-    if (!sslHandler.isPresent()) {
+    SslHandler sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
+    if (sslHandler == null) {
       throw new VeniceException("Failed to extract ssl handler from the incoming request");
     }
 
-    X509Certificate clientCert =
-        SslUtils.getX509Certificate(sslHandler.get().engine().getSession().getPeerCertificates()[0]);
+    X509Certificate clientCert = SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
     String method = req.method().name();
 
     boolean accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
@@ -71,9 +69,11 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
     } else {
-      String client = ctx.channel().remoteAddress().toString(); // ip and port
-      String errLine = String.format("%s requested %s %s", client, method, req.uri());
-      LOGGER.debug("Unauthorized access rejected: {}", errLine);
+      if (LOGGER.isDebugEnabled()) {
+        String client = ctx.channel().remoteAddress().toString(); // ip and port
+        String errLine = String.format("%s requested %s %s", client, method, req.uri());
+        LOGGER.debug("Unauthorized access rejected: {}", errLine);
+      }
       NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
     }
   }

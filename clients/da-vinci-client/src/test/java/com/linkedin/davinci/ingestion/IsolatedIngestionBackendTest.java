@@ -258,4 +258,41 @@ public class IsolatedIngestionBackendTest {
       Assert.assertEquals(topicIngestionStatusMap.get(topic).getPartitionIngestionStatus(partition), NOT_EXIST);
     }
   }
+
+  @Test
+  public void testBackendShutdownSuccessfullyWithDivergedResourceMetadata() {
+    try (MainIngestionMonitorService monitorService = mock(MainIngestionMonitorService.class);
+        IsolatedIngestionBackend backend = mock(IsolatedIngestionBackend.class)) {
+      String topic = "testTopic_v1";
+      int partition = 0;
+      VeniceStoreVersionConfig storeVersionConfig = mock(VeniceStoreVersionConfig.class);
+      when(storeVersionConfig.getStoreVersionName()).thenReturn(topic);
+      MainIngestionRequestClient ingestionRequestClient = mock(MainIngestionRequestClient.class);
+      when(backend.getMainIngestionRequestClient()).thenReturn(ingestionRequestClient);
+      when(backend.getMainIngestionMonitorService()).thenReturn(monitorService);
+      Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = new VeniceConcurrentHashMap<>();
+      MainTopicIngestionStatus topicIngestionStatus = new MainTopicIngestionStatus(topic);
+      topicIngestionStatus.setPartitionIngestionStatusToIsolatedIngestion(partition);
+      topicIngestionStatusMap.put(topic, topicIngestionStatus);
+      when(monitorService.getTopicPartitionIngestionStatus(topic, partition)).thenCallRealMethod();
+      when(monitorService.getTopicIngestionStatusMap()).thenReturn(topicIngestionStatusMap);
+      when(backend.isTopicPartitionHostedInMainProcess(anyString(), anyInt())).thenCallRealMethod();
+      when(backend.isTopicPartitionIngesting(anyString(), anyInt())).thenCallRealMethod();
+      doCallRealMethod().when(backend).stopConsumption(any(), anyInt());
+      doCallRealMethod().when(backend).executeCommandWithRetry(anyString(), anyInt(), any(), any(), any());
+      ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+      when(monitorService.getForkProcessActionLock()).thenReturn(readWriteLock);
+      KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
+      when(storeIngestionService.isPartitionConsuming(anyString(), anyInt())).thenReturn(false);
+      when(backend.getStoreIngestionService()).thenReturn(storeIngestionService);
+      when(ingestionRequestClient.stopConsumption(anyString(), anyInt())).thenReturn(false);
+      when(backend.isShuttingDown()).thenReturn(true);
+
+      // Make the actual call and verify that it is actually calling remote process and execute only once and quit.
+      backend.stopConsumption(storeVersionConfig, partition);
+      verify(storeIngestionService, times(1)).isPartitionConsuming(anyString(), anyInt());
+      verify(ingestionRequestClient, times(1)).stopConsumption(anyString(), anyInt());
+
+    }
+  }
 }

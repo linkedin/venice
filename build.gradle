@@ -5,7 +5,6 @@ import org.gradle.internal.logging.text.StyledTextOutputFactory
 
 import java.nio.file.Files
 
-
 plugins {
   id 'idea'
   id 'java'
@@ -16,6 +15,8 @@ plugins {
   id 'com.github.spotbugs' version '4.8.0' apply false
   id 'org.gradle.test-retry' version '1.5.0' apply false
   id 'com.form.diff-coverage' version '0.9.5' apply false
+  id 'me.champeau.jmh' version '0.6.7' apply false
+  id 'io.github.lhotari.gradle-nar-plugin' version '0.5.1' apply false
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -60,7 +61,7 @@ ext.libraries = [
     commonsIo: 'commons-io:commons-io:2.11.0',
     commonsCli: 'commons-cli:commons-cli:1.5.0',
     commonsLang: 'commons-lang:commons-lang:2.6',
-    conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
+    conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.5.2',
     d2: 'com.linkedin.pegasus:d2:' + pegasusVersion,
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
@@ -78,8 +79,6 @@ ext.libraries = [
     javax: 'javax.servlet:javax.servlet-api:3.1.0',
     javaxActivation: 'com.sun.activation:javax.activation:1.2.0',
     jdom: 'org.jdom:jdom:1.1',
-    jmhCore: 'org.openjdk.jmh:jmh-core:1.28',
-    jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28',
     jna: 'net.java.dev.jna:jna:4.5.1',
     jsr305: 'com.google.code.findbugs:jsr305:3.0.2',
     joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
@@ -94,14 +93,21 @@ ext.libraries = [
     mockito: 'org.mockito:mockito-core:3.3.3',
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
+    pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
+    pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
+    pulsarIoCommon: "${pulsarGroup}:pulsar-io-common:${pulsarVersion}",
     r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
     restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
-    rocksdbjni: 'org.rocksdb:rocksdbjni:7.0.3',
+    rocksdbjni: 'org.rocksdb:rocksdbjni:7.9.2',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
+    slf4j: 'org.slf4j:slf4j:1.7.36',
+    slf4jApi: 'org.slf4j:slf4j-api:1.7.36',
+    slf4jSimple: 'org.slf4j:slf4j-simple:1.7.36',
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4',
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.9.2',
+    tehuti: 'io.tehuti:tehuti:0.10.0',
+    testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
     // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
     xalan: 'xalan:xalan:2.7.1',
@@ -630,6 +636,8 @@ ext.createDiffFile = { ->
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceController.java',
         ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',
         ':!services/venice-standalone/*', // exclude the entire standalone project
+        ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
+        ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',
 
         // Other files that have tests but are not executed in the regular unit test task
         ':!internal/alpini/*'
@@ -662,4 +670,8 @@ ext.parseJacocoXml = { filePath ->
     project.logger.debug("Branch coverage: N/A. There's either no branch coverage or " +
         "the jacoco report is not generated.", e)
   }
+}
+
+allprojects {
+  task printAllDependencies(type: DependencyReportTask) {}
 }

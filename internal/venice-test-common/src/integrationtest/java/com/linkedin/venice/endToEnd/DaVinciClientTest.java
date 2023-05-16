@@ -297,7 +297,7 @@ public class DaVinciClientTest {
     final GenericRecord value = new GenericData.Record(schema);
     value.put("number", 10);
     String storeName = cluster.createStore(KEY_COUNT, value);
-    cluster.useControllerClient(client -> TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER)));
+    cluster.createMetaSystemStore(storeName);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -943,7 +943,7 @@ public class DaVinciClientTest {
     paramsConsumer.accept(params);
     cluster.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
+      cluster.createMetaSystemStore(storeName);
       client.updateStore(storeName, params);
       cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, Stream.of());
       SystemProducer producer = IntegrationTestPushUtils.getSamzaProducer(
@@ -995,11 +995,8 @@ public class DaVinciClientTest {
     paramsConsumer.accept(params);
     try (ControllerClient controllerClient =
         createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", vpjProperties)) {
-      TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(LOGGER));
-      ControllerResponse response = controllerClient.updateStore(storeName, params);
-      Assert.assertFalse(response.isError(), response.getError());
-
-      // Push data through VPJ.
+      cluster.createMetaSystemStore(storeName);
+      TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
       runVPJ(vpjProperties, 1, cluster);
     }
   }
@@ -1015,7 +1012,7 @@ public class DaVinciClientTest {
 
   private String createStoreWithMetaSystemStore(int keyCount) throws Exception {
     String storeName = cluster.createStore(keyCount);
-    cluster.useControllerClient(client -> TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER)));
+    cluster.createMetaSystemStore(storeName);
     return storeName;
   }
 

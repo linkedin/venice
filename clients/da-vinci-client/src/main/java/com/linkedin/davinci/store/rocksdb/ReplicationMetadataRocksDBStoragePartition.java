@@ -1,5 +1,8 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.DEFAULT_COLUMN_FAMILY_INDEX;
+import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.REPLICATION_METADATA_COLUMN_FAMILY_INDEX;
+
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -29,9 +32,6 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   // The value still uses "timestamp" for backward compatibility
   private RocksDBSstFileWriter rocksDBSstFileWriter = null;
   private final String fullPathForTempSSTFileDir;
-
-  private static final int DEFAULT_COLUMN_FAMILY_INDEX = 0;
-  private static final int REPLICATION_METADATA_COLUMN_FAMILY_INDEX = 1;
 
   public ReplicationMetadataRocksDBStoragePartition(
       StoragePartitionConfig storagePartitionConfig,
@@ -178,6 +178,17 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
   }
 
   @Override
+  public boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
+    makeSureRocksDBIsStillOpen();
+    if (!deferredWrite) {
+      LOGGER.info("checkDatabaseIntegrity will do nothing since 'deferredWrite' is disabled");
+      return true;
+    }
+    return (super.checkDatabaseIntegrity(checkpointedInfo)
+        && rocksDBSstFileWriter.checkDatabaseIntegrity(checkpointedInfo));
+  }
+
+  @Override
   public synchronized void beginBatchWrite(
       Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> expectedChecksumSupplier) {
@@ -229,7 +240,27 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
 
   @Override
   public synchronized void drop() {
-    super.deleteSSTFiles(fullPathForTempSSTFileDir);
+    super.deleteFilesInDirectory(fullPathForTempSSTFileDir);
     super.drop();
+  }
+
+  // Visible for testing
+  public String getFullPathForTempSSTFileDir() {
+    return fullPathForTempSSTFileDir;
+  }
+
+  // Visible for testing
+  public RocksDBSstFileWriter getRocksDBSstFileWriter() {
+    return rocksDBSstFileWriter;
+  }
+
+  // Visible for testing
+  public String getValueFullPathForTempSSTFileDir() {
+    return super.getFullPathForTempSSTFileDir();
+  }
+
+  // Visible for testing
+  public RocksDBSstFileWriter getValueRocksDBSstFileWriter() {
+    return super.getRocksDBSstFileWriter();
   }
 }

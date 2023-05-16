@@ -10,6 +10,7 @@ import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_FOR
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_MISSING_CURRENT_VERSION;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_NO_CURRENT_VERSION;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY;
+import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_WRITES_DISABLED;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
 import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE;
 
@@ -442,6 +443,79 @@ public class TestMetaDataHandler {
   }
 
   @Test
+  public void testAllUpdateSchemaLookup() throws IOException {
+    String storeName = "test_store";
+    String valueSchemaStr1 = "\"string\"";
+    String valueSchemaStr2 = "\"long\"";
+    String updateSchemaStr1 = "\"long\"";
+    String updateSchemaStr2 = "\"string\"";
+    String clusterName = "test-cluster";
+    int valueSchemaId1 = 1;
+    int valueSchemaId2 = 2;
+    // Mock ReadOnlySchemaRepository
+    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
+    SchemaEntry valueSchemaEntry1 = new SchemaEntry(valueSchemaId1, valueSchemaStr1);
+    SchemaEntry valueSchemaEntry2 = new SchemaEntry(valueSchemaId2, valueSchemaStr2);
+    Mockito.doReturn(Arrays.asList(valueSchemaEntry1, valueSchemaEntry2)).when(schemaRepo).getValueSchemas(storeName);
+
+    DerivedSchemaEntry updateSchemaEntry1 = new DerivedSchemaEntry(valueSchemaId1, 1, updateSchemaStr1);
+    DerivedSchemaEntry updateSchemaEntry2 = new DerivedSchemaEntry(valueSchemaId2, 1, updateSchemaStr2);
+    Mockito.doReturn(Arrays.asList(updateSchemaEntry1, updateSchemaEntry2))
+        .when(schemaRepo)
+        .getDerivedSchemas(storeName);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/update_schema/" + storeName,
+        null,
+        schemaRepo,
+        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
+        Collections.emptyMap());
+
+    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    MultiSchemaResponse multiSchemaResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaResponse.class);
+
+    Assert.assertEquals(multiSchemaResponse.getName(), storeName);
+    Assert.assertEquals(multiSchemaResponse.getCluster(), clusterName);
+    Assert.assertFalse(multiSchemaResponse.isError());
+    MultiSchemaResponse.Schema[] schemas = multiSchemaResponse.getSchemas();
+    Assert.assertEquals(schemas.length, 2);
+    Assert.assertEquals(schemas[0].getId(), valueSchemaId1);
+    Assert.assertEquals(schemas[0].getSchemaStr(), updateSchemaStr1);
+    Assert.assertEquals(schemas[0].getDerivedSchemaId(), 1);
+    Assert.assertEquals(schemas[1].getId(), valueSchemaId2);
+    Assert.assertEquals(schemas[1].getSchemaStr(), updateSchemaStr2);
+    Assert.assertEquals(schemas[1].getDerivedSchemaId(), 1);
+  }
+
+  @Test
+  public void testAllUpdateSchemaLookupWithNoValueSchema() throws IOException {
+    String storeName = "test_store";
+    String clusterName = "test-cluster";
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/update_schema/" + storeName,
+        null,
+        null,
+        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
+        Collections.emptyMap());
+
+    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    MultiSchemaResponse multiSchemaResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaResponse.class);
+
+    Assert.assertEquals(multiSchemaResponse.getName(), storeName);
+    Assert.assertEquals(multiSchemaResponse.getCluster(), clusterName);
+    Assert.assertFalse(multiSchemaResponse.isError());
+    MultiSchemaResponse.Schema[] schemas = multiSchemaResponse.getSchemas();
+    Assert.assertEquals(schemas.length, 0);
+  }
+
+  @Test
   public void testD2ServiceLookup() throws IOException {
     String storeName = "test-store";
     String clusterName = "test-cluster";
@@ -811,12 +885,38 @@ public class TestMetaDataHandler {
   }
 
   @Test
+  public void testRequestTopicForStoreWithWritesDisabled() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(false).when(store).isEnableWrites();
+
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(
+        new String(response.content().array(), StandardCharsets.UTF_8),
+        REQUEST_TOPIC_ERROR_WRITES_DISABLED);
+  }
+
+  @Test
   public void testRequestTopicForBatchOnlyStore() throws IOException {
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
 
     String storeName = "test-store";
-    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
 
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -840,6 +940,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig badCurrentVersionStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -874,6 +975,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig badCurrentVersionStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -909,6 +1011,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig aggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -949,6 +1052,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig aggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -989,6 +1093,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -1042,6 +1147,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -1094,6 +1200,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -1148,6 +1255,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,

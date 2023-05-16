@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_GET_UPDATE_SCHEMA;
 import static com.linkedin.venice.router.api.RouterResourceType.TYPE_LATEST_VALUE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CLUSTER_DISCOVERY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
@@ -113,6 +114,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final String zkAddress;
   private final String kafkaBootstrapServers;
 
+  static final String REQUEST_TOPIC_ERROR_WRITES_DISABLED = "Write operations to the store are disabled.";
   static final String REQUEST_TOPIC_ERROR_BATCH_ONLY_STORE = "Online writes are only supported for hybrid stores.";
   static final String REQUEST_TOPIC_ERROR_NO_CURRENT_VERSION =
       "Store doesn't have an active version. Please push data to the store.";
@@ -178,8 +180,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         // URI: /latest_value_schema/{$storeName} - Get the latest value schema
         handleLatestValueSchemaLookup(ctx, helper);
         break;
-      case TYPE_UPDATE_SCHEMA:
-        // URI: /update_schema/{$storeName}/{$valueSchemaId}
+      case TYPE_GET_UPDATE_SCHEMA:
+        // URI: /update_schema/{$storeName} - Get all the update schema
+        // URI: /update_schema/{$storeName}/{$valueSchemaId} - Get single update schema
         // The request could fetch the latest derived update schema of a specific value schema
         handleUpdateSchemaLookup(ctx, helper);
         break;
@@ -263,12 +266,11 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       Collection<SchemaEntry> valueSchemaEntries = schemaRepo.getValueSchemas(storeName);
       int schemaNum = valueSchemaEntries.size();
       MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
-      int cur = 0;
       for (SchemaEntry entry: valueSchemaEntries) {
-        schemas[cur] = new MultiSchemaResponse.Schema();
-        schemas[cur].setId(entry.getId());
-        schemas[cur].setSchemaStr(entry.getSchema().toString());
-        ++cur;
+        int schemaId = entry.getId();
+        schemas[schemaId - 1] = new MultiSchemaResponse.Schema();
+        schemas[schemaId - 1].setId(schemaId);
+        schemas[schemaId - 1].setSchemaStr(entry.getSchema().toString());
       }
       responseObject.setSchemas(schemas);
       setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
@@ -320,11 +322,33 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void handleUpdateSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    checkResourceName(storeName, "/" + TYPE_VALUE_SCHEMA + "/${storeName}/${valueSchemaId}");
+    checkResourceName(
+        storeName,
+        "/" + TYPE_GET_UPDATE_SCHEMA + "/${storeName} or /" + TYPE_GET_UPDATE_SCHEMA
+            + "/${storeName}/${valueSchemaId}");
     String valueSchemaIdStr = helper.getKey();
     if (valueSchemaIdStr == null || valueSchemaIdStr.isEmpty()) {
-      byte[] errBody = ("Value schema ID not found in this request").getBytes();
-      setupResponseAndFlush(BAD_REQUEST, errBody, false, ctx);
+      // URI: /update_schema/{$storeName}
+      // Get all the update schema
+      MultiSchemaResponse responseObject = new MultiSchemaResponse();
+      responseObject.setCluster(clusterName);
+      responseObject.setName(storeName);
+      int superSetSchemaId = storeRepository.getStore(storeName).getLatestSuperSetValueSchemaId();
+      if (superSetSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+        responseObject.setSuperSetSchemaId(superSetSchemaId);
+      }
+      Collection<DerivedSchemaEntry> derivedSchemaEntries = schemaRepo.getDerivedSchemas(storeName);
+      int schemaNum = derivedSchemaEntries.size();
+      MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
+      for (DerivedSchemaEntry entry: derivedSchemaEntries) {
+        int valueSchemaId = entry.getValueSchemaID();
+        schemas[valueSchemaId - 1] = new MultiSchemaResponse.Schema();
+        schemas[valueSchemaId - 1].setSchemaStr(entry.getSchema().toString());
+        schemas[valueSchemaId - 1].setDerivedSchemaId(entry.getId());
+        schemas[valueSchemaId - 1].setId(valueSchemaId);
+      }
+      responseObject.setSchemas(schemas);
+      setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     } else {
       // URI: /update_schema/{$storeName}/{$valueSchemaId}
       // Get latest update schema by value schema id
@@ -539,6 +563,11 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     checkResourceName(storeName, "/" + TYPE_REQUEST_TOPIC + "/${storeName}");
 
     Store store = storeRepository.getStore(storeName);
+
+    if (!store.isEnableWrites()) {
+      setupResponseAndFlush(BAD_REQUEST, REQUEST_TOPIC_ERROR_WRITES_DISABLED.getBytes(), false, ctx);
+      return;
+    }
 
     // Only allow router request_topic for hybrid stores
     if (!store.isHybrid()) {

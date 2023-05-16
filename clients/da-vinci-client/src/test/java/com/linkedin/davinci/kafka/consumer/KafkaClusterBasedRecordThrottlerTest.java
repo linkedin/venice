@@ -1,7 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -20,8 +18,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -29,18 +25,12 @@ import org.testng.annotations.Test;
 
 public class KafkaClusterBasedRecordThrottlerTest {
   @Test
-  public void testRecordsCanBeThrottledPerRegion() throws ExecutionException, InterruptedException {
+  public void testRecordsCanBeThrottledPerRegion() {
     String topic = Utils.getUniqueString("topic");
     InMemoryKafkaBroker inMemoryLocalKafkaBroker = new InMemoryKafkaBroker("local");
     inMemoryLocalKafkaBroker.createTopic(topic, 2);
     InMemoryKafkaBroker inMemoryRemoteKafkaBroker = new InMemoryKafkaBroker("remote");
     inMemoryRemoteKafkaBroker.createTopic(topic, 2);
-
-    Map<String, Object> extraServerProperties = new HashMap<>();
-    extraServerProperties.put(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, true);
-
-    Properties kafkaProps = new Properties();
-    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
 
@@ -84,10 +74,10 @@ public class KafkaClusterBasedRecordThrottlerTest {
     // Verify can ingest at least some record from local and remote Kafka
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> localPubSubMessages =
         kafkaClusterBasedRecordThrottler
-            .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
+            .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), Time.MS_PER_SECOND);
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> remotePubSubMessages =
         kafkaClusterBasedRecordThrottler
-            .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
+            .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), Time.MS_PER_SECOND);
     Assert.assertSame(localPubSubMessages, consumerRecords);
     Assert.assertSame(remotePubSubMessages, consumerRecords);
 
@@ -96,9 +86,9 @@ public class KafkaClusterBasedRecordThrottlerTest {
 
     // Verify does not ingest from remote Kafka
     localPubSubMessages = kafkaClusterBasedRecordThrottler
-        .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
+        .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), Time.MS_PER_SECOND);
     remotePubSubMessages = kafkaClusterBasedRecordThrottler
-        .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
+        .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), Time.MS_PER_SECOND);
     Assert.assertSame(localPubSubMessages, consumerRecords);
     Assert.assertNotSame(remotePubSubMessages, consumerRecords);
     Assert.assertTrue(remotePubSubMessages.isEmpty());
@@ -109,9 +99,9 @@ public class KafkaClusterBasedRecordThrottlerTest {
 
     // Verify resumes ingestion from remote Kafka
     localPubSubMessages = kafkaClusterBasedRecordThrottler
-        .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
+        .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), Time.MS_PER_SECOND);
     remotePubSubMessages = kafkaClusterBasedRecordThrottler
-        .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
+        .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), Time.MS_PER_SECOND);
     Assert.assertSame(localPubSubMessages, consumerRecords);
     Assert.assertSame(remotePubSubMessages, consumerRecords);
   }

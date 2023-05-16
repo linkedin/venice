@@ -101,6 +101,10 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
         ctx.fireChannelRead(req);
       } else {
         try {
+          /**
+           * TODO: Consider making this the first check, so that we optimize for the hot path. If rejected, then we
+           *       could check whether the request is for a system store, METADATA, etc.
+           */
           if (accessController.hasAccess(clientCert, storeName, method)) {
             // Client has permission. Proceed
             ReferenceCountUtil.retain(req);

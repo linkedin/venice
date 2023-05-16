@@ -82,16 +82,17 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
       VenicePath path,
       Consumer<PortableHttpResponse> completedCallBack,
       Consumer<Throwable> failedCallBack,
-      BooleanSupplier cancelledCallBack,
-      long queryStartTimeInNS) throws RouterException {
+      BooleanSupplier cancelledCallBack) throws RouterException {
     // Compose the request
     String uri = host.getHostUrl(true) + path.getLocation();
     Method method = Method.normalizedValueOf(path.getHttpMethod().name());
     SimpleRequestBuilder simpleRequestBuilder = SimpleRequestBuilder.create(method).setUri(uri);
     // Setup additional headers
     path.setupVeniceHeaders((k, v) -> simpleRequestBuilder.addHeader(k, v));
-    Optional<byte[]> body = path.getBody();
-    body.ifPresent(b -> simpleRequestBuilder.setBody(b, ContentType.DEFAULT_BINARY));
+    byte[] body = path.getBody();
+    if (body != null) {
+      simpleRequestBuilder.setBody(body, ContentType.DEFAULT_BINARY);
+    }
 
     getRandomClient().execute(simpleRequestBuilder.build(), new FutureCallback<SimpleHttpResponse>() {
       @Override

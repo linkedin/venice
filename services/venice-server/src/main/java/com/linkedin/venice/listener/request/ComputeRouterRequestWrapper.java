@@ -7,8 +7,8 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
 import java.net.URI;
@@ -74,7 +74,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
 
   private static Iterable<ComputeRouterRequestKeyV1> parseKeys(BinaryDecoder decoder) {
     RecordDeserializer<ComputeRouterRequestKeyV1> deserializer =
-        SerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeRouterRequestKeyV1.class);
+        FastSerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeRouterRequestKeyV1.class);
 
     return deserializer.deserializeObjects(decoder);
   }

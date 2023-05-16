@@ -27,8 +27,11 @@ import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Properties;
 import java.util.UUID;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.conscrypt.Conscrypt;
 
 
 public class SslUtils {
@@ -126,10 +129,67 @@ public class SslUtils {
   }
 
   public static SslFactory toAlpiniSSLFactory(SSLFactory sslFactory) {
+    return toAlpiniSSLFactory(sslFactory, false);
+  }
+
+  public static SslFactory toAlpiniSSLFactory(SSLFactory sslFactory, boolean openssl) {
     try {
-      return new SSLEngineFactoryImpl(toAlpiniSSLConfig(sslFactory.getSSLConfig()));
+      SSLEngineFactoryImpl.Config config = toAlpiniSSLConfig(sslFactory.getSSLConfig());
+      if (openssl) {
+        if (isConscryptAvailable()) {
+          LOGGER.info("Constructing an openssl based SSL factory");
+          config.setSslContextProvider(Conscrypt.newProvider());
+        } else {
+          LOGGER.info("Conscrypt is not available, fall back to the default SSL factory");
+        }
+      }
+      return new SSLEngineFactoryImpl(config);
     } catch (Exception e) {
       throw new VeniceException("Unable to create SSL factory", e);
+    }
+  }
+
+  /**
+   * Adapt the incoming {@link SSLFactory} into a new one backed by openssl if it is available.
+   */
+  public static SSLFactory toSSLFactoryWithOpenSSLSupport(SSLFactory sslFactory) {
+    if (!isConscryptAvailable()) {
+      LOGGER.info("Conscrypt is not available, return the original ssl factory");
+      return sslFactory;
+    }
+    SslFactory internalSslFactory = toAlpiniSSLFactory(sslFactory, true);
+    return new SSLFactory() {
+      @Override
+      public SSLConfig getSSLConfig() {
+        return sslFactory.getSSLConfig();
+      }
+
+      @Override
+      public SSLContext getSSLContext() {
+        return internalSslFactory.getSSLContext();
+      }
+
+      @Override
+      public SSLParameters getSSLParameters() {
+        return internalSslFactory.getSSLParameters();
+      }
+
+      @Override
+      public boolean isSslEnabled() {
+        return sslFactory.isSslEnabled();
+      }
+    };
+  }
+
+  /**
+   * Check whether openssl provider is available or not.
+   */
+  public static boolean isConscryptAvailable() {
+    try {
+      Conscrypt.checkAvailability();
+      return true;
+    } catch (UnsatisfiedLinkError e) {
+      return false;
     }
   }
 

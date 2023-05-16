@@ -5396,21 +5396,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> erroredInstance = Optional.empty();
     String storeName = version.getStoreName();
     int completedPartitions = 0;
+    int totalInstanceCount = 0;
+    int liveInstanceCount = 0;
     Set<Integer> incompletePartition = new HashSet<>();
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       Map<CharSequence, Integer> instances = pushStatusStoreReader.get()
           .getPartitionStatus(storeName, version.getNumber(), partitionId, incrementalPushVersion);
       boolean allInstancesCompleted = true;
+      totalInstanceCount += instances.size();
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
         ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
+        boolean isInstanceAlive = pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString());
+
+        if (isInstanceAlive) {
+          liveInstanceCount++;
+        }
         if (status == middleStatus) {
-          if (allInstancesCompleted
-              && pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString())) {
+          if (allInstancesCompleted && isInstanceAlive) {
             allInstancesCompleted = false;
           }
         } else if (status != completeStatus) {
           if (allInstancesCompleted || allMiddleStatusReceived) {
-            if (pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString())) {
+            if (isInstanceAlive) {
               allInstancesCompleted = false;
               allMiddleStatusReceived = false;
               if (status == ExecutionStatus.ERROR) {
@@ -5430,14 +5437,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String statusDetail = null;
     String details = "";
     if (completedPartitions > 0) {
-      details += completedPartitions + "/" + partitionCount + " partitions completed in Da Vinci.";
+      details += completedPartitions + "/" + partitionCount + " partitions completed in" + totalInstanceCount
+          + " Da Vinci instances.";
     }
     if (erroredInstance.isPresent()) {
-      details += "Found a failed instance in Da Vinci, it is " + erroredInstance;
+      details += "Found a failed instance in Da Vinci: " + erroredInstance + ". live instances: " + liveInstanceCount
+          + " total instances : " + totalInstanceCount;
     }
     int incompleteSize = incompletePartition.size();
     if (incompleteSize > 0 && incompleteSize <= 5) {
-      details += ". Following partitions still not complete " + incompletePartition;
+      details += ". Following partitions still not complete " + incompletePartition + ". live instances: "
+          + liveInstanceCount + " total instances : " + totalInstanceCount;
     }
     if (details.length() != 0) {
       statusDetail = details;
@@ -6310,9 +6320,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     if (isMaxCapacityProtectionEnabled.isPresent()) {
       routersClusterManager.enableMaxCapacityProtection(isMaxCapacityProtectionEnabled.get());
-    }
-    if (isQuotaRebalancedEnable.isPresent() && expectedRouterCount.isPresent()) {
-      routersClusterManager.enableQuotaRebalance(isQuotaRebalancedEnable.get(), expectedRouterCount.get());
     }
   }
 

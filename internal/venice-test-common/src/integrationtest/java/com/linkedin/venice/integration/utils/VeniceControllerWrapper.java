@@ -166,16 +166,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(ADMIN_TOPIC_REPLICATION_FACTOR, 1)
             .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
             .put(DEFAULT_REPLICA_FACTOR, options.getReplicationFactor())
-            .put(DEFAULT_NUMBER_OF_PARTITION, 1)
             .put(ADMIN_PORT, adminPort)
             .put(ADMIN_SECURE_PORT, adminSecurePort)
-            /**
-             * Running with just one partition may not fully exercise the distributed nature of the system,
-             * but we do want to minimize the number as each partition results in files, connections, threads, etc.
-             * in the whole system. 3 seems like a reasonable tradeoff between these concerns.
-             */
-            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3)
             .put(DEFAULT_PARTITION_SIZE, options.getPartitionSize())
+            .put(DEFAULT_NUMBER_OF_PARTITION, options.getNumberOfPartitions())
+            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, options.getMaxNumberOfPartitions())
             .put(CONTROLLER_PARENT_MODE, options.isParent())
             .put(DELAY_TO_REBALANCE_MS, options.getRebalanceDelayMs())
             .put(MIN_ACTIVE_REPLICA, options.getMinActiveReplica())

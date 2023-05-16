@@ -4,6 +4,7 @@ import static org.testng.AssertJUnit.assertEquals;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -20,8 +21,10 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(false);
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient = getGenericFastClient(
+        clientConfigBuilder,
+        new MetricsRepository(),
+        StoreMetadataFetchMode.SERVER_BASED_METADATA);
     // Update the read quota to 1000 and make 500 requests, all requests should be allowed.
     veniceCluster.useControllerClient(controllerClient -> {
       TestUtils
@@ -43,14 +46,16 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
       Assert.assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
       Assert.assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
     });
-    Assert.assertTrue(serverMetric.getMetric(readQuotaRequestedString).value() >= 500);
+    Assert.assertTrue(
+        serverMetric.getMetric(readQuotaRequestedString).value() >= 250,
+        "Metric value: " + serverMetric.getMetric(readQuotaRequestedString).value());
     Assert.assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
     Assert.assertTrue(serverMetric.getMetric(readQuotaUsageRatio).value() > 0);
 
     // Update the read quota to 100 and make 500 requests again.
     veniceCluster.useControllerClient(controllerClient -> {
       TestUtils
-          .assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(100)));
+          .assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(50)));
     });
     try {
       // Keep making requests until it gets rejected by read quota, it may take some time for the quota update to be

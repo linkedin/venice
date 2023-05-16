@@ -8,11 +8,11 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
@@ -40,14 +40,14 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       boolean batchGet,
       int batchGetKeySize,
-      boolean useRequestBasedMetadata) throws Exception {
+      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     runTest(
         clientConfigBuilder,
         batchGet,
         batchGetKeySize,
         (metricsRepository) -> {},
         Optional.empty(),
-        useRequestBasedMetadata);
+        storeMetadataFetchMode);
   }
 
   /**
@@ -64,10 +64,10 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       int batchGetKeySize,
       Consumer<MetricsRepository> statsValidation,
       Optional<AvroGenericStoreClient> vsonThinClient,
-      boolean useRequestBasedMetadata) throws Exception {
+      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, useRequestBasedMetadata);
+        getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, storeMetadataFetchMode);
 
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
     // Construct a Vson store client
@@ -75,7 +75,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         clientConfigBuilder.clone(),
         new MetricsRepository(),
         vsonThinClient,
-        useRequestBasedMetadata);
+        storeMetadataFetchMode);
     try {
       if (batchGet) {
         // test batch get of size 2 (current default max)
@@ -170,7 +170,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         specificClientConfigBuilder,
         metricsRepositoryForSpecificClient,
         TestValueSchema.class,
-        useRequestBasedMetadata);
+        storeMetadataFetchMode);
     try {
       if (batchGet) {
         // test batch get of size 2 (default)
@@ -218,12 +218,12 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "FastClient-Four-Boolean-And-A-Number", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Three-Boolean-Store-Metadata-Fetch-Mode-A-Number", timeOut = TIME_OUT)
   public void testFastClientGet(
       boolean multiGet,
       boolean dualRead,
       boolean speculativeQueryEnabled,
-      boolean useRequestBasedMetadata,
+      StoreMetadataFetchMode storeMetadataFetchMode,
       int batchGetKeySize) throws Exception {
     if (multiGet == false && batchGetKeySize != (int) BATCH_GET_KEY_SIZE[0]) {
       // redundant case as batchGetKeySize doesn't apply for single gets, so run only once
@@ -259,14 +259,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             batchGetKeySize,
             m -> {},
             Optional.of(genericVsonThinClient),
-            useRequestBasedMetadata);
+            storeMetadataFetchMode);
       } else {
-        runTest(
-            clientConfigBuilder,
-            multiGet,
-            batchGetKeySize, m -> {},
-            Optional.empty(),
-            useRequestBasedMetadata);
+        runTest(clientConfigBuilder, multiGet, batchGetKeySize, m -> {}, Optional.empty(), storeMetadataFetchMode);
       }
     } finally {
       if (genericThinClient != null) {
@@ -281,9 +276,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(expectedExceptions = { VeniceClientException.class, ExecutionException.class },
-      expectedExceptionsMessageRegExp = ".* metadata is not ready, attempting to re-initialize",
-      dataProvider = "FastClient-Three-Boolean-And-A-Number", timeOut = TIME_OUT)
+  @Test(expectedExceptions = { VeniceClientException.class,
+      ExecutionException.class }, expectedExceptionsMessageRegExp = ".* metadata is not ready, attempting to re-initialize", dataProvider = "FastClient-Three-Boolean-And-A-Number", timeOut = TIME_OUT)
   public void testFastClientWithoutServers(
       boolean multiGet,
       boolean dualRead,
@@ -321,7 +315,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             batchGetKeySize,
             m -> {},
             Optional.of(genericVsonThinClient),
-            true);
+            StoreMetadataFetchMode.SERVER_BASED_METADATA);
       } else {
         runTest(
             clientConfigBuilder,
@@ -329,7 +323,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             batchGetKeySize,
             m -> {},
             Optional.empty(),
-            true);
+            StoreMetadataFetchMode.SERVER_BASED_METADATA);
       }
     } finally {
       if (genericThinClient != null) {
@@ -344,10 +338,10 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "fastClientHTTPVariantsAndBoolean", dataProviderClass = ClientTestUtils.class, timeOut = TIME_OUT)
+  @Test(dataProvider = "fastClientHTTPVariantsAndStoreMetadataFetchModes", timeOut = TIME_OUT)
   public void testFastClientGetWithDifferentHTTPVariants(
       ClientTestUtils.FastClientHTTPVariant fastClientHTTPVariant,
-      boolean useRequestBasedMetadata) throws Exception {
+      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     Client r2Client = ClientTestUtils.getR2Client(fastClientHTTPVariant);
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -355,14 +349,14 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setDualReadEnabled(false);
 
     // test both single and multiGet
-    runTest(clientConfigBuilder, false, 2, useRequestBasedMetadata);
-    runTest(clientConfigBuilder, true, 2, useRequestBasedMetadata);
+    runTest(clientConfigBuilder, false, 2, storeMetadataFetchMode);
+    runTest(clientConfigBuilder, true, 2, storeMetadataFetchMode);
   }
 
   // TODO This test fails for the first time and then succeeds when the entire fastclient
   // testsuite is run, but runs successfully when this test is run alone. Need to debug.
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testFastClientSingleGetLongTailRetry(boolean useRequestBasedMetadata) throws Exception {
+  @Test(dataProvider = "StoreMetadataFetchModes")
+  public void testFastClientSingleGetLongTailRetry(StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -378,6 +372,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           assertTrue(metric.value() > 0, "Long tail retry for single-get should be triggered");
         }
       });
-    }, Optional.empty(), useRequestBasedMetadata);
+    }, Optional.empty(), storeMetadataFetchMode);
   }
 }

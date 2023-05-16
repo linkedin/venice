@@ -5,6 +5,8 @@ import com.linkedin.davinci.client.AvroGenericDaVinciClient;
 import com.linkedin.davinci.client.AvroSpecificDaVinciClient;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.StatsAvroGenericDaVinciClient;
+import com.linkedin.davinci.client.StatsAvroSpecificDaVinciClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.ICProvider;
@@ -32,7 +34,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   protected final VeniceProperties backendConfig;
   protected final Optional<Set<String>> managedClients;
   protected final ICProvider icProvider;
-  protected final Map<String, AvroGenericDaVinciClient> sharedClients = new HashMap<>();
+  protected final Map<String, DaVinciClient> sharedClients = new HashMap<>();
   protected final List<DaVinciClient> isolatedClients = new ArrayList<>();
   protected final Map<String, DaVinciConfig> configs = new HashMap<>();
 
@@ -134,14 +136,34 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     LOGGER.info("Client factory is closed successfully, clientCount={}", clients.size());
   }
 
+  private Class getClientClass(DaVinciConfig daVinciConfig, boolean isSpecific) {
+    boolean readMetricsEnabled = daVinciConfig.isReadMetricsEnabled();
+    if (isSpecific) {
+      return readMetricsEnabled ? StatsAvroSpecificDaVinciClient.class : AvroSpecificDaVinciClient.class;
+    }
+    return readMetricsEnabled ? StatsAvroGenericDaVinciClient.class : AvroGenericDaVinciClient.class;
+  }
+
   @Override
   public <K, V> DaVinciClient<K, V> getGenericAvroClient(String storeName, DaVinciConfig config) {
-    return getClient(storeName, config, null, AvroGenericDaVinciClient::new, AvroGenericDaVinciClient.class, false);
+    return getClient(
+        storeName,
+        config,
+        null,
+        new GenericDaVinciClientConstructor<>(),
+        getClientClass(config, false),
+        false);
   }
 
   @Override
   public <K, V> DaVinciClient<K, V> getAndStartGenericAvroClient(String storeName, DaVinciConfig config) {
-    return getClient(storeName, config, null, AvroGenericDaVinciClient::new, AvroGenericDaVinciClient.class, true);
+    return getClient(
+        storeName,
+        config,
+        null,
+        new GenericDaVinciClientConstructor<>(),
+        getClientClass(config, false),
+        true);
   }
 
   @Override
@@ -153,8 +175,8 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         storeName,
         config,
         valueClass,
-        AvroSpecificDaVinciClient::new,
-        AvroSpecificDaVinciClient.class,
+        new SpecificDaVinciClientConstructor<>(),
+        getClientClass(config, true),
         false);
   }
 
@@ -167,8 +189,8 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         storeName,
         config,
         valueClass,
-        AvroSpecificDaVinciClient::new,
-        AvroSpecificDaVinciClient.class,
+        new SpecificDaVinciClientConstructor<>(),
+        getClientClass(config, true),
         true);
   }
 
@@ -177,12 +199,46 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   }
 
   protected interface DaVinciClientConstructor {
-    AvroGenericDaVinciClient apply(
+    DaVinciClient apply(
         DaVinciConfig config,
         ClientConfig clientConfig,
         VeniceProperties backendConfig,
         Optional<Set<String>> managedClients,
         ICProvider icProvider);
+  }
+
+  class GenericDaVinciClientConstructor<K, V> implements DaVinciClientConstructor {
+    @Override
+    public DaVinciClient<K, V> apply(
+        DaVinciConfig config,
+        ClientConfig clientConfig,
+        VeniceProperties backendConfig,
+        Optional<Set<String>> managedClients,
+        ICProvider icProvider) {
+      AvroGenericDaVinciClient<K, V> client =
+          new AvroGenericDaVinciClient<>(config, clientConfig, backendConfig, managedClients, icProvider);
+      if (config.isReadMetricsEnabled()) {
+        return new StatsAvroGenericDaVinciClient<>(client, clientConfig);
+      }
+      return client;
+    }
+  }
+
+  class SpecificDaVinciClientConstructor<K, V extends SpecificRecord> implements DaVinciClientConstructor {
+    @Override
+    public DaVinciClient<K, V> apply(
+        DaVinciConfig config,
+        ClientConfig clientConfig,
+        VeniceProperties backendConfig,
+        Optional<Set<String>> managedClients,
+        ICProvider icProvider) {
+      AvroSpecificDaVinciClient<K, V> client =
+          new AvroSpecificDaVinciClient<>(config, clientConfig, backendConfig, managedClients, icProvider);
+      if (config.isReadMetricsEnabled()) {
+        return new StatsAvroSpecificDaVinciClient<>(client, clientConfig);
+      }
+      return client;
+    }
   }
 
   protected synchronized DaVinciClient getClient(
@@ -214,7 +270,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
         .setMetricsRepository(metricsRepository)
         .setSpecificValueClass(valueClass);
 
-    AvroGenericDaVinciClient client;
+    DaVinciClient client;
     if (config.isIsolated()) {
       String statsPrefix = "davinci-client-" + isolatedClients.size();
       clientConfig.setStatsPrefix(statsPrefix);
@@ -239,12 +295,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
     }
 
     if (startClient) {
-      // synchronize ensures that isReady() returns up-to-date state when start() or close() runs in another thread.
-      synchronized (client) {
-        if (!client.isReady()) {
-          client.start();
-        }
-      }
+      client.start();
     }
     return client;
   }

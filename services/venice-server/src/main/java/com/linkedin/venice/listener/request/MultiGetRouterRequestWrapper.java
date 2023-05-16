@@ -5,8 +5,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
 import java.net.URI;
@@ -54,7 +54,7 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
 
   private static Iterable<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {
     RecordDeserializer<MultiGetRouterRequestKeyV1> deserializer =
-        SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.class);
+        FastSerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.class);
 
     return deserializer.deserializeObjects(
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));

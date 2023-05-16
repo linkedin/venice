@@ -11,7 +11,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.client.store.ClientFactory.getAndStartAvroClient;
 import static com.linkedin.venice.client.store.ClientFactory.getTransportClient;
@@ -118,6 +117,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private ObjectCacheBackend cacheBackend;
   private static final Map<CharSequence, Schema> computeResultSchemaCache = new VeniceConcurrentHashMap<>();
 
+  private final AbstractAvroChunkingAdapter<V> chunkingAdapter;
+
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig,
@@ -132,12 +133,32 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients,
       ICProvider icProvider) {
+    this(
+        daVinciConfig,
+        clientConfig,
+        backendConfig,
+        managedClients,
+        icProvider,
+        GenericChunkingAdapter.INSTANCE,
+        () -> {});
+  }
+
+  protected AvroGenericDaVinciClient(
+      DaVinciConfig daVinciConfig,
+      ClientConfig clientConfig,
+      VeniceProperties backendConfig,
+      Optional<Set<String>> managedClients,
+      ICProvider icProvider,
+      AbstractAvroChunkingAdapter<V> chunkingAdapter,
+      Runnable preValidation) {
     logger.info("Creating client, storeName={}, daVinciConfig={}", clientConfig.getStoreName(), daVinciConfig);
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
     this.backendConfig = backendConfig;
     this.managedClients = managedClients;
     this.icProvider = icProvider;
+    this.chunkingAdapter = chunkingAdapter;
+    preValidation.run();
   }
 
   @Override
@@ -583,7 +604,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   protected AbstractAvroChunkingAdapter<V> getAvroChunkingAdapter() {
-    return GenericChunkingAdapter.INSTANCE;
+    return chunkingAdapter;
   }
 
   protected GenericRecordChunkingAdapter getGenericRecordChunkingAdapter() {
@@ -622,7 +643,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       kafkaBootstrapServers = backendConfig.getString(KAFKA_BOOTSTRAP_SERVERS);
     }
     VeniceProperties config = new PropertyBuilder().put(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName())
-        .put(SERVER_ENABLE_KAFKA_OPENSSL, false)
         .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4) // RocksDB default config
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 20) // RocksDB default config
         .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER, 36) // RocksDB default config
@@ -682,7 +702,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public synchronized void start() {
     if (isReady()) {
-      throw new VeniceClientException("Da Vinci client is already started, storeName=" + getStoreName());
+      return;
     }
     logger.info("Starting client, storeName=" + getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();

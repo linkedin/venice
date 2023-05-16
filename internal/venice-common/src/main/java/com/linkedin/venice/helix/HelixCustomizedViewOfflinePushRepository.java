@@ -1,18 +1,26 @@
 package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentChanges;
+import static com.linkedin.venice.meta.Store.*;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -22,11 +30,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
-import org.apache.helix.PropertyKey;
 import org.apache.helix.PropertyType;
-import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
 import org.apache.helix.model.CustomizedView;
-import org.apache.helix.model.IdealState;
 import org.apache.helix.spectator.RoutingTableSnapshot;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,9 +45,15 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
   private final ReentrantReadWriteLock resourceAssignmentRWLock = new ReentrantReadWriteLock();
   private static final String LEADER_FOLLOWER_VENICE_STATE_FILLER = "N/A";
 
-  public HelixCustomizedViewOfflinePushRepository(SafeHelixManager manager) {
+  private final Map<String, Integer> resourceToPartitionCountMap = new VeniceConcurrentHashMap<>();
+
+  private final ReadOnlyStoreRepository storeRepository;
+
+  public HelixCustomizedViewOfflinePushRepository(SafeHelixManager manager, ReadOnlyStoreRepository storeRepository) {
     super(manager);
     dataSource.put(PropertyType.CUSTOMIZEDVIEW, Collections.singletonList(HelixPartitionState.OFFLINE_PUSH.name()));
+    this.storeRepository = storeRepository;
+    this.storeRepository.registerStoreDataChangedListener(new StoreChangeListener());
   }
 
   @Override
@@ -94,6 +105,11 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
   }
 
   @Override
+  public void clear() {
+    this.resourceToPartitionCountMap.clear();
+  }
+
+  @Override
   protected void onCustomizedViewDataChange(RoutingTableSnapshot routingTableSnapshot) {
     Collection<CustomizedView> customizedViewCollection = routingTableSnapshot.getCustomizeViews();
     if (customizedViewCollection == null) {
@@ -107,44 +123,30 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
       // Create a snapshot to prevent live instances map being changed during this method execution.
       Map<String, Instance> liveInstanceSnapshot = convertLiveInstances(routingTableSnapshot.getLiveInstances());
       // Get number of partitions from Ideal state category in ZK.
-      Map<String, Integer> resourceToPartitionCountMapSnapshot = resourceToIdealPartitionCountMap;
       ResourceAssignment newResourceAssignment = new ResourceAssignment();
       Set<String> resourcesInCustomizedView =
           customizedViewCollection.stream().map(CustomizedView::getResourceName).collect(Collectors.toSet());
 
-      if (!resourceToPartitionCountMapSnapshot.keySet().containsAll(resourcesInCustomizedView)) {
-        LOGGER.info(
-            "Found the inconsistent data between customized view and ideal state of cluster: {}."
-                + " Reading the latest ideal state from zk.",
-            manager.getClusterName());
-        List<PropertyKey> keys = customizedViewCollection.stream()
-            .map(cv -> keyBuilder.idealStates(cv.getResourceName()))
-            .collect(Collectors.toList());
-        try {
-          List<IdealState> idealStates = manager.getHelixDataAccessor().getProperty(keys);
-          refreshResourceToIdealPartitionCountMap(idealStates);
-          resourceToPartitionCountMapSnapshot = resourceToIdealPartitionCountMap;
-          LOGGER.info("Ideal state of cluster: " + manager.getClusterName() + " is updated from zk");
-        } catch (HelixMetaDataAccessException e) {
-          LOGGER.error(
-              "Failed to update the ideal state of cluster: {}. Because we could not access to zk.",
-              manager.getClusterName(),
-              e);
-          return;
-        }
-      }
-
       for (CustomizedView customizedView: customizedViewCollection) {
         String resourceName = customizedView.getResourceName();
-        if (!resourceToPartitionCountMapSnapshot.containsKey(resourceName)) {
-          LOGGER.warn(
-              "Could not find resource: {} in ideal state. Ideal state is up to date, so the resource has been"
-                  + " deleted from ideal state or could not read from zk. Ignore its customized view update.",
-              resourceName);
-          continue;
+        int partitionCount = resourceToPartitionCountMap.getOrDefault(resourceName, -1);
+        if (partitionCount == -1) {
+          String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+          int version = Version.parseVersionFromVersionTopicName(resourceName);
+          Store store = storeRepository.getStore(storeName);
+          if (store == null) {
+            LOGGER.warn("Cannot find store for resource: {}.", resourceName);
+            continue;
+          }
+
+          if (!store.getVersion(version).isPresent()) {
+            LOGGER.warn("Version not found in store for resource: {}.", resourceName);
+            continue;
+          }
+          partitionCount = store.getVersion(version).get().getPartitionCount();
+          resourceToPartitionCountMap.put(resourceName, partitionCount);
         }
-        PartitionAssignment partitionAssignment =
-            new PartitionAssignment(resourceName, resourceToPartitionCountMapSnapshot.get(resourceName));
+        PartitionAssignment partitionAssignment = new PartitionAssignment(resourceName, partitionCount);
         for (String partitionName: customizedView.getPartitionSet()) {
           // Get instance to customized state map for this partition from local memory.
           Map<String, String> instanceStateMap = customizedView.getStateMap(partitionName);
@@ -217,5 +219,53 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
   @Override
   public void refreshRoutingDataForResource(String kafkaTopic) {
     throw new VeniceException("The function of refreshRoutingDataForResource is not implemented");
+  }
+
+  // test only
+  Map<String, Integer> getResourceToPartitionCountMap() {
+    return Collections.unmodifiableMap(this.resourceToPartitionCountMap);
+  }
+
+  public class StoreChangeListener implements StoreDataChangedListener {
+    @Override
+    public void handleStoreCreated(Store store) {
+      int currentVersion = store.getCurrentVersion();
+      if (currentVersion == NON_EXISTING_VERSION) {
+        return;
+      }
+
+      String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);
+      int partitionCount = store.getVersion(currentVersion).get().getPartitionCount();
+      resourceToPartitionCountMap.put(newResourceName, partitionCount);
+    }
+
+    @Override
+    public void handleStoreChanged(Store store) {
+      int currentVersion = store.getCurrentVersion();
+      if (currentVersion == NON_EXISTING_VERSION) {
+        return;
+      }
+
+      IntSet versionsSet = new IntLinkedOpenHashSet(store.getVersions().size());
+      store.getVersions().forEach(version -> versionsSet.add(version.getNumber()));
+
+      resourceToPartitionCountMap.entrySet().removeIf(entry -> {
+        String storeName = Version.parseStoreFromKafkaTopicName(entry.getKey());
+        int version = Version.parseVersionFromVersionTopicName(entry.getKey());
+        return store.getName().equals(storeName) && !versionsSet.contains(version);
+      });
+
+      String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);
+      int partitionCount = store.getVersion(currentVersion).get().getPartitionCount();
+      resourceToPartitionCountMap.put(newResourceName, partitionCount);
+    }
+
+    @Override
+    public void handleStoreDeleted(String storeName) {
+      resourceToPartitionCountMap.entrySet().removeIf(entry -> {
+        String name = Version.parseStoreFromKafkaTopicName(entry.getKey());
+        return storeName.equals(name);
+      });
+    }
   }
 }
