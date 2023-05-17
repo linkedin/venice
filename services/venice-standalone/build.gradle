@@ -5,12 +5,14 @@ plugins {
 
 application {
   mainClassName = 'com.linkedin.venice.standalone.VeniceStandalone'
-  applicationDefaultJvmArgs = ["-Djava.net.preferIPv4Stack=true"]
+  applicationDefaultJvmArgs = ["-Djava.net.preferIPv4Stack=true", "-Dservices=" + System.getProperty("services", "*") ]
 }
 installDist.dependsOn test
 
 dependencies {
   implementation libraries.log4j2core
+  implementation libraries.curator
+  implementation libraries.kafka
   implementation project(':internal:venice-common')
   implementation project(':clients:da-vinci-client')
   implementation project(':services:venice-controller')

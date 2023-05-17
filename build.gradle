@@ -108,7 +108,8 @@ ext.libraries = [
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.5.9',
-    zstd: 'com.github.luben:zstd-jni:1.5.2-3'
+    zstd: 'com.github.luben:zstd-jni:1.5.2-3',
+    curator: 'org.apache.curator:curator-test:5.1.0' // for Venice Standalone
 ]
 
 group = 'com.linkedin.venice'
