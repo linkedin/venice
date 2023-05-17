@@ -624,7 +624,7 @@ public class AdminTool {
     String stores = getRequiredArgument(cmd, Arg.STORES);
     String timestamp = getRequiredArgument(cmd, Arg.DATETIME);
     String url = getRequiredArgument(cmd, Arg.URL);
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    // String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
 
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
@@ -645,7 +645,7 @@ public class AdminTool {
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
     params.setNonInteractive(isNonInteractive);
 
-    try (ControllerClient cli = new ControllerClient(clusterName, url, sslFactory)) {
+    try (ControllerClient cli = new ControllerClient("*", url, sslFactory)) {
       cmdParams.setPCtrlCliWithoutCluster(cli);
       dataRecoveryClient.execute(params, cmdParams);
     }
