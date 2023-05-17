@@ -728,14 +728,8 @@
               "default": false
             },
             {
-              "name": "canaryRegionPush",
-              "doc": "Indicates whether controller is requesting a topic for canary region push or not. If true, this admin message should only be consumed by the canary region",
-              "type": "boolean",
-              "default": false
-            },
-            {
-              "name": "sourceRegion",
-              "doc": "Indicates the source region of the push. It should be the same region as pushStreamSourceAddress locates in",
+              "name": "targetedRegions",
+              "doc": "The list of regions that is separated by comma for targeted region push. If set, this admin message should only be consumed by the targeted regions",
               "type": ["null", "string"],
               "default": null
             }

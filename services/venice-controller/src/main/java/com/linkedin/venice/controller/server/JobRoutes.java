@@ -1,11 +1,11 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CANARY_REGION_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DETAILS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
@@ -61,7 +61,7 @@ public class JobRoutes extends AbstractRoute {
         String store = request.queryParams(NAME);
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         String incrementalPushVersion = AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION);
-        boolean isCanaryRegionPush = Boolean.parseBoolean(request.queryParams(CANARY_REGION_PUSH));
+        String targetedRegions = request.queryParams(TARGETED_REGIONS);
         String region = AdminSparkServer.getOptionalParameterValue(request, FABRIC);
         responseObject = populateJobStatus(
             cluster,
@@ -70,7 +70,7 @@ public class JobRoutes extends AbstractRoute {
             admin,
             Optional.ofNullable(incrementalPushVersion),
             region,
-            isCanaryRegionPush);
+            targetedRegions);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -86,14 +86,14 @@ public class JobRoutes extends AbstractRoute {
       Admin admin,
       Optional<String> incrementalPushVersion,
       String region,
-      boolean isCanaryRegionPush) {
+      String targetedRegions) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
     Version version = new VersionImpl(store, versionNumber);
     String kafkaTopicName = version.kafkaTopicName();
 
     Admin.OfflinePushStatusInfo offlineJobStatus =
-        admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion, region, isCanaryRegionPush);
+        admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion, region, targetedRegions);
     responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
     responseObject.setStatusDetails(offlineJobStatus.getStatusDetails());
     responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());

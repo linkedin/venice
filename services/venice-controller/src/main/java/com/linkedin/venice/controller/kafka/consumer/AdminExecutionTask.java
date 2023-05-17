@@ -50,6 +50,7 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -58,6 +59,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Logger;
 
 
@@ -625,16 +627,15 @@ public class AdminExecutionTask implements Callable<Void> {
             replicationMetadataVersionId);
       }
     } else {
-      boolean isCanaryRegionPush = message.canaryRegionPush;
-      boolean isSourceRegion = message.sourceRegion != null && message.sourceRegion.toString().equals(this.regionName);
-      if (isCanaryRegionPush && !isSourceRegion) {
-        // for canary region push, only allow specified region to process add version message
+      String regions = message.targetedRegions != null ? message.targetedRegions.toString() : null;
+      if (StringUtils.isNotEmpty(regions) && !RegionUtils.parseRegionsFilterList(regions).contains(this.regionName)) {
+        // for targeted region push, only allow specified region to process add version message
         LOGGER.info(
-            "Skip the add version message for store {} in region {} since this is canary region push and "
-                + "local region is not the source region {}",
+            "Skip the add version message for store {} in region {} since this is targeted region push and "
+                + "local region is not the targeted region list {}",
             storeName,
             regionName,
-            message.sourceRegion);
+            message.targetedRegions.toString());
       } else {
         // New version for regular Venice store.
         admin.addVersionAndStartIngestion(

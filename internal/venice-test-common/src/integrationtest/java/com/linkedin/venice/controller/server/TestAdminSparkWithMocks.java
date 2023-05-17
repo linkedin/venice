@@ -247,7 +247,7 @@ public class TestAdminSparkWithMocks {
             -1,
             optionalemergencySourceRegion,
             false,
-            false);
+            null);
 
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be
     // accessible

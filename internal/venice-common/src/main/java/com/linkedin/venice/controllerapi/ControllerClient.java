@@ -3,7 +3,6 @@ package com.linkedin.venice.controllerapi;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CANARY_REGION_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_DICTIONARY;
@@ -62,6 +61,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CON
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
@@ -251,7 +251,38 @@ public class ControllerClient implements Closeable {
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
         false,
-        false);
+        null);
+  }
+
+  public VersionCreationResponse requestTopicForWrites(
+      String storeName,
+      long storeSize,
+      PushType pushType,
+      String pushJobId,
+      boolean sendStartOfPush,
+      boolean sorted,
+      boolean wcEnabled,
+      Optional<String> partitioners,
+      Optional<String> compressionDictionary,
+      Optional<String> sourceGridFabric,
+      boolean batchJobHeartbeatEnabled,
+      long rewindTimeInSecondsOverride,
+      boolean deferVersionSwap) {
+    return requestTopicForWrites(
+        storeName,
+        storeSize,
+        pushType,
+        pushJobId,
+        sendStartOfPush,
+        sorted,
+        wcEnabled,
+        partitioners,
+        compressionDictionary,
+        sourceGridFabric,
+        batchJobHeartbeatEnabled,
+        rewindTimeInSecondsOverride,
+        deferVersionSwap,
+        null);
   }
 
   /**
@@ -273,7 +304,7 @@ public class ControllerClient implements Closeable {
    * @param rewindTimeInSecondsOverride if a valid value is specified (>=0) for hybrid store, this param will override
    *                                       the default store-level rewindTimeInSeconds config.
    * @param deferVersionSwap whether to defer version swap after the push is done
-   * @param canaryRegionPush whether this is a topic requested for a canary region push
+   * @param targetedRegions the list of regions that is separated by comma for targeted region push.
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(
@@ -290,7 +321,7 @@ public class ControllerClient implements Closeable {
       boolean batchJobHeartbeatEnabled,
       long rewindTimeInSecondsOverride,
       boolean deferVersionSwap,
-      boolean canaryRegionPush) {
+      String targetedRegions) {
     QueryParams params = newParams().add(NAME, storeName)
         // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -304,8 +335,10 @@ public class ControllerClient implements Closeable {
         .add(SOURCE_GRID_FABRIC, sourceGridFabric)
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
-        .add(DEFER_VERSION_SWAP, deferVersionSwap)
-        .add(CANARY_REGION_PUSH, canaryRegionPush);
+        .add(DEFER_VERSION_SWAP, deferVersionSwap);
+    if (StringUtils.isNotEmpty(targetedRegions)) {
+      params.add(TARGETED_REGIONS, targetedRegions);
+    }
 
     return request(ControllerRoute.REQUEST_TOPIC, params, VersionCreationResponse.class);
   }
@@ -613,47 +646,53 @@ public class ControllerClient implements Closeable {
    * child controller.
    * @param kafkaTopic, the version topic name of the push job.
    * @param incrementalPushVersion, the optional incremental push version of the push job.
-   * @param isCanaryRegionPush, whether this is a canary region push.
+   * @param targetedRegions, the list of regions that is separated by comma for targeted region push.
    * @return
    */
   public JobStatusQueryResponse queryOverallJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
-      boolean isCanaryRegionPush) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, 5 * QUERY_JOB_STATUS_TIMEOUT, isCanaryRegionPush);
+      String targetedRegions) {
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, 5 * QUERY_JOB_STATUS_TIMEOUT, targetedRegions);
+  }
+
+  public JobStatusQueryResponse queryOverallJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
+    return queryOverallJobStatus(kafkaTopic, incrementalPushVersion, null);
   }
 
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
-    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT, false);
+    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT, null);
   }
 
   /**
    * This method is used to query the job status from a controller. It is expected to be a child controller thus a
-   * shorter timeout is enforced. Use {@link ControllerClient#queryOverallJobStatus(String, Optional, boolean)} instead if the
+   * shorter timeout is enforced. Use {@link ControllerClient#queryOverallJobStatus(String, Optional)} instead if the
    * target is a parent controller.
    */
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, false);
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, null);
   }
 
   public JobStatusQueryResponse queryJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
-      boolean isCanaryRegionPush) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, isCanaryRegionPush);
+      String targetedRegions) {
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, targetedRegions);
   }
 
   public JobStatusQueryResponse queryJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       int timeoutMs,
-      boolean isCanaryRegionPush) {
+      String targetedRegions) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    QueryParams params = newParams().add(NAME, storeName)
-        .add(VERSION, version)
-        .add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion)
-        .add(CANARY_REGION_PUSH, isCanaryRegionPush);
+    QueryParams params =
+        newParams().add(NAME, storeName).add(VERSION, version).add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion);
+
+    if (StringUtils.isNotEmpty(targetedRegions)) {
+      params.add(TARGETED_REGIONS, targetedRegions);
+    }
     return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null);
   }
 

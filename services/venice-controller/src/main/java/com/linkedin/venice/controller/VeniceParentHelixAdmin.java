@@ -201,6 +201,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -303,7 +304,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
-   * 1. For errored topics, {@link #getOffLineJobStatus(String, String, Map, Optional)} won't truncate them;
+   * 1. For errored topics, {@link #getOffLineJobStatus} won't truncate them;
    * 2. For errored topics, {@link #killOfflinePush(String, String, boolean)} won't truncate them;
    * 3. {@link #getTopicForCurrentPushJob(String, String, boolean, boolean)} will truncate the errored topics based on
    * {@link #maxErroredTopicNumToKeep};
@@ -1109,7 +1110,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType, false);
+      sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType, null);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
@@ -1522,7 +1523,7 @@ public class VeniceParentHelixAdmin implements Admin {
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      boolean canaryRegionPush) {
+      String targetedRegions) {
     Optional<String> currentPushTopic =
         getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
     if (currentPushTopic.isPresent()) {
@@ -1613,7 +1614,7 @@ public class VeniceParentHelixAdmin implements Admin {
           rewindTimeInSecondsOverride,
           emergencySourceRegion,
           versionSwapDeferred,
-          canaryRegionPush);
+          targetedRegions);
     }
     cleanupHistoricalVersions(clusterName, storeName);
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
@@ -1646,7 +1647,7 @@ public class VeniceParentHelixAdmin implements Admin {
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      boolean canaryRegionPush) {
+      String targetedRegions) {
     final int replicationMetadataVersionId = getRmdVersionID(storeName, clusterName);
     Pair<Boolean, Version> result = getVeniceHelixAdmin().addVersionAndTopicOnly(
         clusterName,
@@ -1664,13 +1665,10 @@ public class VeniceParentHelixAdmin implements Admin {
         rewindTimeInSecondsOverride,
         replicationMetadataVersionId,
         emergencySourceRegion,
-        versionSwapDeferred);
+        versionSwapDeferred,
+        targetedRegions);
     Version newVersion = result.getSecond();
     if (result.getFirst()) {
-      // fail early if canary region push is enabled but source region is not set.
-      if (canaryRegionPush && StringUtils.isEmpty(newVersion.getNativeReplicationSourceFabric())) {
-        throw new VeniceException("Source region is not set for canary region push.");
-      }
       if (newVersion.isActiveActiveReplicationEnabled()) {
         updateReplicationMetadataSchemaForAllValueSchema(clusterName, storeName);
       }
@@ -1684,7 +1682,7 @@ public class VeniceParentHelixAdmin implements Admin {
             newVersion,
             numberOfPartitions,
             pushType,
-            canaryRegionPush);
+            targetedRegions);
       } finally {
         releaseAdminMessageLock(clusterName, storeName);
       }
@@ -1700,17 +1698,11 @@ public class VeniceParentHelixAdmin implements Admin {
       Version version,
       int numberOfPartitions,
       Version.PushType pushType,
-      boolean canaryRegionPush) {
+      String targetedRegions) {
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.ADD_VERSION.getValue();
-    message.payloadUnion = getAddVersionMessage(
-        clusterName,
-        storeName,
-        pushJobId,
-        version,
-        numberOfPartitions,
-        pushType,
-        canaryRegionPush);
+    message.payloadUnion =
+        getAddVersionMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType, targetedRegions);
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
   }
 
@@ -1721,7 +1713,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Version version,
       int numberOfPartitions,
       Version.PushType pushType,
-      boolean canaryRegionPush) {
+      String targetedRegions) {
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = clusterName;
     addVersion.storeName = storeName;
@@ -1732,7 +1724,6 @@ public class VeniceParentHelixAdmin implements Admin {
     // Check whether native replication is enabled
     if (version.isNativeReplicationEnabled()) {
       addVersion.pushStreamSourceAddress = version.getPushStreamSourceAddress();
-      addVersion.sourceRegion = version.getNativeReplicationSourceFabric();
     }
     if (version.getHybridStoreConfig() != null) {
       addVersion.rewindTimeInSecondsOverride = version.getHybridStoreConfig().getRewindTimeInSeconds();
@@ -1740,7 +1731,9 @@ public class VeniceParentHelixAdmin implements Admin {
       // Default value, unused for non hybrid store
       addVersion.rewindTimeInSecondsOverride = -1;
     }
-    addVersion.canaryRegionPush = canaryRegionPush;
+    if (StringUtils.isNotEmpty(targetedRegions)) {
+      addVersion.targetedRegions = targetedRegions;
+    }
     addVersion.timestampMetadataVersionId = version.getRmdVersionId();
     addVersion.versionSwapDeferred = version.isVersionSwapDeferred();
     return addVersion;
@@ -3361,7 +3354,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       String region,
-      boolean isCanaryRegionPush) {
+      String targetedRegions) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     if (region != null) {
       if (!controllerClients.containsKey(region)) {
@@ -3378,14 +3371,14 @@ public class VeniceParentHelixAdmin implements Admin {
       offlinePushStatusInfo.setUncompletedPartitions(response.getUncompletedPartitions());
       return offlinePushStatusInfo;
     }
-    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, incrementalPushVersion, isCanaryRegionPush);
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, incrementalPushVersion, targetedRegions);
   }
 
   OfflinePushStatusInfo getOffLineJobStatus(
       String clusterName,
       String kafkaTopic,
       Map<String, ControllerClient> controllerClients) {
-    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, Optional.empty(), false);
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, Optional.empty(), null);
   }
 
   /**
@@ -3394,7 +3387,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * @param kafkaTopic
    * @param controllerClients
    * @param incrementalPushVersion
-   * @param isCanaryRegionPush
+   * @param targetedRegions
    * @return
    */
   private OfflinePushStatusInfo getOffLineJobStatus(
@@ -3402,9 +3395,9 @@ public class VeniceParentHelixAdmin implements Admin {
       String kafkaTopic,
       Map<String, ControllerClient> controllerClients,
       Optional<String> incrementalPushVersion,
-      boolean isCanaryRegionPush) {
+      String targetedRegions) {
     Set<String> childRegions = controllerClients.keySet();
-    List<ExecutionStatus> statuses = new ArrayList<>();
+    Map<String, ExecutionStatus> statuses = new HashMap<>();
     Map<String, String> extraInfo = new HashMap<>();
     Map<String, String> extraDetails = new HashMap<>();
     int failCount = 0;
@@ -3416,64 +3409,78 @@ public class VeniceParentHelixAdmin implements Admin {
         leaderControllerUrl = controllerClient.getLeaderControllerUrl();
       } catch (VeniceException exception) {
         LOGGER.warn("Couldn't query {} for job status of {}", region, kafkaTopic, exception);
-        statuses.add(ExecutionStatus.UNKNOWN);
+        statuses.put(region, ExecutionStatus.UNKNOWN);
         extraInfo.put(region, ExecutionStatus.UNKNOWN.toString());
         extraDetails.put(region, "Failed to get leader controller url " + exception.getMessage());
         continue;
       }
       JobStatusQueryResponse response =
-          controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion, isCanaryRegionPush);
+          controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion, targetedRegions);
       if (response.isError()) {
         failCount += 1;
         LOGGER.warn("Couldn't query {} for job {} status: {}", region, kafkaTopic, response.getError());
-        statuses.add(ExecutionStatus.UNKNOWN);
+        statuses.put(region, ExecutionStatus.UNKNOWN);
         extraInfo.put(region, ExecutionStatus.UNKNOWN.toString());
         extraDetails.put(region, leaderControllerUrl + " " + response.getError());
       } else {
         ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
-        statuses.add(status);
+        statuses.put(region, status);
         extraInfo.put(region, response.getStatus());
         Optional<String> statusDetails = response.getOptionalStatusDetails();
         statusDetails.ifPresent(s -> extraDetails.put(region, leaderControllerUrl + " " + s));
       }
     }
-    // Sort the per-datacenter status in this order, and return the first one in the list
-    // Edge case example: if one cluster is stuck in NOT_CREATED, then
-    // as another cluster goes from PROGRESS to COMPLETED
-    // the aggregate status will go from PROGRESS back down to NOT_CREATED.
-    statuses.sort(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf));
 
+    /**
+     * Based on the global information, start determining the final status
+     */
     ExecutionStatus currentReturnStatus = ExecutionStatus.NEW;
     StringBuilder currentReturnStatusDetails = new StringBuilder();
-    if (isCanaryRegionPush) {
-      // for canary region push, ignore other child regions' status and canary region is expected to
-      // be ERROR/COMPLETED, which has higher priority, as end states
-      currentReturnStatus = statuses.get(statuses.size() - 1);
-    } else {
-      if (statuses.size() > 0) {
-        currentReturnStatus = statuses.get(0);
-      }
+    List<ExecutionStatus> sortedStatuses = new ArrayList<>();
 
-      int successCount = childRegions.size() - failCount;
-      if (!(successCount >= (childRegions.size() / 2) + 1)) {
-        // Strict majority must be reachable, otherwise keep polling
-        currentReturnStatus = ExecutionStatus.PROGRESS;
+    if (StringUtils.isEmpty(targetedRegions)) {
+      // Sort the per-datacenter status in this order, and return the first one in the list
+      // Edge case example: if one cluster is stuck in NOT_CREATED, then
+      // as another cluster goes from PROGRESS to COMPLETED
+      // the aggregate status will go from PROGRESS back down to NOT_CREATED.
+      sortedStatuses = statuses.values()
+          .stream()
+          .sorted(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf))
+          .collect(Collectors.toList());
+
+      currentReturnStatus = getFinalReturnStatus(sortedStatuses, childRegions, failCount, currentReturnStatusDetails);
+    } else {
+      // we use the same logic as above, but only consider the targeted regions
+      Set<String> targetedRegionsSet = RegionUtils.parseRegionsFilterList(targetedRegions);
+      int targetedRegionFailCount = 0;
+      for (String region: targetedRegionsSet) {
+        ExecutionStatus status = statuses.get(region);
+        /**
+         * We consider failures for the following cases:
+         * 1. the provided region isn't available for the cluster, in other words, invalid targeted region is provided.
+         * 2. the provided region has troubles to query the job status.
+         */
+        if (status != null) {
+          sortedStatuses.add(status);
+          if (status.equals(ExecutionStatus.UNKNOWN)) {
+            targetedRegionFailCount += 1;
+          }
+        } else {
+          targetedRegionFailCount += 1;
+        }
       }
+      sortedStatuses = sortedStatuses.stream()
+          .sorted(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf))
+          .collect(Collectors.toList());
+
+      currentReturnStatusDetails.append("This is targeted region push and following regions ")
+          .append(targetedRegions)
+          .append(" are expected to be COMPLETED. ");
+      currentReturnStatus =
+          getFinalReturnStatus(sortedStatuses, targetedRegionsSet, targetedRegionFailCount, currentReturnStatusDetails);
     }
 
     if (currentReturnStatus.isTerminal()) {
-      // If there is a temporary datacenter connection failure, we want VPJ to report failure while allowing the push
-      // to succeed in remaining datacenters. If we want to allow the push to succeed in async in the remaining
-      // datacenter, then put the topic delete into an else block under `if (failCount > 0)`
-      if (failCount > 0) {
-        if (!isCanaryRegionPush) {
-          currentReturnStatus = ExecutionStatus.ERROR;
-        }
-        currentReturnStatusDetails.append(failCount)
-            .append("/")
-            .append(childRegions.size())
-            .append(" DCs unreachable. ");
-      }
       truncateTopicsOptionally(
           clusterName,
           kafkaTopic,
@@ -3487,6 +3494,39 @@ public class VeniceParentHelixAdmin implements Admin {
         extraInfo,
         currentReturnStatusDetails.toString(),
         extraDetails);
+  }
+
+  private ExecutionStatus getFinalReturnStatus(
+      List<ExecutionStatus> sortedStatuses,
+      Set<String> childRegions,
+      int failCount,
+      StringBuilder currentReturnStatusDetails) {
+    ExecutionStatus currentReturnStatus = ExecutionStatus.NEW;
+
+    if (sortedStatuses.size() > 0) {
+      currentReturnStatus = sortedStatuses.get(0);
+    }
+
+    int successCount = childRegions.size() - failCount;
+    if (!(successCount >= (childRegions.size() / 2) + 1)) {
+      // Strict majority must be reachable, otherwise keep polling
+      currentReturnStatus = ExecutionStatus.PROGRESS;
+    }
+
+    if (currentReturnStatus.isTerminal()) {
+      // If there is a temporary datacenter connection failure, we want VPJ to report failure while allowing the push
+      // to succeed in remaining datacenters. If we want to allow the push to succeed in async in the remaining
+      // datacenter, then put the topic delete into an else block under `if (failCount > 0)`
+      if (failCount > 0) {
+        currentReturnStatus = ExecutionStatus.ERROR;
+        currentReturnStatusDetails.append(failCount)
+            .append("/")
+            .append(childRegions.size())
+            .append(" DCs unreachable. ");
+      }
+    }
+
+    return currentReturnStatus;
   }
 
   /**
@@ -3555,16 +3595,17 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getNativeReplicationSourceFabric(String, Store, Optional, Optional)
+   * @see VeniceHelixAdmin#getNativeReplicationSourceFabric(String, Store, Optional, Optional, String)
    */
   @Override
   public String getNativeReplicationSourceFabric(
       String clusterName,
       Store store,
       Optional<String> sourceGridFabric,
-      Optional<String> emergencySourceRegion) {
+      Optional<String> emergencySourceRegion,
+      String targetedRegions) {
     return getVeniceHelixAdmin()
-        .getNativeReplicationSourceFabric(clusterName, store, sourceGridFabric, emergencySourceRegion);
+        .getNativeReplicationSourceFabric(clusterName, store, sourceGridFabric, emergencySourceRegion, targetedRegions);
   }
 
   /**

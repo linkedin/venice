@@ -1378,7 +1378,7 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test
-  public void testAddVersionMsgHandlingForCanaryRegionPush() throws Exception {
+  public void testAddVersionMsgHandlingForTargetedRegionPush() throws Exception {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, stats, 10000);
     executor.submit(task);
@@ -1386,32 +1386,16 @@ public class AdminConsumptionTaskTest {
     int versionNumber = 1;
     int numberOfPartitions = 1;
 
-    // sending two messages. One is for the canary region and the other is for different region, which should be
-    // discarded.
+    // Sending two messages.
+    // dc-0 is the default region for the testing suite so the first message for "dc-1" should be ignored.
     veniceWriter.put(
         emptyKeyBytes,
-        getAddVersionMessage(
-            clusterName,
-            storeName,
-            mockPushJobId,
-            versionNumber,
-            numberOfPartitions,
-            1L,
-            true,
-            "dc-1"),
+        getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L, "dc-1"),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     veniceWriter.put(
         emptyKeyBytes,
-        getAddVersionMessage(
-            clusterName,
-            storeName,
-            mockPushJobId,
-            versionNumber,
-            numberOfPartitions,
-            2L,
-            true,
-            "dc-0"),
+        getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 2L, "dc-0"),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
@@ -1475,15 +1459,7 @@ public class AdminConsumptionTaskTest {
       int versionNum,
       int numberOfPartitions,
       long executionId) {
-    return getAddVersionMessage(
-        clusterName,
-        storeName,
-        pushJobId,
-        versionNum,
-        numberOfPartitions,
-        executionId,
-        false,
-        null);
+    return getAddVersionMessage(clusterName, storeName, pushJobId, versionNum, numberOfPartitions, executionId, null);
   }
 
   private byte[] getAddVersionMessage(
@@ -1493,8 +1469,7 @@ public class AdminConsumptionTaskTest {
       int versionNum,
       int numberOfPartitions,
       long executionId,
-      boolean isCanaryRegionPush,
-      String canaryRegion) {
+      String targetedRegions) {
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = clusterName;
     addVersion.storeName = storeName;
@@ -1503,8 +1478,7 @@ public class AdminConsumptionTaskTest {
     addVersion.numberOfPartitions = numberOfPartitions;
     addVersion.rewindTimeInSecondsOverride = -1;
     addVersion.timestampMetadataVersionId = 1;
-    addVersion.sourceRegion = canaryRegion;
-    addVersion.canaryRegionPush = isCanaryRegionPush;
+    addVersion.targetedRegions = targetedRegions;
 
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.ADD_VERSION.getValue();

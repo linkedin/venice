@@ -71,6 +71,7 @@ import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -388,16 +389,14 @@ public class VenicePushJob implements AutoCloseable {
   public static final int NOT_SET = -1;
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
   /**
-   * Config to enable single-colo/region canary push for VPJ.
-   * In this mode, the VPJ will only push data to the source colo/region first, perform validation and finally
+   * Config to specify a list of regions used for targeted region push in VPJ.
+   * In this mode, the VPJ will only push data to the provided regions first, perform validation and finally
    * leverage data recovery/repush to propagate data globally.
-   * The source colo is determined by Controller using the given priority order:
-   *     1. Parent controller emergency source fabric config.
-   *     2. VPJ plugin source grid fabric config, aka {@link #SOURCE_GRID_FABRIC}.
-   *     3. Store level source fabric config.
-   *     4. Cluster level source fabric config.
+   *
+   * The input should be split by comma, e.g. "dc-0,dc-1,dc-2".
+   *
    */
-  public static final String CANARY_REGION_PUSH = "canary.region.push";
+  public static final String TARGETED_REGIONS = "targeted.regions";
 
   /**
    * Since the job is calculating the raw data file size, which is not accurate because of compression,
@@ -506,7 +505,7 @@ public class VenicePushJob implements AutoCloseable {
     String livenessHeartbeatStoreName;
     boolean multiRegion;
     boolean d2Routing;
-    boolean canaryRegionPush;
+    String targetedRegions;
   }
 
   protected PushJobSetting pushJobSetting;
@@ -678,7 +677,9 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     pushJobSettingToReturn.repushTTLInSeconds = NOT_SET;
-    pushJobSettingToReturn.canaryRegionPush = props.getBoolean(CANARY_REGION_PUSH, false);
+    if (props.containsKey(TARGETED_REGIONS)) {
+      pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGIONS);
+    }
 
     if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
       throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
@@ -721,18 +722,14 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSettingToReturn.isSourceETL) {
         throw new VeniceException("Source ETL is not supported while using Kafka Input Format");
       }
-
-      if (pushJobSettingToReturn.canaryRegionPush) {
-        throw new VeniceException("Canary region push is not supported while using Kafka Input Format");
-      }
     }
 
-    if (pushJobSettingToReturn.canaryRegionPush) {
+    if (StringUtils.isNotEmpty(pushJobSettingToReturn.targetedRegions)) {
       if (pushJobSettingToReturn.isSourceETL) {
-        throw new VeniceException("Source ETL is not supported while using canary region push mode");
+        throw new VeniceException("Source ETL is not supported while using targeted region push mode");
       }
       if (pushJobSettingToReturn.isIncrementalPush) {
-        throw new VeniceException("Incremental push is not supported while using canary region push mode");
+        throw new VeniceException("Incremental push is not supported while using targeted region push mode");
       }
     }
 
@@ -2414,7 +2411,7 @@ public class VenicePushJob implements AutoCloseable {
             setting.livenessHeartbeatEnabled,
             setting.rewindTimeInSecondsOverride,
             setting.deferVersionSwap,
-            setting.canaryRegionPush));
+            setting.targetedRegions));
     if (versionCreationResponse.isError()) {
       if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
         LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
@@ -2615,7 +2612,7 @@ public class VenicePushJob implements AutoCloseable {
           controllerClient,
           pushJobSetting.controllerStatusPollRetries,
           client -> client
-              .queryOverallJobStatus(topicToMonitor, incrementalPushVersion, pushJobSetting.canaryRegionPush));
+              .queryOverallJobStatus(topicToMonitor, incrementalPushVersion, pushJobSetting.targetedRegions));
 
       if (response.isError()) {
         // status could not be queried which could be due to a communication error.
@@ -2623,6 +2620,9 @@ public class VenicePushJob implements AutoCloseable {
             "Failed to connect to: " + pushJobSetting.veniceControllerUrl + " to query job status, after "
                 + pushJobSetting.controllerStatusPollRetries + " attempts. Error: " + response.getError());
       }
+
+      LOGGER.info("DEBUGGING");
+      LOGGER.info(response);
 
       previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);
       ExecutionStatus overallStatus = ExecutionStatus.valueOf(response.getStatus());
@@ -2637,25 +2637,28 @@ public class VenicePushJob implements AutoCloseable {
       });
 
       if (overallStatus.isTerminal()) {
-        if (pushJobSetting.canaryRegionPush) {
-          if (completedDatacenters.size() == 1) {
-            LOGGER.info("Successfully pushed {} to {}", topicInfo.topic, completedDatacenters.iterator().next());
-            return;
-          } else {
-            throw new VeniceException(
-                "Canary region push job ended up with zero or more than one region ending with unexpected COMPLETED status, "
-                    + "reported by controller: " + pushJobSetting.veniceControllerUrl + "\ncontroller response: "
-                    + response);
-          }
+        int expectedCompletedCount = regionSpecificInfo.size();
+        if (StringUtils.isNotEmpty(pushJobSetting.targetedRegions)) {
+          // only consider the targeted regions
+          expectedCompletedCount = RegionUtils.parseRegionsFilterList(pushJobSetting.targetedRegions).size();
         }
-        if (completedDatacenters.size() != regionSpecificInfo.size() || !successfulStatuses.contains(overallStatus)) {
-          // One or more DC could have an UNKNOWN status and never successfully reported a completed status before,
+        if (completedDatacenters.size() != expectedCompletedCount || !successfulStatuses.contains(overallStatus)) {
+          // 1) For regular push, one or more DC could have an UNKNOWN status and never successfully reported a
+          // completed status before,
           // but if the majority of datacenters have completed, we give up on the unreachable datacenter
           // and start truncating the data topic.
+          // 2) For targeted region push, not all targeted regions have completed.
 
-          throw new VeniceException(
-              "Push job error reported by controller: " + pushJobSetting.veniceControllerUrl + "\ncontroller response: "
-                  + response);
+          StringBuilder errorMsg = new StringBuilder().append("Push job error reported by controller: ")
+              .append(pushJobSetting.veniceControllerUrl)
+              .append(
+                  StringUtils.isNotEmpty(pushJobSetting.targetedRegions)
+                      ? ". Zero or more than specified regions are in COMPLETED states. "
+                      : "")
+              .append("\ncontroller response: ")
+              .append(response);
+
+          throw new VeniceException(errorMsg.toString());
         }
 
         // Every known datacenter have successfully reported a completed status at least once.

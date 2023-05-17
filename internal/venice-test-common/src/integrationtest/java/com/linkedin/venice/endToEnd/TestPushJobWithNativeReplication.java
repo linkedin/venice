@@ -8,7 +8,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
-import static com.linkedin.venice.hadoop.VenicePushJob.CANARY_REGION_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
@@ -18,6 +17,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_P
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGIONS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
@@ -880,14 +880,14 @@ public class TestPushJobWithNativeReplication {
   }
 
   /**
-   * The canary region push should only push to the source region defined in the native replication, other regions should
+   * The targeted region push should only push to the source region defined in the native replication, other regions should
    * not receive any data.
    * @throws IOException
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testCanaryRegionPushJob() throws Exception {
+  public void testTargetedRegionPushJob() throws Exception {
     motherOfAllTests(
-        "testCanaryRegionPushJob",
+        "testTargetedRegionPushJob",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -908,8 +908,8 @@ public class TestPushJobWithNativeReplication {
             });
           }
 
-          // start a canary region push which should only increase the version to 2 in dc-0
-          props.setProperty(CANARY_REGION_PUSH, "true");
+          // start a targeted region push which should only increase the version to 2 in dc-0
+          props.setProperty(TARGETED_REGIONS, "dc-0");
           try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
             job.run(); // the job should succeed
 
@@ -924,6 +924,22 @@ public class TestPushJobWithNativeReplication {
                   Assert.assertEquals((int) version, 1);
                 }
               });
+            });
+          }
+
+          // specify two regions, so both dc-0 and dc-1 is updated to version 3
+          props.setProperty(TARGETED_REGIONS, "dc-0, dc-1");
+          try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              // Current version should become 1 at both 2 data centers
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 3);
+              }
             });
           }
         });

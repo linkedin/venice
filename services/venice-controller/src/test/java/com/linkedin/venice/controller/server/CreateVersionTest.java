@@ -164,7 +164,7 @@ public class CreateVersionTest {
             -1,
             Optional.empty(),
             false,
-            false);
+            null);
 
     assertTrue(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
@@ -217,7 +217,7 @@ public class CreateVersionTest {
             -1,
             Optional.empty(),
             false,
-            false);
+            null);
 
     Assert.assertFalse(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());
@@ -269,7 +269,7 @@ public class CreateVersionTest {
             -1,
             emergencySrcRegion,
             false,
-            false);
+            null);
 
     assertTrue(store.isHybrid());
     assertTrue(store.isIncrementalPushEnabled());

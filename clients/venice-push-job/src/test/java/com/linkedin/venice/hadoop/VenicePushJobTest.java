@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.CANARY_REGION_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
@@ -11,6 +10,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.PARENT_CONTROLLER_REGION_
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_ETL;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGIONS;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
@@ -60,7 +60,7 @@ import org.testng.annotations.Test;
 /**
  * This class contains only unit tests for VenicePushJob class.
  *
- * For integration tests please refer {@link TestVenicePushJob}
+ * For integration tests please refer to TestVenicePushJob
  *
  * todo: Remove dependency on utils from 'venice-test-common' module
  */
@@ -256,7 +256,7 @@ public class VenicePushJobTest {
             anyBoolean(),
             anyLong(),
             anyBoolean(),
-            anyBoolean());
+            any());
 
     ControllerResponse response = new ControllerResponse();
     doReturn(response).when(client).writeEndOfPush(anyString(), anyInt());
@@ -481,43 +481,33 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testCanaryRegionPushConfig() {
+  public void testTargetedRegionPushConfig() {
     Properties props = getVpjRequiredProperties();
-    props.put(SOURCE_KAFKA, true);
-    props.put(CANARY_REGION_PUSH, true);
-    // KIF should fail canary region push
-    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
-      // do nothing
-      Assert.fail("Test should fail, but doesn't.");
-    } catch (VeniceException e) {
-      assertEquals(e.getMessage(), "Canary region push is not supported while using Kafka Input Format");
-    }
-
-    props.put(SOURCE_KAFKA, false);
+    props.put(TARGETED_REGIONS, "dc-0");
     props.put(SOURCE_ETL, true);
-    // ETL should fail canary region push
+    // ETL should fail targeted region push
     try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
       // do nothing
       Assert.fail("Test should fail, but doesn't.");
     } catch (VeniceException e) {
-      assertEquals(e.getMessage(), "Source ETL is not supported while using canary region push mode");
+      assertEquals(e.getMessage(), "Source ETL is not supported while using targeted region push mode");
     }
 
     props.put(SOURCE_ETL, false);
     props.put(INCREMENTAL_PUSH, true);
-    // Incremental push should fail canary region push
+    // Incremental push should fail targeted region push
     try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
       // do nothing
       Assert.fail("Test should fail, but doesn't.");
     } catch (VeniceException e) {
-      assertEquals(e.getMessage(), "Incremental push is not supported while using canary region push mode");
+      assertEquals(e.getMessage(), "Incremental push is not supported while using targeted region push mode");
     }
   }
 
   @Test
-  public void testCanaryRegionPushReporting() throws Exception {
+  public void testTargetedRegionPushReporting() throws Exception {
     Properties props = getVpjRequiredProperties();
-    props.put(CANARY_REGION_PUSH, true);
+    props.put(TARGETED_REGIONS, "dc-0");
     ControllerClient client = getClient(storeInfo -> {
       Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
       storeInfo.setWriteComputationEnabled(true);
@@ -541,7 +531,7 @@ public class VenicePushJobTest {
     extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
     extraInfo.put("dc-1", ExecutionStatus.NOT_STARTED.toString());
     response.setExtraInfo(extraInfo);
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyBoolean());
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
     // only one region is completed, so should succeed
     pushJob.run();
 
@@ -551,10 +541,7 @@ public class VenicePushJobTest {
       pushJob.run();
       Assert.fail("Test should fail, but doesn't.");
     } catch (VeniceException e) {
-      assertTrue(
-          e.getMessage()
-              .contains(
-                  "Canary region push job ended up with zero or more than one region ending with unexpected COMPLETED status"));
+      assertTrue(e.getMessage().contains("Push job error"));
     }
 
     // both regions are completed, so should fail
@@ -564,10 +551,7 @@ public class VenicePushJobTest {
       pushJob.run();
       Assert.fail("Test should fail, but doesn't.");
     } catch (VeniceException e) {
-      assertTrue(
-          e.getMessage()
-              .contains(
-                  "Canary region push job ended up with zero or more than one region ending with unexpected COMPLETED status"));
+      assertTrue(e.getMessage().contains("Push job error"));
     }
   }
 }

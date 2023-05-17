@@ -209,7 +209,40 @@ public interface Admin extends AutoCloseable, Closeable {
         -1,
         Optional.empty(),
         false,
-        false);
+        null);
+  }
+
+  default Version incrementVersionIdempotent(
+      String clusterName,
+      String storeName,
+      String pushJobId,
+      int numberOfPartitions,
+      int replicationFactor,
+      Version.PushType pushType,
+      boolean sendStartOfPush,
+      boolean sorted,
+      String compressionDictionary,
+      Optional<String> sourceGridFabric,
+      Optional<X509Certificate> requesterCert,
+      long rewindTimeInSecondsOverride,
+      Optional<String> emergencySourceRegion,
+      boolean versionSwapDeferred) {
+    return incrementVersionIdempotent(
+        clusterName,
+        storeName,
+        pushJobId,
+        numberOfPartitions,
+        replicationFactor,
+        pushType,
+        sendStartOfPush,
+        sorted,
+        compressionDictionary,
+        sourceGridFabric,
+        requesterCert,
+        rewindTimeInSecondsOverride,
+        emergencySourceRegion,
+        versionSwapDeferred,
+        null);
   }
 
   Version incrementVersionIdempotent(
@@ -227,7 +260,7 @@ public interface Admin extends AutoCloseable, Closeable {
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
-      boolean canaryRegionPush);
+      String targetedRegions);
 
   String getRealTimeTopic(String clusterName, String storeName);
 
@@ -418,7 +451,7 @@ public interface Admin extends AutoCloseable, Closeable {
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
       String region,
-      boolean isCanaryRegionPush);
+      String targetedRegions);
 
   /**
    * Return the ssl or non-ssl bootstrap servers based on the given flag.
@@ -432,7 +465,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String clusterName,
       Store store,
       Optional<String> sourceGridFabric,
-      Optional<String> emergencySourceRegion);
+      Optional<String> emergencySourceRegion,
+      String targetedRegions);
 
   /**
    * Return whether ssl is enabled for the given store for push.

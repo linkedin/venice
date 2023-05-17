@@ -206,8 +206,8 @@ public class ControllerApiConstants {
   public static final String ENABLE_DISABLED_REPLICAS = "enable_disabled_replicas";
 
   /**
-   * Boolean flag to indicate whether this is a topic requested for a canary region push
+   * String representation of the list of regions that is separated by comma for targeted region push
    */
-  public static final String CANARY_REGION_PUSH = "canary_region_push";
+  public static final String TARGETED_REGIONS = "targeted_regions";
 
 }

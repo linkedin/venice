@@ -4,7 +4,10 @@ import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.VeniceConstants.ENVIRONMENT_CONFIG_KEY_FOR_REGION_NAME;
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -12,6 +15,7 @@ import org.apache.logging.log4j.Logger;
 
 public class RegionUtils {
   private static final Logger LOGGER = LogManager.getLogger(RegionUtils.class);
+  private static final String REGION_FILTER_LIST_SEPARATOR = ",\\s*";
 
   public static String getLocalRegionName(VeniceProperties props, boolean isParentRegion) {
     String regionName;
@@ -43,5 +47,18 @@ public class RegionUtils {
     } else {
       return localRegionName + "_from_" + regionName + "_remote";
     }
+  }
+
+  /**
+   * A helper function to split a region list with {@link #REGION_FILTER_LIST_SEPARATOR}
+   */
+  public static Set<String> parseRegionsFilterList(String regionsFilterList) {
+    if (StringUtils.isEmpty(regionsFilterList)) {
+      return Collections.emptySet();
+    }
+    Set<String> regions = new HashSet<>();
+    String[] tokens = regionsFilterList.trim().toLowerCase().split(REGION_FILTER_LIST_SEPARATOR);
+    Collections.addAll(regions, tokens);
+    return regions;
   }
 }
