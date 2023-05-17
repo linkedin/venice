@@ -2,7 +2,6 @@ package com.linkedin.venice.listener.response;
 
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 
@@ -17,7 +16,7 @@ public class ComputeResponseWrapper extends MultiKeyResponseWrapper<ComputeRespo
     RecordSerializer<ComputeResponseRecordV1> serializer =
         FastSerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
 
-    return serializer.serializeObjects(records, AvroSerializer.REUSE.get());
+    return serializer.serializeObjects(records);
   }
 
   @Override

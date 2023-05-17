@@ -352,7 +352,7 @@ public class AbstractAvroStoreClientTest {
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     CompletableFuture<Map<String, ComputeGenericRecord>> computeFuture =
-        storeClient.compute(Optional.empty(), Optional.empty(), 0).project("int_field").execute(keys);
+        storeClient.compute().project("int_field").execute(keys);
     computeFuture.get();
   }
 

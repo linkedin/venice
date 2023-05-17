@@ -3,7 +3,6 @@ package com.linkedin.davinci.listener.response;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.netty.buffer.ByteBuf;
@@ -59,8 +58,7 @@ public class MetadataResponse {
   private byte[] serializedResponse() {
     RecordSerializer<MetadataResponseRecord> serializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$);
-
-    return serializer.serialize(responseRecord, AvroSerializer.REUSE.get());
+    return serializer.serialize(responseRecord);
   }
 
   public int getResponseSchemaIdHeader() {

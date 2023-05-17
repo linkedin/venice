@@ -453,6 +453,7 @@ subprojects {
         }
       }
 
+      diffCoverage.dependsOn jacocoTestReport
       diffCoverage.finalizedBy logDiffCoverage
     }
   }
@@ -635,6 +636,7 @@ ext.createDiffFile = { ->
         ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceController.java',
         ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',
+        ':!services/venice-router/src/main/java/com/linkedin/venice/router/streaming/VeniceChunkedResponse.java',
         ':!services/venice-standalone/*', // exclude the entire standalone project
         ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
         ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',

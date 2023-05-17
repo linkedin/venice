@@ -4,7 +4,6 @@ import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
@@ -67,7 +66,7 @@ public class RmdSerDe {
   }
 
   public ByteBuffer serializeRmdRecord(final int valueSchemaId, GenericRecord rmdRecord) {
-    byte[] rmdBytes = getRmdSerializer(valueSchemaId).serialize(rmdRecord, AvroSerializer.REUSE.get());
+    byte[] rmdBytes = getRmdSerializer(valueSchemaId).serialize(rmdRecord);
     return ByteBuffer.wrap(rmdBytes);
   }
 

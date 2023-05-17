@@ -4,7 +4,7 @@ import static com.linkedin.venice.VeniceClusterInitializer.ID_FIELD_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.KEY_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.ZK_ADDRESS_FIELD;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -55,9 +55,9 @@ public class VeniceClientCompatibilityTest {
 
   @BeforeClass
   public void setUp() throws Exception {
-    LOGGER.info("Avro version in unit test: {}", AvroCompatibilityHelper.getRuntimeAvroVersion());
+    LOGGER.info("Avro version in unit test: {}", AvroCompatibilityHelperCommon.getRuntimeAvroVersion());
     Assert.assertEquals(
-        AvroCompatibilityHelper.getRuntimeAvroVersion(),
+        AvroCompatibilityHelperCommon.getRuntimeAvroVersion(),
         AvroVersion.valueOf(System.getProperty("clientAvroVersion")));
     /**
      * The following port selection is not super safe since this port could be occupied when it is being used
