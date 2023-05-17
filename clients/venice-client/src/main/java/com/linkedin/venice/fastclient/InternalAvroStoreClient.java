@@ -33,7 +33,7 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
    */
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
 
-    // Uncomment below line when batchGet with streaming has stabillized
+    // Uncomment below line when batchGet with streaming has stabilized
     // return batchGet(new BatchGetRequestContext<K,V>(keys), keys);
     throw new VeniceClientException("'batchGet' is not supported.");
   }
@@ -41,11 +41,11 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
   protected abstract CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException;
 
-  public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+  public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
     streamingBatchGet(new BatchGetRequestContext<K, V>(), keys, callback);
   }
 
-  public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(final Set<K> keys) throws VeniceClientException {
+  public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
     return streamingBatchGet(new BatchGetRequestContext<K, V>(), keys);
   }
 

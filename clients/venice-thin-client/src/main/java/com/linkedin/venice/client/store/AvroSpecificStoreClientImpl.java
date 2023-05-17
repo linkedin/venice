@@ -31,7 +31,7 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord> extends Ab
     super(transportClient, needSchemaReader, clientConfig);
     valueClass = clientConfig.getSpecificValueClass();
 
-    if (isUseFastAvro()) {
+    if (getClientConfig().isUseFastAvro()) {
       FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);
     }
   }
@@ -49,7 +49,7 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord> extends Ab
       throw new VeniceClientException(
           "Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
     }
-    if (isUseFastAvro()) {
+    if (getClientConfig().isUseFastAvro()) {
       return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(writeSchema, valueClass);
     } else {
       return SerializerDeserializerFactory.getAvroSpecificDeserializer(writeSchema, valueClass);

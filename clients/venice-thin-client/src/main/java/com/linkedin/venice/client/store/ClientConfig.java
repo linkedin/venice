@@ -51,7 +51,6 @@ public class ClientConfig<T extends SpecificRecord> {
   private int retryCount = 1;
   private long retryBackOffInMs = 0;
   private boolean useBlackHoleDeserializer = false;
-  private boolean reuseObjectsForSerialization = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
   private boolean projectionFieldValidation = true;
   private Duration schemaRefreshPeriod = DEFAULT_SCHEMA_REFRESH_PERIOD;
@@ -104,7 +103,6 @@ public class ClientConfig<T extends SpecificRecord> {
         .setRetryCount(config.getRetryCount())
         .setRetryBackOffInMs(config.getRetryBackOffInMs())
         .setUseBlackHoleDeserializer(config.isUseBlackHoleDeserializer())
-        .setReuseObjectsForSerialization(config.isReuseObjectsForSerialization())
         // Security settings
         .setHttps(config.isHttps())
         .setSslFactory(config.getSslFactory())
@@ -385,15 +383,6 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setUseBlackHoleDeserializer(boolean useBlackHoleDeserializer) {
     this.useBlackHoleDeserializer = useBlackHoleDeserializer;
-    return this;
-  }
-
-  public boolean isReuseObjectsForSerialization() {
-    return reuseObjectsForSerialization;
-  }
-
-  public ClientConfig<T> setReuseObjectsForSerialization(boolean reuseObjectsForSerialization) {
-    this.reuseObjectsForSerialization = reuseObjectsForSerialization;
     return this;
   }
 

@@ -11,7 +11,6 @@ import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.Pair;
@@ -80,7 +79,7 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
     try {
       RecordSerializer<GenericRecord> serializer =
           FastSerializerDeserializerFactory.getFastAvroGenericSerializer(prefixSchema, false);
-      return serializer.serialize(prefix, AvroSerializer.REUSE.get());
+      return serializer.serialize(prefix);
     } catch (Exception e) {
       throw new VeniceClientException(
           "Cannot serialize partial key. Please ensure the leading fields are completely specified",

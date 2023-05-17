@@ -4,14 +4,12 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import java.io.ByteArrayOutputStream;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryEncoder;
 
 
 public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
@@ -70,27 +68,8 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
       Set<K> keys,
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
-      final long preRequestTimeInNS) throws VeniceClientException {
+      long preRequestTimeInNS) throws VeniceClientException {
     innerStoreClient.compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
-  }
-
-  @Override
-  public void compute(
-      ComputeRequestWrapper computeRequestWrapper,
-      Set<K> keys,
-      Schema resultSchema,
-      StreamingCallback<K, ComputeGenericRecord> callback,
-      final long preRequestTimeInNS,
-      BinaryEncoder reusedEncoder,
-      ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
-    innerStoreClient.compute(
-        computeRequestWrapper,
-        keys,
-        resultSchema,
-        callback,
-        preRequestTimeInNS,
-        reusedEncoder,
-        reusedOutputStream);
   }
 
   @Override

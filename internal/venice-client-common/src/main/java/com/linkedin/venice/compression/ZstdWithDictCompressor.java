@@ -168,7 +168,7 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
       value.put("id", i);
       String name = i + "_name";
       value.put("name", name);
-      values.add(i, serializer.serialize(value, AvroSerializer.REUSE.get()));
+      values.add(i, serializer.serialize(value));
     }
     ZstdDictTrainer trainer = new ZstdDictTrainer(200 * BYTES_PER_MB, 100 * BYTES_PER_KB);
     for (byte[] value: values) {
