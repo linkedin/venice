@@ -92,7 +92,6 @@ public class OnlineVeniceProducerTest {
 
   private static final GenericRecord mockValue1 = getMockValue(VALUE_SCHEMA_1);
   private static final GenericRecord mockValue2 = getMockValue(VALUE_SCHEMA_2);
-  private static final GenericRecord mockValue3 = getMockValue(VALUE_SCHEMA_3);
 
   private static final Schema UPDATE_SCHEMA_1 =
       WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA_1);
@@ -118,7 +117,8 @@ public class OnlineVeniceProducerTest {
   private static final String UPDATE_OPERATION_METRIC_NAME = ".test_store--update_operation.OccurrenceRate";
   private static final String SUCCESS_OPERATION_METRIC_NAME = ".test_store--success_write_operation.OccurrenceRate";
   private static final String FAILED_OPERATION_METRIC_NAME = ".test_store--failed_write_operation.OccurrenceRate";
-  private static final String PENDING_OPERATION_METRIC_NAME = ".test_store--pending_write_operation.Gauge";
+  private static final String MIN_PENDING_OPERATION_METRIC_NAME = ".test_store--pending_write_operation.Min";
+  private static final String MAX_PENDING_OPERATION_METRIC_NAME = ".test_store--pending_write_operation.Max";
 
   @Test
   public void testConstructor() throws IOException, ExecutionException, InterruptedException {
@@ -201,7 +201,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(DELETE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(UPDATE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value(), 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
 
       producer.asyncPut("KEY2", mockValue2).get();
       verify(producer.mockVeniceWriter, times(2)).put(
@@ -256,7 +257,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(DELETE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(UPDATE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value(), 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
 
       producer.asyncPut(1002, "KEY2", mockValue2).get();
       verify(producer.mockVeniceWriter, times(2)).put(
@@ -311,7 +313,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(DELETE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(UPDATE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertTrue(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value() > 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
     }
   }
 
@@ -336,7 +339,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(DELETE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(UPDATE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertTrue(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value() > 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
     }
   }
 
@@ -368,7 +372,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(PUT_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(UPDATE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value(), 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
 
       producer.asyncDelete("KEY2").get();
       verify(producer.mockVeniceWriter, times(2))
@@ -408,7 +413,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(PUT_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(UPDATE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value(), 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
 
       producer.asyncDelete(1002, "KEY2").get();
       verify(producer.mockVeniceWriter, times(2))
@@ -444,7 +450,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(PUT_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(UPDATE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertTrue(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value() > 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
     }
   }
 
@@ -522,7 +529,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(PUT_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(DELETE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value(), 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
 
       assertThrowsExceptionFromFuture(
           VeniceException.class,
@@ -589,7 +597,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(PUT_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(DELETE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value(), 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
 
       // Update field only in UPDATE_SCHEMA_2
       producer.asyncUpdate(1002, "KEY2", updateBuilderObj -> {
@@ -660,7 +669,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(PUT_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(DELETE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertTrue(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value() > 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
     }
   }
 
@@ -691,7 +701,8 @@ public class OnlineVeniceProducerTest {
       Assert.assertEquals(metricsRepository.getMetric(PUT_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertEquals(metricsRepository.getMetric(DELETE_OPERATION_METRIC_NAME).value(), 0.0);
       Assert.assertTrue(metricsRepository.getMetric(FAILED_OPERATION_METRIC_NAME).value() > 0.0);
-      Assert.assertEquals(metricsRepository.getMetric(PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MIN_PENDING_OPERATION_METRIC_NAME).value(), 0.0);
+      Assert.assertEquals(metricsRepository.getMetric(MAX_PENDING_OPERATION_METRIC_NAME).value(), 1.0);
     }
   }
 

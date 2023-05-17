@@ -1,12 +1,11 @@
 package com.linkedin.venice.producer;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -41,7 +40,7 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
           produceLatencySensorName,
           TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + produceLatencySensorName));
 
-      pendingOperationSensor = registerSensor("pending_write_operation", new Avg(), new Max(), new Gauge());
+      pendingOperationSensor = registerSensor("pending_write_operation", new Min(), new Max());
     } else {
       enableMetrics = false;
     }
