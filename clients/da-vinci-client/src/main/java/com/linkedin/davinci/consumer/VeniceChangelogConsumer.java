@@ -1,8 +1,10 @@
 package com.linkedin.davinci.consumer;
 
 import com.linkedin.venice.annotation.Experimental;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -106,6 +108,27 @@ public interface VeniceChangelogConsumer<K, V> {
    * @throws a VeniceException if subscribe operation failed for any of the partitions
    */
   CompletableFuture<Void> subscribeAll();
+
+  /**
+   * Seek to the provided timestamps for the specified partitions.
+   *
+   * Note, this API can only be used to seek on nearline data applied to the current serving version in Venice.
+   * This will not seek on data transmitted via Batch Push. If the provided timestamp is lower then the earliest
+   * timestamp on a given stream, the earliest event will be returned.
+   *
+   * @param timeStamps a map keyed by a partition ID, and the timestamp checkpoints to seek for each partition.
+   * @return
+   * @throws VeniceException if seek operations failed for any of the specified partitions.
+   */
+  CompletableFuture<Void> seekToTimestamp(Map<Integer, Long> timeStamps);
+
+  /**
+   * Seek to the specified timestamp for all subscribed partitions. See {@link #seekToTimestamp(Map)} for more information.
+   *
+   * @return a future which completes when the operation has succeeded for all partitions.
+   * @throws VeniceException if seek operation failed for any of the partitions.
+   */
+  CompletableFuture<Void> seekToTimestamp(Long timestamp);
 
   /**
    * Stop ingesting messages from a set of partitions for a specific store.
