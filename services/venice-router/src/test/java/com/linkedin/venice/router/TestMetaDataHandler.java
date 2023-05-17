@@ -545,6 +545,23 @@ public class TestMetaDataHandler {
     Assert.assertEquals(d2ServiceResponse.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse.isError());
+
+    FullHttpResponse response2 = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/discover_cluster?store_name=" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        clusterToD2Map,
+        clusterToServerD2Map);
+
+    Assert.assertEquals(response2.status().code(), 200);
+    Assert.assertEquals(response2.headers().get(CONTENT_TYPE), "application/json");
+    D2ServiceDiscoveryResponse d2ServiceResponse2 =
+        OBJECT_MAPPER.readValue(response2.content().array(), D2ServiceDiscoveryResponse.class);
+    Assert.assertEquals(d2ServiceResponse2.getCluster(), clusterName);
+    Assert.assertEquals(d2ServiceResponse2.getD2Service(), d2Service);
+    Assert.assertEquals(d2ServiceResponse2.getName(), storeName);
+    Assert.assertFalse(d2ServiceResponse2.isError());
   }
 
   @Test
