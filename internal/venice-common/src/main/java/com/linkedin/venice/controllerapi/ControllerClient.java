@@ -966,7 +966,7 @@ public class ControllerClient implements Closeable {
           ClusterStaleDataAuditResponse.class);
     } catch (Exception e) {
       return makeErrorResponse(
-          "controllerapi:ControllerClient:getClusterStaleStores - ",
+          "Failed to get stale stores in cluster: " + clusterName,
           e,
           ClusterStaleDataAuditResponse.class);
     }

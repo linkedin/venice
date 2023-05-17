@@ -53,10 +53,7 @@ public class StoragePersonaRoutes extends AbstractRoute {
         try {
           admin.createStoragePersona(clusterName, name, quota, storesToEnforce, owners);
         } catch (Exception e) {
-          veniceResponse.setError(
-              "Failed when creating persona " + name + ". Exception type: " + e.getClass().toString()
-                  + ". Detailed message = " + e.getMessage(),
-              e);
+          veniceResponse.setError("Failed when creating persona " + name, e);
         }
       }
     };
@@ -76,10 +73,7 @@ public class StoragePersonaRoutes extends AbstractRoute {
           StoragePersona persona = admin.getStoragePersona(clusterName, personaName);
           veniceResponse.setStoragePersona(persona);
         } catch (Exception e) {
-          veniceResponse.setError(
-              "Failed when getting persona " + personaName + ". Exception type: " + e.getClass().toString()
-                  + ". Detailed message = " + e.getMessage(),
-              e);
+          veniceResponse.setError("Failed when getting persona " + personaName + ".", e);
         }
       }
     };
@@ -98,10 +92,7 @@ public class StoragePersonaRoutes extends AbstractRoute {
         try {
           admin.deleteStoragePersona(clusterName, personaName);
         } catch (Exception e) {
-          veniceResponse.setError(
-              "Failed when deleting persona " + personaName + ".  Exception type: " + e.getClass().toString()
-                  + ".  Detailed message = " + e.getMessage(),
-              e);
+          veniceResponse.setError("Failed when deleting persona " + personaName + ".", e);
         }
       }
     };
@@ -121,10 +112,7 @@ public class StoragePersonaRoutes extends AbstractRoute {
         try {
           admin.updateStoragePersona(clusterName, personaName, new UpdateStoragePersonaQueryParams(params));
         } catch (Exception e) {
-          veniceResponse.setError(
-              "Failed when updating persona " + personaName + ".  Exception type: " + e.getClass().toString()
-                  + ".  Detailed message = " + e.getMessage(),
-              e);
+          veniceResponse.setError("Failed when updating persona " + personaName + ".", e);
         }
       }
     };

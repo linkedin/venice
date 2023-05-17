@@ -830,12 +830,12 @@ public class StoresRoutes extends AbstractRoute {
                 .extractVersionTopicsToCleanup(admin, topicsWithRetention, minNumberOfUnusedKafkaTopicsToPreserve, 0);
             if (!deletableTopicsForThisStore.isEmpty()) {
               deletableTopicsList
-                  .addAll(deletableTopicsForThisStore.stream().map(t -> t.getName()).collect(Collectors.toList()));
+                  .addAll(deletableTopicsForThisStore.stream().map(PubSubTopic::getName).collect(Collectors.toList()));
             }
           });
           veniceResponse.setTopics(deletableTopicsList);
         } catch (Exception e) {
-          veniceResponse.setError("Failed to list deletable store topics. Message: " + e.getMessage(), e);
+          veniceResponse.setError("Failed to list deletable store topics.", e);
         }
       }
     };
@@ -861,7 +861,7 @@ public class StoresRoutes extends AbstractRoute {
           veniceResponse.setSchemaDiff(info.getSchemaDiff());
           veniceResponse.setVersionStateDiff(info.getVersionStateDiff());
         } catch (Exception e) {
-          veniceResponse.setError("Failed to compare store. Message: " + e.getMessage(), e);
+          veniceResponse.setError("Failed to compare store.", e);
         }
       }
     };
