@@ -400,6 +400,18 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_READ_CAPACITY = "router.max.read.capacity";
   public static final String ROUTER_QUOTA_CHECK_WINDOW = "router.quota.check.window";
 
+  /**
+   * This instructs the router to start running with self signed TLS certificates as opposed to those
+   * provided via other properties. This should only be used for testing and defaults to true when running
+   * RouterServer.main().
+   */
+  public static final String ROUTER_USE_LOCAL_SSL_SETTINGS = "router.ssl.local.settings";
+
+  /**
+   * This instructs the router to open an ssl port. This defaults to true.
+   */
+  public static final String ROUTER_ENABLE_SSL = "router.enable.ssl";
+
   public static final String SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS =
       "server.remote.ingestion.repair.sleep.interval.seconds";
   /**

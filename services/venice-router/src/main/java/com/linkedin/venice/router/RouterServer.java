@@ -1,5 +1,8 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
+
 import com.linkedin.alpini.base.concurrency.AsyncFuture;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.alpini.base.concurrency.impl.SuccessAsyncFuture;
@@ -201,7 +204,18 @@ public class RouterServer extends AbstractVeniceService {
     LOGGER.info("SSL Port: {}", props.getInt(ConfigKeys.LISTENER_SSL_PORT));
     LOGGER.info("IO worker count: {}", props.getInt(ConfigKeys.ROUTER_IO_WORKER_COUNT));
 
-    Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+    Optional<SSLFactory> sslFactory;
+    if (props.getBoolean(ConfigKeys.ROUTER_ENABLE_SSL, true)) {
+      if (props.getBoolean(ConfigKeys.ROUTER_USE_LOCAL_SSL_SETTINGS, true)) {
+        sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+      } else {
+        String sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+        sslFactory = Optional.of(SslUtils.getSSLFactory(props.toProperties(), sslFactoryClassName));
+      }
+    } else {
+      sslFactory = Optional.empty();
+    }
+
     RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory);
     server.start();
 
