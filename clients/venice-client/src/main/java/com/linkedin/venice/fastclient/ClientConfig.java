@@ -338,7 +338,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this.clusterDiscoveryD2Service;
   }
 
-  public boolean doBatchGetDefaultsToStreamingBatchGet() {
+  public boolean isBatchGetDefaultsToStreamingBatchGet() {
     return this.batchGetDefaultsToStreamingBatchGet;
   }
 

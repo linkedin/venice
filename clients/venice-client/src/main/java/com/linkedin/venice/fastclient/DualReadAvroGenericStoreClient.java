@@ -41,7 +41,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     this.thinClient = thinClient;
     this.clientStatsForSingleGet = config.getStats(RequestType.SINGLE_GET);
     this.clientStatsForMultiGet = config.getStats(RequestType.MULTI_GET);
-    this.batchGetDefaultsToStreamingBatchGet = config.doBatchGetDefaultsToStreamingBatchGet();
+    this.batchGetDefaultsToStreamingBatchGet = config.isBatchGetDefaultsToStreamingBatchGet();
   }
 
   private static <T> CompletableFuture<T> sendRequest(

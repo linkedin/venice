@@ -41,7 +41,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     this.clientStatsForBatchGet = clientConfig.getStats(RequestType.MULTI_GET);
     this.clusterStats = clientConfig.getClusterStats();
     this.maxAllowedKeyCntInBatchGetReq = clientConfig.getMaxAllowedKeyCntInBatchGetReq();
-    this.batchGetDefaultsToStreamingBatchGet = clientConfig.doBatchGetDefaultsToStreamingBatchGet();
+    this.batchGetDefaultsToStreamingBatchGet = clientConfig.isBatchGetDefaultsToStreamingBatchGet();
   }
 
   @Override
