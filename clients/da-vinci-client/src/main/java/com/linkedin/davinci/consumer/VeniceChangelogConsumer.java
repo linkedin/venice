@@ -114,7 +114,9 @@ public interface VeniceChangelogConsumer<K, V> {
    *
    * Note, this API can only be used to seek on nearline data applied to the current serving version in Venice.
    * This will not seek on data transmitted via Batch Push. If the provided timestamp is lower then the earliest
-   * timestamp on a given stream, the earliest event will be returned.
+   * timestamp on a given stream, the earliest event will be returned. THIS WILL NOT SEEK TO DATA WHICH WAS APPLIED
+   * ON A PREVIOUS VERSION.  You should never seek back in time to a timestamp which is smaller than the current time -
+   * rewindTimeInSeconds configured in the hybrid settings for this Venice store.
    *
    * @param timeStamps a map keyed by a partition ID, and the timestamp checkpoints to seek for each partition.
    * @return
