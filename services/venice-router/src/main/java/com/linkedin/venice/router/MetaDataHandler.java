@@ -114,6 +114,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final String zkAddress;
   private final String kafkaBootstrapServers;
 
+  static final String REQUEST_TOPIC_ERROR_WRITES_DISABLED = "Write operations to the store are disabled.";
   static final String REQUEST_TOPIC_ERROR_BATCH_ONLY_STORE = "Online writes are only supported for hybrid stores.";
   static final String REQUEST_TOPIC_ERROR_NO_CURRENT_VERSION =
       "Store doesn't have an active version. Please push data to the store.";
@@ -562,6 +563,11 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     checkResourceName(storeName, "/" + TYPE_REQUEST_TOPIC + "/${storeName}");
 
     Store store = storeRepository.getStore(storeName);
+
+    if (!store.isEnableWrites()) {
+      setupResponseAndFlush(BAD_REQUEST, REQUEST_TOPIC_ERROR_WRITES_DISABLED.getBytes(), false, ctx);
+      return;
+    }
 
     // Only allow router request_topic for hybrid stores
     if (!store.isHybrid()) {

@@ -14,7 +14,6 @@ import com.linkedin.alpini.base.misc.HeaderNames;
 import com.linkedin.alpini.base.misc.Headers;
 import com.linkedin.alpini.base.misc.Http2TooManyStreamsException;
 import com.linkedin.alpini.base.misc.Metrics;
-import com.linkedin.alpini.base.misc.Msg;
 import com.linkedin.alpini.base.misc.Time;
 import com.linkedin.alpini.base.misc.TimeValue;
 import com.linkedin.alpini.netty4.misc.Http2Utils;
@@ -1081,10 +1080,6 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
       @Nonnull AsyncFuture<Void> timeoutFuture,
       @Nonnull Executor contextExecutor) {
     try {
-      LOG.debug(
-          "[{}] dispatch partitions={}",
-          request.getRequestId(),
-          Msg.make(part.getPartitionsNames(), names -> String.join(",", names)));
       _scatterGatherHelper.dispatch(
           scatter,
           part,

@@ -71,7 +71,6 @@
       <Bug pattern="RI_REDUNDANT_INTERFACES"/>
       <Bug pattern="IT_NO_SUCH_ELEMENT"/>
       <Bug pattern="MS_PKGPROTECT"/>
-      <Bug pattern="PZLA_PREFER_ZERO_LENGTH_ARRAYS"/>
       <Bug pattern="SE_BAD_FIELD_INNER_CLASS"/>
       <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE"/>
       <Bug pattern="DCN_NULLPOINTER_EXCEPTION"/>

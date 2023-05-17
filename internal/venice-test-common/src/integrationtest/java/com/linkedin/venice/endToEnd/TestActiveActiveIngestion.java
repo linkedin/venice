@@ -33,6 +33,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUs
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.ConfigKeys;
@@ -154,14 +155,28 @@ public class TestActiveActiveIngestion {
   }
 
   private void pollChangeEventsFromChangeCaptureConsumer(
-      Map<String, ChangeEvent<Utf8>> polledChangeEvents,
+      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, Long>> pubSubMessages = veniceChangelogConsumer.poll(100);
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, Long> pubSubMessage: pubSubMessages) {
-      ChangeEvent<Utf8> changeEvent = pubSubMessage.getValue();
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
+        veniceChangelogConsumer.poll(100);
+    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, changeEvent);
+      polledChangeEvents.put(key, pubSubMessage);
     }
+  }
+
+  private void pollChangeEventsFromChangeCaptureConsumer2(
+      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
+      VeniceChangelogConsumer veniceChangelogConsumer) {
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
+        veniceChangelogConsumer.poll(1000);
+    pubSubMessages.addAll(veniceChangelogConsumer.poll(1000));
+    pubSubMessages.addAll(veniceChangelogConsumer.poll(1000));
+    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
+      String key = pubSubMessage.getKey().toString();
+      polledChangeEvents.put(key, pubSubMessage);
+    }
+    int a = 0;
   }
 
   private int pollAfterImageEventsFromChangeCaptureConsumer(
@@ -563,7 +578,7 @@ public class TestActiveActiveIngestion {
         .setHybridOffsetLagThreshold(8)
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
-        .setPartitionCount(1);
+        .setPartitionCount(3);
     MetricsRepository metricsRepository = new MetricsRepository();
     ControllerClient setupControllerClient =
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
@@ -609,7 +624,7 @@ public class TestActiveActiveIngestion {
         VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
-      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
       // Produce a DELETE record with large timestamp
       produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
     }
@@ -623,8 +638,8 @@ public class TestActiveActiveIngestion {
       });
     }
 
-    // Validate change events for version 1.
-    Map<String, ChangeEvent<Utf8>> polledChangeEvents = new HashMap<>();
+    // Validate change events for version 1. 100 records exist in version 1.
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 100);
@@ -632,24 +647,25 @@ public class TestActiveActiveIngestion {
 
     polledChangeEvents.clear();
 
+    // 21 changes in nearline. 10 puts, 10 deletes, and 1 record with a producer timestamp
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       // 21 events for nearline events
       Assert.assertEquals(polledChangeEvents.size(), 21);
-      for (int i = 0; i < 10; i++) {
+      for (int i = 100; i < 110; i++) {
         String key = Integer.toString(i);
-        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
+        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
         Assert.assertNotNull(changeEvent);
-        if (i == 0) {
+        if (i != 100) {
           Assert.assertNull(changeEvent.getPreviousValue());
         } else {
           Assert.assertTrue(changeEvent.getPreviousValue().toString().contains(key));
         }
         Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
       }
-      for (int i = 10; i < 20; i++) {
+      for (int i = 110; i < 120; i++) {
         String key = Integer.toString(i);
-        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
+        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
         Assert.assertNotNull(changeEvent);
         Assert.assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
         Assert.assertNull(changeEvent.getCurrentValue());
@@ -676,14 +692,14 @@ public class TestActiveActiveIngestion {
             .setMetricsRepository(metricsRepository))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         // test single get
-        for (int i = 0; i < 10; i++) {
+        for (int i = 100; i < 110; i++) {
           String key = Integer.toString(i);
           Utf8 value = client.get(key).get();
           Assert.assertNotNull(value);
           Assert.assertEquals(value.toString(), "stream_" + i);
         }
         // test deletes
-        for (int i = 10; i < 20; i++) {
+        for (int i = 110; i < 120; i++) {
           String key = Integer.toString(i);
           Utf8 value = client.get(key).get();
           Assert.assertNull(value);
@@ -735,7 +751,7 @@ public class TestActiveActiveIngestion {
       Assert.assertNull(polledChangeEvents.get(deleteWithRmdKey));
       Assert.assertNotNull(polledChangeEvents.get(persistWithRmdKey));
       Assert.assertEquals(
-          polledChangeEvents.get(persistWithRmdKey).getCurrentValue().toString(),
+          polledChangeEvents.get(persistWithRmdKey).getValue().getCurrentValue().toString(),
           "stream_" + persistWithRmdKey);
     });
     /**
@@ -759,60 +775,66 @@ public class TestActiveActiveIngestion {
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
     }
     // Validate changed events for version 3.
-    polledChangeEvents.clear();
     AtomicInteger totalPolledAfterImageMessages = new AtomicInteger();
     Map<String, Utf8> polledAfterImageEvents = new HashMap<>();
     Map<String, Utf8> totalPolledAfterImageEvents = new HashMap<>();
+
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       // Filter previous 21 messages.
-      Assert.assertEquals(polledChangeEvents.size(), 20);
+      Assert.assertEquals(polledChangeEvents.size(), 1);
+    });
 
-      // Consume from beginning of the version that was current at time of consumer subscription (version 2) since
-      // version 2
-      // was a repush of 101 records (0-100) with streaming updates on 1-10 and deletes on 10-19, then we expect
-      // a grand total of 91 records in this version. We'll consume up to EOP
+    // Consume from beginning of the version that was current at time of consumer subscription (version 2) since
+    // version 2
+    // was a repush of 101 records (0-100) with streaming updates on 100-110 and deletes on 110-119, then we expect
+    // a grand total of 119 records in this version. We'll consume up to EOP
 
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-        totalPolledAfterImageMessages
-            .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
-        Assert.assertEquals(polledAfterImageEvents.size(), 91);
-        totalPolledAfterImageEvents.putAll(polledAfterImageEvents);
-        polledAfterImageEvents.clear();
-      });
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      totalPolledAfterImageMessages
+          .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
+      Assert.assertEquals(polledAfterImageEvents.size(), 119);
+      totalPolledAfterImageEvents.putAll(polledAfterImageEvents);
+      polledAfterImageEvents.clear();
+    });
 
-      // With this next poll, we'll begin consuming the change capture topic on Version 2 up to the Version swap.
-      // There will be one streaming record applied before the version swap message is consumed
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-        totalPolledAfterImageMessages
-            .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
-        Assert.assertEquals(polledAfterImageEvents.size(), 1);
-        totalPolledAfterImageEvents.putAll(polledAfterImageEvents);
-        polledAfterImageEvents.clear();
-      });
-
-      // Consume version 3 change capture. This will consist of 20 events that were applied onto version 3
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-        totalPolledAfterImageMessages
-            .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
-        Assert.assertEquals(polledAfterImageEvents.size(), 20);
-        totalPolledAfterImageEvents.putAll(polledAfterImageEvents);
-        polledAfterImageEvents.clear();
-      });
-
-      // Make sure nothing else comes out
+    // We'll have consumed everything on version
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       totalPolledAfterImageMessages
           .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
       Assert.assertEquals(polledAfterImageEvents.size(), 0);
-      // After image consumer consumed 3 different topics: v2, v2_cc and v3_cc.
-      // The total messages: 102 (v2 repush from v1, key: 0-100, 1000) + 1 (v2_cc, key: 1001) + 42 (v3_cc, key: 0-39,
-      // 1000, 1001) - 22 (filtered from v3_cc, key: 0-19, 1000 and 1001 as they were read already.)
-      Assert.assertEquals(totalPolledAfterImageMessages.get(), 112);
+      totalPolledAfterImageEvents.putAll(polledAfterImageEvents);
+      polledAfterImageEvents.clear();
+    });
+
+    // After image consumer consumed 3 different topics: v2, v2_cc and v3_cc.
+    // The total messages: 102 (v2 repush from v1, key: 0-100, 1000) + 1 (v2_cc, key: 1001) + 42 (v3_cc, key: 0-39,
+    // 1000, 1001) - 22 (filtered from v3_cc, key: 0-19, 1000 and 1001 as they were read already.)
+    Assert.assertEquals(totalPolledAfterImageMessages.get(), 148);
+
+    for (int i = 1; i < 100; i++) {
+      String key = Integer.toString(i);
+      Utf8 afterImageValue = totalPolledAfterImageEvents.get(key);
+      if (i < 20) {
+        Assert.assertNotNull(afterImageValue);
+        Assert.assertEquals(afterImageValue.toString(), "test_name_" + i);
+      } else if (i < 40 && i >= 30) {
+        // Deleted
+        Assert.assertNull(afterImageValue);
+      } else {
+        Assert.assertTrue(afterImageValue.toString().contains(String.valueOf(i).substring(0, 0)));
+      }
+    }
+
+    // Drain the remaining events on version 3 and verify that we got everything
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 23);
       for (int i = 20; i < 40; i++) {
         String key = Integer.toString(i);
-        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
+        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
         Assert.assertNotNull(changeEvent);
         Assert.assertNull(changeEvent.getPreviousValue());
         if (i >= 20 && i < 30) {
@@ -821,20 +843,10 @@ public class TestActiveActiveIngestion {
           Assert.assertNull(changeEvent.getCurrentValue());
         }
       }
-      for (int i = 0; i < 100; i++) {
-        String key = Integer.toString(i);
-        Utf8 afterImageValue = totalPolledAfterImageEvents.get(key);
-        if (i < 10 || (i >= 20 && i < 30)) {
-          Assert.assertNotNull(afterImageValue);
-          Assert.assertEquals(afterImageValue.toString(), "stream_" + i);
-        } else if (i < 40) {
-          // Deleted
-          Assert.assertNull(afterImageValue);
-        } else {
-          Assert.assertTrue(afterImageValue.toString().contains(String.valueOf(i).substring(0, 0)));
-        }
-      }
     });
+
+    polledChangeEvents.clear();
+
     // enable repush ttl
     props.setProperty(REPUSH_TTL_ENABLE, "true");
     TestWriteUtils.runPushJob("Run repush job with TTL", props);
@@ -871,17 +883,57 @@ public class TestActiveActiveIngestion {
         Assert.assertNull(client.get(Integer.toString(i)).get());
       }
     }
-    // Since nothing is produced, so changed events generated.
-    polledChangeEvents.clear();
+
+    // Since nothing is produced, so no changed events generated.
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer2(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 0);
+    });
+
+    // Seek to the beginning of the push
+    veniceChangelogConsumer.seekToBeginningOfPush().join();
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 15);
+    });
+
+    // Save a checkpoint and clear the map
+    Set<VeniceChangeCoordinate> checkpointSet = new HashSet<>();
+    checkpointSet.add(polledChangeEvents.get(Integer.toString(20)).getOffset());
+    polledChangeEvents.clear();
+
+    // Seek the consumer by checkpoint
+    veniceChangelogConsumer.seekToCheckpoint(checkpointSet).join();
+    polledChangeEvents.clear();
+
+    // Poll Change events again, verify we get everything
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 8);
+    });
+    polledChangeEvents.clear();
+
+    // Seek the consumer to the beginning of push (since the latest is version 4 with no nearline writes, shouldn't have
+    // any new writes)
+    veniceAfterImageConsumer.seekToEndOfPush().join();
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
-    // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1)
+
+    // Also should be nothing on the tail
+    veniceAfterImageConsumer.seekToTail().join();
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 0);
+    });
+
+    // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1).
+    // This will include messages for all partitions, so (4 version -1)*3 partitions=9 messages
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
-        () -> Assert.assertEquals(TestView.getInstance().getVersionSwapCountForStore(storeName), 3));
+        () -> Assert.assertEquals(TestView.getInstance().getVersionSwapCountForStore(storeName), 9));
     // Verify total updates match up (first 20 + next 20 should make 40, And then double it again as rewind updates
     // are
     // applied to a version)

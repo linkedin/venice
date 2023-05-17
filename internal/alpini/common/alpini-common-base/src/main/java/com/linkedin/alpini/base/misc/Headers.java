@@ -1,7 +1,6 @@
 package com.linkedin.alpini.base.misc;
 
 import java.util.Collections;
-import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -44,17 +43,7 @@ public interface Headers extends Iterable<Map.Entry<String, String>> {
 
   List<CharSequence> getAll(CharSequence name);
 
-  Optional<CharSequence> get(CharSequence name);
-
-  Optional<Date> getAsDate(CharSequence name);
-
-  default Optional<Integer> getAsInt(CharSequence name) {
-    return get(name).map(CharSequence::toString).map(Integer::valueOf);
-  }
-
-  default Optional<Long> getAsLong(CharSequence name) {
-    return get(name).map(CharSequence::toString).map(Long::valueOf);
-  }
+  CharSequence get(CharSequence name);
 
   boolean contains(CharSequence name);
 
@@ -91,13 +80,8 @@ public interface Headers extends Iterable<Map.Entry<String, String>> {
     }
 
     @Override
-    public Optional<CharSequence> get(CharSequence name) {
-      return Optional.empty();
-    }
-
-    @Override
-    public Optional<Date> getAsDate(CharSequence name) {
-      return Optional.empty();
+    public CharSequence get(CharSequence name) {
+      return null;
     }
 
     @Override

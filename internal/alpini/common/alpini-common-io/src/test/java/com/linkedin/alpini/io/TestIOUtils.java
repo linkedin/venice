@@ -3,9 +3,7 @@ package com.linkedin.alpini.io;
 import com.linkedin.alpini.base.misc.Time;
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
-import java.io.FilterInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
 import org.mockito.Mockito;
@@ -69,13 +67,5 @@ public class TestIOUtils {
         .toString(new ByteArrayInputStream(source.getBytes(StandardCharsets.US_ASCII)), StandardCharsets.US_ASCII);
     Assert.assertNotSame(output, source);
     Assert.assertEquals(output, source);
-  }
-
-  @Test(groups = "unit")
-  public void testUnwrapFilter() throws IOException {
-    InputStream inner = Mockito.mock(InputStream.class);
-    InputStream inspect = IOUtils.unwrapFilterInputStream(new FilterInputStream(inner) {
-    });
-    Assert.assertSame(inspect, inner);
   }
 }

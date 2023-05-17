@@ -14,5 +14,5 @@ public interface HostHealthMonitor<H> {
    * @param hostName the host name, including the service port
    * @return the host is healthy or not
    */
-  boolean isHostHealthy(@Nonnull H hostName, @Nonnull String partitionName);
+  boolean isHostHealthy(@Nonnull H hostName, String partitionName);
 }

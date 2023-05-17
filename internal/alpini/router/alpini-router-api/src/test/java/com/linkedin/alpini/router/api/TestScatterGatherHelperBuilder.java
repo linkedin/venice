@@ -98,6 +98,15 @@ public class TestScatterGatherHelperBuilder {
       public int getNumPartitions(@Nonnull String resourceName) throws RouterException {
         return 1;
       }
+
+      @Override
+      public int findPartitionNumber(
+          @Nonnull String partitionKey,
+          int numPartitions,
+          String storeName,
+          int versionNumber) throws RouterException {
+        return 0;
+      }
     }
 
     class HostFinder implements com.linkedin.alpini.router.api.HostFinder<InetSocketAddress, List<List<State>>> {
