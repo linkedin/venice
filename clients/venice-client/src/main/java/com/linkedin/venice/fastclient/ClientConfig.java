@@ -20,9 +20,12 @@ import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.specific.SpecificRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ClientConfig<K, V, T extends SpecificRecord> {
+  private static final Logger LOGGER = LogManager.getLogger(ClientConfig.class);
   private final Client r2Client;
   private final String statsPrefix;
   private final boolean speculativeQueryEnabled;
@@ -67,6 +70,13 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final StoreMetadataFetchMode storeMetadataFetchMode;
   private final D2Client d2Client;
   private final String clusterDiscoveryD2Service;
+  /**
+   * The choice of implementation for batch get: single get or streamingBatchget. The first version of batchGet in
+   * FC used single get in a loop to support a customer request for two-key batch-get. This config allows switching
+   * between the two implementations. The default is streamingBatchget based batchGet, which can be turned off
+   * to use single get if needed.
+   */
+  private final boolean batchGetDefaultsToStreamingBatchGet;
 
   private ClientConfig(
       String storeName,
@@ -96,7 +106,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean isVsonStore,
       StoreMetadataFetchMode storeMetadataFetchMode,
       D2Client d2Client,
-      String clusterDiscoveryD2Service) {
+      String clusterDiscoveryD2Service,
+      boolean batchGetDefaultsToStreamingBatchGet) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -205,6 +216,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     if (clientRoutingStrategyType == ClientRoutingStrategyType.HELIX_ASSISTED
         && this.storeMetadataFetchMode != StoreMetadataFetchMode.SERVER_BASED_METADATA) {
       throw new VeniceClientException("Helix assisted routing is only available with server based metadata enabled");
+    }
+    this.batchGetDefaultsToStreamingBatchGet = batchGetDefaultsToStreamingBatchGet;
+    if (this.batchGetDefaultsToStreamingBatchGet) {
+      LOGGER.info("BatchGet will use streamingBatchGet");
+    } else {
+      LOGGER.warn("Deprecated: BatchGet will reuse single get");
     }
   }
 
@@ -321,6 +338,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this.clusterDiscoveryD2Service;
   }
 
+  public boolean doBatchGetDefaultsToStreamingBatchGet() {
+    return this.batchGetDefaultsToStreamingBatchGet;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -367,6 +388,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA;
     private D2Client d2Client;
     private String clusterDiscoveryD2Service;
+    private boolean batchGetDefaultsToStreamingBatchGet = true;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -519,6 +541,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setBatchGetDefaultsToStreamingBatchGet(
+        boolean batchGetDefaultsToStreamingBatchGet) {
+      this.batchGetDefaultsToStreamingBatchGet = batchGetDefaultsToStreamingBatchGet;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -547,7 +575,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setVsonStore(isVsonStore)
           .setStoreMetadataFetchMode(storeMetadataFetchMode)
           .setD2Client(d2Client)
-          .setClusterDiscoveryD2Service(clusterDiscoveryD2Service);
+          .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
+          .setBatchGetDefaultsToStreamingBatchGet(batchGetDefaultsToStreamingBatchGet);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -579,7 +608,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           isVsonStore,
           storeMetadataFetchMode,
           d2Client,
-          clusterDiscoveryD2Service);
+          clusterDiscoveryD2Service,
+          batchGetDefaultsToStreamingBatchGet);
     }
   }
 }
