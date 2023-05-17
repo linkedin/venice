@@ -2693,8 +2693,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       boolean versionSwapDeferred,
       String targetedRegions) {
     if (StringUtils.isNotEmpty(targetedRegions)) {
-      // only parent controller should handle this request. See @{link
-      // VeniceParentHelixAdmin#incrementVersionIdempotent}
+      /**
+       * only parent controller should handle this request. See {@link VeniceParentHelixAdmin#incrementVersionIdempotent}
+       */
       throw new VeniceException(
           "Request of creating versions/topics for targeted region push should only be sent to parent controller");
     }
