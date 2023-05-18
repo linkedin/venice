@@ -626,7 +626,7 @@ public class AdminExecutionTask implements Callable<Void> {
       }
     } else {
       boolean skipConsumption = message.targetedRegions != null
-          && !message.targetedRegions.stream().map(Object::toString).collect(Collectors.toSet()).contains(regionName);
+          && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
       if (skipConsumption) {
         // for targeted region push, only allow specified region to process add version message
         LOGGER.info(
