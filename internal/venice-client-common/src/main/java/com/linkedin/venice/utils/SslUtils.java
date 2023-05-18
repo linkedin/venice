@@ -202,6 +202,8 @@ public class SslUtils {
     config.setKeyStoreFilePath(sslConfig.getKeyStoreFilePath());
     config.setTrustStoreFilePath(sslConfig.getTrustStoreFilePath());
     config.setTrustStoreFilePassword(sslConfig.getTrustStoreFilePassword());
+    config.setSslRequireClientCerts(sslConfig.doesSslRequireClientCerts());
+    config.setRequireClientCertOnLocalHost(sslConfig.isRequireClientCertOnLocalHost());
     return config;
   }
 

@@ -4,6 +4,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
+import static com.linkedin.venice.CommonConfigKeys.SSL_NEEDS_CLIENT_CERT;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 
@@ -11,6 +12,7 @@ import java.util.Properties;
 
 
 public class SSLConfig {
+  public static final boolean SSL_REQUIRE_CLIENT_CERTS_DEFAULT_VALUE = true;
   private String _keyStoreData = "";
   private String _keyStorePassword = "";
   private String _keyStoreType = "jks";
@@ -18,7 +20,7 @@ public class SSLConfig {
   private String _trustStoreFilePath = "";
   private String _trustStoreFilePassword = "";
   private boolean _sslEnabled = false;
-  private boolean _sslRequireClientCerts = true;
+  private boolean _sslRequireClientCerts = SSL_REQUIRE_CLIENT_CERTS_DEFAULT_VALUE;
   private boolean _requireClientCertOnLocalHost = false;
 
   public void setKeyStoreData(String keyStoreData) {
@@ -104,6 +106,8 @@ public class SSLConfig {
     config.setTrustStoreFilePath(sslProperties.getProperty(SSL_TRUSTSTORE_LOCATION));
     config.setKeyStorePassword(sslProperties.getProperty(SSL_KEYSTORE_PASSWORD));
     config.setTrustStoreFilePassword(sslProperties.getProperty(SSL_TRUSTSTORE_PASSWORD));
+    config.setSslRequireClientCerts(
+        Boolean.valueOf(sslProperties.getProperty(SSL_NEEDS_CLIENT_CERT, SSL_REQUIRE_CLIENT_CERTS_DEFAULT_VALUE + "")));
     return config;
   }
 

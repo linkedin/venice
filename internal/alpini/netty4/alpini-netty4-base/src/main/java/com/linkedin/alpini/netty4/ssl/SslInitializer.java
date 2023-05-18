@@ -49,6 +49,7 @@ import javax.annotation.Nonnull;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLHandshakeException;
 import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSessionContext;
 import javax.security.auth.x500.X500Principal;
@@ -293,6 +294,11 @@ public class SslInitializer extends ChannelInitializer<Channel> {
         } else {
           _handshakesFailed.increment();
         }
+        boolean needClientAuth = true;
+        SSLParameters sslParameters = _sslFactory.getSSLParameters();
+        if (sslParameters != null) {
+          needClientAuth = sslParameters.getNeedClientAuth();
+        }
         if (ctx.channel().hasAttr(SSL_HANDSHAKE_START_TS)) {
           SslHandler handler = ctx.pipeline().get(SslHandler.class);
           SSLSession session = handler.engine().getSession();
@@ -306,6 +312,10 @@ public class SslInitializer extends ChannelInitializer<Channel> {
                   break;
                 }
               }
+            }
+          } catch (SSLPeerUnverifiedException ex) {
+            if (needClientAuth) {
+              LOG.warn("Unable to obtain remote CN for {}", ctx.channel().remoteAddress(), ex);
             }
           } catch (Throwable ex) {
             LOG.warn("Unable to obtain remote CN for {}", ctx.channel().remoteAddress(), ex);

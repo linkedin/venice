@@ -17,6 +17,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ReferenceCountUtil;
 import java.net.URI;
+import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLPeerUnverifiedException;
@@ -48,7 +49,7 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     return resourceName;
   }
 
-  protected X509Certificate extractClientCert(ChannelHandlerContext ctx) throws SSLPeerUnverifiedException {
+  protected X509Certificate extractClientCert(ChannelHandlerContext ctx) {
     SslHandler sslHandler = ctx.pipeline().get(SslHandler.class);
     if (sslHandler == null) {
       /**
@@ -56,7 +57,14 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
        */
       sslHandler = ctx.channel().parent().pipeline().get(SslHandler.class);
     }
-    return SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
+    final Certificate[] peerCertificates;
+    try {
+      peerCertificates = sslHandler.engine().getSession().getPeerCertificates();
+    } catch (SSLPeerUnverifiedException exception) {
+      return null;
+    }
+
+    return SslUtils.getX509Certificate(peerCertificates[0]);
   }
 
   /**
