@@ -656,8 +656,6 @@ public class VeniceParentHelixAdminTest {
     for (Map.Entry<Integer, Boolean> entry: schemaIdToStatusMap.entrySet()) {
       int schemaId = entry.getKey();
       boolean result = entry.getValue();
-      System.out.println("updating schema id: " + schemaId);
-
       ControllerResponse controllerResponse = parentControllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setLatestSupersetSchemaId(schemaId));
       Assert.assertNotNull(controllerResponse);

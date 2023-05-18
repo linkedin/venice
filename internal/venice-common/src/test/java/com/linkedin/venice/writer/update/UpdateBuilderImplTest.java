@@ -237,7 +237,6 @@ public class UpdateBuilderImplTest {
     builder.setKeysToRemoveFromMapField("recordMap", expectedRecordMapKeysToRemove);
 
     GenericRecord updateRecord = builder.build();
-    System.out.println(updateRecord);
 
     // Fields with no change (no-op).
     Assert.assertEquals(updateRecord.get("name"), createFieldNoOpRecord("name"));

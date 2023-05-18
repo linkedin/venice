@@ -581,7 +581,6 @@ public abstract class TestBatch {
               }
             });
         Object value = avroClient.get(key).get();
-        System.out.println(value);
       } catch (Exception e) {
         Assert.fail("get request to fetch schema from meta store fails", e);
       }

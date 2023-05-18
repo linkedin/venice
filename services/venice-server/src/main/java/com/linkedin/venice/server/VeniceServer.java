@@ -59,6 +59,7 @@ import com.linkedin.venice.stats.BackupVersionOptimizationServiceStats;
 import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
@@ -558,6 +559,7 @@ public class VeniceServer {
    * */
   public void shutdown() throws VeniceException {
     List<Exception> exceptions = new ArrayList<>();
+    long startTimeMS = System.currentTimeMillis();
     LOGGER.info("Stopping all services");
 
     /* Stop in reverse order */
@@ -588,7 +590,6 @@ public class VeniceServer {
         }
       }
       LOGGER.info("All services have been stopped");
-
       compressorFactory.close();
 
       try {
@@ -608,6 +609,7 @@ public class VeniceServer {
       if (exceptions.size() > 0) {
         throw new VeniceException(exceptions.get(0));
       }
+      LOGGER.info("Shutdown completed in {} ms", LatencyUtils.getLatencyInMS(startTimeMS));
       isStarted.set(false);
     }
   }

@@ -757,7 +757,6 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap(),
         Collections.emptyMap());
-    System.out.println(response);
     Assert.assertEquals(response.status().code(), 200);
     HybridStoreQuotaStatusResponse pushStatusResponse =
         OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
