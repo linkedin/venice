@@ -110,7 +110,7 @@ public class TopicManagerTest {
     doReturn(mockInMemoryConsumer).when(pubSubConsumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
 
     topicManager = TopicManagerRepository.builder()
-        .setPubSubProperties(k -> new VeniceProperties())
+        .setPubSubProperties(k -> VeniceProperties.empty())
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setLocalKafkaBootstrapServers("localhost:1234")
         .setPubSubConsumerAdapterFactory(pubSubConsumerAdapterFactory)
@@ -521,7 +521,7 @@ public class TopicManagerTest {
     doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
     doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
     try (TopicManager topicManagerForThisTest = TopicManagerRepository.builder()
-        .setPubSubProperties(k -> new VeniceProperties())
+        .setPubSubProperties(k -> VeniceProperties.empty())
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setLocalKafkaBootstrapServers(localPubSubBrokerAddress)
         .setPubSubAdminAdapterFactory(adminAdapterFactory)

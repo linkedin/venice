@@ -1,6 +1,7 @@
 package com.linkedin.venice.producer;
 
 import com.linkedin.venice.writer.update.UpdateBuilder;
+import java.io.Closeable;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -23,7 +24,7 @@ import java.util.function.Consumer;
  * @param <K> Key of the record that needs to be updated
  * @param <V> Value that needs to be written
  */
-public interface VeniceProducer<K, V> {
+public interface VeniceProducer<K, V> extends Closeable {
   /**
    * A write operation where a full value is written to replace the existing value.
    * @param key Key of the record that needs to be updated

@@ -80,7 +80,7 @@ public class ChangeCaptureViewWriterTest {
     controlMessage.controlMessageUnion = versionSwapMessage;
 
     Store mockStore = Mockito.mock(Store.class);
-    VeniceProperties props = new VeniceProperties();
+    VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     // Add ID's to the region's to name the sort order of the RMD
     urlMappingMap.put(LTX_1, 0);
@@ -156,7 +156,7 @@ public class ChangeCaptureViewWriterTest {
     Mockito.when(mockStore.getVersion(1)).thenReturn(Optional.of(version));
     Mockito.when(mockStore.getName()).thenReturn(STORE_NAME);
 
-    VeniceProperties props = new VeniceProperties();
+    VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
 
@@ -187,7 +187,7 @@ public class ChangeCaptureViewWriterTest {
   public void testProcessRecord() {
     // Set up mocks
     Store mockStore = Mockito.mock(Store.class);
-    VeniceProperties props = new VeniceProperties();
+    VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
 

@@ -115,7 +115,7 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMapper<VeniceVsonMap
   @Test(expectedExceptions = UnsupportedOperationException.class)
   public void testEmptyFilter() {
     try (VeniceVsonMapper mapper = new VeniceVsonMapper()) {
-      mapper.getFilterChain(new VeniceProperties());
+      mapper.getFilterChain(VeniceProperties.empty());
     }
   }
 

@@ -196,11 +196,11 @@ public class TestHybridQuota {
       offlinePushRepository.refresh();
       hybridStoreQuotaOnlyRepository.refresh();
 
-      // Do an VPJ push
+      // Do a VPJ push
       runVPJ(vpjProperties, 1, controllerClient);
       String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
 
-      // Do an VPJ push
+      // Do a VPJ push
       runVPJ(vpjProperties, 2, controllerClient);
       String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
       Assert.assertTrue(
@@ -219,7 +219,7 @@ public class TestHybridQuota {
           HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
       assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion2));
 
-      // Do an VPJ push
+      // Do a VPJ push
       runVPJ(vpjProperties, 3, controllerClient);
       String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
       long storageQuotaInByte = 60000; // A small quota, easily violated.
