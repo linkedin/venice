@@ -1020,15 +1020,8 @@ public class ControllerClient implements Closeable {
             // TODO: Routers also support fetching the store name via query params. So, once sufficient time has passed,
             // this check can be changed to break out of the loop on non-5XX errors.
 
-            int httpStatusCode = e.getHttpStatusCode();
-            // Only if there were 4XX errors, try to query routers. If the errors are 5XX, it means controller tried to
-            // handle the request, but failed while processing it
-            if (httpStatusCode >= 400 && httpStatusCode < 500) {
-              String routerPath = ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName;
-              return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
-            } else if (httpStatusCode >= 500) {
-              throw e;
-            }
+            String routerPath = ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName;
+            return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
           }
         } catch (Exception e) {
           LOGGER.warn("Unable to discover cluster for store {} from {}", storeName, url);
