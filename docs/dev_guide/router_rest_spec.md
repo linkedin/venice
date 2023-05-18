@@ -11,7 +11,7 @@ built, they could reference this spec to do so.
 
 Note that although this part of the architecture is RESTful, Venice in general has a bias for performance, so the
 implementation may not be fully up to the standards of a dogmatic RESTafarian. For example, because of URL length
-limitations, batch gets are implemented with a POST rather than a GET, even though it carries no side effects.
+limitations, batch gets are implemented with a POST rather than a GET, even though they carry no side effects.
 
 The following sections describe the endpoints in the order they are invoked by the client during initialization, in
 order to prime its internal state.
@@ -20,7 +20,7 @@ order to prime its internal state.
 The first endpoint the client invokes is to discover which cluster the store of interest belongs to:
 
 ```
-https://<host>:<port>/discover_cluster/<store_name>
+GET https://<host>:<port>/discover_cluster/<store_name>
 ```
 
 This will return a JSON response in the following format:
@@ -39,7 +39,10 @@ This will return a JSON response in the following format:
 }
 ```
 
-For all JSON responses returned by Venice, it is advisable to validate that the `error` field is `null`.
+For all JSON responses returned by Venice, it is advisable to validate that the `error` field is `null`. If it is not
+`null`, then it should be a string containing some description of the error. In addition to that, the `errorType` field
+is a means to categorize errors programmatically according to the values in the 
+[ErrorType](../../internal/venice-client-common/src/main/java/com/linkedin/venice/exceptions/ErrorType.java) enum.
 
 The client then uses the information in the `d2Service` field of this response to connect to the correct cluster.
 
@@ -62,7 +65,7 @@ After connecting to the correct cluster, the client primes its cache of
 The key schema must be used to serialize keys to be queried. In Venice, the key schema cannot evolve, so the client can 
 rely on this assumption. The key schema is retrieved via:
 ```
-https://<host>:<port>/key_schema/<store_name>
+GET https://<host>:<port>/key_schema/<store_name>
 ```
 
 This returns a JSON response in the following format:
@@ -88,7 +91,7 @@ be fully compatible with one another. A Venice store can contain records encoded
 it is important for the client to know all registered schemas, so that it can perform 
 [schema evolution](https://avro.apache.org/docs/1.11.1/specification/#schema-resolution).
 ```
-https://<host>:<port>/value_schema/<store_name>
+GET https://<host>:<port>/value_schema/<store_name>
 ```
 This returns the following JSON response:
 ```json
@@ -118,7 +121,7 @@ This returns the following JSON response:
 After initialization, it is possible that the client encounters new schemas that did not exist yet at the time it was
 initialized. In those cases, the client can fetch those unknown schemas specifically via:
 ```
-https://<host>:<port>/value_schema/<store_name>/<id>
+GET https://<host>:<port>/value_schema/<store_name>/<id>
 ```
 This returns a payload identical to the key schema endpoint.
 
@@ -147,12 +150,12 @@ X-VENICE-SUPPORTED-COMPRESSION-STRATEGY = 1
 ### Single Get Endpoint
 Querying the value for a single key can be achieved by sending an HTTP GET request to:
 ```
-https://<host>:<port>/storage/<store_name>/<key_in_base64>?f=b64
+GET https://<host>:<port>/storage/<store_name>/<key_in_base64>?f=b64
 ```
 
 Alternatively, for stores with a simple string key schema, the value can be gotten via:
 ```
-https://<host>:<port>/storage/<store_name>/<string_key>
+GET https://<host>:<port>/storage/<store_name>/<string_key>
 ```
 
 The response code should be 200, and the value is encoded in Avro binary in the body of the response, with the following 
@@ -169,22 +172,27 @@ X-VENICE-COMPRESSION-STRATEGY = 0
 ### Batch Get
 Batch gets are performed as an HTTP POST request to:
 ```
-https://<host>:<port>/storage/<store_name>
+POST https://<host>:<port>/storage/<store_name>
 ```
 
 The request should be accompanied by the following headers:
 
 ```
-# Not supplying the streaming header results in a legacy non-blocking mode which may be removed in the future
+# Not supplying the streaming header results in a legacy non-streaming mode which is less performant, and which may be 
+# removed in the future
 X-VENICE-STREAMING = 1
 
 # This header makes the quota system more efficient (technically optional, but highly recommended)
 X-VENICE-KEY-COUNT = <number of keys queried>
 ```
 
+The body of the POST request is a concatenation of all the queried keys, serialized in Avro binary. Note that the order
+of the keys matter (see details below).
+
 The response code will always be 200 since the router starts returning results incrementally before knowing if all parts
 of the request can be fulfilled successfully (but see the footer details below for the real status code). Furthermore,
-the values are laid out one after the other in the body, packaged inside envelopes encoded in the following Avro schema:
+the values are laid out one after the other in the body of the response, packaged inside envelopes encoded in the 
+following Avro schema:
 
 ```json
 {
