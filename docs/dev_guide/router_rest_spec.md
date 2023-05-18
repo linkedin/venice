@@ -16,6 +16,10 @@ limitations, batch gets are implemented with a POST rather than a GET, even thou
 The following sections describe the endpoints in the order they are invoked by the client during initialization, in
 order to prime its internal state.
 
+As with any client/server interaction, the developer of a new client implementation should consider details such as load
+balancing, connection pooling, authentication and authorization. Since these tend to be generic concerns, rather than 
+Venice-specific ones, they are omitted from this document.
+
 ## Cluster Discovery Endpoint
 The first endpoint the client invokes is to discover which cluster the store of interest belongs to:
 
