@@ -73,6 +73,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
@@ -259,6 +260,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
 
   private final boolean parentExternalSupersetSchemaGenerationEnabled;
+
+  private final boolean systemSchemaInitializationAtStartTimeEnabled;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -459,6 +462,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     this.parentExternalSupersetSchemaGenerationEnabled =
         props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
+    this.systemSchemaInitializationAtStartTimeEnabled =
+        props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true);
   }
 
   private void validateActiveActiveConfigs() {
@@ -845,6 +850,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isParentExternalSupersetSchemaGenerationEnabled() {
     return parentExternalSupersetSchemaGenerationEnabled;
+  }
+
+  public boolean isSystemSchemaInitializationAtStartTimeEnabled() {
+    return systemSchemaInitializationAtStartTimeEnabled;
   }
 
   /**

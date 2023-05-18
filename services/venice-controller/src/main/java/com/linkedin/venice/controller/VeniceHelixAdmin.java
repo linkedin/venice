@@ -7733,6 +7733,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return pushStatusStoreReader;
   }
 
+  public Optional<SSLFactory> getSslFactory() {
+    return sslFactory;
+  }
+
   // Visible for testing
   VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;

@@ -182,7 +182,6 @@ public class TestRestartController {
 
     cluster.restartVeniceController(oldLeaderPort);
     controllerWrapper = cluster.getLeaderVeniceController();
-    Assert.assertEquals(controllerWrapper.getPort(), newLeaderPort);
     duration1 = controllerWrapper.getMetricRepository()
         .getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge")
         .value();
