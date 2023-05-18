@@ -6,7 +6,6 @@ import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
-import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
 import static com.linkedin.venice.router.api.RouterResourceType.TYPE_GET_UPDATE_SCHEMA;
@@ -27,7 +26,6 @@ import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
-import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -397,24 +395,15 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
       return;
     }
-    String serverD2Service = getServerD2ServiceByClusterName(clusterName);
-    if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
-      D2ServiceDiscoveryResponseV2 responseObject = new D2ServiceDiscoveryResponseV2();
-      responseObject.setCluster(config.get().getCluster());
-      responseObject.setName(config.get().getStoreName());
-      responseObject.setD2Service(d2Service);
-      responseObject.setServerD2Service(serverD2Service);
-      responseObject.setZkAddress(zkAddress);
-      responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
-      setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
-    } else {
-      D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
-      responseObject.setCluster(config.get().getCluster());
-      responseObject.setName(config.get().getStoreName());
-      responseObject.setD2Service(d2Service);
-      responseObject.setServerD2Service(serverD2Service);
-      setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
-    }
+
+    D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
+    responseObject.setCluster(config.get().getCluster());
+    responseObject.setName(config.get().getStoreName());
+    responseObject.setD2Service(d2Service);
+    responseObject.setServerD2Service(getServerD2ServiceByClusterName(clusterName));
+    responseObject.setZkAddress(zkAddress);
+    responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
   private void setupErrorD2DiscoveryResponseAndFlush(
@@ -422,12 +411,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String errorMsg,
       HttpHeaders headers,
       ChannelHandlerContext ctx) throws IOException {
-    D2ServiceDiscoveryResponse responseObject;
-    if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
-      responseObject = new D2ServiceDiscoveryResponseV2();
-    } else {
-      responseObject = new D2ServiceDiscoveryResponse();
-    }
+    D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
     responseObject.setError(errorMsg);
     if (status.equals(NOT_FOUND)) {
       responseObject.setErrorType(ErrorType.STORE_NOT_FOUND);
