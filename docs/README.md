@@ -6,12 +6,14 @@
       Derived Data Platform for Planet-Scale Workloads<br/>
     </h3>
     <div align="center">
-        <a href="https://github.com/linkedin/venice/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-BSD_2--Clause-blue.svg" alt="License"></a>
-        <a href="https://linkedin.github.io/venice/"><img src="https://img.shields.io/badge/docs-latest-blue.svg" alt="Docs Latest"></a>
-        <a href="http://twitter.com/VeniceDataBase"><img src="https://img.shields.io/badge/Twitter-%231DA1F2.svg?logo=Twitter&logoColor=white" alt="Twitter"></a>
-        <a href="https://www.linkedin.com/groups/14129519/"><img src="https://img.shields.io/badge/linkedin-%230077B5.svg?logo=linkedin&logoColor=white" alt="LinkedIn"></a>
-        <a href="https://communityinviter.com/apps/venicedb/venice"><img src="https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white" alt="Slack"></a>
-        <a href="http://github.com/linkedin/venice"><img src="https://img.shields.io/badge/github-%23121011.svg?logo=github&logoColor=white" alt="GitHub"></a>
+        <a href="https://venicedb.org/"><img src="https://img.shields.io/badge/docs-latest-blue.svg" alt="Docs Latest"></a>
+        <a href="https://github.com/linkedin/venice/actions/workflows/gh-ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/linkedin/venice/gh-ci.yml" alt="CI"></a>
+        <a href="https://github.com/linkedin/venice"><img src="https://img.shields.io/badge/github-%23121011.svg?logo=github&logoColor=white" alt="GitHub"></a>
+    </div>
+    <div align="center">
+        <a href="https://www.linkedin.com/company/venicedb/"><img src="https://img.shields.io/badge/linkedin-%230077B5.svg?logo=linkedin&logoColor=white" alt="LinkedIn"></a>
+        <a href="https://twitter.com/VeniceDataBase"><img src="https://img.shields.io/badge/Twitter-%231DA1F2.svg?logo=Twitter&logoColor=white" alt="Twitter"></a>
+        <a href="http://slack.venicedb.org"><img src="https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white" alt="Slack"></a>
     </div>
 </html>
 
@@ -97,14 +99,20 @@ The following talks have been given about Venice:
 - 2019: [People You May Know: Fast Recommendations over Massive Data](https://www.infoq.com/presentations/recommendation-massive-data/)
 - 2019: [Enabling next generation models for PYMK Scale](https://www.youtube.com/watch?v=znd-Q6IvCqY)
 - 2022: [Open Sourcing Venice](https://www.youtube.com/watch?v=pJeg4V3JgYo)
+- 2023: [Partial Updates in Venice](https://www.youtube.com/watch?v=WlfvpZuIa6Q&t=3880s)
 
 Keep in mind that older content reflects an earlier phase of the project and may not be entirely correct anymore.
 
 # Community Resources
 
 Feel free to engage with the community using our:
-- [Slack workspace](https://communityinviter.com/apps/venicedb/venice)
+- [Slack workspace](http://slack.venicedb.org) (archived and publicly searchable on [Linen](http://linen.venicedb.org))
 - [LinkedIn group](https://www.linkedin.com/groups/14129519/)
+- [GitHub issues](https://github.com/linkedin/venice/issues)
+- [Contributor's guide](CONTRIBUTING.md)
+
+Follow us to hear more about the progress of the Venice project and community:
+- [Official blog](https://blog.venicedb.org)
+- [LinkedIn page](https://www.linkedin.com/company/venicedb)
 - [Twitter handle](https://twitter.com/VeniceDataBase)
-- GitHub [issues](https://github.com/linkedin/venice/issues) and [discussions](https://github.com/linkedin/venice/discussions)
-- [Contributor's guide](CONTRIBUTING.md).
+- [YouTube channel](https://youtube.com/@venicedb)
