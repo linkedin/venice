@@ -287,7 +287,7 @@ public class RetryUtilsTest {
     when(obj.getAnInteger()).thenThrow(IllegalArgumentException.class)
         .thenThrow(IllegalStateException.class)
         .thenReturn(2);
-
+    long startTime = System.currentTimeMillis();
     Assert.assertEquals(
         (int) RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(
             () -> obj.getAnInteger() + 1,
@@ -295,6 +295,7 @@ public class RetryUtilsTest {
             Duration.ofMillis(1000),
             Arrays.asList(IllegalStateException.class, IllegalArgumentException.class)),
         3);
+    Assert.assertTrue((System.currentTimeMillis() - startTime) > 2000);
     verify(obj, times(3)).getAnInteger();
     reset(obj);
   }
