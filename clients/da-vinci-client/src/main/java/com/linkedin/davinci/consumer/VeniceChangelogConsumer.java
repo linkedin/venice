@@ -118,14 +118,14 @@ public interface VeniceChangelogConsumer<K, V> {
    * ON A PREVIOUS VERSION.  You should never seek back in time to a timestamp which is smaller than the current time -
    * rewindTimeInSeconds configured in the hybrid settings for this Venice store.
    *
-   * @param timeStamps a map keyed by a partition ID, and the timestamp checkpoints to seek for each partition.
+   * @param timestamps a map keyed by a partition ID, and the timestamp checkpoints to seek for each partition.
    * @return
    * @throws VeniceException if seek operations failed for any of the specified partitions.
    */
-  CompletableFuture<Void> seekToTimestamp(Map<Integer, Long> timeStamps);
+  CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps);
 
   /**
-   * Seek to the specified timestamp for all subscribed partitions. See {@link #seekToTimestamp(Map)} for more information.
+   * Seek to the specified timestamp for all subscribed partitions. See {@link #seekToTimestamps(Map)} for more information.
    *
    * @return a future which completes when the operation has succeeded for all partitions.
    * @throws VeniceException if seek operation failed for any of the partitions.

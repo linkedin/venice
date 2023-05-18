@@ -304,18 +304,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   @Override
-  public CompletableFuture<Void> seekToTimestamp(Map<Integer, Long> timeStamps) {
+  public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
     // Get the latest change capture topic
     storeRepository.refresh();
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
     String topic = Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     Map<TopicPartition, Long> topicPartitionLongMap = new HashMap<>();
-    for (Map.Entry<Integer, Long> timestampPair: timeStamps.entrySet()) {
+    for (Map.Entry<Integer, Long> timestampPair: timestamps.entrySet()) {
       TopicPartition topicPartition = new TopicPartition(topic, timestampPair.getKey());
       topicPartitionLongMap.put(topicPartition, timestampPair.getValue());
     }
-    return internalSeek(timeStamps.keySet(), topic, (partitions) -> {
+    return internalSeek(timestamps.keySet(), topic, (partitions) -> {
       Map<TopicPartition, OffsetAndTimestamp> offsetsTimestamps = kafkaConsumer.offsetsForTimes(topicPartitionLongMap);
       for (Map.Entry<TopicPartition, OffsetAndTimestamp> offsetTimestamp: offsetsTimestamps.entrySet()) {
         kafkaConsumer.seek(offsetTimestamp.getKey(), offsetTimestamp.getValue().offset());
@@ -330,7 +330,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     for (TopicPartition partition: topicPartitionSet) {
       partitionsToSeek.put(partition.partition(), timestamp);
     }
-    return this.seekToTimestamp(partitionsToSeek);
+    return this.seekToTimestamps(partitionsToSeek);
   }
 
   public CompletableFuture<Void> internalSeek(Set<Integer> partitions, String targetTopic, SeekFunction seekAction) {
