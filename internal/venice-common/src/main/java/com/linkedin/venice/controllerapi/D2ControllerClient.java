@@ -120,9 +120,6 @@ public class D2ControllerClient extends ControllerClient {
         D2ServiceDiscoveryResponse.class);
   }
 
-  /**
-   * Here, if discovery fails, we will throw a VeniceException.
-   */
   public static D2ServiceDiscoveryResponse discoverCluster(
       String d2ZkHost,
       String d2ServiceName,
@@ -131,32 +128,13 @@ public class D2ControllerClient extends ControllerClient {
     D2Client d2Client;
     try {
       d2Client = D2ClientFactory.getD2Client(d2ZkHost, Optional.empty());
-      D2ServiceDiscoveryResponse response = discoverClusterInternal(d2Client, d2ServiceName, storeName, retryAttempts);
-      if (response.isError()) {
-        throw new VeniceException(response.getError());
-      }
-      return response;
+      return discoverCluster(d2Client, d2ServiceName, storeName, retryAttempts);
     } finally {
       D2ClientFactory.release(d2ZkHost);
     }
   }
 
-  /**
-   * Here, if discovery fails, we will throw a VeniceException.
-   */
   public static D2ServiceDiscoveryResponse discoverCluster(
-      D2Client d2Client,
-      String d2ServiceName,
-      String storeName,
-      int retryAttempts) {
-    D2ServiceDiscoveryResponse response = discoverClusterInternal(d2Client, d2ServiceName, storeName, retryAttempts);
-    if (response.isError()) {
-      throw new VeniceException(response.getError());
-    }
-    return response;
-  }
-
-  private static D2ServiceDiscoveryResponse discoverClusterInternal(
       D2Client d2Client,
       String d2ServiceName,
       String storeName,
@@ -168,7 +146,7 @@ public class D2ControllerClient extends ControllerClient {
 
   @Override
   public D2ServiceDiscoveryResponse discoverCluster(String storeName) {
-    return discoverClusterInternal(d2Client, d2ServiceName, storeName, 1);
+    return discoverCluster(d2Client, d2ServiceName, storeName, 1);
   }
 
   @Override

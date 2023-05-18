@@ -3,6 +3,7 @@ package com.linkedin.venice.controllerapi;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SharedObjectFactory;
 import java.util.HashMap;
@@ -12,8 +13,29 @@ import java.util.function.Supplier;
 
 
 public class ControllerClientFactory {
+  // Visible for testing
+  // Flag to denote if the test is in unit test mode and hence, will allow overriding the ControllerClient
+  private static boolean unitTestMode = false;
+
   private static final SharedObjectFactory<ControllerClient> SHARED_OBJECT_FACTORY = new SharedObjectFactory<>();
   private static final Map<ControllerClient, String> CONTROLLER_CLIENT_TO_IDENTIFIER_MAP = new HashMap<>();
+
+  static void setUnitTestMode() {
+    unitTestMode = true;
+  }
+
+  static void resetUnitTestMode() {
+    unitTestMode = false;
+  }
+
+  // Allow for overriding with mock D2Client for unit tests. The caller must release the object to prevent side-effects
+  static void setControllerClient(String clusterName, String discoveryUrls, ControllerClient controllerClient) {
+    if (!unitTestMode) {
+      throw new VeniceUnsupportedOperationException("setD2Client in non-unit-test-mode");
+    }
+    final String clientIdentifier = clusterName + discoveryUrls;
+    SHARED_OBJECT_FACTORY.get(clientIdentifier, () -> controllerClient, controllerClient1 -> {});
+  }
 
   public static ControllerClient getControllerClient(
       String clusterName,

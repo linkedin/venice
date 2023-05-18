@@ -1009,7 +1009,7 @@ public class ControllerClient implements Closeable {
       String storeName,
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
-    try (ControllerClient client = new ControllerClient("*", discoveryUrls, sslFactory)) {
+    try (ControllerClient client = ControllerClientFactory.getControllerClient("*", discoveryUrls, sslFactory)) {
       return retryableRequest(client, retryAttempts, c -> c.discoverCluster(storeName));
     }
   }
