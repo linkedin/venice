@@ -14,7 +14,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -98,7 +97,7 @@ public class ConsumerTest {
     // Serialization of a value encoded with the new protocol version
     GenericRecord messageFromNewProtocol = new GenericData.Record(NEW_PROTOCOL_SCHEMA);
     ProducerMetadata producerMetadata = new ProducerMetadata();
-    producerMetadata.producerGUID = GuidUtils.getGUID(new VeniceProperties(new Properties()));
+    producerMetadata.producerGUID = GuidUtils.getGUID(VeniceProperties.empty());
     producerMetadata.messageTimestamp = System.currentTimeMillis();
     producerMetadata.segmentNumber = 0;
     producerMetadata.messageSequenceNumber = 0;

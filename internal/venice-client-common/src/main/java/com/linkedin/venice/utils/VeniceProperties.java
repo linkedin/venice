@@ -20,9 +20,11 @@ import java.util.function.Supplier;
 
 
 public class VeniceProperties {
+  private static final VeniceProperties EMPTY = new VeniceProperties();
+
   private final Map<String, String> props;
 
-  public VeniceProperties() {
+  private VeniceProperties() {
     props = Collections.emptyMap();
   }
 
@@ -40,6 +42,10 @@ public class VeniceProperties {
       tmpProps.put(e.getKey().toString(), e.getValue() == null ? null : e.getValue().toString());
     }
     props = Collections.unmodifiableMap(tmpProps);
+  }
+
+  public static VeniceProperties empty() {
+    return EMPTY;
   }
 
   public Properties getPropertiesCopy() {

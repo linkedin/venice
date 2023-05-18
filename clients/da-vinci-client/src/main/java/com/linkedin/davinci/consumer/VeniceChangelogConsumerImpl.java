@@ -140,7 +140,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.inMemoryStorageEngine = new InMemoryStorageEngine(storeName);
     this.storeRepository = new ThinClientMetaStoreBasedRepository(
         changelogClientConfig.getInnerClientConfig(),
-        new VeniceProperties(),
+        VeniceProperties.empty(),
         null);
     recordChangeEventSchemaRepository = new RecordChangeEventReadOnlySchemaRepository(this.storeRepository);
     Class<V> valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();

@@ -20,7 +20,7 @@ public class RocksDBSstFileWriterTest {
   private static final int PARTITION_ID = 0;
   private static final String DB_DIR = Utils.getUniqueTempPath("sstTest");
   private static final boolean IS_RMD = false;
-  private static final RocksDBServerConfig ROCKS_DB_SERVER_CONFIG = new RocksDBServerConfig(new VeniceProperties());
+  private static final RocksDBServerConfig ROCKS_DB_SERVER_CONFIG = new RocksDBServerConfig(VeniceProperties.empty());
 
   @Test
   public void testCheckDatabaseIntegrityWithEmptyCheckpoint() {

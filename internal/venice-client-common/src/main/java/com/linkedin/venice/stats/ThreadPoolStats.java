@@ -1,7 +1,5 @@
-package com.linkedin.davinci.stats;
+package com.linkedin.venice.stats;
 
-import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.LambdaStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.util.concurrent.ThreadPoolExecutor;

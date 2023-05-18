@@ -477,7 +477,7 @@ public abstract class StoreIngestionTaskTest {
             .setPartitioner(getVenicePartitioner(amplificationFactor))
             .setTime(SystemTime.INSTANCE)
             .build();
-    return new VeniceWriter(veniceWriterOptions, new VeniceProperties(new Properties()), producerAdapter);
+    return new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), producerAdapter);
   }
 
   private VenicePartitioner getVenicePartitioner(int amplificationFactor) {
@@ -499,7 +499,7 @@ public abstract class StoreIngestionTaskTest {
             .setPartitioner(new SimplePartitioner())
             .setTime(SystemTime.INSTANCE)
             .build();
-    return new VeniceWriter(veniceWriterOptions, new VeniceProperties(new Properties()), producerAdapter);
+    return new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), producerAdapter);
   }
 
   private VeniceWriter getCorruptedVeniceWriter(byte[] valueToCorrupt, InMemoryKafkaBroker kafkaBroker) {
@@ -2427,8 +2427,8 @@ public abstract class StoreIngestionTaskTest {
     propertyBuilder.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     propertyBuilder.put(HYBRID_QUOTA_ENFORCEMENT_ENABLED, false);
     propertyBuilder.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, databaseChecksumVerificationEnabled);
-    propertyBuilder.put(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
-    propertyBuilder.put(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
+    propertyBuilder.put(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX, VeniceProperties.empty());
+    propertyBuilder.put(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX, VeniceProperties.empty());
     extraProperties.forEach(propertyBuilder::put);
 
     Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
@@ -3075,8 +3075,8 @@ public abstract class StoreIngestionTaskTest {
         .getLocalStorageEngine(anyString());
     doReturn(mockStorageEngineRepository).when(builder).getStorageEngineRepository();
     VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
-    doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
-    doReturn(new VeniceProperties()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
     doReturn(Object2IntMaps.emptyMap()).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
     doReturn(veniceServerConfig).when(builder).getServerConfig();
     doReturn(mock(ReadOnlyStoreRepository.class)).when(builder).getMetadataRepo();
