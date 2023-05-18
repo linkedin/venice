@@ -292,7 +292,7 @@ public class RetryUtilsTest {
         (int) RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(
             () -> obj.getAnInteger() + 1,
             2,
-            Duration.ofMillis(100),
+            Duration.ofMillis(1000),
             Arrays.asList(IllegalStateException.class, IllegalArgumentException.class)),
         3);
     verify(obj, times(3)).getAnInteger();

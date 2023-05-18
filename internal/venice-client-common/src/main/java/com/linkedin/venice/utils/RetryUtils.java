@@ -257,8 +257,9 @@ public class RetryUtils {
       List<Class<? extends Throwable>> retryFailureTypes) {
     RetryPolicy<Object> retryPolicy = new RetryPolicy<>().handle(retryFailureTypes)
         .withDelay(
-            (result, failure, context) -> Duration
-                .ofMillis(durationPerAttempt.toMillis() - context.getElapsedAttemptTime().toMillis()))
+            (result, failure, context) -> (durationPerAttempt.toMillis() > context.getElapsedAttemptTime().toMillis()
+                ? Duration.ofMillis(durationPerAttempt.toMillis() - context.getElapsedAttemptTime().toMillis())
+                : Duration.ZERO))
         .withMaxRetries(maxRetry);
     retryPolicy.onFailedAttempt(RetryUtils::logAttemptWithFailure);
     return Failsafe.with(retryPolicy).get(supplier::get);
