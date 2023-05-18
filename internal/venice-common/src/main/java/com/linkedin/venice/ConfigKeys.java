@@ -405,7 +405,7 @@ public class ConfigKeys {
    * provided via other properties. This should only be used for testing and defaults to true when running
    * RouterServer.main().
    */
-  public static final String ROUTER_USE_LOCAL_SSL_SETTINGS = "router.ssl.local.settings";
+  public static final String ROUTER_USE_LOCAL_SSL_SETTINGS = "router.local.ssl";
 
   /**
    * This instructs the router to open an ssl port. This defaults to true.

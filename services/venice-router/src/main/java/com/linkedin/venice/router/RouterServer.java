@@ -1,7 +1,7 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 
 import com.linkedin.alpini.base.concurrency.AsyncFuture;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
