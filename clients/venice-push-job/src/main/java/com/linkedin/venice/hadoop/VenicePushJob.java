@@ -725,9 +725,6 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     if (StringUtils.isNotEmpty(pushJobSettingToReturn.targetedRegions)) {
-      if (pushJobSettingToReturn.isSourceETL) {
-        throw new VeniceException("Source ETL is not supported while using targeted region push mode");
-      }
       if (pushJobSettingToReturn.isIncrementalPush) {
         throw new VeniceException("Incremental push is not supported while using targeted region push mode");
       }
@@ -2620,9 +2617,6 @@ public class VenicePushJob implements AutoCloseable {
             "Failed to connect to: " + pushJobSetting.veniceControllerUrl + " to query job status, after "
                 + pushJobSetting.controllerStatusPollRetries + " attempts. Error: " + response.getError());
       }
-
-      LOGGER.info("DEBUGGING");
-      LOGGER.info(response);
 
       previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);
       ExecutionStatus overallStatus = ExecutionStatus.valueOf(response.getStatus());

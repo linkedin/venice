@@ -1732,7 +1732,7 @@ public class VeniceParentHelixAdmin implements Admin {
       addVersion.rewindTimeInSecondsOverride = -1;
     }
     if (StringUtils.isNotEmpty(targetedRegions)) {
-      addVersion.targetedRegions = targetedRegions;
+      addVersion.targetedRegions = new ArrayList<>(RegionUtils.parseRegionsFilterList(targetedRegions));
     }
     addVersion.timestampMetadataVersionId = version.getRmdVersionId();
     addVersion.versionSwapDeferred = version.isVersionSwapDeferred();

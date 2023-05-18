@@ -50,7 +50,6 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
-import com.linkedin.venice.utils.RegionUtils;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -59,7 +58,6 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Logger;
 
 
@@ -627,8 +625,9 @@ public class AdminExecutionTask implements Callable<Void> {
             replicationMetadataVersionId);
       }
     } else {
-      String regions = message.targetedRegions != null ? message.targetedRegions.toString() : null;
-      if (StringUtils.isNotEmpty(regions) && !RegionUtils.parseRegionsFilterList(regions).contains(this.regionName)) {
+      boolean skipConsumption = message.targetedRegions != null
+          && !message.targetedRegions.stream().map(Object::toString).collect(Collectors.toSet()).contains(regionName);
+      if (skipConsumption) {
         // for targeted region push, only allow specified region to process add version message
         LOGGER.info(
             "Skip the add version message for store {} in region {} since this is targeted region push and "

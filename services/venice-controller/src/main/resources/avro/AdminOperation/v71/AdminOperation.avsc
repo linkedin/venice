@@ -730,7 +730,13 @@
             {
               "name": "targetedRegions",
               "doc": "The list of regions that is separated by comma for targeted region push. If set, this admin message should only be consumed by the targeted regions",
-              "type": ["null", "string"],
+              "type": [
+                "null",
+                {
+                  "type": "array",
+                  "items":  "string"
+                }
+              ],
               "default": null
             }
           ]

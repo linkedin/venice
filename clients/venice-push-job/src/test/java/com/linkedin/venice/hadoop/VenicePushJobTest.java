@@ -484,16 +484,6 @@ public class VenicePushJobTest {
   public void testTargetedRegionPushConfig() {
     Properties props = getVpjRequiredProperties();
     props.put(TARGETED_REGIONS, "dc-0");
-    props.put(SOURCE_ETL, true);
-    // ETL should fail targeted region push
-    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
-      // do nothing
-      Assert.fail("Test should fail, but doesn't.");
-    } catch (VeniceException e) {
-      assertEquals(e.getMessage(), "Source ETL is not supported while using targeted region push mode");
-    }
-
-    props.put(SOURCE_ETL, false);
     props.put(INCREMENTAL_PUSH, true);
     // Incremental push should fail targeted region push
     try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
