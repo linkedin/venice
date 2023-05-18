@@ -62,6 +62,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -300,6 +301,36 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       allPartitions.add(partition);
     }
     return this.subscribe(allPartitions);
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
+    // Get the latest change capture topic
+    storeRepository.refresh();
+    Store store = storeRepository.getStore(storeName);
+    int currentVersion = store.getCurrentVersion();
+    String topic = Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+    Map<TopicPartition, Long> topicPartitionLongMap = new HashMap<>();
+    for (Map.Entry<Integer, Long> timestampPair: timestamps.entrySet()) {
+      TopicPartition topicPartition = new TopicPartition(topic, timestampPair.getKey());
+      topicPartitionLongMap.put(topicPartition, timestampPair.getValue());
+    }
+    return internalSeek(timestamps.keySet(), topic, (partitions) -> {
+      Map<TopicPartition, OffsetAndTimestamp> offsetsTimestamps = kafkaConsumer.offsetsForTimes(topicPartitionLongMap);
+      for (Map.Entry<TopicPartition, OffsetAndTimestamp> offsetTimestamp: offsetsTimestamps.entrySet()) {
+        kafkaConsumer.seek(offsetTimestamp.getKey(), offsetTimestamp.getValue().offset());
+      }
+    });
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToTimestamp(Long timestamp) {
+    Set<TopicPartition> topicPartitionSet = new HashSet<>(kafkaConsumer.assignment());
+    Map<Integer, Long> partitionsToSeek = new HashMap<>();
+    for (TopicPartition partition: topicPartitionSet) {
+      partitionsToSeek.put(partition.partition(), timestamp);
+    }
+    return this.seekToTimestamps(partitionsToSeek);
   }
 
   public CompletableFuture<Void> internalSeek(Set<Integer> partitions, String targetTopic, SeekFunction seekAction) {
