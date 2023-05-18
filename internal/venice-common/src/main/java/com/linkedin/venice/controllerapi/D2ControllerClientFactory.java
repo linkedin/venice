@@ -1,6 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SharedObjectFactory;
 import java.util.HashMap;
@@ -19,14 +22,14 @@ public class D2ControllerClientFactory {
       String d2ZkHost,
       Optional<SSLFactory> sslFactory) {
     final String clientIdentifier = clusterName + d2ServiceName + d2ZkHost;
-    return getIfAbsent(
+    return createIfAbsent(
         clientIdentifier,
         () -> new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory));
   }
 
   public static D2ControllerClient getControllerClient(String d2ServiceName, String clusterName, D2Client d2Client) {
     final String clientIdentifier = clusterName + d2ServiceName + d2Client.hashCode();
-    return getIfAbsent(clientIdentifier, () -> new D2ControllerClient(d2ServiceName, clusterName, d2Client));
+    return createIfAbsent(clientIdentifier, () -> new D2ControllerClient(d2ServiceName, clusterName, d2Client));
   }
 
   public static boolean release(D2ControllerClient client) {
@@ -42,10 +45,12 @@ public class D2ControllerClientFactory {
       String d2ServiceName,
       int retryAttempts,
       D2Client d2Client) {
-    D2ServiceDiscoveryResponse discoResponse =
+    D2ServiceDiscoveryResponse discoveryResponse =
         D2ControllerClient.discoverCluster(d2Client, d2ServiceName, storeName, retryAttempts);
-    String clusterName = discoResponse.getCluster();
-    return getControllerClient(d2ServiceName, clusterName, d2Client);
+    if (discoveryResponse.isError()) {
+      throw new VeniceException("Unable to discover cluster for store " + storeName + ". Check if it exists.");
+    }
+    return getControllerClient(d2ServiceName, discoveryResponse.getCluster(), d2Client);
   }
 
   public static D2ControllerClient discoverAndConstructControllerClient(
@@ -54,13 +59,13 @@ public class D2ControllerClientFactory {
       String d2ZkHost,
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
-    D2ServiceDiscoveryResponse discoResponse =
+    D2ServiceDiscoveryResponse discoveryResponse =
         D2ControllerClient.discoverCluster(d2ZkHost, d2ServiceName, storeName, retryAttempts);
-    String clusterName = discoResponse.getCluster();
-    return getControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory);
+    checkDiscoveryResponse(storeName, discoveryResponse);
+    return getControllerClient(d2ServiceName, discoveryResponse.getCluster(), d2ZkHost, sslFactory);
   }
 
-  private static D2ControllerClient getIfAbsent(
+  private static D2ControllerClient createIfAbsent(
       String clientIdentifier,
       Supplier<D2ControllerClient> d2ControllerClientSupplier) {
     return SHARED_OBJECT_FACTORY.get(clientIdentifier, () -> {
@@ -72,5 +77,15 @@ public class D2ControllerClientFactory {
       client.close(); // Doesn't run anything right now - but is useful to clean up if close method adds some cleanup
       // functionality later
     });
+  }
+
+  private static void checkDiscoveryResponse(String storeName, D2ServiceDiscoveryResponse discoveryResponse) {
+    if (discoveryResponse.isError()) {
+      if (ErrorType.STORE_NOT_FOUND.equals(discoveryResponse.getErrorType())) {
+        throw new VeniceNoStoreException(storeName);
+      } else {
+        throw new VeniceException("Unable to discover cluster for store " + storeName + ". Check if it exists.");
+      }
+    }
   }
 }

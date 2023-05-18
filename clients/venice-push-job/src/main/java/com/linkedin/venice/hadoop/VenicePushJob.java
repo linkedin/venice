@@ -21,6 +21,7 @@ import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -1686,20 +1687,22 @@ public class VenicePushJob implements AutoCloseable {
       String d2ZkHosts,
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
+    ControllerClient storeControllerClient;
     if (useD2ControllerClient) {
-      return D2ControllerClientFactory.discoverAndConstructControllerClient(
+      storeControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
           storeName,
           controllerD2ServiceName,
           d2ZkHosts,
           sslFactory,
           retryAttempts);
     } else {
-      return ControllerClient.discoverAndConstructControllerClient(
+      storeControllerClient = ControllerClientFactory.discoverAndConstructControllerClient(
           storeName,
           pushJobSetting.veniceControllerUrl,
           sslFactory,
           retryAttempts);
     }
+    return storeControllerClient;
   }
 
   private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {

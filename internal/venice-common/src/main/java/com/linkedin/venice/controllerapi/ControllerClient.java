@@ -135,19 +135,31 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  /**
+   * @deprecated Use ControllerClientFactory#discoverAndConstructControllerClient
+   */
+  @Deprecated
   public static ControllerClient discoverAndConstructControllerClient(
       String storeName,
       String discoveryUrls,
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
-    String clusterName = discoverCluster(discoveryUrls, storeName, sslFactory, retryAttempts).getCluster();
-    return constructClusterControllerClient(clusterName, discoveryUrls, sslFactory);
+    return ControllerClientFactory
+        .discoverAndConstructControllerClient(storeName, discoveryUrls, sslFactory, retryAttempts);
   }
 
+  /**
+   * @deprecated Use ControllerClientFactory#getControllerClient
+   */
+  @Deprecated
   public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls) {
     return constructClusterControllerClient(clusterName, discoveryUrls, Optional.empty());
   }
 
+  /**
+   * @deprecated Use ControllerClientFactory#getControllerClient
+   */
+  @Deprecated
   public static ControllerClient constructClusterControllerClient(
       String clusterName,
       String discoveryUrls,

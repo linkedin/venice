@@ -1,10 +1,14 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SharedObjectFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 
 public class ControllerClientFactory {
@@ -16,8 +20,33 @@ public class ControllerClientFactory {
       String discoveryUrls,
       Optional<SSLFactory> sslFactory) {
     final String clientIdentifier = clusterName + discoveryUrls;
+    return createIfAbsent(clientIdentifier, () -> new ControllerClient(clusterName, discoveryUrls, sslFactory));
+  }
+
+  public static ControllerClient discoverAndConstructControllerClient(
+      String storeName,
+      String discoveryUrls,
+      Optional<SSLFactory> sslFactory,
+      int retryAttempts) {
+    D2ServiceDiscoveryResponse discoveryResponse =
+        ControllerClient.discoverCluster(discoveryUrls, storeName, sslFactory, retryAttempts);
+    checkDiscoveryResponse(storeName, discoveryResponse);
+    return getControllerClient(discoveryResponse.getCluster(), discoveryUrls, sslFactory);
+  }
+
+  public static boolean release(ControllerClient client) {
+    String clientIdentifier = CONTROLLER_CLIENT_TO_IDENTIFIER_MAP.get(client);
+    if (clientIdentifier != null) {
+      return SHARED_OBJECT_FACTORY.release(clientIdentifier);
+    }
+    return true;
+  }
+
+  private static ControllerClient createIfAbsent(
+      String clientIdentifier,
+      Supplier<ControllerClient> controllerClientSupplier) {
     return SHARED_OBJECT_FACTORY.get(clientIdentifier, () -> {
-      ControllerClient client = new ControllerClient(clusterName, discoveryUrls, sslFactory);
+      ControllerClient client = controllerClientSupplier.get();
       CONTROLLER_CLIENT_TO_IDENTIFIER_MAP.put(client, clientIdentifier);
       return client;
     }, client -> {
@@ -27,11 +56,13 @@ public class ControllerClientFactory {
     });
   }
 
-  public static boolean release(ControllerClient client) {
-    String clientIdentifier = CONTROLLER_CLIENT_TO_IDENTIFIER_MAP.get(client);
-    if (clientIdentifier != null) {
-      return SHARED_OBJECT_FACTORY.release(clientIdentifier);
+  private static void checkDiscoveryResponse(String storeName, D2ServiceDiscoveryResponse discoveryResponse) {
+    if (discoveryResponse.isError()) {
+      if (ErrorType.STORE_NOT_FOUND.equals(discoveryResponse.getErrorType())) {
+        throw new VeniceNoStoreException(storeName);
+      } else {
+        throw new VeniceException("Unable to discover cluster for store " + storeName + ". Check if it exists.");
+      }
     }
-    return true;
   }
 }
