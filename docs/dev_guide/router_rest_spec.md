@@ -42,7 +42,8 @@ This will return a JSON response in the following format:
 For all JSON responses returned by Venice, it is advisable to validate that the `error` field is `null`. If it is not
 `null`, then it should be a string containing some description of the error. In addition to that, the `errorType` field
 is a means to categorize errors programmatically according to the values in the 
-[ErrorType](../../internal/venice-client-common/src/main/java/com/linkedin/venice/exceptions/ErrorType.java) enum.
+[ErrorType](https://github.com/linkedin/venice/blob/main/internal/venice-client-common/src/main/java/com/linkedin/venice/exceptions/ErrorType.java) 
+enum.
 
 The client then uses the information in the `d2Service` field of this response to connect to the correct cluster.
 
