@@ -12,7 +12,6 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.text.DecimalFormat;
@@ -29,7 +28,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.BinaryEncoder;
 import org.openjdk.jmh.infra.Blackhole;
 
 
@@ -147,20 +145,18 @@ public class BenchmarkUtils {
     List<Float> list;
     int i;
     int n;
-    ByteArrayOutputStream output = new ByteArrayOutputStream();
-    BinaryEncoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, false, null);
     BinaryDecoder decoder = AvroCompatibilityHelper.newBinaryDecoder(new byte[16]);
     byte[] bytes;
 
     // Initial serialization...
     recordToSerialize.put(fieldName, floats);
-    bytes = serializer.serialize(recordToSerialize, encoder, output);
+    bytes = serializer.serialize(recordToSerialize);
     ;
 
     for (i = 0; i < iteration; i++) {
       if (!serializeOnce) {
         recordToSerialize.put(fieldName, floats);
-        bytes = serializer.serialize(recordToSerialize, encoder, output);
+        bytes = serializer.serialize(recordToSerialize);
       }
       decoder = AvroCompatibilityHelper.newBinaryDecoder(new ByteArrayInputStream(bytes), false, decoder);
       recordToDeserialize = deserializer.deserialize(recordToDeserialize, decoder);

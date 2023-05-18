@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 
 public class OptimizedBinaryDecoderFactory {
   private final ThreadLocal<OptimizedBinaryDecoder> localBinaryDecoder =
-      ThreadLocal.withInitial(() -> new OptimizedBinaryDecoder());
+      ThreadLocal.withInitial(OptimizedBinaryDecoder::new);
 
   private static OptimizedBinaryDecoderFactory DEFAULT_FACTORY = new OptimizedBinaryDecoderFactory();
 

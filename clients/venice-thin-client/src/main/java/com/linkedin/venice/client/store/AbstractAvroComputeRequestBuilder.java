@@ -24,7 +24,6 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
-import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -39,7 +38,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryEncoder;
 
 
 /**
@@ -71,9 +69,6 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   private Time time = new SystemTime();
   private Optional<ClientStats> streamingStats = Optional.empty();
 
-  private boolean reuseObjects = false;
-  private BinaryEncoder reusedEncoder;
-  private ByteArrayOutputStream reusedOutputStream;
   private boolean projectionFieldValidation = true;
   private Set<String> projectFields = new HashSet<>();
   private List<DotProduct> dotProducts = new LinkedList<>();
@@ -106,15 +101,6 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
 
   public AbstractAvroComputeRequestBuilder<K> setStats(Optional<ClientStats> streamingStats) {
     this.streamingStats = streamingStats;
-    return this;
-  }
-
-  public AbstractAvroComputeRequestBuilder<K> setReuseObjects(
-      BinaryEncoder reusedEncoder,
-      ByteArrayOutputStream reusedOutputStream) {
-    this.reuseObjects = true;
-    this.reusedEncoder = reusedEncoder;
-    this.reusedOutputStream = reusedOutputStream;
     return this;
   }
 
@@ -375,19 +361,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     Pair<Schema, String> resultSchema = getResultSchema();
     // Generate ComputeRequest object
     ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema.getSecond());
-
-    if (reuseObjects) {
-      storeClient.compute(
-          computeRequestWrapper,
-          keys,
-          resultSchema.getFirst(),
-          callback,
-          preRequestTimeInNS,
-          reusedEncoder,
-          reusedOutputStream);
-    } else {
-      storeClient.compute(computeRequestWrapper, keys, resultSchema.getFirst(), callback, preRequestTimeInNS);
-    }
+    storeClient.compute(computeRequestWrapper, keys, resultSchema.getFirst(), callback, preRequestTimeInNS);
   }
 
   protected void checkComputeFieldValidity(
@@ -435,7 +409,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     resultFieldsSet.add(resultFieldName);
   }
 
-  private boolean isFieldNullableList(final Schema.Field fieldSchema) {
+  private boolean isFieldNullableList(Schema.Field fieldSchema) {
     if (fieldSchema.schema().getType() != Schema.Type.UNION) {
       return false;
     }

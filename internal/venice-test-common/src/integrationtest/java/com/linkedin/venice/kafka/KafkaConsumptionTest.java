@@ -187,7 +187,7 @@ public class KafkaConsumptionTest {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
         pubSubConsumerAdapterFactory,
-        k -> new VeniceProperties(),
+        k -> VeniceProperties.empty(),
         veniceServerConfig,
         mockBandwidthThrottler,
         mockRecordsThrottler,

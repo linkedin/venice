@@ -15,7 +15,6 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -230,6 +229,6 @@ public class VeniceResponseDecompressor {
           .newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType), BAD_GATEWAY, errorMsg);
     }
 
-    return Unpooled.wrappedBuffer(recordSerializer.serializeObjects(records, AvroSerializer.REUSE.get()));
+    return Unpooled.wrappedBuffer(recordSerializer.serializeObjects(records));
   }
 }

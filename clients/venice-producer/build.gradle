@@ -1,3 +1,6 @@
 dependencies {
     implementation project(':internal:venice-common')
+    implementation project(':clients:venice-thin-client')
+
+    implementation libraries.log4j2api
 }

@@ -3,7 +3,6 @@ package com.linkedin.venice.schema.rmd;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
@@ -22,7 +21,7 @@ import org.apache.avro.generic.GenericRecord;
  */
 public class RmdUtils {
   public static ByteBuffer serializeRmdRecord(final Schema valueSchema, GenericRecord rmdRecord) {
-    byte[] rmdBytes = getRmdSerializer(valueSchema).serialize(rmdRecord, AvroSerializer.REUSE.get());
+    byte[] rmdBytes = getRmdSerializer(valueSchema).serialize(rmdRecord);
     return ByteBuffer.wrap(rmdBytes);
   }
 

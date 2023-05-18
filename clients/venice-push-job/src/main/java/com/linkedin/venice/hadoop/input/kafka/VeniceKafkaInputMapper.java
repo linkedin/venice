@@ -9,7 +9,6 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.ttl.VeniceKafkaInputTTLFilter;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -68,9 +67,9 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<KafkaInputMappe
       MRJobCounterHelper.incrRepushTtlFilterCount(reporter, 1L);
       return false;
     }
-    byte[] serializedKey = KAFKA_INPUT_MAPPER_KEY_SERIALIZER.serialize(inputKey, AvroSerializer.REUSE.get());
+    byte[] serializedKey = KAFKA_INPUT_MAPPER_KEY_SERIALIZER.serialize(inputKey);
     keyBW.set(serializedKey, 0, serializedKey.length);
-    byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(inputValue, AvroSerializer.REUSE.get());
+    byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(inputValue);
     valueBW.set(serializedValue, 0, serializedValue.length);
     return true;
   }
