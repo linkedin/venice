@@ -11,6 +11,6 @@ This folder includes all the Venice Improvement Proposals. Click to read further
 
 | VIP-#             | Proposal    | Status        |
 |-------------------|-------------|---------------|
-| [VIP-1](VIP-1.md) |  Authentication Service API | In Discussion |
+| [VIP-1](VIP-1.md) |  Authentication Service API | Under Discussion |
 |                   |  |  |
 
