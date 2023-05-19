@@ -88,11 +88,12 @@ public class ClientConfig<T extends SpecificRecord> {
         .setVsonClient(config.isVsonClient())
 
         // D2 specific settings
-        .setD2Routing(config.isD2Routing())
         .setD2ServiceName(config.getD2ServiceName())
         .setD2BasePath(config.getD2BasePath())
         .setD2ZkTimeout(config.getD2ZkTimeout())
         .setD2Client(config.getD2Client())
+        .setD2Routing(config.isD2Routing()) // This should be the last of the D2 configs since it is an inferred config
+                                            // and we want the cloned config to match the source config
 
         // Performance-related settings
         .setMetricsRepository(config.getMetricsRepository())
@@ -447,6 +448,10 @@ public class ClientConfig<T extends SpecificRecord> {
     }
 
     if (this.isVsonClient() != anotherClientConfig.isVsonClient()) {
+      return false;
+    }
+
+    if (this.isD2Routing() != anotherClientConfig.isD2Routing()) {
       return false;
     }
 

@@ -321,7 +321,7 @@ public class VeniceWriterTest {
         .setRmdChunkingEnabled(true)
         .build();
     VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter(veniceWriterOptions, new VeniceProperties(new Properties()), mockedProducer);
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
 
     ByteBuffer replicationMetadata = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
     PutMetadata putMetadata = new PutMetadata(1, replicationMetadata);

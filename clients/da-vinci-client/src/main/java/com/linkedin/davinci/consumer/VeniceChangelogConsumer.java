@@ -1,8 +1,10 @@
 package com.linkedin.davinci.consumer;
 
 import com.linkedin.venice.annotation.Experimental;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -106,6 +108,35 @@ public interface VeniceChangelogConsumer<K, V> {
    * @throws a VeniceException if subscribe operation failed for any of the partitions
    */
   CompletableFuture<Void> subscribeAll();
+
+  /**
+   * Seek to the provided timestamps for the specified partitions based on wall clock time for when this message was
+   * processed by Venice and produced to change capture.
+   *
+   * Note, this API can only be used to seek on nearline data applied to the current serving version in Venice.
+   * This will not seek on data transmitted via Batch Push. If the provided timestamp is lower than the earliest
+   * timestamp on a given stream, the earliest event will be returned. THIS WILL NOT SEEK TO DATA WHICH WAS APPLIED
+   * ON A PREVIOUS VERSION.  You should never seek back in time to a timestamp which is smaller than the current time -
+   * rewindTimeInSeconds configured in the hybrid settings for this Venice store.
+   *
+   * The timestamp passed to this function should be associated to timestamps processed by this interface. The timestamp
+   * returned by {@link PubSubMessage.getPubSubMessageTime()} refers to the time when Venice processed the event, and
+   * calls to this method will seek based on that sequence of events.  Note: it bears no relation to timestamps provided by
+   * upstream producers when writing to Venice where a user may optionally provide a timestamp at time of producing a record.
+   *
+   * @param timestamps a map keyed by a partition ID, and the timestamp checkpoints to seek for each partition.
+   * @return
+   * @throws VeniceException if seek operations failed for any of the specified partitions.
+   */
+  CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps);
+
+  /**
+   * Seek to the specified timestamp for all subscribed partitions. See {@link #seekToTimestamps(Map)} for more information.
+   *
+   * @return a future which completes when the operation has succeeded for all partitions.
+   * @throws VeniceException if seek operation failed for any of the partitions.
+   */
+  CompletableFuture<Void> seekToTimestamp(Long timestamp);
 
   /**
    * Stop ingesting messages from a set of partitions for a specific store.

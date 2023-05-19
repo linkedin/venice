@@ -1,9 +1,9 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.davinci.config.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_HEALTH_CHECK;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
+import static com.linkedin.venice.utils.concurrent.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 

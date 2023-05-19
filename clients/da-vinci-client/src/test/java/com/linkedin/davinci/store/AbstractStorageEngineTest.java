@@ -46,7 +46,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   }
 
   public static VeniceConfigLoader getVeniceConfigLoader(VeniceProperties serverProperties) {
-    return new VeniceConfigLoader(new VeniceProperties(new Properties()), serverProperties);
+    return new VeniceConfigLoader(VeniceProperties.empty(), serverProperties);
   }
 
   // creates instance for testStoreEngine

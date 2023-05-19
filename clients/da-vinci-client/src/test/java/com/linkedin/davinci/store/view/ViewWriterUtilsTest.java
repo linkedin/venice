@@ -26,7 +26,7 @@ public class ViewWriterUtilsTest {
   @Test
   public void testGetVeniceViewWriter() {
     Store mockStore = Mockito.mock(Store.class);
-    VeniceProperties props = new VeniceProperties();
+    VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
     Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
 
