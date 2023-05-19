@@ -388,15 +388,24 @@ public class VenicePushJob implements AutoCloseable {
   private static final String TEMP_DIR_PREFIX = "/tmp/veniceRmdSchemas/";
   public static final int NOT_SET = -1;
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
+
   /**
-   * Config to specify a list of regions used for targeted region push in VPJ.
+   * Config to enable single targeted region push mode in VPJ.
+   * In this mode, the VPJ will only push data to a single colo/region first, perform validation and finally
+   * leverage data recovery/repush to propagate data globally.
+   * The single solo/region is decided by the store config in {@link StoreResponse#getStore()}}.
+   * For multiple targeted regions push, may use the advanced mode. See {@link #TARGETED_REGIONS_PUSH}.
+   */
+  public static final String SINGLE_REGION_PUSH = "single.region.push";
+
+  /**
+   * This is experimental config to specify a list of regions used for targeted region push in VPJ.
    * In this mode, the VPJ will only push data to the provided regions first, perform validation and finally
    * leverage data recovery/repush to propagate data globally.
-   *
    * The input should be split by comma, e.g. "dc-0,dc-1,dc-2".
-   *
+   * For single colo targeted region push, see {@link #SINGLE_REGION_PUSH}. This config will override the single targeted region.
    */
-  public static final String TARGETED_REGIONS = "targeted.regions";
+  public static final String TARGETED_REGIONS_PUSH = "targeted.regions.push";
 
   /**
    * Since the job is calculating the raw data file size, which is not accurate because of compression,
@@ -506,6 +515,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean multiRegion;
     boolean d2Routing;
     String targetedRegions;
+    boolean singleRegionPush;
   }
 
   protected PushJobSetting pushJobSetting;
@@ -677,8 +687,9 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     pushJobSettingToReturn.repushTTLInSeconds = NOT_SET;
-    if (props.containsKey(TARGETED_REGIONS)) {
-      pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGIONS);
+    pushJobSettingToReturn.singleRegionPush = props.getBoolean(SINGLE_REGION_PUSH, false);
+    if (props.containsKey(TARGETED_REGIONS_PUSH)) {
+      pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGIONS_PUSH);
     }
 
     if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
@@ -721,12 +732,6 @@ public class VenicePushJob implements AutoCloseable {
       }
       if (pushJobSettingToReturn.isSourceETL) {
         throw new VeniceException("Source ETL is not supported while using Kafka Input Format");
-      }
-    }
-
-    if (StringUtils.isNotEmpty(pushJobSettingToReturn.targetedRegions)) {
-      if (pushJobSettingToReturn.isIncrementalPush) {
-        throw new VeniceException("Incremental push is not supported while using targeted region push mode");
       }
     }
 
@@ -2293,6 +2298,18 @@ public class VenicePushJob implements AutoCloseable {
     storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
     storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
     storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+    if (setting.singleRegionPush && setting.targetedRegions == null) {
+      // only override the targeted regions if it is not set and it is a single region push
+      setting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
+      if (setting.targetedRegions == null) {
+        throw new VeniceException("The store does not have native replication mode enabled and set up source fabric.");
+      }
+      if (StringUtils.isNotEmpty(setting.targetedRegions)) {
+        if (setting.isIncrementalPush) {
+          throw new VeniceException("Incremental push is not supported while using targeted region push mode");
+        }
+      }
+    }
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
     storeSetting.hybridStoreConfig = hybridStoreConfig;

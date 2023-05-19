@@ -3463,10 +3463,10 @@ public class VeniceParentHelixAdmin implements Admin {
         if (status != null) {
           sortedStatuses.add(status);
           if (status.equals(ExecutionStatus.UNKNOWN)) {
-            targetedRegionFailCount += 1;
+            targetedRegionFailCount++;
           }
         } else {
-          targetedRegionFailCount += 1;
+          targetedRegionFailCount++;
         }
       }
       sortedStatuses = sortedStatuses.stream()
@@ -3503,12 +3503,12 @@ public class VeniceParentHelixAdmin implements Admin {
       StringBuilder currentReturnStatusDetails) {
     ExecutionStatus currentReturnStatus = ExecutionStatus.NEW;
 
-    if (sortedStatuses.size() > 0) {
+    if (!sortedStatuses.isEmpty()) {
       currentReturnStatus = sortedStatuses.get(0);
     }
 
     int successCount = childRegions.size() - failCount;
-    if (!(successCount >= (childRegions.size() / 2) + 1)) {
+    if (successCount < (childRegions.size() / 2) + 1) {
       // Strict majority must be reachable, otherwise keep polling
       currentReturnStatus = ExecutionStatus.PROGRESS;
     }

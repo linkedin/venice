@@ -16,8 +16,9 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.hadoop.VenicePushJob.SINGLE_REGION_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGIONS;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGIONS_PUSH;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
@@ -909,7 +910,7 @@ public class TestPushJobWithNativeReplication {
           }
 
           // start a targeted region push which should only increase the version to 2 in dc-0
-          props.setProperty(TARGETED_REGIONS, "dc-0");
+          props.put(SINGLE_REGION_PUSH, true);
           try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
             job.run(); // the job should succeed
 
@@ -928,7 +929,7 @@ public class TestPushJobWithNativeReplication {
           }
 
           // specify two regions, so both dc-0 and dc-1 is updated to version 3
-          props.setProperty(TARGETED_REGIONS, "dc-0, dc-1");
+          props.setProperty(TARGETED_REGIONS_PUSH, "dc-0, dc-1");
           try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
             job.run(); // the job should succeed
 

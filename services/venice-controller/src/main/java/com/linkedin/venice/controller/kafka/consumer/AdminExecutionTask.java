@@ -625,7 +625,7 @@ public class AdminExecutionTask implements Callable<Void> {
             replicationMetadataVersionId);
       }
     } else {
-      boolean skipConsumption = message.targetedRegions != null
+      boolean skipConsumption = message.targetedRegions != null && !message.targetedRegions.isEmpty()
           && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
       if (skipConsumption) {
         // for targeted region push, only allow specified region to process add version message

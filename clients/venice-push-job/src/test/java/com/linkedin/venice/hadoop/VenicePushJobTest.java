@@ -8,9 +8,10 @@ import static com.linkedin.venice.hadoop.VenicePushJob.LEGACY_AVRO_VALUE_FIELD_P
 import static com.linkedin.venice.hadoop.VenicePushJob.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJob.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJob.SINGLE_REGION_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_ETL;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGIONS;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGIONS_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
@@ -274,6 +275,7 @@ public class VenicePushJobTest {
     storeInfo.setCompressionStrategy(CompressionStrategy.NO_OP);
     storeInfo.setWriteComputationEnabled(false);
     storeInfo.setIncrementalPushEnabled(false);
+    storeInfo.setNativeReplicationSourceFabric("dc-0");
 
     Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
     storeInfo.setVersions(Collections.singletonList(version));
@@ -481,13 +483,15 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testTargetedRegionPushConfig() {
+  public void testTargetedRegionPushConfigValidation() throws Exception {
     Properties props = getVpjRequiredProperties();
-    props.put(TARGETED_REGIONS, "dc-0");
+    props.put(SINGLE_REGION_PUSH, true);
     props.put(INCREMENTAL_PUSH, true);
-    // Incremental push should fail targeted region push
-    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
-      // do nothing
+    ControllerClient client = getClient();
+    VenicePushJob pushJob = getSpyVenicePushJob(props, client);
+    skipVPJValidation(pushJob);
+    try {
+      pushJob.run();
       Assert.fail("Test should fail, but doesn't.");
     } catch (VeniceException e) {
       assertEquals(e.getMessage(), "Incremental push is not supported while using targeted region push mode");
@@ -495,21 +499,35 @@ public class VenicePushJobTest {
   }
 
   @Test
+  public void testTargetedRegionPushConfigOverride() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(SINGLE_REGION_PUSH, true);
+    props.put(TARGETED_REGIONS_PUSH, "dc-0, dc-1");
+    ControllerClient client = getClient();
+    VenicePushJob pushJob = getSpyVenicePushJob(props, client);
+    JobStatusQueryResponse response = new JobStatusQueryResponse();
+    response.setStatus(ExecutionStatus.COMPLETED.toString());
+    response.setStatusDetails("nothing");
+    response.setVersion(1);
+    response.setName(TEST_STORE);
+    response.setCluster(TEST_CLUSTER);
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+    extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
+    response.setExtraInfo(extraInfo);
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+    skipVPJValidation(pushJob);
+    pushJob.run();
+    Assert.assertEquals(pushJob.pushJobSetting.targetedRegions, "dc-0, dc-1");
+  }
+
+  @Test
   public void testTargetedRegionPushReporting() throws Exception {
     Properties props = getVpjRequiredProperties();
-    props.put(TARGETED_REGIONS, "dc-0");
-    ControllerClient client = getClient(storeInfo -> {
-      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
-      storeInfo.setWriteComputationEnabled(true);
-      storeInfo.setVersions(Collections.singletonList(version));
-      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
-    });
+    props.put(SINGLE_REGION_PUSH, true);
+    ControllerClient client = getClient();
     VenicePushJob pushJob = getSpyVenicePushJob(props, client);
-    doReturn(getMockInputDataInfoProvider()).when(pushJob).getInputDataInfoProvider();
-    doNothing().when(pushJob).validateKeySchema(any(), any(), any(), any());
-    doNothing().when(pushJob).validateValueSchema(any(), any(), any(), anyBoolean());
-    doNothing().when(pushJob).setupMRConf(any(), any(), any(), any(), any(), any(), anyString(), anyString());
-    doNothing().when(pushJob).runJobAndUpdateStatus();
+    skipVPJValidation(pushJob);
 
     JobStatusQueryResponse response = new JobStatusQueryResponse();
     response.setStatus(ExecutionStatus.COMPLETED.toString());
@@ -543,5 +561,13 @@ public class VenicePushJobTest {
     } catch (VeniceException e) {
       assertTrue(e.getMessage().contains("Push job error"));
     }
+  }
+
+  private void skipVPJValidation(VenicePushJob pushJob) throws Exception {
+    doReturn(getMockInputDataInfoProvider()).when(pushJob).getInputDataInfoProvider();
+    doNothing().when(pushJob).validateKeySchema(any(), any(), any(), any());
+    doNothing().when(pushJob).validateValueSchema(any(), any(), any(), anyBoolean());
+    doNothing().when(pushJob).setupMRConf(any(), any(), any(), any(), any(), any(), anyString(), anyString());
+    doNothing().when(pushJob).runJobAndUpdateStatus();
   }
 }

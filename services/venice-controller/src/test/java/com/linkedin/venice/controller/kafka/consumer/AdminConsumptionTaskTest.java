@@ -1485,7 +1485,9 @@ public class AdminConsumptionTaskTest {
     addVersion.numberOfPartitions = numberOfPartitions;
     addVersion.rewindTimeInSecondsOverride = -1;
     addVersion.timestampMetadataVersionId = 1;
-    addVersion.targetedRegions = new ArrayList<>(RegionUtils.parseRegionsFilterList(targetedRegions));
+    if (targetedRegions != null) {
+      addVersion.targetedRegions = new ArrayList<>(RegionUtils.parseRegionsFilterList(targetedRegions));
+    }
 
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.ADD_VERSION.getValue();
