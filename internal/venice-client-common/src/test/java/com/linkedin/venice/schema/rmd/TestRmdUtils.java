@@ -5,6 +5,7 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -65,6 +66,22 @@ public class TestRmdUtils {
     Assert.assertEquals(
         RmdUtils.getRmdTimestampType(rmdRecordWithPerFieldLevelTimeStamp.get(TIMESTAMP_FIELD_NAME)).name(),
         RmdTimestampType.PER_FIELD_TIMESTAMP.name());
+  }
+
+  @Test
+  public void testHasOffsetAdvanced() {
+    List<Long> list1 = new ArrayList<>();
+    list1.add(1L);
+    list1.add(10L);
+
+    List<Long> list2 = new ArrayList<>();
+    list2.add(1L);
+    list2.add(9L);
+
+    Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list1, list2));
+    Assert.assertFalse(RmdUtils.hasOffsetAdvanced(list1, Collections.emptyList()));
+    Assert.assertTrue(RmdUtils.hasOffsetAdvanced(list2, list1));
+    Assert.assertTrue(RmdUtils.hasOffsetAdvanced(Collections.emptyList(), list2));
   }
 
   @Test(expectedExceptions = IllegalStateException.class)

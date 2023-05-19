@@ -23,7 +23,7 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
       ClientConfig clientConfig) {
     super(transportClient, needSchemaReader, clientConfig);
 
-    if (isUseFastAvro()) {
+    if (clientConfig.isUseFastAvro()) {
       FastSerializerDeserializerFactory.verifyWhetherFastGenericDeserializerWorks();
     }
   }
@@ -40,7 +40,7 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
   }
 
   @Override
-  public RecordDeserializer<V> getDataRecordDeserializer(final int writerSchemaId) throws VeniceClientException {
+  public RecordDeserializer<V> getDataRecordDeserializer(int writerSchemaId) throws VeniceClientException {
     SchemaReader schemaReader = getSchemaReader();
 
     // Get latest value schema
@@ -71,7 +71,7 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
   }
 
   protected RecordDeserializer<V> getDeserializerFromFactory(Schema writer, Schema reader) {
-    if (isUseFastAvro()) {
+    if (getClientConfig().isUseFastAvro()) {
       return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writer, reader);
     } else {
       return SerializerDeserializerFactory.getAvroGenericDeserializer(writer, reader);

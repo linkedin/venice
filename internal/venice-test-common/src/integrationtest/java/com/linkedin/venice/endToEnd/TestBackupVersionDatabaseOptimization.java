@@ -87,7 +87,7 @@ public class TestBackupVersionDatabaseOptimization {
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
-      // Do an VPJ push
+      // Do a VPJ push
       runVPJ(vpjProperties, 1, controllerClient);
 
       class ResultValidator implements TestUtils.NonDeterministicAssertion {

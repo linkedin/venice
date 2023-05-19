@@ -1,0 +1,40 @@
+plugins {
+  id 'io.github.lhotari.gradle-nar-plugin'
+}
+
+dependencies {
+  // Schema related dependencies
+  implementation(project(':internal:venice-common')) {
+    exclude module: 'kafka_2.10'
+    exclude group: 'org.scala-lang'
+  }
+  implementation project(':clients:venice-thin-client')
+  implementation project(':clients:venice-samza')
+
+  implementation libraries.samzaApi
+
+  implementation libraries.pulsarIoCore
+  implementation libraries.pulsarIoCommon
+  implementation libraries.jacksonDatabind
+
+  implementation libraries.log4j2api
+  implementation libraries.log4j2core
+
+  testImplementation libraries.mockito
+  testImplementation libraries.testng
+}
+
+nar {
+  archivesBaseName = 'pulsar-venice-sink'
+  manifest {
+    attributes 'Nar-Id': 'pulsar-venice-sink-nar'
+  }
+}
+
+test.dependsOn(nar)
+assemble.dependsOn(nar)
+
+ext {
+  // tested in integration test
+  jacocoCoverageThreshold = 0.00
+}

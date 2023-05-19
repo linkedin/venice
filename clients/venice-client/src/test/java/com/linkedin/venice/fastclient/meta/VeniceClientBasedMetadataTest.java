@@ -69,6 +69,7 @@ public class VeniceClientBasedMetadataTest {
   private ClientConfig getBasicMockClientConfig(String storeName) {
     ClientConfig clientConfig = mock(ClientConfig.class);
     ClusterStats clusterStats = new ClusterStats(new MetricsRepository(), storeName);
+    doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
     doReturn(1L).when(clientConfig).getMetadataRefreshIntervalInSeconds();
     doReturn(storeName).when(clientConfig).getStoreName();
     doReturn(clusterStats).when(clientConfig).getClusterStats();

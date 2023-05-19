@@ -400,6 +400,18 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_READ_CAPACITY = "router.max.read.capacity";
   public static final String ROUTER_QUOTA_CHECK_WINDOW = "router.quota.check.window";
 
+  /**
+   * This instructs the router to start running with self signed TLS certificates as opposed to those
+   * provided via other properties. This should only be used for testing and defaults to true when running
+   * RouterServer.main().
+   */
+  public static final String ROUTER_USE_LOCAL_SSL_SETTINGS = "router.local.ssl";
+
+  /**
+   * This instructs the router to open an ssl port. This defaults to true.
+   */
+  public static final String ROUTER_ENABLE_SSL = "router.enable.ssl";
+
   public static final String SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS =
       "server.remote.ingestion.repair.sleep.interval.seconds";
   /**
@@ -547,11 +559,6 @@ public class ConfigKeys {
    * Check the available types in {@literal com.linkedin.venice.config.BlockingQueueType}
    */
   public static final String SERVER_BLOCKING_QUEUE_TYPE = "server.blocking.queue.type";
-
-  /**
-   * This config is used to control whether openssl is enabled for Kafka consumers in server.
-   */
-  public static final String SERVER_ENABLE_KAFKA_OPENSSL = "server.enable.kafka.openssl";
 
   /**
    * This config is used to control how much time Server will wait for connection warming from Routers.
@@ -1403,6 +1410,11 @@ public class ConfigKeys {
   public static final String ROUTER_HTTP2_MAX_HEADER_LIST_SIZE = "router.http2.max.header.list.size";
 
   /**
+   * Whether to enable openssl in the Router http client when talking to server.
+   */
+  public static final String ROUTER_HTTP_CLIENT_OPENSSL_ENABLED = "router.http.client.openssl.enabled";
+
+  /**
    * In Leader/Follower state transition model, in order to avoid split brain problem (multiple leaders) as much as possible,
    * the newly promoted leader should keep checking whether there is any new messages from the old leader in the version
    * topic, and wait for some time (5 minutes by default) after the last message consumed before switching to leader role
@@ -1868,4 +1880,15 @@ public class ConfigKeys {
    * Config to control the queue capacity for the thread pool executor used for ssl handshake in servers.
    */
   public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
+
+  /**
+   * Number of threads for online Venice producer controlling the number of concurrent write operations.
+   */
+  public static final String CLIENT_PRODUCER_THREAD_NUM = "client.producer.thread.num";
+
+  /**
+   * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
+   */
+  public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =
+      "client.producer.schema.refresh.interval.seconds";
 }

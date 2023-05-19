@@ -54,6 +54,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
     return HelixUtils.getPartitionName(resourceName, partitionId);
   }
 
+  @Override
   public int findPartitionNumber(RouterKey partitionKey, int numPartitions, String storeName, int versionNumber) {
     return findPartitioner(storeName, versionNumber).getPartitionId(partitionKey.getKeyBuffer(), numPartitions);
   }
@@ -76,7 +77,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
    * Query the map to find the partitioner in need.
    * If miss, real search using store info happens in {@link #searchPartitioner}
    */
-  private VenicePartitioner findPartitioner(String storeName, int versionNum) {
+  public VenicePartitioner findPartitioner(String storeName, int versionNum) {
     Map<Integer, VenicePartitioner> versionByPartitionerMap =
         storeByVersionByPartitionerMap.computeIfAbsent(storeName, k -> new VeniceConcurrentHashMap<>());
     return versionByPartitionerMap.computeIfAbsent(versionNum, k -> searchPartitioner(storeName, versionNum));

@@ -17,7 +17,6 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
-import com.linkedin.venice.fastclient.meta.ClientRoutingStrategy;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
@@ -240,7 +239,9 @@ public class TestClientSimulator implements Client {
       for (MultiGetRouterRequestKeyV1 keyRecord: multiGetRouterRequestKeyV1s) {
         Utf8 key = keyDeserializer.deserialize(keyRecord.keyBytes);
         LOGGER.info("t:{} Received key {} on route {} ", currentTimeTick.get(), key, route);
-        Assert.assertTrue(expectedKeys.contains(key.toString()), "Unexpected key received " + key);
+        Assert.assertTrue(
+            expectedKeys.contains(key.toString()),
+            "Unexpected key received: " + key + " Expected keys: " + expectedKeys);
         expectedKeys.remove(key.toString());
         expectedRequestEvent.info.orderedKeys.add(key.toString());
       }
@@ -520,16 +521,6 @@ public class TestClientSimulator implements Client {
       clientConfigBuilder
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroseconds);
     }
-    clientConfigBuilder.setClientRoutingStrategy(new ClientRoutingStrategy() {
-      @Override
-      public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
-        List<String> retReplicas = new ArrayList<>();
-        for (int i = 0; i < requiredReplicaCount && i < replicas.size(); i++) {
-          retReplicas.add(replicas.get(i));
-        }
-        return retReplicas;
-      }
-    });
 
     // TODO: need to add tests for simulating dual read
     clientConfigBuilder.setDualReadEnabled(false);
@@ -609,6 +600,14 @@ public class TestClientSimulator implements Client {
         return null;
       }
     };
+
+    metadata.setRoutingStrategy((requestId, replicas, requiredReplicaCount) -> {
+      List<String> retReplicas = new ArrayList<>();
+      for (int i = 0; i < requiredReplicaCount && i < replicas.size(); i++) {
+        retReplicas.add(replicas.get(i));
+      }
+      return retReplicas;
+    });
 
     return ClientFactory.getAndStartGenericStoreClient(metadata, clientConfig);
   }

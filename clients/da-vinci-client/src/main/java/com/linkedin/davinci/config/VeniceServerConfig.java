@@ -1,6 +1,5 @@
 package com.linkedin.davinci.config;
 
-import static com.linkedin.davinci.config.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -39,7 +38,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_HEADER_TABLE_SIZE;
@@ -112,6 +110,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
@@ -120,9 +119,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 
@@ -313,7 +309,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final String kafkaAdminClass;
   private final String kafkaWriteOnlyClass;
   private final String kafkaReadOnlyClass;
-  private final boolean kafkaOpenSSLEnabled;
   private final long routerConnectionWarmingDelayMs;
   private final boolean helixHybridStoreQuotaEnabled;
   private final long ssdHealthCheckShutdownTimeMs;
@@ -487,7 +482,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
             .put(storeName, Integer.parseInt(thresholdStr.trim())));
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
-    kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, false);
     helixHybridStoreQuotaEnabled = serverProperties.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
     ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
     sslHandshakeThreadPoolSize = serverProperties.getInt(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 0);
@@ -758,18 +752,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return diskHealthCheckServiceEnabled;
   }
 
-  public BlockingQueue<Runnable> getExecutionQueue(int capacity) {
-    switch (blockingQueueType) {
-      case LINKED_BLOCKING_QUEUE:
-        return new LinkedBlockingQueue<>(capacity);
-      case ARRAY_BLOCKING_QUEUE:
-        if (capacity == Integer.MAX_VALUE) {
-          throw new VeniceException("Queue capacity must be specified when using " + ARRAY_BLOCKING_QUEUE);
-        }
-        return new ArrayBlockingQueue<>(capacity);
-      default:
-        throw new VeniceException("Unknown blocking queue type: " + blockingQueueType);
-    }
+  public BlockingQueueType getBlockingQueueType() {
+    return blockingQueueType;
   }
 
   public boolean isComputeFastAvroEnabled() {
@@ -834,10 +818,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getKafkaReadOnlyClass() {
     return kafkaReadOnlyClass;
-  }
-
-  public boolean isKafkaOpenSSLEnabled() {
-    return kafkaOpenSSLEnabled;
   }
 
   public long getRouterConnectionWarmingDelayMs() {

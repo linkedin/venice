@@ -10,6 +10,7 @@ import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_FOR
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_MISSING_CURRENT_VERSION;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_NO_CURRENT_VERSION;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY;
+import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_WRITES_DISABLED;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
 import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE;
 
@@ -884,12 +885,38 @@ public class TestMetaDataHandler {
   }
 
   @Test
+  public void testRequestTopicForStoreWithWritesDisabled() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(false).when(store).isEnableWrites();
+
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(
+        new String(response.content().array(), StandardCharsets.UTF_8),
+        REQUEST_TOPIC_ERROR_WRITES_DISABLED);
+  }
+
+  @Test
   public void testRequestTopicForBatchOnlyStore() throws IOException {
     HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
 
     String storeName = "test-store";
-    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
 
     FullHttpResponse response = passRequestToMetadataHandler(
@@ -913,6 +940,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig badCurrentVersionStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -947,6 +975,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig badCurrentVersionStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -982,6 +1011,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig aggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -1022,6 +1052,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig aggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -1062,6 +1093,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -1115,6 +1147,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -1167,6 +1200,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,
@@ -1221,6 +1255,7 @@ public class TestMetaDataHandler {
 
     String storeName = "test-store";
     Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(true).when(store).isEnableWrites();
 
     HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
         Time.SECONDS_PER_DAY,

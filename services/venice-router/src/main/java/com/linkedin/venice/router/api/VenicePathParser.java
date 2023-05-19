@@ -143,28 +143,32 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       int version = versionFinder.getVersion(storeName, fullHttpRequest);
       String resourceName = Version.composeKafkaTopic(storeName, version);
 
-      Optional<RouterStats<AggRouterHttpRequestStats>> statsOptional =
-          routerConfig.isKeyValueProfilingEnabled() ? Optional.of(routerStats) : Optional.empty();
+      RouterStats<AggRouterHttpRequestStats> stats = routerConfig.isKeyValueProfilingEnabled() ? routerStats : null;
 
       String method = fullHttpRequest.method().name();
       if (VeniceRouterUtils.isHttpGet(method)) {
         // single-get request
-        path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder, statsOptional);
+        path =
+            new VeniceSingleGetPath(storeName, version, resourceName, pathHelper.getKey(), uri, partitionFinder, stats);
       } else if (VeniceRouterUtils.isHttpPost(method)) {
         if (resourceType == RouterResourceType.TYPE_STORAGE) {
           // multi-get request
           path = new VeniceMultiGetPath(
+              storeName,
+              version,
               resourceName,
               fullHttpRequest,
               partitionFinder,
               getBatchGetLimit(storeName),
               routerConfig.isSmartLongTailRetryEnabled(),
               routerConfig.getSmartLongTailRetryAbortThresholdMs(),
-              statsOptional,
+              stats,
               routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
         } else if (resourceType == RouterResourceType.TYPE_COMPUTE) {
           // read compute request
           path = new VeniceComputePath(
+              storeName,
+              version,
               resourceName,
               fullHttpRequest,
               partitionFinder,
@@ -233,17 +237,17 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           compressorFactory);
       path.setResponseDecompressor(responseDecompressor);
 
-      AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
+      AggRouterHttpRequestStats aggRouterHttpRequestStats = routerStats.getStatsByType(requestType);
       if (!requestType.equals(SINGLE_GET)) {
         /**
          * Here we only track key num for non single-get request, since single-get request will be always 1.
          */
         keyNum = path.getPartitionKeys().size();
-        stats.recordKeyNum(storeName, keyNum);
+        aggRouterHttpRequestStats.recordKeyNum(storeName, keyNum);
       }
 
-      stats.recordRequest(storeName);
-      stats.recordRequestSize(storeName, path.getRequestSize());
+      aggRouterHttpRequestStats.recordRequest(storeName);
+      aggRouterHttpRequestStats.recordRequestSize(storeName, path.getRequestSize());
     } catch (VeniceException e) {
       Optional<RequestType> requestTypeOptional =
           (path == null) ? Optional.empty() : Optional.of(path.getRequestType());

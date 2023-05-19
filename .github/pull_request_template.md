@@ -2,9 +2,9 @@
 Add a list of affected components in the PR title in the following format:
 [component1]...[componentN] Concise commit message
 
-Valid component tags are: [da-vinci], [server], [controller],
-[router], [samza], [vpj], [fast-client], [thin-client], [alpini],
-[admin-tool], [test], [build], [doc], [script]
+Valid component tags are: [da-vinci] (or [dvc]), [server], [controller], [router], [samza],
+[vpj], [fast-client] (or [fc]), [thin-client] (or [tc]), [changelog] (or [cc]),
+[pulsar-sink], [producer], [admin-tool], [test], [build], [doc], [script], [compat]
 
 Example title: [server][da-vinci] Use dedicated thread to persist data to storage engine
 

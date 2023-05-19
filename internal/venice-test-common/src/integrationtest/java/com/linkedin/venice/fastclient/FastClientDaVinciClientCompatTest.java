@@ -34,7 +34,7 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
             .setDualReadEnabled(false)
             .setSpeculativeQueryEnabled(false)
             .setLongTailRetryEnabledForSingleGet(true)
-            .setLongTailRetryThresholdForSingleGetInMicroSeconds(10);
+            .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
 
     AvroSpecificStoreClient<String, TestValueSchema> fastClient = getSpecificFastClient(
         clientConfigBuilder,
@@ -61,7 +61,7 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
             .setDualReadEnabled(false)
             .setSpeculativeQueryEnabled(false)
             .setLongTailRetryEnabledForSingleGet(true)
-            .setLongTailRetryThresholdForSingleGetInMicroSeconds(10);
+            .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
     try (DaVinciClient<String, TestValueSchema> daVinciClient = setupDaVinciClient(storeName)) {
       daVinciClient.subscribeAll().get();
       Assert.assertNotNull(daVinciClient.get("key_1").get());
@@ -80,6 +80,30 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
     }
   }
 
+  @Test(timeOut = TIME_OUT)
+  public void testDaVinciClientAfterFC() throws Exception {
+    // Create a DVC based metadata FC to leave behind some meta system store rocksDB remains.
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setDualReadEnabled(false)
+            .setSpeculativeQueryEnabled(false)
+            .setLongTailRetryEnabledForSingleGet(true)
+            .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
+    AvroSpecificStoreClient<String, TestValueSchema> fastClient = getSpecificFastClient(
+        clientConfigBuilder,
+        new MetricsRepository(),
+        TestValueSchema.class,
+        StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA);
+    Assert.assertNotNull(fastClient.get("key_1").get());
+    fastClient.close();
+    cleanupDaVinciClientForMetaStore();
+    try (DaVinciClient<String, TestValueSchema> daVinciClient = setupDaVinciClient(storeName)) {
+      daVinciClient.subscribeAll().get();
+      Assert.assertNotNull(daVinciClient.get("key_1").get());
+    }
+  }
+
   @AfterMethod
   public void releaseAllDVC() {
     cleanupDaVinciClient();
@@ -91,6 +115,7 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
             .put(PERSISTENCE_TYPE, ROCKS_DB)
             .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
             .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, false)
+            .put(DATA_BASE_PATH, dataPath)
             .build();
     daVinciClientFactory = new CachingDaVinciClientFactory(
         d2Client,

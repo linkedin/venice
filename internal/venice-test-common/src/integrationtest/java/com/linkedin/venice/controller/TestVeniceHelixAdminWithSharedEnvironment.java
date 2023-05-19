@@ -1072,11 +1072,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
 
-    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_LONG_TEST_MS, TimeUnit.MILLISECONDS, () -> {
-      System.out.println(
-          "sidian's log: current version is : " + veniceAdmin.getStore(clusterName, storeName).getCurrentVersion());
-      return veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 3;
-    });
+    TestUtils.waitForNonDeterministicCompletion(
+        TOTAL_TIMEOUT_FOR_LONG_TEST_MS,
+        TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 3);
     veniceAdmin.retireOldStoreVersions(clusterName, storeName, true, VERSION_ID_UNSET);
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
     veniceAdmin.retireOldStoreVersions(clusterName, storeName, false, VERSION_ID_UNSET);

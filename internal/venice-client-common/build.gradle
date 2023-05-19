@@ -38,6 +38,7 @@ dependencies {
   implementation libraries.failsafe
   implementation libraries.log4j2api
   implementation libraries.zstd
+  implementation libraries.conscrypt
 
   testImplementation project(':internal:venice-test-common')
   testImplementation project(':clients:venice-thin-client')

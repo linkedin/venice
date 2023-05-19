@@ -137,7 +137,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
       spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
     }
     this.routingDataRepository = new HelixExternalViewRepository(spectatorManager);
-    this.customizedViewRepo = new HelixCustomizedViewOfflinePushRepository(this.helixManager);
+    this.customizedViewRepo = new HelixCustomizedViewOfflinePushRepository(this.helixManager, storeMetadataRepository);
     this.messageChannel = new HelixStatusMessageChannel(
         helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName),

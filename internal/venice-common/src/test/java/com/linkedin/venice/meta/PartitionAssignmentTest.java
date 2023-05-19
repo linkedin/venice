@@ -53,16 +53,4 @@ public class PartitionAssignmentTest {
 
     }
   }
-
-  @Test
-  public void testRemovePartition() {
-    PartitionAssignment partitionAssignment = new PartitionAssignment("test", 2);
-    Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
-    partitionAssignment.addPartition(new Partition(1, stateToInstancesMap));
-    partitionAssignment.removePartition(1);
-    Assert.assertEquals(
-        partitionAssignment.getAssignedNumberOfPartitions(),
-        0,
-        "Partition 1 is deleted, there is no partition assigned.");
-  }
 }

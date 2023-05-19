@@ -6,7 +6,7 @@ import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
-import com.linkedin.venice.fastclient.meta.ClientRoutingStrategy;
+import com.linkedin.venice.fastclient.meta.ClientRoutingStrategyType;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
@@ -30,7 +30,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final String storeName;
   private final Map<RequestType, FastClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
   private final Executor deserializationExecutor;
-  private final ClientRoutingStrategy clientRoutingStrategy;
+  private final ClientRoutingStrategyType clientRoutingStrategyType;
   /**
    * For dual-read support.
    */
@@ -76,7 +76,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean speculativeQueryEnabled,
       Class<T> specificValueClass,
       Executor deserializationExecutor,
-      ClientRoutingStrategy clientRoutingStrategy,
+      ClientRoutingStrategyType clientRoutingStrategyType,
       boolean dualReadEnabled,
       AvroGenericStoreClient<K, V> genericThinClient,
       AvroSpecificStoreClient<K, T> specificThinClient,
@@ -120,7 +120,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.speculativeQueryEnabled = speculativeQueryEnabled;
     this.specificValueClass = specificValueClass;
     this.deserializationExecutor = deserializationExecutor;
-    this.clientRoutingStrategy = clientRoutingStrategy;
+    this.clientRoutingStrategyType =
+        clientRoutingStrategyType == null ? ClientRoutingStrategyType.LEAST_LOADED : clientRoutingStrategyType;
     this.dualReadEnabled = dualReadEnabled;
     this.genericThinClient = genericThinClient;
     this.specificThinClient = specificThinClient;
@@ -200,6 +201,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         throw new VeniceClientException(
             "Both param: d2Client and param: clusterDiscoveryD2Service must be specified when request based metadata is enabled");
       }
+    }
+    if (clientRoutingStrategyType == ClientRoutingStrategyType.HELIX_ASSISTED
+        && this.storeMetadataFetchMode != StoreMetadataFetchMode.SERVER_BASED_METADATA) {
+      throw new VeniceClientException("Helix assisted routing is only available with server based metadata enabled");
     }
   }
 
@@ -296,8 +301,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return isVsonStore;
   }
 
-  public ClientRoutingStrategy getClientRoutingStrategy() {
-    return clientRoutingStrategy;
+  public ClientRoutingStrategyType getClientRoutingStrategyType() {
+    return clientRoutingStrategyType;
   }
 
   public ClusterStats getClusterStats() {
@@ -323,7 +328,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private Class<T> specificValueClass;
     private String storeName;
     private Executor deserializationExecutor;
-    private ClientRoutingStrategy clientRoutingStrategy;
+    private ClientRoutingStrategyType clientRoutingStrategyType;
     private Client r2Client;
     private boolean dualReadEnabled = false;
     private AvroGenericStoreClient<K, V> genericThinClient;
@@ -393,8 +398,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setClientRoutingStrategy(ClientRoutingStrategy clientRoutingStrategy) {
-      this.clientRoutingStrategy = clientRoutingStrategy;
+    public ClientConfigBuilder<K, V, T> setClientRoutingStrategyType(
+        ClientRoutingStrategyType clientRoutingStrategyType) {
+      this.clientRoutingStrategyType = clientRoutingStrategyType;
       return this;
     }
 
@@ -521,7 +527,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setSpeculativeQueryEnabled(speculativeQueryEnabled)
           .setSpecificValueClass(specificValueClass)
           .setDeserializationExecutor(deserializationExecutor)
-          .setClientRoutingStrategy(clientRoutingStrategy)
+          .setClientRoutingStrategyType(clientRoutingStrategyType)
           .setDualReadEnabled(dualReadEnabled)
           .setGenericThinClient(genericThinClient)
           .setSpecificThinClient(specificThinClient)
@@ -553,7 +559,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           speculativeQueryEnabled,
           specificValueClass,
           deserializationExecutor,
-          clientRoutingStrategy,
+          clientRoutingStrategyType,
           dualReadEnabled,
           genericThinClient,
           specificThinClient,

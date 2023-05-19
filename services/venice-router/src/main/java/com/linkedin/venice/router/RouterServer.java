@@ -1,5 +1,8 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+
 import com.linkedin.alpini.base.concurrency.AsyncFuture;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.alpini.base.concurrency.impl.SuccessAsyncFuture;
@@ -201,7 +204,18 @@ public class RouterServer extends AbstractVeniceService {
     LOGGER.info("SSL Port: {}", props.getInt(ConfigKeys.LISTENER_SSL_PORT));
     LOGGER.info("IO worker count: {}", props.getInt(ConfigKeys.ROUTER_IO_WORKER_COUNT));
 
-    Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+    Optional<SSLFactory> sslFactory;
+    if (props.getBoolean(ConfigKeys.ROUTER_ENABLE_SSL, true)) {
+      if (props.getBoolean(ConfigKeys.ROUTER_USE_LOCAL_SSL_SETTINGS, true)) {
+        sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+      } else {
+        String sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+        sslFactory = Optional.of(SslUtils.getSSLFactory(props.toProperties(), sslFactoryClassName));
+      }
+    } else {
+      sslFactory = Optional.empty();
+    }
+
     RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory);
     server.start();
 
@@ -288,7 +302,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metaStoreShadowReader = config.isMetaStoreShadowReadEnabled()
         ? Optional.of(new MetaStoreShadowReader(this.schemaRepository))
         : Optional.empty();
-    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager);
+    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager, metadataRepository);
     this.hybridStoreQuotaRepository = config.isHelixHybridStoreQuotaEnabled()
         ? Optional.of(new HelixHybridStoreQuotaRepository(manager))
         : Optional.empty();
@@ -390,7 +404,17 @@ public class RouterServer extends AbstractVeniceService {
      */
     timeoutProcessor = new TimeoutProcessor(registry, true, 1);
 
-    Optional<SSLFactory> sslFactoryForRequests = config.isSslToStorageNodes() ? sslFactory : Optional.empty();
+    Optional<SSLFactory> sslFactoryForRequests = Optional.empty();
+    if (config.isSslToStorageNodes()) {
+      if (!sslFactory.isPresent()) {
+        throw new VeniceException("SSLFactory is required when enabling ssl to storage nodes");
+      }
+      if (config.isHttpClientOpensslEnabled()) {
+        sslFactoryForRequests = Optional.of(SslUtils.toSSLFactoryWithOpenSSLSupport(sslFactory.get()));
+      } else {
+        sslFactoryForRequests = sslFactory;
+      }
+    }
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
     Class<? extends AbstractChannel> serverSocketChannelClass;
     boolean useEpoll = true;

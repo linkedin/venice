@@ -336,7 +336,7 @@ public class VeniceMultiClusterCreateOptions {
         childControllerProperties = new Properties();
       }
       if (veniceProperties == null) {
-        veniceProperties = new VeniceProperties();
+        veniceProperties = VeniceProperties.empty();
       }
       if (kafkaClusterMap == null) {
         kafkaClusterMap = Collections.emptyMap();

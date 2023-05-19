@@ -32,7 +32,7 @@ The GitHub issue should contain the detailed problem statement.
 6. The PR title should usually be of the form `[component1]...[componentN]: Concise commit message`.
    * Valid tags are: `[da-vinci]` (or `[dvc]`), `[server]`, `[controller]`, `[router]`, `[samza]`,
       `[vpj]`, `[fast-client]` (or `[fc]`), `[thin-client]` (or `[tc]`), `[changelog]` (or `[cc]`),
-      `[admin-tool]`, `[test]`, `[build]`, `[doc]`, `[script]`, `[compat]`
+      `[producer]`, `[admin-tool]`, `[test]`, `[build]`, `[doc]`, `[script]`, `[compat]`
    * `[compat]` tag means there are compatibility related changes in this PR, including upgrading protocol version, upgrading system store value schemas, etc. When there is a compatibility related change, it usually requires a specific deployment order, like upgrading controller before upgrading server. In this case, please explicitly call out the required deployment order in the commit message.
 7. If the pull request is still a work in progress, and so is not ready to be merged, but needs to be pushed to GitHub to facilitate review,
     then create the PR as a [draft](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests#draft-pull-requests) PR
