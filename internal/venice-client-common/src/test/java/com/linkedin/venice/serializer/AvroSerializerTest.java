@@ -58,7 +58,7 @@ public class AvroSerializerTest {
     GenericRecord record = new GenericData.Record(valueSchema);
     record.put("MapField", map);
 
-    // Verify no error is thrown
+    // Verify no exception is thrown
     serializer.serialize(record);
   }
 }
