@@ -81,6 +81,9 @@ public abstract class AbstractPushMonitor
   private final boolean disableErrorLeaderReplica;
   private final long offlineJobResourceAssignmentWaitTimeInMilliseconds;
 
+  private final PushStatusCollector pushStatusCollector;
+  private final PushStatusStoreReader pushStatusStoreReader;
+
   public AbstractPushMonitor(
       String clusterName,
       OfflinePushAccessor offlinePushAccessor,
@@ -94,7 +97,8 @@ public abstract class AbstractPushMonitor
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
       boolean disableErrorLeaderReplica,
-      long offlineJobResourceAssignmentWaitTimeInMilliseconds) {
+      long offlineJobResourceAssignmentWaitTimeInMilliseconds,
+      PushStatusStoreReader pushStatusStoreReader) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -110,6 +114,13 @@ public abstract class AbstractPushMonitor
     this.helixClientThrottler =
         new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
     this.offlineJobResourceAssignmentWaitTimeInMilliseconds = offlineJobResourceAssignmentWaitTimeInMilliseconds;
+    this.pushStatusStoreReader = pushStatusStoreReader;
+    this.pushStatusCollector = new PushStatusCollector(
+        metadataRepository,
+        pushStatusStoreReader,
+        (topic) -> handleCompletedPush(getOfflinePush(topic)),
+        (topic, details) -> handleErrorPush(getOfflinePush(topic), details));
+    pushStatusCollector.start();
   }
 
   @Override
@@ -158,6 +169,7 @@ public abstract class AbstractPushMonitor
           if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
             String topic = offlinePushStatus.getKafkaTopic();
             if (routingDataRepository.containsKafkaTopic(topic)) {
+              pushStatusCollector.subscribeTopic(topic, offlinePushStatus.getNumberOfPartition());
               Pair<ExecutionStatus, Optional<String>> status =
                   checkPushStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(topic), null);
               if (status.getFirst().isTerminal()) {
@@ -236,6 +248,7 @@ public abstract class AbstractPushMonitor
       topicToPushMap.put(kafkaTopic, pushStatus);
       offlinePushAccessor.subscribePartitionStatusChange(pushStatus, this);
       routingDataRepository.subscribeRoutingDataChange(kafkaTopic, this);
+      pushStatusCollector.subscribeTopic(kafkaTopic, numberOfPartition);
       LOGGER.info("Started monitoring push on topic:{}", kafkaTopic);
     }
   }
@@ -257,6 +270,7 @@ public abstract class AbstractPushMonitor
       } else {
         cleanupPushStatus(pushStatus, deletePushStatus);
       }
+      pushStatusCollector.unsubscribeTopic(kafkaTopic);
       LOGGER.info("Stopped monitoring push on topic: {}", kafkaTopic);
     }
   }
@@ -270,6 +284,7 @@ public abstract class AbstractPushMonitor
         stopMonitorOfflinePush(kafkaTopic, false, false);
       }
       LOGGER.info("Successfully stopped monitoring push for all topics.");
+      pushStatusCollector.stop();
     } catch (Exception e) {
       LOGGER.error("Error when stopping monitoring push for all topics", e);
     }
@@ -500,7 +515,8 @@ public abstract class AbstractPushMonitor
           String errorMsg = "After waiting for " + elapsedTimeInSec + " seconds, resource assignment for: " + topic
               + " timed out, strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason="
               + notReadyReason.get();
-          handleErrorPush(pushStatus, errorMsg);
+          handleOfflinePushUpdate(pushStatus, ERROR, Optional.of(errorMsg));
+          // handleErrorPush(pushStatus, errorMsg);
           return new Pair<>(ExecutionStatus.ERROR, errorMsg);
         }
       } else {
@@ -838,7 +854,8 @@ public abstract class AbstractPushMonitor
     if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
       String statusDetails = "Helix resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.";
       LOGGER.info(statusDetails);
-      handleErrorPush(pushStatus, statusDetails);
+      handleOfflinePushUpdate(pushStatus, ExecutionStatus.ERROR, Optional.of(statusDetails));
+      // handleErrorPush(pushStatus, statusDetails);
     }
   }
 
@@ -902,7 +919,8 @@ public abstract class AbstractPushMonitor
     routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
 
     if (status.equals(ExecutionStatus.COMPLETED)) {
-      handleCompletedPush(pushStatus);
+      // handleCompletedPush(pushStatus);
+      pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), COMPLETED, Optional.empty());
     } else if (status.equals(ExecutionStatus.ERROR)) {
       String statusDetailsString = "STATUS DETAILS ABSENT.";
       if (statusDetails.isPresent()) {
@@ -912,7 +930,9 @@ public abstract class AbstractPushMonitor
             "Status details should be provided in order to terminateOfflinePush, but they are missing.",
             new VeniceException("Exception not thrown, for stacktrace logging purposes."));
       }
-      handleErrorPush(pushStatus, statusDetailsString);
+      // handleErrorPush(pushStatus, statusDetailsString);
+      pushStatusCollector
+          .handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), ERROR, Optional.of(statusDetailsString));
     }
   }
 
@@ -941,7 +961,7 @@ public abstract class AbstractPushMonitor
       storeCleaner.topicCleanupWhenPushComplete(clusterName, storeName, versionNumber);
     } catch (Exception e) {
       LOGGER.warn(
-          "Couldn't perform topic cleanup when push job completed for topic: {} in cluster: ",
+          "Couldn't perform topic cleanup when push job completed for topic: {} in cluster: {}",
           topic,
           clusterName,
           e);

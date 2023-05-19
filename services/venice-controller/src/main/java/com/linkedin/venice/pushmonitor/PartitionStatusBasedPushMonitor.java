@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.List;
@@ -36,7 +37,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       List<String> childDataCenterKafkaUrls,
       HelixAdminClient helixAdminClient,
       boolean disableErrorLeaderReplica,
-      long offlineJobResourceAssignmentWaitTimeInMilliseconds) {
+      long offlineJobResourceAssignmentWaitTimeInMilliseconds,
+      PushStatusStoreReader pushStatusStoreReader) {
     super(
         clusterName,
         offlinePushAccessor,
@@ -50,7 +52,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         childDataCenterKafkaUrls,
         helixAdminClient,
         disableErrorLeaderReplica,
-        offlineJobResourceAssignmentWaitTimeInMilliseconds);
+        offlineJobResourceAssignmentWaitTimeInMilliseconds,
+        pushStatusStoreReader);
   }
 
   @Override

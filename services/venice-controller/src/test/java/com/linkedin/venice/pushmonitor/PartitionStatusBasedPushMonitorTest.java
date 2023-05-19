@@ -60,7 +60,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         Collections.emptyList(),
         helixAdminClient,
         true,
-        120000);
+        120000,
+        null);
   }
 
   @Override
@@ -78,7 +79,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         Collections.emptyList(),
         mock(HelixAdminClient.class),
         true,
-        120000);
+        120000,
+        null);
   }
 
   @Test

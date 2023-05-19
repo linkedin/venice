@@ -7701,4 +7701,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkKafkaTopicAndHelixResource(clusterName, storeName, true, true, true);
     storeGraveyard.removeStoreFromGraveyard(clusterName, storeName);
   }
+
+  @Override
+  public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
+    return pushStatusStoreReader;
+  }
 }
