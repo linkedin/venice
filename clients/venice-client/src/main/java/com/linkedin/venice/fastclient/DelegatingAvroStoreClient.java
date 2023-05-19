@@ -72,7 +72,7 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   }
 
   /**
-   * Transient change to support {@link ClientConfig#batchGetDefaultsToStreamingBatchGet}
+   * Transient change to support {@link ClientConfig#useStreamingBatchGetAsDefault}
    */
   protected CompletableFuture<Map<K, V>> batchGetUsingSingleGet(Set<K> keys) throws VeniceClientException {
     return delegate.batchGet(keys);

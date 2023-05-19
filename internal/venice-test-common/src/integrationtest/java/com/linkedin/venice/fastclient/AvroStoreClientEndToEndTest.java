@@ -232,7 +232,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       boolean dualRead,
       boolean speculativeQueryEnabled,
       boolean batchGet,
-      boolean batchGetDefaultsToStreamingBatchGet,
+      boolean useStreamingBatchGetAsDefault,
       int batchGetKeySize,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
@@ -247,7 +247,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       clientConfigBuilder
           // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
           .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
-          .setBatchGetDefaultsToStreamingBatchGet(batchGetDefaultsToStreamingBatchGet);
+          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
     }
 
     // dualRead needs thinClient
@@ -285,15 +285,13 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         assertTrue(
             metricsRepository.metrics()
                 .get(
-                    "." + storeName + (batchGetDefaultsToStreamingBatchGet ? "--multiget_" : "--")
-                        + "request_key_count.Rate")
+                    "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--") + "request_key_count.Rate")
                 .value() > 0,
             "Respective request_key_count should have been incremented");
         Assert.assertFalse(
             metricsRepository.metrics()
                 .get(
-                    "." + storeName + (batchGetDefaultsToStreamingBatchGet ? "--" : "--multiget_")
-                        + "request_key_count.Rate")
+                    "." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
                 .value() > 0,
             "Incorrect request_key_count should not be incremented");
         metricsRepository.metrics().forEach((mName, metric) -> {
@@ -421,7 +419,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
   @Test(dataProvider = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
   public void testFastClientWithLongTailRetry(
       boolean batchGet,
-      boolean batchGetDefaultsToStreamingBatchGet,
+      boolean useStreamingBatchGetAsDefault,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
@@ -430,11 +428,11 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       clientConfigBuilder
           // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
           .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
-          .setBatchGetDefaultsToStreamingBatchGet(batchGetDefaultsToStreamingBatchGet);
+          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
     }
 
     Consumer<MetricsRepository> fastClientStatsValidation;
-    if (!batchGet || batchGetDefaultsToStreamingBatchGet) {
+    if (!batchGet || useStreamingBatchGetAsDefault) {
       String metricPrefix;
       String log;
       if (batchGet) {

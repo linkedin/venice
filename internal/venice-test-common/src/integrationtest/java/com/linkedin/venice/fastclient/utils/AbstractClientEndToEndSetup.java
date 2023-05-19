@@ -122,10 +122,10 @@ public abstract class AbstractClientEndToEndSetup {
   public Object[][] fourBooleanANumberStoreMetadataFetchMode() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean batchGet = (boolean) permutation[2];
-      boolean batchGetDefaultsToStreamingBatchGet = (boolean) permutation[3];
+      boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
       int batchGetKeySize = (int) permutation[4];
       if (!batchGet) {
-        if (batchGetDefaultsToStreamingBatchGet || batchGetKeySize != (int) BATCH_GET_KEY_SIZE[0]) {
+        if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE[0]) {
           // these parameters are related only to batchGet, so just allowing 1 set
           // to avoid duplicate tests
           return false;
@@ -136,7 +136,7 @@ public abstract class AbstractClientEndToEndSetup {
         DataProviderUtils.BOOLEAN, // dualRead
         DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
         DataProviderUtils.BOOLEAN, // batchGet
-        DataProviderUtils.BOOLEAN, // batchGetDefaultsToStreamingBatchGet
+        DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
         BATCH_GET_KEY_SIZE, // batchGetKeySize
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
@@ -145,9 +145,9 @@ public abstract class AbstractClientEndToEndSetup {
   public Object[][] twoBooleanStoreMetadataFetchMode() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean batchGet = (boolean) permutation[0];
-      boolean batchGetDefaultsToStreamingBatchGet = (boolean) permutation[1];
+      boolean useStreamingBatchGetAsDefault = (boolean) permutation[1];
       if (!batchGet) {
-        if (batchGetDefaultsToStreamingBatchGet) {
+        if (useStreamingBatchGetAsDefault) {
           // this parameter is related only to batchGet, so just allowing 1 set
           // to avoid duplicate tests
           return false;
@@ -156,7 +156,7 @@ public abstract class AbstractClientEndToEndSetup {
       return true;
     },
         DataProviderUtils.BOOLEAN, // batchGet
-        DataProviderUtils.BOOLEAN, // batchGetDefaultsToStreamingBatchGet
+        DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
 

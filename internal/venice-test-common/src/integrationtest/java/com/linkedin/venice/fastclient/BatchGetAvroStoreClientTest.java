@@ -114,7 +114,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
    */
   @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode")
   public void testBatchGetGenericClient(
-      boolean batchGetDefaultsToStreamingBatchGet,
+      boolean useStreamingBatchGetAsDefault,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -124,7 +124,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setMaxAllowedKeyCntInBatchGetReq(recordCnt + 1) // +1 for nonExistingKey
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1)
-            .setBatchGetDefaultsToStreamingBatchGet(batchGetDefaultsToStreamingBatchGet);
+            .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
@@ -143,20 +143,20 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       Assert.assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    Assert.assertTrue(
-        metricsRepository.metrics()
-            .get(
-                "." + storeName + (batchGetDefaultsToStreamingBatchGet ? "--multiget_" : "--")
-                    + "request_key_count.Rate")
-            .value() > 0,
-        "Respective request_key_count should have been incremented");
-    Assert.assertFalse(
-        metricsRepository.metrics()
-            .get(
-                "." + storeName + (batchGetDefaultsToStreamingBatchGet ? "--" : "--multiget_")
-                    + "request_key_count.Rate")
-            .value() > 0,
-        "Incorrect request_key_count should not be incremented");
+    Assert
+        .assertTrue(
+            metricsRepository.metrics()
+                .get(
+                    "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--") + "request_key_count.Rate")
+                .value() > 0,
+            "Respective request_key_count should have been incremented");
+    Assert
+        .assertFalse(
+            metricsRepository.metrics()
+                .get(
+                    "." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
+                .value() > 0,
+            "Incorrect request_key_count should not be incremented");
 
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
@@ -165,7 +165,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
 
   @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode")
   public void testBatchGetSpecificClient(
-      boolean batchGetDefaultsToStreamingBatchGet,
+      boolean useStreamingBatchGetAsDefault,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -175,7 +175,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt)
-            .setBatchGetDefaultsToStreamingBatchGet(batchGetDefaultsToStreamingBatchGet);
+            .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
@@ -193,20 +193,20 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       Assert.assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    Assert.assertTrue(
-        metricsRepository.metrics()
-            .get(
-                "." + storeName + (batchGetDefaultsToStreamingBatchGet ? "--multiget_" : "--")
-                    + "request_key_count.Rate")
-            .value() > 0,
-        "Respective request_key_count should have been incremented");
-    Assert.assertFalse(
-        metricsRepository.metrics()
-            .get(
-                "." + storeName + (batchGetDefaultsToStreamingBatchGet ? "--" : "--multiget_")
-                    + "request_key_count.Rate")
-            .value() > 0,
-        "Incorrect request_key_count should not be incremented");
+    Assert
+        .assertTrue(
+            metricsRepository.metrics()
+                .get(
+                    "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--") + "request_key_count.Rate")
+                .value() > 0,
+            "Respective request_key_count should have been incremented");
+    Assert
+        .assertFalse(
+            metricsRepository.metrics()
+                .get(
+                    "." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
+                .value() > 0,
+            "Incorrect request_key_count should not be incremented");
 
     specificFastClient.close();
     printAllStats();

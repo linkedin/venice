@@ -73,10 +73,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   /**
    * The choice of implementation for batch get: single get or streamingBatchget. The first version of batchGet in
    * FC used single get in a loop to support a customer request for two-key batch-get. This config allows switching
-   * between the two implementations. The default is streamingBatchget based batchGet, which can be turned off
-   * to use single get if needed.
+   * between the two implementations. The current default is single get based batchGet, but once the streamingBatchget
+   * is validated, the default should be changed to streamingBatchget based batchGet, or probably remove the single
+   * get based batchGet support.
    */
-  private final boolean batchGetDefaultsToStreamingBatchGet;
+  private final boolean useStreamingBatchGetAsDefault;
 
   private ClientConfig(
       String storeName,
@@ -107,7 +108,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       StoreMetadataFetchMode storeMetadataFetchMode,
       D2Client d2Client,
       String clusterDiscoveryD2Service,
-      boolean batchGetDefaultsToStreamingBatchGet) {
+      boolean useStreamingBatchGetAsDefault) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -217,11 +218,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         && this.storeMetadataFetchMode != StoreMetadataFetchMode.SERVER_BASED_METADATA) {
       throw new VeniceClientException("Helix assisted routing is only available with server based metadata enabled");
     }
-    this.batchGetDefaultsToStreamingBatchGet = batchGetDefaultsToStreamingBatchGet;
-    if (this.batchGetDefaultsToStreamingBatchGet) {
-      LOGGER.info("BatchGet will use streamingBatchGet");
+    this.useStreamingBatchGetAsDefault = useStreamingBatchGetAsDefault;
+    if (this.useStreamingBatchGetAsDefault) {
+      LOGGER.info("Batch get will use streaming batch get implementation");
     } else {
-      LOGGER.warn("Deprecated: BatchGet will reuse single get");
+      LOGGER.warn("Deprecated: Batch get will use single get implementation");
     }
   }
 
@@ -338,8 +339,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this.clusterDiscoveryD2Service;
   }
 
-  public boolean isBatchGetDefaultsToStreamingBatchGet() {
-    return this.batchGetDefaultsToStreamingBatchGet;
+  public boolean useStreamingBatchGetAsDefault() {
+    return this.useStreamingBatchGetAsDefault;
   }
 
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
@@ -388,7 +389,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private StoreMetadataFetchMode storeMetadataFetchMode = StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA;
     private D2Client d2Client;
     private String clusterDiscoveryD2Service;
-    private boolean batchGetDefaultsToStreamingBatchGet = true;
+    private boolean useStreamingBatchGetAsDefault = false;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -541,9 +542,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setBatchGetDefaultsToStreamingBatchGet(
-        boolean batchGetDefaultsToStreamingBatchGet) {
-      this.batchGetDefaultsToStreamingBatchGet = batchGetDefaultsToStreamingBatchGet;
+    public ClientConfigBuilder<K, V, T> setUseStreamingBatchGetAsDefault(boolean useStreamingBatchGetAsDefault) {
+      this.useStreamingBatchGetAsDefault = useStreamingBatchGetAsDefault;
       return this;
     }
 
@@ -576,7 +576,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setStoreMetadataFetchMode(storeMetadataFetchMode)
           .setD2Client(d2Client)
           .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
-          .setBatchGetDefaultsToStreamingBatchGet(batchGetDefaultsToStreamingBatchGet);
+          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -609,7 +609,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           storeMetadataFetchMode,
           d2Client,
           clusterDiscoveryD2Service,
-          batchGetDefaultsToStreamingBatchGet);
+          useStreamingBatchGetAsDefault);
     }
   }
 }

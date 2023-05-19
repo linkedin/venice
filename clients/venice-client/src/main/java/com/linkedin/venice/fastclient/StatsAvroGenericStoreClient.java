@@ -33,7 +33,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private final ClusterStats clusterStats;
 
   private final int maxAllowedKeyCntInBatchGetReq;
-  private final boolean batchGetDefaultsToStreamingBatchGet;
+  private final boolean useStreamingBatchGetAsDefault;
 
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     super(delegate);
@@ -41,7 +41,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     this.clientStatsForBatchGet = clientConfig.getStats(RequestType.MULTI_GET);
     this.clusterStats = clientConfig.getClusterStats();
     this.maxAllowedKeyCntInBatchGetReq = clientConfig.getMaxAllowedKeyCntInBatchGetReq();
-    this.batchGetDefaultsToStreamingBatchGet = clientConfig.isBatchGetDefaultsToStreamingBatchGet();
+    this.useStreamingBatchGetAsDefault = clientConfig.useStreamingBatchGetAsDefault();
   }
 
   @Override
@@ -53,7 +53,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
-    return this.batchGetDefaultsToStreamingBatchGet
+    return this.useStreamingBatchGetAsDefault
         ? batchGetUsingStreamingBatchGet(requestContext, keys)
         : batchGetUsingSingleGet(keys);
   }
@@ -72,7 +72,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
    *  1. Looping through all keys and call get() for each of the keys
    *  2. Collect the replies and pass it to the caller
    *
-   *  Transient change to support {@link ClientConfig#batchGetDefaultsToStreamingBatchGet}
+   *  Transient change to support {@link ClientConfig#useStreamingBatchGetAsDefault}
    */
   protected CompletableFuture<Map<K, V>> batchGetUsingSingleGet(Set<K> keys) throws VeniceClientException {
     if (keys.isEmpty()) {
