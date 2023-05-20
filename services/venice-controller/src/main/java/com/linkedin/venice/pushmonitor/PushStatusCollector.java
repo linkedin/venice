@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
@@ -35,6 +36,9 @@ public class PushStatusCollector {
 
   private final ReadWriteStoreRepository storeRepository;
 
+  // Consider using Atomic variable instead.
+  private final ReentrantLock lock = new ReentrantLock();
+
   private final ScheduledExecutorService offlinePushCheckScheduler = Executors.newScheduledThreadPool(1);
 
   public PushStatusCollector(
@@ -49,6 +53,7 @@ public class PushStatusCollector {
   }
 
   public void subscribeTopic(String topicName, int partitionCount) {
+    lock.lock();
     subscribedTopicSet.add(topicName);
     topicToPartitionCountMap.put(topicName, partitionCount);
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -56,15 +61,19 @@ public class PushStatusCollector {
     if (store == null) {
       LOGGER.warn("Store {} not found in store repository, will not monitor Da Vinci push status", storeName);
     } else {
-      if (store.isDaVinciPushStatusStoreEnabled()) {
+      if (store.isDaVinciPushStatusStoreEnabled() && Version.parseVersionFromKafkaTopicName(topicName) > 1) {
+        LOGGER.info("Will monitor Da Vinci push status for topic {}", topicName);
         daVinciPushStatusEnabledTopicSet.add(topicName);
       }
     }
+    lock.unlock();
   }
 
   public void unsubscribeTopic(String topicName) {
+    lock.lock();
     subscribedTopicSet.remove(topicName);
     daVinciPushStatusEnabledTopicSet.remove(topicName);
+    lock.unlock();
   }
 
   public void handleServerPushStatusUpdate(
@@ -79,11 +88,14 @@ public class PushStatusCollector {
       }
     } else {
       // Update the server topic status in the data structure and wait for async DVC status scan thread to pick up.
+      lock.lock();
       topicToServerPushStatusMap.put(topicName, executionStatus);
+      lock.unlock();
     }
   }
 
   public void scanDaVinciPushStatus() {
+    lock.lock();
     for (String topicName: daVinciPushStatusEnabledTopicSet) {
       Pair<ExecutionStatus, String> topicDaVinciPushStatus = PushMonitorUtils.getDaVinciPushStatusAndDetails(
           pushStatusStoreReader,
@@ -102,6 +114,7 @@ public class PushStatusCollector {
         pushErrorHandler.accept(topicName, "TODO: Add DVC status details");
       }
     }
+    lock.unlock();
   }
 
   public boolean isOverallPushCompleted(String topicName) {
@@ -117,7 +130,7 @@ public class PushStatusCollector {
   }
 
   public void start() {
-    offlinePushCheckScheduler.scheduleAtFixedRate(this::scanDaVinciPushStatus, 0, 30, TimeUnit.SECONDS);
+    offlinePushCheckScheduler.scheduleAtFixedRate(this::scanDaVinciPushStatus, 0, 10, TimeUnit.SECONDS);
   }
 
   public void stop() {

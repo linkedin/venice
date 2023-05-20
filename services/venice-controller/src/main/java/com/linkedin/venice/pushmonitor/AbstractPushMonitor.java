@@ -120,7 +120,9 @@ public abstract class AbstractPushMonitor
         pushStatusStoreReader,
         (topic) -> handleCompletedPush(getOfflinePush(topic)),
         (topic, details) -> handleErrorPush(getOfflinePush(topic), details));
+    LOGGER.info("DEBUGGING WE ARE HERE");
     pushStatusCollector.start();
+    LOGGER.info("DEBUGGING WE ARE HERE2");
   }
 
   @Override
@@ -284,7 +286,7 @@ public abstract class AbstractPushMonitor
         stopMonitorOfflinePush(kafkaTopic, false, false);
       }
       LOGGER.info("Successfully stopped monitoring push for all topics.");
-      pushStatusCollector.stop();
+      // pushStatusCollector.stop();
     } catch (Exception e) {
       LOGGER.error("Error when stopping monitoring push for all topics", e);
     }
