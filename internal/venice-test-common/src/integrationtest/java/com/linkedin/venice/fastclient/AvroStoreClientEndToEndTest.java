@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -40,13 +41,16 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       boolean batchGet,
       int batchGetKeySize,
+      Optional<AvroGenericStoreClient> vsonThinClient,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     runTest(
         clientConfigBuilder,
         batchGet,
         batchGetKeySize,
         (metricsRepository) -> {},
-        Optional.empty(),
+        (metricsRepository) -> {},
+        null,
+        vsonThinClient,
         storeMetadataFetchMode);
   }
 
@@ -62,21 +66,25 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       boolean batchGet,
       int batchGetKeySize,
-      Consumer<MetricsRepository> statsValidation,
+      Consumer<MetricsRepository> fastClientStatsValidation,
+      Consumer<MetricsRepository> thinClientStatsValidation,
+      MetricsRepository thinClientMetricsRepository,
       Optional<AvroGenericStoreClient> vsonThinClient,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, storeMetadataFetchMode);
-
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
-    // Construct a Vson store client
-    genericFastVsonClient = getGenericFastVsonClient(
-        clientConfigBuilder.clone(),
-        new MetricsRepository(),
-        vsonThinClient,
-        storeMetadataFetchMode);
     try {
+      genericFastClient =
+          getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, storeMetadataFetchMode);
+
+      // Construct a Vson store client
+      genericFastVsonClient = getGenericFastVsonClient(
+          clientConfigBuilder.clone(),
+          new MetricsRepository(),
+          vsonThinClient,
+          storeMetadataFetchMode);
+
       if (batchGet) {
         // test batch get of size 2 (current default max)
         if (batchGetKeySize == 2) {
@@ -153,7 +161,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           assertEquals((int) vsonValue.get(VALUE_FIELD_NAME), i);
         }
       }
-      statsValidation.accept(metricsRepositoryForGenericClient);
+      fastClientStatsValidation.accept(metricsRepositoryForGenericClient);
+      thinClientStatsValidation.accept(thinClientMetricsRepository);
     } finally {
       if (genericFastClient != null) {
         genericFastClient.close();
@@ -210,7 +219,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           assertEquals(value.int_field, i);
         }
       }
-      statsValidation.accept(metricsRepositoryForSpecificClient);
+      fastClientStatsValidation.accept(metricsRepositoryForSpecificClient);
     } finally {
       if (specificFastClient != null) {
         specificFastClient.close();
@@ -218,51 +227,90 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "FastClient-Three-Boolean-Store-Metadata-Fetch-Mode-A-Number", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
   public void testFastClientGet(
-      boolean multiGet,
       boolean dualRead,
       boolean speculativeQueryEnabled,
-      StoreMetadataFetchMode storeMetadataFetchMode,
-      int batchGetKeySize) throws Exception {
-    if (multiGet == false && batchGetKeySize != (int) BATCH_GET_KEY_SIZE[0]) {
-      // redundant case as batchGetKeySize doesn't apply for single gets, so run only once
-      // TODO add a better dataProvider
-      return;
-    }
+      boolean batchGet,
+      boolean useStreamingBatchGetAsDefault,
+      int batchGetKeySize,
+      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(speculativeQueryEnabled)
             .setDualReadEnabled(dualRead)
-            // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
-            .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
             // this needs to be revisited to see how much this should be set. Current default is 50.
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
-    // dualRead also needs thinClient
+    if (batchGet) {
+      clientConfigBuilder
+          // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
+          .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
+          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+    }
+
+    // dualRead needs thinClient
     AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;
     AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = null;
     AvroGenericStoreClient<String, Object> genericVsonThinClient = null;
+    MetricsRepository thinClientMetricsRepository = new MetricsRepository();
+    Consumer<MetricsRepository> thinClientStatsValidation;
 
     try {
       if (dualRead) {
-        genericThinClient = getGenericThinClient();
+        genericThinClient = getGenericThinClient(thinClientMetricsRepository);
         clientConfigBuilder.setGenericThinClient(genericThinClient);
         specificThinClient = getSpecificThinClient();
         clientConfigBuilder.setSpecificThinClient(specificThinClient);
         genericVsonThinClient = getGenericVsonThinClient();
-
-        runTest(
-            clientConfigBuilder,
-            multiGet,
-            batchGetKeySize,
-            m -> {},
-            Optional.of(genericVsonThinClient),
-            storeMetadataFetchMode);
+        thinClientStatsValidation = metricsRepository -> {
+          Assert.assertTrue(
+              metricsRepository.metrics()
+                  .get("." + storeName + (batchGet ? "--multiget_streaming_" : "--") + "request_key_count.Rate")
+                  .value() > 0,
+              "Dual read metrics should be incremented when dual read is enabled");
+        };
       } else {
-        runTest(clientConfigBuilder, multiGet, batchGetKeySize, m -> {}, Optional.empty(), storeMetadataFetchMode);
+        thinClientStatsValidation = metricsRepository -> {
+          metricsRepository.metrics()
+              .forEach(
+                  (mName, metric) -> assertTrue(
+                      metric.value() == 0,
+                      "Dual read metrics should not be incremented when dual read is enabled"));
+        };
       }
+
+      Consumer<MetricsRepository> fastClientStatsValidation = metricsRepository -> {
+        assertTrue(
+            metricsRepository.metrics()
+                .get(
+                    "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--") + "request_key_count.Rate")
+                .value() > 0,
+            "Respective request_key_count should have been incremented");
+        Assert.assertFalse(
+            metricsRepository.metrics()
+                .get(
+                    "." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
+                .value() > 0,
+            "Incorrect request_key_count should not be incremented");
+        metricsRepository.metrics().forEach((mName, metric) -> {
+          if (mName.contains("long_tail_retry_request")) {
+            assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
+          }
+        });
+      };
+
+      runTest(
+          clientConfigBuilder,
+          batchGet,
+          batchGetKeySize,
+          fastClientStatsValidation,
+          thinClientStatsValidation,
+          thinClientMetricsRepository,
+          dualRead ? Optional.of(genericVsonThinClient) : Optional.empty(),
+          storeMetadataFetchMode);
+
     } finally {
       if (genericThinClient != null) {
         genericThinClient.close();
@@ -300,31 +348,22 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;
     AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = null;
     AvroGenericStoreClient<String, Object> genericVsonThinClient = null;
+    MetricsRepository thinClientMetricsRepository = new MetricsRepository();
 
     try {
       if (dualRead) {
-        genericThinClient = getGenericThinClient();
+        genericThinClient = getGenericThinClient(thinClientMetricsRepository);
         clientConfigBuilder.setGenericThinClient(genericThinClient);
         specificThinClient = getSpecificThinClient();
         clientConfigBuilder.setSpecificThinClient(specificThinClient);
         genericVsonThinClient = getGenericVsonThinClient();
-
-        runTest(
-            clientConfigBuilder,
-            multiGet,
-            batchGetKeySize,
-            m -> {},
-            Optional.of(genericVsonThinClient),
-            StoreMetadataFetchMode.SERVER_BASED_METADATA);
-      } else {
-        runTest(
-            clientConfigBuilder,
-            multiGet,
-            batchGetKeySize,
-            m -> {},
-            Optional.empty(),
-            StoreMetadataFetchMode.SERVER_BASED_METADATA);
       }
+      runTest(
+          clientConfigBuilder,
+          multiGet,
+          batchGetKeySize,
+          dualRead ? Optional.of(genericVsonThinClient) : Optional.empty(),
+          StoreMetadataFetchMode.SERVER_BASED_METADATA);
     } finally {
       if (genericThinClient != null) {
         genericThinClient.close();
@@ -348,30 +387,90 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setR2Client(r2Client)
             .setDualReadEnabled(false);
 
-    // test both single and multiGet
-    runTest(clientConfigBuilder, false, 2, storeMetadataFetchMode);
-    runTest(clientConfigBuilder, true, 2, storeMetadataFetchMode);
-  }
-
-  // TODO This test fails for the first time and then succeeds when the entire fastclient
-  // testsuite is run, but runs successfully when this test is run alone. Need to debug.
-  @Test(dataProvider = "StoreMetadataFetchModes")
-  public void testFastClientSingleGetLongTailRetry(StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
-    ClientConfig.ClientConfigBuilder clientConfigBuilder =
-        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(false)
-            .setLongTailRetryEnabledForSingleGet(true)
-            .setLongTailRetryThresholdForSingleGetInMicroSeconds(10); // Try to trigger long-tail retry as much as
-                                                                      // possible.
-
-    runTest(clientConfigBuilder, false, 2, metricsRepository -> {
-      // Validate long-tail retry related metrics
+    Consumer<MetricsRepository> fastClientStatsValidation = metricsRepository -> {
       metricsRepository.metrics().forEach((mName, metric) -> {
-        if (mName.contains("--long_tail_retry_request.OccurrenceRate")) {
-          assertTrue(metric.value() > 0, "Long tail retry for single-get should be triggered");
+        if (mName.contains("long_tail_retry_request")) {
+          assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
         }
       });
-    }, Optional.empty(), storeMetadataFetchMode);
+    };
+
+    // test both single and multiGet
+    runTest(
+        clientConfigBuilder,
+        false,
+        2,
+        fastClientStatsValidation,
+        m -> {},
+        null,
+        Optional.empty(),
+        storeMetadataFetchMode);
+    runTest(
+        clientConfigBuilder,
+        true,
+        2,
+        fastClientStatsValidation,
+        m -> {},
+        null,
+        Optional.empty(),
+        storeMetadataFetchMode);
+  }
+
+  @Test(dataProvider = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  public void testFastClientWithLongTailRetry(
+      boolean batchGet,
+      boolean useStreamingBatchGetAsDefault,
+      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
+
+    if (batchGet) {
+      clientConfigBuilder
+          // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
+          .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
+          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+    }
+
+    Consumer<MetricsRepository> fastClientStatsValidation;
+    if (!batchGet || useStreamingBatchGetAsDefault) {
+      String metricPrefix;
+      String log;
+      if (batchGet) {
+        metricPrefix = "--multiget_";
+        log = "batch Get";
+        clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
+            .setLongTailRetryThresholdForBatchGetInMicroSeconds(1);
+      } else {
+        metricPrefix = "--";
+        log = "single Get";
+        clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
+            .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
+      }
+      fastClientStatsValidation = metricsRepository -> {
+        Assert.assertTrue(
+            metricsRepository.metrics()
+                .get("." + storeName + metricPrefix + "long_tail_retry_request.OccurrenceRate")
+                .value() > 0,
+            "Long tail retry for " + log + " should be triggered");
+      };
+    } else {
+      // If single get or batchGet get via looping single get: retry is not supported
+      fastClientStatsValidation = metricsRepository -> {
+        metricsRepository.metrics().forEach((mName, metric) -> {
+          if (mName.contains("long_tail_retry_request")) {
+            assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
+          }
+        });
+      };
+    }
+    runTest(
+        clientConfigBuilder,
+        batchGet,
+        recordCnt,
+        fastClientStatsValidation,
+        m -> {},
+        null,
+        Optional.empty(),
+        storeMetadataFetchMode);
   }
 }

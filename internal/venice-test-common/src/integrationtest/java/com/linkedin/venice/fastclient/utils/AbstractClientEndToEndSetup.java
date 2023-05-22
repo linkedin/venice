@@ -116,16 +116,53 @@ public abstract class AbstractClientEndToEndSetup {
    * not be sent due to blocked instances. Setting this variable to be 100 from the tests for now.
    * This needs to be discussed further.
    */
-  public final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
+  static final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
 
-  @DataProvider(name = "FastClient-Three-Boolean-Store-Metadata-Fetch-Mode-A-Number")
-  public Object[][] fourBooleanAndANumber() {
-    return DataProviderUtils.allPermutationGenerator(
-        DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
-        STORE_METADATA_FETCH_MODES,
-        BATCH_GET_KEY_SIZE);
+  @DataProvider(name = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode")
+  public Object[][] fourBooleanANumberStoreMetadataFetchMode() {
+    return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean batchGet = (boolean) permutation[2];
+      boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
+      int batchGetKeySize = (int) permutation[4];
+      if (!batchGet) {
+        if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE[0]) {
+          // these parameters are related only to batchGet, so just allowing 1 set
+          // to avoid duplicate tests
+          return false;
+        }
+      }
+      return true;
+    },
+        DataProviderUtils.BOOLEAN, // dualRead
+        DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
+        DataProviderUtils.BOOLEAN, // batchGet
+        DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
+        BATCH_GET_KEY_SIZE, // batchGetKeySize
+        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
+  }
+
+  @DataProvider(name = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode")
+  public Object[][] twoBooleanStoreMetadataFetchMode() {
+    return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean batchGet = (boolean) permutation[0];
+      boolean useStreamingBatchGetAsDefault = (boolean) permutation[1];
+      if (!batchGet) {
+        if (useStreamingBatchGetAsDefault) {
+          // this parameter is related only to batchGet, so just allowing 1 set
+          // to avoid duplicate tests
+          return false;
+        }
+      }
+      return true;
+    },
+        DataProviderUtils.BOOLEAN, // batchGet
+        DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
+        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
+  }
+
+  @DataProvider(name = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode")
+  public Object[][] oneBooleanStoreMetadataFetchMode() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
   }
 
   @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
@@ -395,11 +432,12 @@ public abstract class AbstractClientEndToEndSetup {
     }
   }
 
-  protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient() {
+  protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient(MetricsRepository metricsRepository) {
     return com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
         com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(veniceCluster.getRandomRouterSslURL())
-            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory())
+            .setMetricsRepository(metricsRepository));
   }
 
   protected AvroGenericStoreClient<String, Object> getGenericVsonThinClient() {
