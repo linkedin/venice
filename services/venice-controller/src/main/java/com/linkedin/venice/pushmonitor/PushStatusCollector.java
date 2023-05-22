@@ -32,7 +32,6 @@ public class PushStatusCollector {
 
   private final ReadWriteStoreRepository storeRepository;
 
-  // Need to find a better way to share variable
   private final ReentrantLock lock = new ReentrantLock();
 
   private final int daVinciPushStatusScanPeriodInSeconds;
@@ -58,7 +57,9 @@ public class PushStatusCollector {
   }
 
   public void subscribeTopic(String topicName, int partitionCount) {
+    lock.lock();
     topicToPartitionCountMap.put(topicName, partitionCount);
+    lock.unlock();
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store store = storeRepository.getStore(storeName);
     if (store == null) {
@@ -66,13 +67,17 @@ public class PushStatusCollector {
     } else {
       if (store.isDaVinciPushStatusStoreEnabled() && Version.parseVersionFromKafkaTopicName(topicName) > 1) {
         LOGGER.info("Will monitor Da Vinci push status for topic {}", topicName);
+        lock.lock();
         daVinciPushStatusEnabledTopicSet.add(topicName);
+        lock.unlock();
       }
     }
   }
 
   public void unsubscribeTopic(String topicName) {
+    lock.lock();
     daVinciPushStatusEnabledTopicSet.remove(topicName);
+    lock.unlock();
   }
 
   public void handleServerPushStatusUpdate(String topicName, ExecutionStatus executionStatus, String detailsString) {
@@ -84,11 +89,14 @@ public class PushStatusCollector {
       }
     } else {
       // Update the server topic status in the data structure and wait for async DVC status scan thread to pick up.
+      lock.lock();
       topicToServerPushStatusMap.put(topicName, new ExecutionStatusWithDetails(executionStatus, detailsString));
+      lock.unlock();
     }
   }
 
   public void scanDaVinciPushStatus() {
+    lock.lock();
     for (String topicName: daVinciPushStatusEnabledTopicSet) {
       Pair<ExecutionStatus, String> topicDaVinciPushStatus = PushMonitorUtils.getDaVinciPushStatusAndDetails(
           pushStatusStoreReader,
@@ -117,6 +125,7 @@ public class PushStatusCollector {
         pushErrorHandler.accept(topicName, overallErrorString);
       }
     }
+    lock.unlock();
   }
 
   public boolean isOverallPushCompleted(
@@ -132,6 +141,8 @@ public class PushStatusCollector {
   }
 
   public void clear() {
+    lock.lock();
     daVinciPushStatusEnabledTopicSet.clear();
+    lock.unlock();
   }
 }

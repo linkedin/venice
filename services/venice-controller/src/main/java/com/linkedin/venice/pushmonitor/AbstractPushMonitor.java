@@ -284,6 +284,7 @@ public abstract class AbstractPushMonitor
         stopMonitorOfflinePush(kafkaTopic, false, false);
       }
       LOGGER.info("Successfully stopped monitoring push for all topics.");
+      pushStatusCollector.clear();
     } catch (Exception e) {
       LOGGER.error("Error when stopping monitoring push for all topics", e);
     }
