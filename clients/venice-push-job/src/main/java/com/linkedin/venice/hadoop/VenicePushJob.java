@@ -394,18 +394,19 @@ public class VenicePushJob implements AutoCloseable {
    * In this mode, the VPJ will only push data to a single colo/region first, perform validation and finally
    * leverage data recovery/repush to propagate data globally.
    * The single solo/region is decided by the store config in {@link StoreResponse#getStore()}}.
-   * For multiple targeted regions push, may use the advanced mode. See {@link #TARGETED_REGIONS_PUSH}.
+   * For multiple targeted regions push, may use the advanced mode. See {@link #TARGETED_REGION_PUSH_LIST}.
    */
-  public static final String SINGLE_REGION_PUSH = "single.region.push";
+  public static final String TARGETED_REGION_PUSH_ENABLED = "targeted.region.push.enabled";
 
   /**
    * This is experimental config to specify a list of regions used for targeted region push in VPJ.
+   * {@link #TARGETED_REGION_PUSH_ENABLED} has to be enabled to use this config.
    * In this mode, the VPJ will only push data to the provided regions first, perform validation and finally
    * leverage data recovery/repush to propagate data globally.
    * The input should be split by comma, e.g. "dc-0,dc-1,dc-2".
-   * For single colo targeted region push, see {@link #SINGLE_REGION_PUSH}. This config will override the single targeted region.
+   * For single colo targeted region push, see {@link #TARGETED_REGION_PUSH_ENABLED}.
    */
-  public static final String TARGETED_REGIONS_PUSH = "targeted.regions.push";
+  public static final String TARGETED_REGION_PUSH_LIST = "targeted.region.push.list";
 
   /**
    * Since the job is calculating the raw data file size, which is not accurate because of compression,
@@ -515,7 +516,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean multiRegion;
     boolean d2Routing;
     String targetedRegions;
-    boolean singleRegionPush;
+    boolean isTargetedRegionPush;
   }
 
   protected PushJobSetting pushJobSetting;
@@ -687,9 +688,13 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     pushJobSettingToReturn.repushTTLInSeconds = NOT_SET;
-    pushJobSettingToReturn.singleRegionPush = props.getBoolean(SINGLE_REGION_PUSH, false);
-    if (props.containsKey(TARGETED_REGIONS_PUSH)) {
-      pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGIONS_PUSH);
+    pushJobSettingToReturn.isTargetedRegionPush = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
+    if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
+      if (pushJobSettingToReturn.isTargetedRegionPush) {
+        pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGION_PUSH_LIST);
+      } else {
+        throw new VeniceException("Targeted region push list is only supported when targeted region push is enabled");
+      }
     }
 
     if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
@@ -2298,7 +2303,7 @@ public class VenicePushJob implements AutoCloseable {
     storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
     storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
     storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
-    if (setting.singleRegionPush && setting.targetedRegions == null) {
+    if (setting.isTargetedRegionPush && setting.targetedRegions == null) {
       // only override the targeted regions if it is not set and it is a single region push
       setting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
       if (setting.targetedRegions == null) {

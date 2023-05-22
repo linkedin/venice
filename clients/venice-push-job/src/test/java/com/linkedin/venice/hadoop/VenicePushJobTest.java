@@ -8,10 +8,10 @@ import static com.linkedin.venice.hadoop.VenicePushJob.LEGACY_AVRO_VALUE_FIELD_P
 import static com.linkedin.venice.hadoop.VenicePushJob.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJob.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJob.SINGLE_REGION_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_ETL;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGIONS_PUSH;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
@@ -485,7 +485,16 @@ public class VenicePushJobTest {
   @Test
   public void testTargetedRegionPushConfigValidation() throws Exception {
     Properties props = getVpjRequiredProperties();
-    props.put(SINGLE_REGION_PUSH, true);
+    props.put(TARGETED_REGION_PUSH_ENABLED, false);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
+    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(e.getMessage(), "Targeted region push list is only supported when targeted region push is enabled");
+    }
+
+    props.put(TARGETED_REGION_PUSH_ENABLED, true);
+    props.remove(TARGETED_REGION_PUSH_LIST);
     props.put(INCREMENTAL_PUSH, true);
     ControllerClient client = getClient();
     VenicePushJob pushJob = getSpyVenicePushJob(props, client);
@@ -501,8 +510,8 @@ public class VenicePushJobTest {
   @Test
   public void testTargetedRegionPushConfigOverride() throws Exception {
     Properties props = getVpjRequiredProperties();
-    props.put(SINGLE_REGION_PUSH, true);
-    props.put(TARGETED_REGIONS_PUSH, "dc-0, dc-1");
+    props.put(TARGETED_REGION_PUSH_ENABLED, true);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
     ControllerClient client = getClient();
     VenicePushJob pushJob = getSpyVenicePushJob(props, client);
     JobStatusQueryResponse response = new JobStatusQueryResponse();
@@ -524,7 +533,7 @@ public class VenicePushJobTest {
   @Test
   public void testTargetedRegionPushReporting() throws Exception {
     Properties props = getVpjRequiredProperties();
-    props.put(SINGLE_REGION_PUSH, true);
+    props.put(TARGETED_REGION_PUSH_ENABLED, true);
     ControllerClient client = getClient();
     VenicePushJob pushJob = getSpyVenicePushJob(props, client);
     skipVPJValidation(pushJob);
