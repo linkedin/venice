@@ -516,7 +516,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean multiRegion;
     boolean d2Routing;
     String targetedRegions;
-    boolean isTargetedRegionPush;
+    boolean isTargetedRegionPushEnabled;
   }
 
   protected PushJobSetting pushJobSetting;
@@ -688,9 +688,9 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     pushJobSettingToReturn.repushTTLInSeconds = NOT_SET;
-    pushJobSettingToReturn.isTargetedRegionPush = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
+    pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
-      if (pushJobSettingToReturn.isTargetedRegionPush) {
+      if (pushJobSettingToReturn.isTargetedRegionPushEnabled) {
         pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGION_PUSH_LIST);
       } else {
         throw new VeniceException("Targeted region push list is only supported when targeted region push is enabled");
@@ -2303,7 +2303,7 @@ public class VenicePushJob implements AutoCloseable {
     storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
     storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
     storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
-    if (setting.isTargetedRegionPush && setting.targetedRegions == null) {
+    if (setting.isTargetedRegionPushEnabled && setting.targetedRegions == null) {
       // only override the targeted regions if it is not set and it is a single region push
       setting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
       if (setting.targetedRegions == null) {
