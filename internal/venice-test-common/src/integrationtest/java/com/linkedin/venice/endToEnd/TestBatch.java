@@ -580,7 +580,7 @@ public abstract class TestBatch {
                 put(KEY_STRING_VERSION_NUMBER, Integer.toString(1));
               }
             });
-        Object value = avroClient.get(key).get();
+        avroClient.get(key).get();
       } catch (Exception e) {
         Assert.fail("get request to fetch schema from meta store fails", e);
       }
