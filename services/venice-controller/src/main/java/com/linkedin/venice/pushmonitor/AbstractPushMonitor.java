@@ -119,10 +119,8 @@ public abstract class AbstractPushMonitor
         metadataRepository,
         pushStatusStoreReader,
         (topic) -> handleCompletedPush(getOfflinePush(topic)),
-        (topic, details) -> handleErrorPush(getOfflinePush(topic), details));
-    LOGGER.info("DEBUGGING WE ARE HERE");
-    pushStatusCollector.start();
-    LOGGER.info("DEBUGGING WE ARE HERE2");
+        (topic, details) -> handleErrorPush(getOfflinePush(topic), details),
+        30);
   }
 
   @Override
@@ -286,7 +284,6 @@ public abstract class AbstractPushMonitor
         stopMonitorOfflinePush(kafkaTopic, false, false);
       }
       LOGGER.info("Successfully stopped monitoring push for all topics.");
-      // pushStatusCollector.stop();
     } catch (Exception e) {
       LOGGER.error("Error when stopping monitoring push for all topics", e);
     }
@@ -922,7 +919,7 @@ public abstract class AbstractPushMonitor
 
     if (status.equals(ExecutionStatus.COMPLETED)) {
       // handleCompletedPush(pushStatus);
-      pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), COMPLETED, Optional.empty());
+      pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), COMPLETED, null);
     } else if (status.equals(ExecutionStatus.ERROR)) {
       String statusDetailsString = "STATUS DETAILS ABSENT.";
       if (statusDetails.isPresent()) {
@@ -933,8 +930,7 @@ public abstract class AbstractPushMonitor
             new VeniceException("Exception not thrown, for stacktrace logging purposes."));
       }
       // handleErrorPush(pushStatus, statusDetailsString);
-      pushStatusCollector
-          .handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), ERROR, Optional.of(statusDetailsString));
+      pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), ERROR, statusDetailsString);
     }
   }
 
