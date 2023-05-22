@@ -24,7 +24,8 @@ public class VeniceProperties {
 
   private final Map<String, String> props;
 
-  private VeniceProperties() {
+  @Deprecated
+  public VeniceProperties() {
     props = Collections.emptyMap();
   }
 
