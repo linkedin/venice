@@ -11,7 +11,6 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
@@ -28,8 +27,6 @@ public class PushStatusCollector {
   private final PushStatusStoreReader pushStatusStoreReader;
 
   private final ReadWriteStoreRepository storeRepository;
-
-  private final ReentrantLock lock = new ReentrantLock();
 
   private final int daVinciPushStatusScanPeriodInSeconds;
 
@@ -61,17 +58,13 @@ public class PushStatusCollector {
     } else {
       if (store.isDaVinciPushStatusStoreEnabled() && Version.parseVersionFromKafkaTopicName(topicName) > 1) {
         LOGGER.info("Will monitor Da Vinci push status for topic {}", topicName);
-        lock.lock();
-        daVinciStoreTopicToPartitionCountMap.put(topicName, new TopicPushStatus(topicName, partitionCount));
-        lock.unlock();
+        daVinciStoreTopicToPartitionCountMap.put(topicName, new TopicPushStatus(partitionCount));
       }
     }
   }
 
   public void unsubscribeTopic(String topicName) {
-    lock.lock();
     daVinciStoreTopicToPartitionCountMap.remove(topicName);
-    lock.unlock();
   }
 
   public void handleServerPushStatusUpdate(String topicName, ExecutionStatus executionStatus, String detailsString) {
@@ -85,14 +78,11 @@ public class PushStatusCollector {
       }
     } else {
       // Update the server topic status in the data structure and wait for async DVC status scan thread to pick up.
-      lock.lock();
       topicPushStatus.setServerStatus(new ExecutionStatusWithDetails(executionStatus, detailsString));
-      lock.unlock();
     }
   }
 
   private void scanDaVinciPushStatus() {
-    lock.lock();
     for (Map.Entry<String, TopicPushStatus> entry: daVinciStoreTopicToPartitionCountMap.entrySet()) {
       String topicName = entry.getKey();
       TopicPushStatus pushStatus = entry.getValue();
@@ -136,7 +126,6 @@ public class PushStatusCollector {
         pushErrorHandler.accept(topicName, overallErrorString);
       }
     }
-    lock.unlock();
   }
 
   private boolean isOverallPushCompleted(
@@ -154,9 +143,7 @@ public class PushStatusCollector {
   }
 
   public void clear() {
-    lock.lock();
     daVinciStoreTopicToPartitionCountMap.clear();
-    lock.unlock();
   }
 
   // Visible for testing.
@@ -165,15 +152,13 @@ public class PushStatusCollector {
   }
 
   class TopicPushStatus {
-    private final String topicName;
     private final int partitionCount;
     private ExecutionStatusWithDetails serverStatus;
     private ExecutionStatusWithDetails daVinciStatus;
 
     private boolean isMonitoring;
 
-    public TopicPushStatus(String topicName, int partitionCount) {
-      this.topicName = topicName;
+    public TopicPushStatus(int partitionCount) {
       this.partitionCount = partitionCount;
       this.isMonitoring = true;
     }

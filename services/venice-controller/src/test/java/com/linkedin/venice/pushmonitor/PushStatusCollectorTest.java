@@ -8,10 +8,11 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -84,48 +85,71 @@ public class PushStatusCollectorTest {
     pushErrorCount.set(0);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV2, 1);
     Assert.assertTrue(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(daVinciStoreTopicV2));
-    Utils.sleep(2000);
-    verify(pushStatusStoreReader, atLeast(1)).getPartitionStatus(daVinciStoreName, 2, 0, Optional.empty());
+    TestUtils.waitForNonDeterministicAssertion(
+        2,
+        TimeUnit.SECONDS,
+        true,
+        () -> verify(pushStatusStoreReader, atLeast(1)).getPartitionStatus(daVinciStoreName, 2, 0, Optional.empty()));
     Assert.assertEquals(pushCompletedCount.get(), 0);
     pushStatusCollector.handleServerPushStatusUpdate(daVinciStoreTopicV2, ExecutionStatus.COMPLETED, null);
-    Utils.sleep(2000);
-    Assert.assertEquals(pushCompletedCount.get(), 1);
+    TestUtils.waitForNonDeterministicAssertion(
+        2,
+        TimeUnit.SECONDS,
+        true,
+        () -> Assert.assertEquals(pushCompletedCount.get(), 1));
 
     // Da Vinci Topic v3, DVC success, Server ERROR
     pushCompletedCount.set(0);
     pushErrorCount.set(0);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV3, 1);
     Assert.assertTrue(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(daVinciStoreTopicV3));
-    Utils.sleep(2000);
-    verify(pushStatusStoreReader, atLeast(1)).getPartitionStatus(daVinciStoreName, 3, 0, Optional.empty());
+    TestUtils.waitForNonDeterministicAssertion(
+        2,
+        TimeUnit.SECONDS,
+        true,
+        () -> verify(pushStatusStoreReader, atLeast(1)).getPartitionStatus(daVinciStoreName, 3, 0, Optional.empty()));
     Assert.assertEquals(pushErrorCount.get(), 0);
     pushStatusCollector.handleServerPushStatusUpdate(daVinciStoreTopicV3, ExecutionStatus.ERROR, "ERROR!!!!");
-    Utils.sleep(2000);
-    Assert.assertEquals(pushErrorCount.get(), 1);
+    TestUtils.waitForNonDeterministicAssertion(
+        2,
+        TimeUnit.SECONDS,
+        true,
+        () -> Assert.assertEquals(pushErrorCount.get(), 1));
 
     // Da Vinci Topic v4, DVC ERROR, Server success
     pushCompletedCount.set(0);
     pushErrorCount.set(0);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV4, 1);
     Assert.assertTrue(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(daVinciStoreTopicV4));
-    Utils.sleep(2000);
-    verify(pushStatusStoreReader, atLeast(1)).getPartitionStatus(daVinciStoreName, 4, 0, Optional.empty());
+    TestUtils.waitForNonDeterministicAssertion(
+        2,
+        TimeUnit.SECONDS,
+        true,
+        () -> verify(pushStatusStoreReader, atLeast(1)).getPartitionStatus(daVinciStoreName, 4, 0, Optional.empty()));
     Assert.assertEquals(pushErrorCount.get(), 0);
     pushStatusCollector.handleServerPushStatusUpdate(daVinciStoreTopicV4, ExecutionStatus.COMPLETED, null);
-    Utils.sleep(2000);
-    Assert.assertEquals(pushErrorCount.get(), 1);
+    TestUtils.waitForNonDeterministicAssertion(
+        2,
+        TimeUnit.SECONDS,
+        true,
+        () -> Assert.assertEquals(pushErrorCount.get(), 1));
 
     // Da Vinci Topic v5, DVC ERROR, Server ERROR
     pushCompletedCount.set(0);
     pushErrorCount.set(0);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV5, 1);
     Assert.assertTrue(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(daVinciStoreTopicV5));
-    Utils.sleep(2000);
-    verify(pushStatusStoreReader, atLeast(1)).getPartitionStatus(daVinciStoreName, 5, 0, Optional.empty());
+    TestUtils.waitForNonDeterministicAssertion(
+        2,
+        TimeUnit.SECONDS,
+        true,
+        () -> verify(pushStatusStoreReader, atLeast(1)).getPartitionStatus(daVinciStoreName, 5, 0, Optional.empty()));
     Assert.assertEquals(pushErrorCount.get(), 0);
     pushStatusCollector.handleServerPushStatusUpdate(daVinciStoreTopicV5, ExecutionStatus.ERROR, null);
-    Utils.sleep(2000);
-    Assert.assertEquals(pushErrorCount.get(), 1);
-
+    TestUtils.waitForNonDeterministicAssertion(
+        2,
+        TimeUnit.SECONDS,
+        true,
+        () -> Assert.assertEquals(pushErrorCount.get(), 1));
   }
 }
