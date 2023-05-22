@@ -1,10 +1,9 @@
 package org.apache.avro.generic;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.ConcurrentModificationException;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.apache.avro.Schema;
@@ -16,16 +15,30 @@ import org.apache.avro.io.Encoder;
  * the same as natural ordering of map keys.
  */
 public interface DeterministicMapOrderDatumWriter {
-  Comparator<Map.Entry<? extends CharSequence, Object>> COMPARATOR = (e1, e2) -> {
-    // TODO: Replace with CharSequence#compare once the code has completely migrated to JDK11+
-    CharSequence cs1 = e1.getKey();
-    CharSequence cs2 = e2.getKey();
-    if (Objects.requireNonNull(cs1) == Objects.requireNonNull(cs2)) {
+  Comparator<Map.Entry<Object, Object>> COMPARATOR = (e1, e2) -> {
+    Object o1 = e1.getKey();
+    Object o2 = e2.getKey();
+
+    if (Objects.requireNonNull(o1) == Objects.requireNonNull(o2)) {
       return 0;
     }
 
-    if (cs1.getClass() == cs2.getClass() && cs1 instanceof Comparable) {
-      return ((Comparable<Object>) cs1).compareTo(cs2);
+    if (o1.getClass() == o2.getClass() && o1 instanceof Comparable) {
+      return ((Comparable<Object>) o1).compareTo(o2);
+    }
+
+    CharSequence cs1;
+    if (o1 instanceof CharSequence) {
+      cs1 = (CharSequence) o1;
+    } else {
+      cs1 = o1.toString();
+    }
+
+    CharSequence cs2;
+    if (o2 instanceof CharSequence) {
+      cs2 = (CharSequence) o2;
+    } else {
+      cs2 = o2.toString();
     }
 
     for (int i = 0, len = Math.min(cs1.length(), cs2.length()); i < len; i++) {
@@ -45,19 +58,20 @@ public interface DeterministicMapOrderDatumWriter {
     Schema valueSchemaType = schema.getValueType();
 
     @SuppressWarnings("unchecked")
-    Map<? extends CharSequence, Object> map = (Map<? extends CharSequence, Object>) datum;
+    Map<Object, Object> map = (Map<Object, Object>) datum;
 
     final int expectedMapSize = map.size();
     int actualSize = 0;
     out.writeMapStart();
     out.setItemCount(expectedMapSize);
 
-    List<Map.Entry<? extends CharSequence, Object>> sortedEntryList = new ArrayList<>(map.entrySet());
-    sortedEntryList.sort(COMPARATOR);
+    @SuppressWarnings("unchecked")
+    Map.Entry<Object, Object>[] contentArray = map.entrySet().toArray(new Map.Entry[expectedMapSize]);
+    Arrays.sort(contentArray, COMPARATOR);
 
-    for (Map.Entry<? extends CharSequence, Object> entry: sortedEntryList) {
+    for (Map.Entry<Object, Object> entry: contentArray) {
       out.startItem();
-      out.writeString((CharSequence) entry.getKey().toString());
+      out.writeString(entry.getKey().toString());
       internalWrite(valueSchemaType, entry.getValue(), out);
       actualSize++;
     }

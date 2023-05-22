@@ -49,11 +49,12 @@ public class AvroSerializerTest {
     Schema valueSchema = AvroCompatibilityHelper.parse(recordSchema);
     AvroSerializer<GenericRecord> serializer = new AvroSerializer<>(valueSchema);
 
-    Map<CharSequence, CharSequence> map = new LinkedHashMap<>();
+    Map<Object, Object> map = new LinkedHashMap<>();
     map.put("key1", "valueStr");
     map.put(new Utf8("key2"), "valueUtf8");
     map.put(new Utf8("key3"), "valueUtf8_2");
     map.put("key4", "valueStr_2");
+    map.put(10L, "valueStr_2");
 
     GenericRecord record = new GenericData.Record(valueSchema);
     record.put("MapField", map);
