@@ -1,2 +1,6 @@
 title: Venice
 remote_theme: just-the-docs/just-the-docs
+nav_external_links:
+  - title: Venice Java doc
+    url: ./javadoc/index.html
+    hide_icon: false
