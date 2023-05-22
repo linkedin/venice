@@ -606,10 +606,10 @@ public class VeniceServer {
         LOGGER.error("Exception while closing: {}", zkClient.getClass().getSimpleName(), e);
       }
 
+      LOGGER.info("Shutdown completed in {} ms", LatencyUtils.getLatencyInMS(startTimeMS));
       if (exceptions.size() > 0) {
         throw new VeniceException(exceptions.get(0));
       }
-      LOGGER.info("Shutdown completed in {} ms", LatencyUtils.getLatencyInMS(startTimeMS));
       isStarted.set(false);
     }
   }
