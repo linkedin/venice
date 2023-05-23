@@ -59,8 +59,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         getAggregateRealTimeSourceKafkaUrl(),
         Collections.emptyList(),
         helixAdminClient,
-        true,
-        120000,
+        getMockControllerConfig(),
         null);
   }
 
@@ -78,8 +77,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         getAggregateRealTimeSourceKafkaUrl(),
         Collections.emptyList(),
         mock(HelixAdminClient.class),
-        true,
-        120000,
+        getMockControllerConfig(),
         null);
   }
 

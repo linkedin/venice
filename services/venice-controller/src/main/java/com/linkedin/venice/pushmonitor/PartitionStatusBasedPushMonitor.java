@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -36,8 +37,7 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       String aggregateRealTimeSourceKafkaUrl,
       List<String> childDataCenterKafkaUrls,
       HelixAdminClient helixAdminClient,
-      boolean disableErrorLeaderReplica,
-      long offlineJobResourceAssignmentWaitTimeInMilliseconds,
+      VeniceControllerConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader) {
     super(
         clusterName,
@@ -51,8 +51,7 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         aggregateRealTimeSourceKafkaUrl,
         childDataCenterKafkaUrls,
         helixAdminClient,
-        disableErrorLeaderReplica,
-        offlineJobResourceAssignmentWaitTimeInMilliseconds,
+        controllerConfig,
         pushStatusStoreReader);
   }
 

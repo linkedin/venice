@@ -9,6 +9,7 @@ import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_NOT_CREATED;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -96,8 +97,7 @@ public abstract class AbstractPushMonitor
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
-      boolean disableErrorLeaderReplica,
-      long offlineJobResourceAssignmentWaitTimeInMilliseconds,
+      VeniceControllerConfig controllerConfig,
       PushStatusStoreReader pushStatusStoreReader) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
@@ -110,10 +110,10 @@ public abstract class AbstractPushMonitor
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
     this.helixAdminClient = helixAdminClient;
-    this.disableErrorLeaderReplica = disableErrorLeaderReplica;
+    this.disableErrorLeaderReplica = controllerConfig.isErrorLeaderReplicaFailOverEnabled();
     this.helixClientThrottler =
         new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
-    this.offlineJobResourceAssignmentWaitTimeInMilliseconds = offlineJobResourceAssignmentWaitTimeInMilliseconds;
+    this.offlineJobResourceAssignmentWaitTimeInMilliseconds = controllerConfig.getOffLineJobWaitTimeInMilliseconds();
     this.pushStatusStoreReader = pushStatusStoreReader;
     this.pushStatusCollector = new PushStatusCollector(
         metadataRepository,
