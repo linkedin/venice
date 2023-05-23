@@ -152,10 +152,12 @@ import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdap
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatusWithDetails;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
+import com.linkedin.venice.pushmonitor.PushMonitorUtils;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
@@ -5341,10 +5343,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store.isDaVinciPushStatusStoreEnabled() && (versionNumber > 1 || incrementalPushVersion.isPresent())) {
       if (store.getVersion(versionNumber).isPresent()) {
         Version version = store.getVersion(versionNumber).get();
-        Pair<ExecutionStatus, String> daVinciStatusAndDetails =
-            getDaVinciPushStatusAndDetails(version, incrementalPushVersion);
-        ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getFirst();
-        String daVinciDetails = daVinciStatusAndDetails.getSecond();
+        ExecutionStatusWithDetails daVinciStatusAndDetails = PushMonitorUtils.getDaVinciPushStatusAndDetails(
+            pushStatusStoreReader.orElse(null),
+            version.kafkaTopicName(),
+            version.getPartitionCount(),
+            incrementalPushVersion);
+        ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getStatus();
+        String daVinciDetails = daVinciStatusAndDetails.getDetails();
         executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
         if (details != null || daVinciDetails != null) {
           String overallDetails = "";
@@ -5369,96 +5374,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     List<ExecutionStatus> statuses = Arrays.asList(veniceStatus, daVinciStatus);
     statuses.sort(Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
     return statuses.get(0);
-  }
-
-  /**
-   * getDaVinciPushStatusAndDetails checks all partitions and compute a final status.
-   * Inside each partition, getDaVinciPushStatusAndDetails will compute status based on all active replicas/Da Vinci instances.
-   * A replica/Da Vinci instance sent heartbeat to controllers recently is considered active.
-   */
-  private Pair<ExecutionStatus, String> getDaVinciPushStatusAndDetails(
-      Version version,
-      Optional<String> incrementalPushVersion) {
-    if (!pushStatusStoreReader.isPresent()) {
-      throw new VeniceException("D2Client must be provided to read from push status store.");
-    }
-    int partitionCount = version.getPartitionCount();
-    LOGGER.info("Getting Da Vinci push status for store: {}", version.getStoreName());
-    boolean allMiddleStatusReceived = true;
-    ExecutionStatus completeStatus = incrementalPushVersion.isPresent()
-        ? ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED
-        : ExecutionStatus.COMPLETED;
-    ExecutionStatus middleStatus = incrementalPushVersion.isPresent()
-        ? ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED
-        : ExecutionStatus.END_OF_PUSH_RECEIVED;
-    Optional<String> erroredInstance = Optional.empty();
-    String storeName = version.getStoreName();
-    int completedPartitions = 0;
-    int totalInstanceCount = 0;
-    int liveInstanceCount = 0;
-    Set<Integer> incompletePartition = new HashSet<>();
-    for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-      Map<CharSequence, Integer> instances = pushStatusStoreReader.get()
-          .getPartitionStatus(storeName, version.getNumber(), partitionId, incrementalPushVersion);
-      boolean allInstancesCompleted = true;
-      totalInstanceCount += instances.size();
-      for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
-        ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
-        boolean isInstanceAlive = pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString());
-
-        if (isInstanceAlive) {
-          liveInstanceCount++;
-        }
-        if (status == middleStatus) {
-          if (allInstancesCompleted && isInstanceAlive) {
-            allInstancesCompleted = false;
-          }
-        } else if (status != completeStatus) {
-          if (allInstancesCompleted || allMiddleStatusReceived) {
-            if (isInstanceAlive) {
-              allInstancesCompleted = false;
-              allMiddleStatusReceived = false;
-              if (status == ExecutionStatus.ERROR) {
-                erroredInstance = Optional.of(entry.getKey().toString());
-                break;
-              }
-            }
-          }
-        }
-      }
-      if (allInstancesCompleted) {
-        completedPartitions++;
-      } else {
-        incompletePartition.add(partitionId);
-      }
-    }
-    String statusDetail = null;
-    String details = "";
-    if (completedPartitions > 0) {
-      details += completedPartitions + "/" + partitionCount + " partitions completed in" + totalInstanceCount
-          + " Da Vinci instances.";
-    }
-    if (erroredInstance.isPresent()) {
-      details += "Found a failed instance in Da Vinci: " + erroredInstance + ". live instances: " + liveInstanceCount
-          + " total instances : " + totalInstanceCount;
-    }
-    int incompleteSize = incompletePartition.size();
-    if (incompleteSize > 0 && incompleteSize <= 5) {
-      details += ". Following partitions still not complete " + incompletePartition + ". live instances: "
-          + liveInstanceCount + " total instances : " + totalInstanceCount;
-    }
-    if (details.length() != 0) {
-      statusDetail = details;
-    }
-    if (completedPartitions == partitionCount) {
-      return new Pair<>(completeStatus, statusDetail);
-    } else if (allMiddleStatusReceived) {
-      return new Pair<>(middleStatus, statusDetail);
-    } else if (erroredInstance.isPresent()) {
-      return new Pair<>(ExecutionStatus.ERROR, statusDetail);
-    } else {
-      return new Pair<>(ExecutionStatus.STARTED, statusDetail);
-    }
   }
 
   // TODO remove this method once we are fully on HaaS

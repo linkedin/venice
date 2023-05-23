@@ -517,7 +517,6 @@ public abstract class AbstractPushMonitor
               + " timed out, strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason="
               + notReadyReason.get();
           handleOfflinePushUpdate(pushStatus, ERROR, Optional.of(errorMsg));
-          // handleErrorPush(pushStatus, errorMsg);
           return new Pair<>(ExecutionStatus.ERROR, errorMsg);
         }
       } else {
@@ -856,7 +855,6 @@ public abstract class AbstractPushMonitor
       String statusDetails = "Helix resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.";
       LOGGER.info(statusDetails);
       handleOfflinePushUpdate(pushStatus, ExecutionStatus.ERROR, Optional.of(statusDetails));
-      // handleErrorPush(pushStatus, statusDetails);
     }
   }
 
@@ -920,7 +918,6 @@ public abstract class AbstractPushMonitor
     routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
 
     if (status.equals(ExecutionStatus.COMPLETED)) {
-      // handleCompletedPush(pushStatus);
       pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), COMPLETED, null);
     } else if (status.equals(ExecutionStatus.ERROR)) {
       String statusDetailsString = "STATUS DETAILS ABSENT.";
@@ -931,7 +928,6 @@ public abstract class AbstractPushMonitor
             "Status details should be provided in order to terminateOfflinePush, but they are missing.",
             new VeniceException("Exception not thrown, for stacktrace logging purposes."));
       }
-      // handleErrorPush(pushStatus, statusDetailsString);
       pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), ERROR, statusDetailsString);
     }
   }

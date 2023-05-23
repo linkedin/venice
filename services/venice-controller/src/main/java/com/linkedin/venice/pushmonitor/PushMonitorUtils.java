@@ -3,7 +3,6 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.utils.Pair;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -12,16 +11,24 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class contains some common util methods for push monitoring purpose.
+ */
 public class PushMonitorUtils {
   private static final Logger LOGGER = LogManager.getLogger(PushMonitorUtils.class);
 
-  public static Pair<ExecutionStatus, String> getDaVinciPushStatusAndDetails(
+  /**
+   * This method checks Da Vinci client push status of all partitions from push status store and compute a final status.
+   * Inside each partition, this method will compute status based on all active Da Vinci instances.
+   * A Da Vinci instance sent heartbeat to controllers recently is considered active.
+   */
+  public static ExecutionStatusWithDetails getDaVinciPushStatusAndDetails(
       PushStatusStoreReader reader,
       String topicName,
       int partitionCount,
       Optional<String> incrementalPushVersion) {
     if (reader == null) {
-      throw new VeniceException("D2Client must be provided to read from push status store.");
+      throw new VeniceException("PushStatusStoreReader is null");
     }
     LOGGER.info("Getting Da Vinci push status for topic: {}", topicName);
     boolean allMiddleStatusReceived = true;
@@ -48,23 +55,22 @@ public class PushMonitorUtils {
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
         ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
         boolean isInstanceAlive = reader.isInstanceAlive(storeName, entry.getKey().toString());
-
-        if (isInstanceAlive) {
-          liveInstanceCount++;
+        if (!isInstanceAlive) {
+          continue;
         }
+        // We only compute status based on live instances.
+        liveInstanceCount++;
         if (status == middleStatus) {
-          if (allInstancesCompleted && isInstanceAlive) {
+          if (allInstancesCompleted) {
             allInstancesCompleted = false;
           }
         } else if (status != completeStatus) {
           if (allInstancesCompleted || allMiddleStatusReceived) {
-            if (isInstanceAlive) {
-              allInstancesCompleted = false;
-              allMiddleStatusReceived = false;
-              if (status == ExecutionStatus.ERROR) {
-                erroredInstance = Optional.of(entry.getKey().toString());
-                break;
-              }
+            allInstancesCompleted = false;
+            allMiddleStatusReceived = false;
+            if (status == ExecutionStatus.ERROR) {
+              erroredInstance = Optional.of(entry.getKey().toString());
+              break;
             }
           }
         }
@@ -94,13 +100,13 @@ public class PushMonitorUtils {
       statusDetail = details;
     }
     if (completedPartitions == partitionCount) {
-      return new Pair<>(completeStatus, statusDetail);
+      return new ExecutionStatusWithDetails(completeStatus, statusDetail);
     } else if (allMiddleStatusReceived) {
-      return new Pair<>(middleStatus, statusDetail);
+      return new ExecutionStatusWithDetails(middleStatus, statusDetail);
     } else if (erroredInstance.isPresent()) {
-      return new Pair<>(ExecutionStatus.ERROR, statusDetail);
+      return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail);
     } else {
-      return new Pair<>(ExecutionStatus.STARTED, statusDetail);
+      return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail);
     }
   }
 }

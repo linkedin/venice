@@ -5097,6 +5097,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
-    return getVeniceHelixAdmin().getPushStatusStoreReader();
+    throw new VeniceUnsupportedOperationException("Parent controller does not have Da Vinci push status store reader");
   }
 }

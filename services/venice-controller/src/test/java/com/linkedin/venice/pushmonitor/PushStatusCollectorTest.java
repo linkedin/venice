@@ -53,12 +53,12 @@ public class PushStatusCollectorTest {
     pushStatusCollector.start();
 
     pushStatusCollector.subscribeTopic(regularStoreTopicV1, 10);
-    Assert.assertFalse(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(regularStoreTopicV1));
+    Assert.assertFalse(pushStatusCollector.getTopicToPushStatusMap().containsKey(regularStoreTopicV1));
     pushStatusCollector.handleServerPushStatusUpdate(regularStoreTopicV1, ExecutionStatus.COMPLETED, null);
     Assert.assertEquals(pushCompletedCount.get(), 1);
 
     pushStatusCollector.subscribeTopic(regularStoreTopicV2, 10);
-    Assert.assertFalse(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(regularStoreTopicV2));
+    Assert.assertFalse(pushStatusCollector.getTopicToPushStatusMap().containsKey(regularStoreTopicV2));
     pushStatusCollector.handleServerPushStatusUpdate(regularStoreTopicV2, ExecutionStatus.ERROR, "ERROR!!!");
     Assert.assertEquals(pushErrorCount.get(), 1);
 
@@ -78,13 +78,13 @@ public class PushStatusCollectorTest {
         .thenReturn(startedInstancePushStatus, errorInstancePushStatus);
     when(pushStatusStoreReader.isInstanceAlive(daVinciStoreName, "instance")).thenReturn(true);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV1, 1);
-    Assert.assertFalse(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(daVinciStoreTopicV1));
+    Assert.assertFalse(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV1));
 
     // Da Vinci Topic v2, DVC success, Server success
     pushCompletedCount.set(0);
     pushErrorCount.set(0);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV2, 1);
-    Assert.assertTrue(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(daVinciStoreTopicV2));
+    Assert.assertTrue(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV2));
     TestUtils.waitForNonDeterministicAssertion(
         2,
         TimeUnit.SECONDS,
@@ -102,7 +102,7 @@ public class PushStatusCollectorTest {
     pushCompletedCount.set(0);
     pushErrorCount.set(0);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV3, 1);
-    Assert.assertTrue(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(daVinciStoreTopicV3));
+    Assert.assertTrue(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV3));
     TestUtils.waitForNonDeterministicAssertion(
         2,
         TimeUnit.SECONDS,
@@ -120,7 +120,7 @@ public class PushStatusCollectorTest {
     pushCompletedCount.set(0);
     pushErrorCount.set(0);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV4, 1);
-    Assert.assertTrue(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(daVinciStoreTopicV4));
+    Assert.assertTrue(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV4));
     TestUtils.waitForNonDeterministicAssertion(
         2,
         TimeUnit.SECONDS,
@@ -138,7 +138,7 @@ public class PushStatusCollectorTest {
     pushCompletedCount.set(0);
     pushErrorCount.set(0);
     pushStatusCollector.subscribeTopic(daVinciStoreTopicV5, 1);
-    Assert.assertTrue(pushStatusCollector.getDaVinciStoreTopicToPartitionCountMap().containsKey(daVinciStoreTopicV5));
+    Assert.assertTrue(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV5));
     TestUtils.waitForNonDeterministicAssertion(
         2,
         TimeUnit.SECONDS,
