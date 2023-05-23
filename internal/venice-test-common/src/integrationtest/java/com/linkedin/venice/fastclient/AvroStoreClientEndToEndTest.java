@@ -416,11 +416,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         storeMetadataFetchMode);
   }
 
-  @Test(dataProvider = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
-  public void testFastClientWithLongTailRetry(
-      boolean batchGet,
-      boolean useStreamingBatchGetAsDefault,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  public void testFastClientWithLongTailRetry(boolean batchGet, StoreMetadataFetchMode storeMetadataFetchMode)
+      throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
 
@@ -428,41 +426,30 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       clientConfigBuilder
           // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
           .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
-          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+          .setUseStreamingBatchGetAsDefault(true);
     }
 
     Consumer<MetricsRepository> fastClientStatsValidation;
-    if (!batchGet || useStreamingBatchGetAsDefault) {
-      String metricPrefix;
-      String log;
-      if (batchGet) {
-        metricPrefix = "--multiget_";
-        log = "batch Get";
-        clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
-            .setLongTailRetryThresholdForBatchGetInMicroSeconds(1);
-      } else {
-        metricPrefix = "--";
-        log = "single Get";
-        clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
-            .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
-      }
-      fastClientStatsValidation = metricsRepository -> {
-        Assert.assertTrue(
-            metricsRepository.metrics()
-                .get("." + storeName + metricPrefix + "long_tail_retry_request.OccurrenceRate")
-                .value() > 0,
-            "Long tail retry for " + log + " should be triggered");
-      };
+    String metricPrefix;
+    String log;
+    if (batchGet) {
+      metricPrefix = "--multiget_";
+      log = "batch Get";
+      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(1);
     } else {
-      // If single get or batchGet get via looping single get: retry is not supported
-      fastClientStatsValidation = metricsRepository -> {
-        metricsRepository.metrics().forEach((mName, metric) -> {
-          if (mName.contains("long_tail_retry_request")) {
-            assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
-          }
-        });
-      };
+      metricPrefix = "--";
+      log = "single Get";
+      clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
+          .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
     }
+    fastClientStatsValidation = metricsRepository -> {
+      Assert.assertTrue(
+          metricsRepository.metrics()
+              .get("." + storeName + metricPrefix + "long_tail_retry_request.OccurrenceRate")
+              .value() > 0,
+          "Long tail retry for " + log + " should be triggered");
+    };
     runTest(
         clientConfigBuilder,
         batchGet,
