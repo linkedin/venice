@@ -148,6 +148,12 @@ public class VeniceChangelogConsumerImplTest {
     pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
     Assert.assertTrue(pubSubMessages.isEmpty());
+
+    veniceChangelogConsumer.pause();
+    verify(mockKafkaConsumer).pause(any());
+
+    veniceChangelogConsumer.resume();
+    verify(mockKafkaConsumer).resume(any());
   }
 
   @Test
@@ -212,6 +218,12 @@ public class VeniceChangelogConsumerImplTest {
       Utf8 pubSubMessageValue = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(pubSubMessageValue.toString(), "newValue" + i);
     }
+
+    veniceChangelogConsumer.pause();
+    verify(kafkaConsumer).pause(any());
+
+    veniceChangelogConsumer.resume();
+    verify(kafkaConsumer).resume(any());
 
     veniceChangelogConsumer.close();
     verify(kafkaConsumer, times(4)).assign(any());

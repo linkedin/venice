@@ -249,6 +249,52 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   @Override
+  public void pause() {
+    this.pause(
+        kafkaConsumer.assignment()
+            .stream()
+            .map(topicPartition -> topicPartition.partition())
+            .collect(Collectors.toSet()));
+  }
+
+  @Override
+  public void resume(Set<Integer> partitions) {
+    synchronized (kafkaConsumer) {
+      Set<TopicPartition> currentSubscriptions = kafkaConsumer.assignment();
+      Set<TopicPartition> subscriptionsToResume = new HashSet<>();
+      for (TopicPartition partition: currentSubscriptions) {
+        if (partitions.contains(partition.partition())) {
+          subscriptionsToResume.add(partition);
+        }
+      }
+      kafkaConsumer.resume(subscriptionsToResume);
+    }
+  }
+
+  @Override
+  public void resume() {
+    this.resume(
+        kafkaConsumer.assignment()
+            .stream()
+            .map(topicPartition -> topicPartition.partition())
+            .collect(Collectors.toSet()));
+  }
+
+  @Override
+  public void pause(Set<Integer> partitions) {
+    synchronized (kafkaConsumer) {
+      Set<TopicPartition> currentSubscriptions = kafkaConsumer.assignment();
+      Set<TopicPartition> subscriptionsToPause = new HashSet<>();
+      for (TopicPartition partition: currentSubscriptions) {
+        if (partitions.contains(partition.partition())) {
+          subscriptionsToPause.add(partition);
+        }
+      }
+      kafkaConsumer.pause(subscriptionsToPause);
+    }
+  }
+
+  @Override
   public CompletableFuture<Void> seekToEndOfPush() {
     return seekToEndOfPush(
         kafkaConsumer.assignment()
