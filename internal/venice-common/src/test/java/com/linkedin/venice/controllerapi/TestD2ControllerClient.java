@@ -116,13 +116,11 @@ public class TestD2ControllerClient {
     }).when(mockD2Client).restRequest(any());
 
     D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client);
-    Assert.assertThrows(
-        VeniceException.class,
-        () -> D2ControllerClient.discoverCluster(TEST_ZK_ADDRESS, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1));
+    Assert.assertTrue(
+        D2ControllerClient.discoverCluster(TEST_ZK_ADDRESS, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1).isError());
 
-    Assert.assertThrows(
-        VeniceException.class,
-        () -> D2ControllerClient.discoverCluster(mockD2Client, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1));
+    Assert.assertTrue(
+        D2ControllerClient.discoverCluster(mockD2Client, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1).isError());
 
     try (D2ControllerClient controllerClient = D2ControllerClientFactory
         .getControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, TEST_ZK_ADDRESS, Optional.empty())) {

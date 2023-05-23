@@ -31,7 +31,7 @@ public class ControllerClientFactory {
   // Allow for overriding with mock D2Client for unit tests. The caller must release the object to prevent side-effects
   static void setControllerClient(String clusterName, String discoveryUrls, ControllerClient controllerClient) {
     if (!unitTestMode) {
-      throw new VeniceUnsupportedOperationException("setD2Client in non-unit-test-mode");
+      throw new VeniceUnsupportedOperationException("setControllerClient in non-unit-test-mode");
     }
     final String clientIdentifier = clusterName + discoveryUrls;
     SHARED_OBJECT_FACTORY.get(clientIdentifier, () -> controllerClient, controllerClient1 -> {});

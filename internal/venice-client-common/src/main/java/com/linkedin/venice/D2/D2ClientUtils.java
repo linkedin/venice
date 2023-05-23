@@ -11,7 +11,6 @@ import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.ExceptionUtils;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collections;
@@ -114,11 +113,11 @@ public class D2ClientUtils {
     try {
       response = client.restRequest(createD2GetRequest(requestPath)).get();
     } catch (Exception e) {
-      Throwable t = ExceptionUtils.getRecursiveCause(e, RestException.class);
-      if (t == null) {
+      if (e.getCause() instanceof RestException) {
+        response = ((RestException) e.getCause()).getResponse();
+      } else {
         throw new VeniceException("D2 client failed to send request, " + requestPath, e);
       }
-      response = ((RestException) t).getResponse();
     }
 
     return response;
