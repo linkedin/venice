@@ -5778,7 +5778,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (!regions.contains(sourceFabric) && !emergencySourceRegion.isPresent()) {
         // user specifies a targeted region that isn't the chosen source fabric, so randomly choose one
         // but emergency source region should always be respected.
-        sourceFabric = regions.iterator().next();
+        String selection = regions.iterator().next();
+        LOGGER.info(
+            "User specified targeted regions: {}, but source fabric: {} is not in the list. Use {} from the list instead",
+            targetedRegions,
+            sourceFabric,
+            selection);
+        sourceFabric = selection;
       }
     }
 

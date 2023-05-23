@@ -511,20 +511,27 @@ public class VenicePushJobTest {
   public void testTargetedRegionPushConfigOverride() throws Exception {
     Properties props = getVpjRequiredProperties();
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
-    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
-    ControllerClient client = getClient();
+    // when targeted region push is enabled, but store doesn't have source fabric set.
+    ControllerClient client = getClient(store -> {
+      store.setNativeReplicationSourceFabric("");
+    });
     VenicePushJob pushJob = getSpyVenicePushJob(props, client);
-    JobStatusQueryResponse response = new JobStatusQueryResponse();
-    response.setStatus(ExecutionStatus.COMPLETED.toString());
-    response.setStatusDetails("nothing");
-    response.setVersion(1);
-    response.setName(TEST_STORE);
-    response.setCluster(TEST_CLUSTER);
-    Map<String, String> extraInfo = new HashMap<>();
-    extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
-    extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
-    response.setExtraInfo(extraInfo);
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+    mockJobStatusQuery(client);
+    skipVPJValidation(pushJob);
+    try {
+      pushJob.run();
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      Assert.assertTrue(
+          e.getMessage()
+              .contains(
+                  "The store either does not have native replication mode enabled or set up default source fabric."));
+    }
+
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
+    client = getClient();
+    pushJob = getSpyVenicePushJob(props, client);
+    mockJobStatusQuery(client);
     skipVPJValidation(pushJob);
     pushJob.run();
     Assert.assertEquals(pushJob.pushJobSetting.targetedRegions, "dc-0, dc-1");
@@ -570,6 +577,20 @@ public class VenicePushJobTest {
     } catch (VeniceException e) {
       assertTrue(e.getMessage().contains("Push job error"));
     }
+  }
+
+  private void mockJobStatusQuery(ControllerClient client) {
+    JobStatusQueryResponse response = new JobStatusQueryResponse();
+    response.setStatus(ExecutionStatus.COMPLETED.toString());
+    response.setStatusDetails("nothing");
+    response.setVersion(1);
+    response.setName(TEST_STORE);
+    response.setCluster(TEST_CLUSTER);
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+    extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
+    response.setExtraInfo(extraInfo);
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
   }
 
   private void skipVPJValidation(VenicePushJob pushJob) throws Exception {
