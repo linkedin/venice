@@ -19,7 +19,7 @@ public class ControllerClientFactoryTest {
   private static final String DISCOVERY_URL = "localhost:2020";
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     ControllerClientFactory.setUnitTestMode();
   }
 

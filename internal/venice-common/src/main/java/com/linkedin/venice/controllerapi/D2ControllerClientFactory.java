@@ -13,10 +13,6 @@ import java.util.function.Supplier;
 
 
 public class D2ControllerClientFactory {
-  // Visible for testing
-  // Flag to denote if the test is in unit test mode and hence, will allow overriding the ControllerClient
-  private static boolean unitTestMode = false;
-
   private static final SharedObjectFactory<D2ControllerClient> SHARED_OBJECT_FACTORY = new SharedObjectFactory<>();
   private static final Map<ControllerClient, String> CONTROLLER_CLIENT_TO_IDENTIFIER_MAP = new HashMap<>();
 
