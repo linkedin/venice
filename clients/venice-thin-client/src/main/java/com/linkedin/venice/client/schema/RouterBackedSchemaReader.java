@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaData;
@@ -57,7 +58,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final Map<Integer, DerivedSchemaEntry> valueSchemaIdToUpdateSchemaMap = new VeniceConcurrentHashMap<>();
 
   private final String storeName;
-  private final AbstractAvroStoreClient storeClient;
+  private final InternalAvroStoreClient storeClient;
+  private final boolean externalClient;
   /**
    * In Venice, schemas are Avro schemas that allow setting arbitrary field-level attributes.
    * Internally, Venice may choose to add new schemas (e.g. superset schema) to support some features. However, Venice
@@ -106,7 +108,27 @@ public class RouterBackedSchemaReader implements SchemaReader {
       Optional<Predicate<Schema>> preferredSchemaFilter,
       Duration valueSchemaRefreshPeriod,
       ICProvider icProvider) {
-    this.storeClient = clientSupplier.get();
+    this(clientSupplier.get(), false, readerSchema, preferredSchemaFilter, valueSchemaRefreshPeriod, icProvider);
+  }
+
+  public RouterBackedSchemaReader(
+      InternalAvroStoreClient storeClient,
+      Optional<Schema> readerSchema,
+      Optional<Predicate<Schema>> preferredSchemaFilter,
+      Duration valueSchemaRefreshPeriod,
+      ICProvider icProvider) {
+    this(storeClient, true, readerSchema, preferredSchemaFilter, valueSchemaRefreshPeriod, icProvider);
+  }
+
+  private RouterBackedSchemaReader(
+      InternalAvroStoreClient storeClient,
+      boolean externalClient,
+      Optional<Schema> readerSchema,
+      Optional<Predicate<Schema>> preferredSchemaFilter,
+      Duration valueSchemaRefreshPeriod,
+      ICProvider icProvider) {
+    this.storeClient = storeClient;
+    this.externalClient = externalClient;
     this.storeName = this.storeClient.getStoreName();
     this.readerSchema = readerSchema;
     this.preferredSchemaFilter = preferredSchemaFilter.orElse(schema -> false);
@@ -223,7 +245,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
     } catch (InterruptedException e) {
       LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
     }
-    IOUtils.closeQuietly(storeClient, LOGGER::error);
+    if (!externalClient) {
+      IOUtils.closeQuietly(storeClient, LOGGER::error);
+    }
   }
 
   /**

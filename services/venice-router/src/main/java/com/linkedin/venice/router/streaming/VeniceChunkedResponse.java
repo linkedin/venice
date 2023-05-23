@@ -16,7 +16,6 @@ import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -381,8 +380,7 @@ public class VeniceChunkedResponse {
     footerRecord.status = errorResponse.status().code();
     footerRecord.detail = errorResponse.content().nioBuffer();
     footerRecord.trailerHeaders = EMPTY_MAP;
-    AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
-    ByteBuffer footerByteBuffer = ByteBuffer.wrap(STREAMING_FOOTER_SERIALIZER.serialize(footerRecord, reusableObjects));
+    ByteBuffer footerByteBuffer = ByteBuffer.wrap(STREAMING_FOOTER_SERIALIZER.serialize(footerRecord));
 
     ByteBuf footerResponse;
     if (this.requestType.equals(RequestType.MULTI_GET_STREAMING)) {
@@ -390,12 +388,12 @@ public class VeniceChunkedResponse {
       record.keyIndex = KEY_ID_FOR_STREAMING_FOOTER;
       record.value = footerByteBuffer;
       record.schemaId = STREAMING_FOOTER_SCHEMA_ID;
-      footerResponse = Unpooled.wrappedBuffer(MULTI_GET_RESPONSE_SERIALIZER.serialize(record, reusableObjects));
-    } else if (this.requestType.equals(RequestType.COMPUTE_STREAMING)) {
+      footerResponse = Unpooled.wrappedBuffer(MULTI_GET_RESPONSE_SERIALIZER.serialize(record));
+    } else if (requestType.equals(RequestType.COMPUTE_STREAMING)) {
       ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
       record.keyIndex = KEY_ID_FOR_STREAMING_FOOTER;
       record.value = footerByteBuffer;
-      footerResponse = Unpooled.wrappedBuffer(COMPUTE_RESPONSE_SERIALIZER.serialize(record, reusableObjects));
+      footerResponse = Unpooled.wrappedBuffer(COMPUTE_RESPONSE_SERIALIZER.serialize(record));
     } else {
       // not possible
       LOGGER.error("Received unsupported request type: {} for streaming response", this.requestType);
@@ -403,7 +401,6 @@ public class VeniceChunkedResponse {
     }
 
     Chunk lastChunk = new Chunk(footerResponse, true, callback);
-
     if (maybeAddChunk(lastChunk)) {
       reportResponseSize();
       chunkedWriteHandler.resumeTransfer();

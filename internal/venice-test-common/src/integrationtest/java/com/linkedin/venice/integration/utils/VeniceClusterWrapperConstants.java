@@ -1,8 +1,5 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.venice.utils.VeniceProperties;
-
-
 public class VeniceClusterWrapperConstants {
   public static final int DEFAULT_MAX_ATTEMPT = 10;
   public static final int DEFAULT_REPLICATION_FACTOR = 1;
@@ -21,7 +18,6 @@ public class VeniceClusterWrapperConstants {
   public static final int DEFAULT_NUMBER_OF_SERVERS = 1;
   public static final int DEFAULT_NUMBER_OF_ROUTERS = 1;
   public static final int DEFAULT_NUMBER_OF_CONTROLLERS = 1;
-  public static final VeniceProperties EMPTY_VENICE_PROPS = new VeniceProperties();
   // Wait time to make sure all the cluster services have been started.
   // If this value is not large enough, i.e. some services have not been
   // started before clients start to interact, please increase it.

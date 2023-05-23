@@ -51,7 +51,6 @@ public class ClientConfig<T extends SpecificRecord> {
   private int retryCount = 1;
   private long retryBackOffInMs = 0;
   private boolean useBlackHoleDeserializer = false;
-  private boolean reuseObjectsForSerialization = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
   private boolean projectionFieldValidation = true;
   private Duration schemaRefreshPeriod = DEFAULT_SCHEMA_REFRESH_PERIOD;
@@ -89,11 +88,12 @@ public class ClientConfig<T extends SpecificRecord> {
         .setVsonClient(config.isVsonClient())
 
         // D2 specific settings
-        .setD2Routing(config.isD2Routing())
         .setD2ServiceName(config.getD2ServiceName())
         .setD2BasePath(config.getD2BasePath())
         .setD2ZkTimeout(config.getD2ZkTimeout())
         .setD2Client(config.getD2Client())
+        .setD2Routing(config.isD2Routing()) // This should be the last of the D2 configs since it is an inferred config
+                                            // and we want the cloned config to match the source config
 
         // Performance-related settings
         .setMetricsRepository(config.getMetricsRepository())
@@ -104,7 +104,6 @@ public class ClientConfig<T extends SpecificRecord> {
         .setRetryCount(config.getRetryCount())
         .setRetryBackOffInMs(config.getRetryBackOffInMs())
         .setUseBlackHoleDeserializer(config.isUseBlackHoleDeserializer())
-        .setReuseObjectsForSerialization(config.isReuseObjectsForSerialization())
         // Security settings
         .setHttps(config.isHttps())
         .setSslFactory(config.getSslFactory())
@@ -388,15 +387,6 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  public boolean isReuseObjectsForSerialization() {
-    return reuseObjectsForSerialization;
-  }
-
-  public ClientConfig<T> setReuseObjectsForSerialization(boolean reuseObjectsForSerialization) {
-    this.reuseObjectsForSerialization = reuseObjectsForSerialization;
-    return this;
-  }
-
   public boolean isProjectionFieldValidationEnabled() {
     return projectionFieldValidation;
   }
@@ -458,6 +448,10 @@ public class ClientConfig<T extends SpecificRecord> {
     }
 
     if (this.isVsonClient() != anotherClientConfig.isVsonClient()) {
+      return false;
+    }
+
+    if (this.isD2Routing() != anotherClientConfig.isD2Routing()) {
       return false;
     }
 

@@ -1,6 +1,5 @@
 package com.linkedin.davinci.config;
 
-import static com.linkedin.davinci.config.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -111,6 +110,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
@@ -119,9 +119,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 
@@ -755,18 +752,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return diskHealthCheckServiceEnabled;
   }
 
-  public BlockingQueue<Runnable> getExecutionQueue(int capacity) {
-    switch (blockingQueueType) {
-      case LINKED_BLOCKING_QUEUE:
-        return new LinkedBlockingQueue<>(capacity);
-      case ARRAY_BLOCKING_QUEUE:
-        if (capacity == Integer.MAX_VALUE) {
-          throw new VeniceException("Queue capacity must be specified when using " + ARRAY_BLOCKING_QUEUE);
-        }
-        return new ArrayBlockingQueue<>(capacity);
-      default:
-        throw new VeniceException("Unknown blocking queue type: " + blockingQueueType);
-    }
+  public BlockingQueueType getBlockingQueueType() {
+    return blockingQueueType;
   }
 
   public boolean isComputeFastAvroEnabled() {

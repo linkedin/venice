@@ -3,12 +3,18 @@ package com.linkedin.venice.fastclient;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -28,8 +34,8 @@ import org.apache.logging.log4j.Logger;
 public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForBatchGet;
-  private final int longTailRetryThresholdForSingleGetInMicroseconds;
-  private final int longTailRetryThresholdForBatchGetInMicroseconds;
+  private final int longTailRetryThresholdForSingleGetInMicroSeconds;
+  private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private TimeoutProcessor timeoutProcessor;
   private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
 
@@ -40,9 +46,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     }
     this.longTailRetryEnabledForSingleGet = clientConfig.isLongTailRetryEnabledForSingleGet();
     this.longTailRetryEnabledForBatchGet = clientConfig.isLongTailRetryEnabledForBatchGet();
-    this.longTailRetryThresholdForSingleGetInMicroseconds =
+    this.longTailRetryThresholdForSingleGetInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
-    this.longTailRetryThresholdForBatchGetInMicroseconds =
+    this.longTailRetryThresholdForBatchGetInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForBatchGetInMicroSeconds();
   }
 
@@ -124,7 +130,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     // Schedule the created task for long-tail retry
     TimeoutProcessor.TimeoutFuture timeoutFuture = timeoutProcessor.schedule(
         new RetryRunnable(requestContext, RetryType.LONG_TAIL_RETRY, retryTask),
-        longTailRetryThresholdForSingleGetInMicroseconds,
+        longTailRetryThresholdForSingleGetInMicroSeconds,
         TimeUnit.MICROSECONDS);
 
     originalRequestFuture.whenComplete((value, throwable) -> {
@@ -160,6 +166,60 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     });
 
     return finalFuture;
+  }
+
+  /**
+   * The logic is copied from {@link DispatchingAvroGenericStoreClient#streamingBatchGet(BatchGetRequestContext, Set)}
+   * to reuse {@link RetriableAvroGenericStoreClient#streamingBatchGet(BatchGetRequestContext, Set, StreamingCallback)}
+   * to add the retry functionality to batchGet API.
+   */
+  protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
+      throws VeniceClientException {
+    // keys that do not exist in the storage nodes
+    Queue<K> nonExistingKeys = new ConcurrentLinkedQueue<>();
+    VeniceConcurrentHashMap<K, V> valueMap = new VeniceConcurrentHashMap<>();
+    CompletableFuture<VeniceResponseMap<K, V>> streamingResponseFuture = new VeniceResponseCompletableFuture<>(
+        () -> new VeniceResponseMapImpl<K, V>(valueMap, nonExistingKeys, false),
+        keys.size(),
+        Optional.empty());
+    streamingBatchGet(requestContext, keys, new StreamingCallback<K, V>() {
+      @Override
+      public void onRecordReceived(K key, V value) {
+        if (value == null) {
+          nonExistingKeys.add(key);
+        } else {
+          valueMap.put(key, value);
+        }
+      }
+
+      @Override
+      public void onCompletion(Optional<Exception> exception) {
+        requestContext.complete();
+        if (exception.isPresent()) {
+          streamingResponseFuture.completeExceptionally(exception.get());
+        } else {
+          streamingResponseFuture.complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, true));
+        }
+      }
+    });
+    CompletableFuture<Map<K, V>> responseFuture = new CompletableFuture<>();
+    streamingResponseFuture.whenComplete((response, throwable) -> {
+      if (throwable != null) {
+        responseFuture.completeExceptionally(throwable);
+      } else if (!response.isFullResponse()) {
+        if (requestContext.getPartialResponseException().isPresent()) {
+          responseFuture.completeExceptionally(
+              new VeniceClientException(
+                  "Response was not complete",
+                  requestContext.getPartialResponseException().get()));
+        } else {
+          responseFuture.completeExceptionally(new VeniceClientException("Response was not complete"));
+        }
+      } else {
+        responseFuture.complete(response);
+      }
+    });
+    return responseFuture;
   }
 
   @Override
@@ -230,7 +290,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     };
 
     TimeoutProcessor.TimeoutFuture scheduledRetryTask =
-        timeoutProcessor.schedule(retryTask, longTailRetryThresholdForBatchGetInMicroseconds, TimeUnit.MICROSECONDS);
+        timeoutProcessor.schedule(retryTask, longTailRetryThresholdForBatchGetInMicroSeconds, TimeUnit.MICROSECONDS);
 
     finalRequestCompletionFuture.whenComplete((ignore, finalException) -> {
       if (!scheduledRetryTask.isDone()) {

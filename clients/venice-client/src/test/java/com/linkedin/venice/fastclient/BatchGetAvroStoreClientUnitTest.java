@@ -787,7 +787,7 @@ public class BatchGetAvroStoreClientUnitTest {
     return client.generateKeyValues(0, NUM_KEYS) // generate NUM_KEYS keys
         .partitionKeys(NUM_PARTITIONS) // partition into NUM_PARTITIONS partitions
         .setLongTailRetryEnabledForBatchGet(true) // enable retry
-        .setLongTailRetryThresholdForBatchGetInMicroseconds(RETRY_THRESHOLD_IN_MS * 1000)
+        .setLongTailRetryThresholdForBatchGetInMicroSeconds(RETRY_THRESHOLD_IN_MS * 1000)
 
         .assignRouteToPartitions("https://host0.linkedin.com", 0, 1)
         .assignRouteToPartitions("https://host1.linkedin.com", 1, 2)

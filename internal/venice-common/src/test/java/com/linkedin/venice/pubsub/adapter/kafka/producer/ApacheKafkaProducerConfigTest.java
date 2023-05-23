@@ -29,7 +29,7 @@ public class ApacheKafkaProducerConfigTest {
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Required property: kafka.bootstrap.servers is missing.*")
   public void testConfiguratorThrowsAnExceptionWhenBrokerAddressIsMissing() {
-    VeniceProperties veniceProperties = new VeniceProperties();
+    VeniceProperties veniceProperties = VeniceProperties.empty();
     new ApacheKafkaProducerConfig(veniceProperties, null, PRODUCER_NAME, true);
   }
 
@@ -50,9 +50,8 @@ public class ApacheKafkaProducerConfigTest {
 
   @Test
   public void testValidateOrPopulatePropCanFillMissingConfigs() {
-    Properties props = new Properties();
     Properties resultantProps =
-        new ApacheKafkaProducerConfig(new VeniceProperties(props), KAFKA_BROKER_ADDR, PRODUCER_NAME, true)
+        new ApacheKafkaProducerConfig(VeniceProperties.empty(), KAFKA_BROKER_ADDR, PRODUCER_NAME, true)
             .getProducerProperties();
     assertTrue(resultantProps.containsKey(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG));
     assertTrue(resultantProps.containsKey(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG));

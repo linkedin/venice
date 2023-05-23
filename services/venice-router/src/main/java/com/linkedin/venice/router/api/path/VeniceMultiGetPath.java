@@ -16,7 +16,6 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -147,8 +146,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   protected byte[] serializeRouterRequest() {
     RecordSerializer<MultiGetRouterRequestKeyV1> serializer =
         FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.getClassSchema());
-
-    return serializer.serializeObjects(routerKeyMap.values(), AvroSerializer.REUSE.get());
+    return serializer.serializeObjects(routerKeyMap.values());
   }
 
   private static Iterable<ByteBuffer> deserialize(byte[] content) {

@@ -64,6 +64,7 @@ dependencies {
   implementation project(':services:venice-controller')
   implementation project(':services:venice-router')
   implementation project(':clients:venice-samza')
+  implementation project(':clients:venice-producer')
   implementation project(':internal:venice-client-common')
   implementation project(':services:venice-server')
   implementation project(':clients:venice-thin-client')

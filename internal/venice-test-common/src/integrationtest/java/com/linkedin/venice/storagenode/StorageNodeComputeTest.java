@@ -83,18 +83,8 @@ public class StorageNodeComputeTest {
     }
   }
 
-  enum SerializerReuse {
-    NO_REUSE(false), REUSE(true);
-
-    final boolean config;
-
-    SerializerReuse(boolean config) {
-      this.config = config;
-    }
-  }
-
   private VeniceClusterWrapper veniceCluster;
-  private Map<SerializerReuse, AvroGenericStoreClient<String, Object>> clientsMap = new HashMap<>();
+  private AvroGenericStoreClient<String, Object> client;
   private int valueSchemaId;
   private String storeName;
 
@@ -139,15 +129,8 @@ public class StorageNodeComputeTest {
     keySerializer = new VeniceAvroKafkaSerializer(keySchema);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
 
-    for (SerializerReuse serializerReuse: SerializerReuse.values()) {
-      clientsMap.put(
-          serializerReuse,
-          ClientFactory.getAndStartGenericAvroClient(
-              ClientConfig.defaultGenericClientConfig(storeName)
-                  .setVeniceURL(routerAddr)
-                  .setUseFastAvro(true)
-                  .setReuseObjectsForSerialization(serializerReuse.config)));
-    }
+    client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr).setUseFastAvro(true));
 
     compressorFactory = new CompressorFactory();
   }
@@ -157,7 +140,7 @@ public class StorageNodeComputeTest {
     if (veniceCluster != null) {
       veniceCluster.close();
     }
-    clientsMap.forEach((ignored2, client) -> Utils.closeQuietlyWithErrorLogged(client));
+    Utils.closeQuietlyWithErrorLogged(client);
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
@@ -170,9 +153,7 @@ public class StorageNodeComputeTest {
     List<Object[]> returnList = new ArrayList<>();
     for (CompressionStrategy compressionStrategy: compressionStrategies) {
       for (ValueSize valueLargerThan1MB: ValueSize.values()) {
-        for (SerializerReuse serializerReuse: SerializerReuse.values()) {
-          returnList.add(new Object[] { compressionStrategy, serializerReuse, valueLargerThan1MB });
-        }
+        returnList.add(new Object[] { compressionStrategy, valueLargerThan1MB });
       }
     }
     Object[][] valuesToReturn = new Object[returnList.size()][5];
@@ -180,10 +161,7 @@ public class StorageNodeComputeTest {
   }
 
   @Test(timeOut = 30000, dataProvider = "testPermutations")
-  public void testCompute(
-      CompressionStrategy compressionStrategy,
-      SerializerReuse serializerReuse,
-      ValueSize valueLargerThan1MB) throws Exception {
+  public void testCompute(CompressionStrategy compressionStrategy, ValueSize valueLargerThan1MB) throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setCompressionStrategy(compressionStrategy);
     params.setReadComputationEnabled(true);
@@ -217,8 +195,6 @@ public class StorageNodeComputeTest {
           valueLargerThan1MB.config);
     }
 
-    AvroGenericStoreClient<String, Object> storeClient = clientsMap.get(serializerReuse);
-
     // Run multiple rounds
     int rounds = 100;
     int cur = 0;
@@ -233,7 +209,7 @@ public class StorageNodeComputeTest {
       List<Float> hadamardP = Arrays.asList(135.7f, 246.8f);
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        Map<String, ComputeGenericRecord> computeResult = storeClient.compute()
+        Map<String, ComputeGenericRecord> computeResult = client.compute()
             .project("id")
             .dotProduct("member_feature", p, "member_score")
             .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")

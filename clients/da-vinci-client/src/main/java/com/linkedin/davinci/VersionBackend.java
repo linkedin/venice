@@ -235,7 +235,7 @@ public class VersionBackend {
   }
 
   public void computeWithKeyPrefixFilter(
-      byte[] prefixBytes,
+      byte[] keyPrefix,
       int partition,
       StreamingCallback<GenericRecord, GenericRecord> callback,
       ComputeRequestWrapper computeRequestWrapper,
@@ -273,7 +273,7 @@ public class VersionBackend {
         getStorageEngineOrThrow(),
         partition,
         version.getPartitionerConfig(),
-        prefixBytes,
+        keyPrefix,
         reusableValueRecord,
         reusableBinaryDecoder,
         keyRecordDeserializer,

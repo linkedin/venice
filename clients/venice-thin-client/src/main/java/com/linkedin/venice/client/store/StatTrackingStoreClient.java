@@ -14,7 +14,6 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.ByteArrayOutputStream;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -25,7 +24,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryEncoder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -241,7 +239,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       Set<K> keys,
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
-      final long preRequestTimeInNS) throws VeniceClientException {
+      long preRequestTimeInNS) throws VeniceClientException {
     computeStreamingStats.recordRequestKeyCount(keys.size());
     super.compute(
         computeRequestWrapper,
@@ -249,26 +247,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         resultSchema,
         new StatTrackingStreamingCallback<>(callback, computeStreamingStats, keys.size(), preRequestTimeInNS),
         preRequestTimeInNS);
-  }
-
-  @Override
-  public void compute(
-      ComputeRequestWrapper computeRequestWrapper,
-      Set<K> keys,
-      Schema resultSchema,
-      StreamingCallback<K, ComputeGenericRecord> callback,
-      final long preRequestTimeInNS,
-      BinaryEncoder reusedEncoder,
-      ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
-    computeStreamingStats.recordRequestKeyCount(keys.size());
-    super.compute(
-        computeRequestWrapper,
-        keys,
-        resultSchema,
-        new StatTrackingStreamingCallback<>(callback, computeStreamingStats, keys.size(), preRequestTimeInNS),
-        preRequestTimeInNS,
-        reusedEncoder,
-        reusedOutputStream);
   }
 
   private static void handleMetricTrackingForStreamingCallback(

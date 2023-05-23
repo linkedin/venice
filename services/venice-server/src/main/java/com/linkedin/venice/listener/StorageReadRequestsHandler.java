@@ -50,7 +50,6 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -128,7 +127,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final Optional<ResourceReadUsageTracker> resourceReadUsageTracker;
 
-  private static class StorageExecReusableObjects extends AvroSerializer.AvroSerializerReusableObjects {
+  private static class StorageExecReusableObjects {
     // reuse buffer for rocksDB value object
     final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
 
@@ -750,7 +749,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
 
     // serialize the compute result
     long serializeStartTimeInNS = System.nanoTime();
-    responseRecord.value = ByteBuffer.wrap(resultSerializer.serialize(reuseResultRecord, reusableObjects));
+    responseRecord.value = ByteBuffer.wrap(resultSerializer.serialize(reuseResultRecord));
     response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
 
     return responseRecord;

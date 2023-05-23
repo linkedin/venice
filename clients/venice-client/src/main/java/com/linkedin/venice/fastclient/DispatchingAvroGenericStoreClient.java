@@ -19,7 +19,6 @@ import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -90,7 +89,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     int currentVersion = getCurrentVersion();
     String resourceName = getResourceName(currentVersion);
     long beforeSerializationTimeStamp = System.nanoTime();
-    byte[] keyBytes = keySerializer.serialize(key, AvroSerializer.REUSE.get());
+    byte[] keyBytes = keySerializer.serialize(key);
     requestContext.requestSerializationTime = getLatencyInNS(beforeSerializationTimeStamp);
     int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
     String b64EncodedKeyBytes = EncodingUtils.base64EncodeToString(keyBytes);
@@ -274,12 +273,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   /**
-   * This implementation is for future use. It will get wired in via
-   * InternalAvroStoreClient.batchGet(Set<K> keys)
-   * @param requestContext
-   * @param keys
-   * @return
-   * @throws VeniceClientException
+   * batchGet using streamingBatchGet implementation
    */
   @Override
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
@@ -398,9 +392,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     String uriForBatchGetRequest = composeURIForBatchGetRequest(requestContext);
     int currentVersion = requestContext.currentVersion;
     Map<Integer, List<String>> partitionRouteMap = new HashMap<>();
-    RecordSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
     for (K key: keys) {
-      byte[] keyBytes = keySerializer.serialize(key, reusableObjects);
+      byte[] keyBytes = keySerializer.serialize(key);
       // For each key determine partition
       int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
       // Find routes for each partition
@@ -579,12 +572,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   private byte[] serializeMultiGetRequest(List<BatchGetRequestContext.KeyInfo<K>> keyList) {
     List<MultiGetRouterRequestKeyV1> routerRequestKeys = new ArrayList<>(keyList.size());
-    AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
     BatchGetRequestContext.KeyInfo<K> keyInfo;
     for (int i = 0; i < keyList.size(); i++) {
       keyInfo = keyList.get(i);
       MultiGetRouterRequestKeyV1 routerRequestKey = new MultiGetRouterRequestKeyV1();
-      byte[] keyBytes = keySerializer.serialize(keyInfo.getKey(), reusableObjects);
+      byte[] keyBytes = keySerializer.serialize(keyInfo.getKey());
       ByteBuffer keyByteBuffer = ByteBuffer.wrap(keyBytes);
       routerRequestKey.keyBytes = keyByteBuffer;
       routerRequestKey.keyIndex = i;

@@ -173,7 +173,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
@@ -4687,14 +4686,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Schema newSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
     RandomRecordGenerator recordGenerator = new RandomRecordGenerator();
     RecordGenerationConfig genConfig = RecordGenerationConfig.newConfig().withAvoidNulls(true);
-    RecordSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
 
     for (int i = 0; i < RECORD_COUNT; i++) {
       // check if new records written with new schema can be read using existing older schema
       // Object record =
       Object record = recordGenerator.randomGeneric(newSchema, genConfig);
       serializer = new AvroSerializer<>(newSchema);
-      byte[] bytes = serializer.serialize(record, reusableObjects);
+      byte[] bytes = serializer.serialize(record);
       for (SchemaEntry schemaEntry: schemaEntries) {
         try {
           existingSchema = schemaEntry.getSchema();
@@ -4724,7 +4722,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         try {
           Object record = recordGenerator.randomGeneric(schemaEntry.getSchema(), genConfig);
           serializer = new AvroSerializer(schemaEntry.getSchema());
-          byte[] bytes = serializer.serialize(record, reusableObjects);
+          byte[] bytes = serializer.serialize(record);
           existingSchema = schemaEntry.getSchema();
           if (!isValidAvroSchema(existingSchema)) {
             LOGGER.warn("Skip validating ill-formed schema for store: {}", storeName);
