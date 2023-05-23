@@ -17,6 +17,7 @@ import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.Arg.DATETIME;
 import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
@@ -454,7 +455,7 @@ public enum Command {
   ),
   MONITOR_DATA_RECOVERY(
       "monitor-data-recovery", "Monitor data recovery progress for a group of stores",
-      new Arg[] { URL, STORES, DEST_FABRIC }, new Arg[] { INTERVAL }
+      new Arg[] { URL, STORES, DEST_FABRIC }, new Arg[] { INTERVAL, DATETIME }
   );
 
   private final String commandName;

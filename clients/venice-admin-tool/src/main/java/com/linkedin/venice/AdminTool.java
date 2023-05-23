@@ -100,6 +100,10 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -678,11 +682,30 @@ public class AdminTool {
     String stores = getRequiredArgument(cmd, Arg.STORES);
 
     String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL);
+    String dateTimeStr = getOptionalArgument(cmd, Arg.DATETIME);
 
     MonitorCommand.Params monitorParams = new MonitorCommand.Params();
     monitorParams.setTargetRegion(destFabric);
     monitorParams.setParentUrl(parentUrl);
     monitorParams.setSslFactory(sslFactory);
+
+    LocalDateTime dateTime = null;
+    if (dateTimeStr != null) {
+      try {
+        dateTime = LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+      } catch (DateTimeParseException e) {
+        throw new VeniceException(
+            String.format(
+                "Can not parse: %s, supported format: %s",
+                e.getParsedString(),
+                DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+      }
+    } else {
+      // Use current time in UTC as the default value, if no input.
+      dateTime = LocalDateTime.now(ZoneOffset.UTC);
+      System.out.println(String.format("Using default date time: %s", dateTime));
+    }
+    monitorParams.setDateTime(dateTime);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);

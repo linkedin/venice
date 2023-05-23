@@ -73,11 +73,9 @@ public abstract class DataRecoveryWorker {
      * Keep polling the states (for monitor) of all tasks at given intervals when interval is set to certain value
      * plus not all tasks are finished. Otherwise, if interval is unset, just do a one time execution for all tasks.
      */
-    boolean requireSleep = false;
     do {
-      final boolean finalRequireSleep = requireSleep;
       try (Timer ignored = Timer.run(elapsedTimeInMs -> {
-        if (finalRequireSleep) {
+        if (continuePollingState()) {
           Utils.sleep(computeTimeToSleepInMillis(elapsedTimeInMs));
         }
       })) {
@@ -89,7 +87,7 @@ public abstract class DataRecoveryWorker {
         processData();
         displayAllTasksResult();
       }
-    } while (requireSleep = continuePollingState());
+    } while (continuePollingState());
   }
 
   public void processData() {
