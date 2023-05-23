@@ -63,8 +63,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -329,18 +327,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     storeRepository.refresh();
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
-    String topicName = Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+    String topicName =
+        Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     PubSubTopic topic = pubSubTopicRepository.getTopic(topicName);
     Map<PubSubTopicPartition, Long> topicPartitionLongMap = new HashMap<>();
     for (Map.Entry<Integer, Long> timestampPair: timestamps.entrySet()) {
       PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, timestampPair.getKey());
       topicPartitionLongMap.put(topicPartition, timestampPair.getValue());
     }
-    return internalSeek(timestamps.keySet(), topic, (partitions) -> {
-      for (Map.Entry<PubSubTopicPartition, Long> topicPartitionAndTimestamp: topicPartitionLongMap.entrySet()) {
-        Long offset = pubSubConsumer.offsetForTime(topicPartitionAndTimestamp.getKey(), topicPartitionAndTimestamp.getValue());
-        pubSubConsumerSeek(topicPartitionAndTimestamp.getKey(), offset);
+    return internalSeek(timestamps.keySet(), topic, partition -> {
+      Long offset = pubSubConsumer.offsetForTime(partition, topicPartitionLongMap.get(partition));
+      // As the offset for this timestamp does not exist, we need to seek to the very end of the topic partition.
+      if (offset == null) {
+        offset = pubSubConsumer.endOffset(partition);
       }
+      pubSubConsumerSeek(partition, offset);
     });
   }
 

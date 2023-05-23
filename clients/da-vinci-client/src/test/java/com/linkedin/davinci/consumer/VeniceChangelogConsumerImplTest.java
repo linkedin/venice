@@ -132,14 +132,14 @@ public class VeniceChangelogConsumerImplTest {
     Mockito.when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
 
     veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     veniceChangelogConsumer.seekToTimestamp(System.currentTimeMillis() - 10000L);
     PubSubTopicPartition oldVersionTopicPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
     verify(mockPubSubConsumer).subscribe(oldVersionTopicPartition, OffsetRecord.LOWEST_OFFSET);
 
-    veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     veniceChangelogConsumer.seekToEndOfPush();
-    verify(mockPubSubConsumer).subscribe(oldVersionTopicPartition, OffsetRecord.LOWEST_OFFSET);
+    verify(mockPubSubConsumer, times(2)).subscribe(oldVersionTopicPartition, OffsetRecord.LOWEST_OFFSET);
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
