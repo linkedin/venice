@@ -5,9 +5,10 @@ import static com.linkedin.venice.VeniceConstants.ENVIRONMENT_CONFIG_KEY_FOR_REG
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -56,9 +57,6 @@ public class RegionUtils {
     if (StringUtils.isEmpty(regionsFilterList)) {
       return Collections.emptySet();
     }
-    Set<String> regions = new HashSet<>();
-    String[] tokens = regionsFilterList.trim().toLowerCase().split(REGION_FILTER_LIST_SEPARATOR);
-    Collections.addAll(regions, tokens);
-    return regions;
+    return Stream.of(regionsFilterList.trim().split(REGION_FILTER_LIST_SEPARATOR)).collect(Collectors.toSet());
   }
 }

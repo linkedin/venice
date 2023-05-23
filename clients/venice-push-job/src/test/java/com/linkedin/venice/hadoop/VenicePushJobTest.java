@@ -541,6 +541,7 @@ public class VenicePushJobTest {
   public void testTargetedRegionPushReporting() throws Exception {
     Properties props = getVpjRequiredProperties();
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
     ControllerClient client = getClient();
     VenicePushJob pushJob = getSpyVenicePushJob(props, client);
     skipVPJValidation(pushJob);
@@ -553,24 +554,14 @@ public class VenicePushJobTest {
     response.setCluster(TEST_CLUSTER);
     Map<String, String> extraInfo = new HashMap<>();
     extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
-    extraInfo.put("dc-1", ExecutionStatus.NOT_STARTED.toString());
+    extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
     response.setExtraInfo(extraInfo);
     doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
     // only one region is completed, so should succeed
     pushJob.run();
 
-    // none of the regions are completed, so should fail
+    // one of the regions failed, so should fail
     extraInfo.put("dc-0", ExecutionStatus.NOT_STARTED.toString());
-    try {
-      pushJob.run();
-      Assert.fail("Test should fail, but doesn't.");
-    } catch (VeniceException e) {
-      assertTrue(e.getMessage().contains("Push job error"));
-    }
-
-    // both regions are completed, so should fail
-    extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
-    extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
     try {
       pushJob.run();
       Assert.fail("Test should fail, but doesn't.");

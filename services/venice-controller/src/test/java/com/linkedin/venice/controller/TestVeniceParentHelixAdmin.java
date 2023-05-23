@@ -3,21 +3,7 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.doCallRealMethod;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -1500,7 +1486,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       JobStatusQueryResponse response = new JobStatusQueryResponse();
       response.setStatus(status.toString());
       ControllerClient statusClient = mock(ControllerClient.class);
-      doReturn(response).when(statusClient).queryJobStatus(anyString(), any(), any());
+      doReturn(response).when(statusClient).queryJobStatus(anyString(), any());
       clientMap.put(status, statusClient);
     }
 
@@ -1546,23 +1532,22 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
     failResponse.setError("error");
     ControllerClient failClient = mock(ControllerClient.class);
-    doReturn(failResponse).when(failClient).queryJobStatus(anyString(), any(), any());
+    doReturn(failResponse).when(failClient).queryJobStatus(anyString(), any());
     clientMap.put(null, failClient);
 
     // Completely failing client that cannot even complete leadership discovery.
     ControllerClient completelyFailingClient = mock(ControllerClient.class);
-    doReturn(failResponse).when(completelyFailingClient).queryJobStatus(anyString(), any(), any());
+    doReturn(failResponse).when(completelyFailingClient).queryJobStatus(anyString(), any());
     String completelyFailingExceptionMessage = "Unable to discover leader controller";
     doThrow(new VeniceException(completelyFailingExceptionMessage)).when(completelyFailingClient)
         .getLeaderControllerUrl();
 
     // Verify clients work as expected
     for (ExecutionStatus status: ExecutionStatus.values()) {
-      Assert.assertEquals(
-          clientMap.get(status).queryJobStatus("topic", Optional.empty(), null).getStatus(),
-          status.toString());
+      Assert
+          .assertEquals(clientMap.get(status).queryJobStatus("topic", Optional.empty()).getStatus(), status.toString());
     }
-    Assert.assertTrue(clientMap.get(null).queryJobStatus("topic", Optional.empty(), null).isError());
+    Assert.assertTrue(clientMap.get(null).queryJobStatus("topic", Optional.empty()).isError());
 
     Map<String, ControllerClient> completeMap = new HashMap<>();
     completeMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
@@ -2535,6 +2520,33 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(details.getPartitionDetails().size(), numOfPartition);
     for (int i = 0; i < numOfPartition; i++) {
       Assert.assertEquals(details.getPartitionDetails().get(i).getReplicaDetails().size(), replicationFactor);
+    }
+  }
+
+  @Test
+  public void testTargetedRegionValidation() {
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          "test",
+          "test",
+          "test",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          null,
+          null,
+          -1,
+          null,
+          false,
+          "invalidRegion");
+      Assert.fail("Test should fail, but doesn't");
+    } catch (VeniceException e) {
+      Assert.assertEquals(
+          e.getMessage(),
+          "One of the targeted region invalidRegion is not a valid region in cluster test");
     }
   }
 }

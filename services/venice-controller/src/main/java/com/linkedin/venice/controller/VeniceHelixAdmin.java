@@ -5288,7 +5288,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getOffLinePushStatus(String, String, Optional, String, String)
+   * @see Admin#getOffLinePushStatus(String, String, Optional, String, String).
    */
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(
@@ -5310,14 +5310,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int versionNumber = Version.parseVersionFromVersionTopicName(kafkaTopic);
 
     if (!incrementalPushVersion.isPresent()) {
-      OfflinePushStatusInfo offlinePushStatusInfo = getOfflinePushStatusInfo(
-          clusterName,
-          kafkaTopic,
-          incrementalPushVersion,
-          monitor,
-          store,
-          versionNumber,
-          targetedRegions);
+      OfflinePushStatusInfo offlinePushStatusInfo =
+          getOfflinePushStatusInfo(clusterName, kafkaTopic, incrementalPushVersion, monitor, store, versionNumber);
       if (region != null) {
         offlinePushStatusInfo.setUncompletedPartitions(monitor.getUncompletedPartitions(kafkaTopic));
       }
@@ -5338,8 +5332,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             incrementalPushVersion,
             monitor,
             store,
-            version.getNumber(),
-            null);
+            version.getNumber());
         list.add(offlinePushStatusInfoOtherVersion);
       } catch (VeniceNoHelixResourceException e) {
         LOGGER.warn("Resource for store: {} version: {} not found!", storeName, version, e);
@@ -5400,8 +5393,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> incrementalPushVersion,
       PushMonitor monitor,
       Store store,
-      int versionNumber,
-      String targetedRegions) {
+      int versionNumber) {
     Pair<ExecutionStatus, String> statusAndDetails;
     if (incrementalPushVersion.isPresent()) {
       statusAndDetails = getIncrementalPushStatus(clusterName, kafkaTopic, incrementalPushVersion.get(), monitor);
@@ -5415,10 +5407,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // Check whether cluster is in maintenance mode or not
       if (isClusterInMaintenanceMode(clusterName)) {
         moreDetailsBuilder.append("Cluster: ").append(clusterName).append(" is in maintenance mode");
-      } else if (StringUtils.isNotEmpty(targetedRegions)) {
-        moreDetailsBuilder.append("Version for topic ")
-            .append(kafkaTopic)
-            .append(" isn't created since this is a targeted region push");
       } else {
         moreDetailsBuilder.append("Version creation for topic: ").append(kafkaTopic).append(" got delayed");
       }
@@ -5779,7 +5767,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // user specifies a targeted region that isn't the chosen source fabric, so randomly choose one
         // but emergency source region should always be respected.
         String selection = regions.iterator().next();
-        LOGGER.info(
+        LOGGER.warn(
             "User specified targeted regions: {}, but source fabric: {} is not in the list. Use {} from the list instead",
             targetedRegions,
             sourceFabric,

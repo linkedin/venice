@@ -1599,6 +1599,8 @@ public class VeniceParentHelixAdmin implements Admin {
     if (pushType.isIncremental()) {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
     } else {
+      validateTargetedRegions(targetedRegions, clusterName);
+
       newVersion = addVersionAndTopicOnly(
           clusterName,
           storeName,
@@ -1630,6 +1632,22 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return newVersion;
+  }
+
+  /**
+   * Validate the given targeted regions are all valid. A valid region should have a controller client present in the cluster.
+   * @param targetedRegions
+   * @param clusterName
+   */
+  private void validateTargetedRegions(String targetedRegions, String clusterName) throws VeniceException {
+    Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
+    Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    for (String region: targetedRegionSet) {
+      if (!clientMap.containsKey(region)) {
+        throw new VeniceException(
+            "One of the targeted region " + region + " is not a valid region in cluster " + clusterName);
+      }
+    }
   }
 
   Version addVersionAndTopicOnly(
@@ -3401,9 +3419,14 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, String> extraInfo = new HashMap<>();
     Map<String, String> extraDetails = new HashMap<>();
     int failCount = 0;
-    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
-      String region = entry.getKey();
-      ControllerClient controllerClient = entry.getValue();
+    Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
+
+    for (String region: controllerClients.keySet()) {
+      // if targetedRegions is present, only query the targeted regions
+      if (!targetedRegionSet.isEmpty() && !targetedRegionSet.contains(region)) {
+        continue;
+      }
+      ControllerClient controllerClient = controllerClients.get(region);
       String leaderControllerUrl;
       try {
         leaderControllerUrl = controllerClient.getLeaderControllerUrl();
@@ -3414,8 +3437,7 @@ public class VeniceParentHelixAdmin implements Admin {
         extraDetails.put(region, "Failed to get leader controller url " + exception.getMessage());
         continue;
       }
-      JobStatusQueryResponse response =
-          controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion, targetedRegions);
+      JobStatusQueryResponse response = controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion);
       if (response.isError()) {
         failCount += 1;
         LOGGER.warn("Couldn't query {} for job {} status: {}", region, kafkaTopic, response.getError());
@@ -3431,54 +3453,19 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
 
-    /**
-     * Based on the global information, start determining the final status
-     */
-    ExecutionStatus currentReturnStatus = ExecutionStatus.NEW;
     StringBuilder currentReturnStatusDetails = new StringBuilder();
-    List<ExecutionStatus> sortedStatuses = new ArrayList<>();
 
-    if (StringUtils.isEmpty(targetedRegions)) {
-      // Sort the per-datacenter status in this order, and return the first one in the list
-      // Edge case example: if one cluster is stuck in NOT_CREATED, then
-      // as another cluster goes from PROGRESS to COMPLETED
-      // the aggregate status will go from PROGRESS back down to NOT_CREATED.
-      sortedStatuses = statuses.values()
-          .stream()
-          .sorted(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf))
-          .collect(Collectors.toList());
+    // Sort the per-datacenter status in this order, and return the first one in the list
+    // Edge case example: if one cluster is stuck in NOT_CREATED, then
+    // as another cluster goes from PROGRESS to COMPLETED
+    // the aggregate status will go from PROGRESS back down to NOT_CREATED.
+    List<ExecutionStatus> sortedStatuses = statuses.values()
+        .stream()
+        .sorted(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf))
+        .collect(Collectors.toList());
 
-      currentReturnStatus = getFinalReturnStatus(sortedStatuses, childRegions, failCount, currentReturnStatusDetails);
-    } else {
-      // we use the same logic as above, but only consider the targeted regions
-      Set<String> targetedRegionsSet = RegionUtils.parseRegionsFilterList(targetedRegions);
-      int targetedRegionFailCount = 0;
-      for (String region: targetedRegionsSet) {
-        ExecutionStatus status = statuses.get(region);
-        /**
-         * We consider failures for the following cases:
-         * 1. the provided region isn't available for the cluster, in other words, invalid targeted region is provided.
-         * 2. the provided region has troubles to query the job status.
-         */
-        if (status != null) {
-          sortedStatuses.add(status);
-          if (status.equals(ExecutionStatus.UNKNOWN)) {
-            targetedRegionFailCount++;
-          }
-        } else {
-          targetedRegionFailCount++;
-        }
-      }
-      sortedStatuses = sortedStatuses.stream()
-          .sorted(Comparator.comparingInt(VeniceHelixAdmin.STATUS_PRIORITIES::indexOf))
-          .collect(Collectors.toList());
-
-      currentReturnStatusDetails.append("This is targeted region push and following regions ")
-          .append(targetedRegions)
-          .append(" are expected to be COMPLETED. ");
-      currentReturnStatus =
-          getFinalReturnStatus(sortedStatuses, targetedRegionsSet, targetedRegionFailCount, currentReturnStatusDetails);
-    }
+    ExecutionStatus currentReturnStatus =
+        getFinalReturnStatus(sortedStatuses, childRegions, failCount, currentReturnStatusDetails);
 
     if (currentReturnStatus.isTerminal()) {
       truncateTopicsOptionally(
@@ -3496,6 +3483,14 @@ public class VeniceParentHelixAdmin implements Admin {
         extraDetails);
   }
 
+  /**
+   * Based on the global information, start determining the final status to return
+   * @param sortedStatuses
+   * @param childRegions
+   * @param failCount
+   * @param currentReturnStatusDetails
+   * @return
+   */
   private ExecutionStatus getFinalReturnStatus(
       List<ExecutionStatus> sortedStatuses,
       Set<String> childRegions,

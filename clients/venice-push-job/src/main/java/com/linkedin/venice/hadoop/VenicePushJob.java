@@ -71,7 +71,6 @@ import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.PartitionUtils;
-import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -2654,12 +2653,7 @@ public class VenicePushJob implements AutoCloseable {
       });
 
       if (overallStatus.isTerminal()) {
-        int expectedCompletedCount = regionSpecificInfo.size();
-        if (StringUtils.isNotEmpty(pushJobSetting.targetedRegions)) {
-          // only consider the targeted regions
-          expectedCompletedCount = RegionUtils.parseRegionsFilterList(pushJobSetting.targetedRegions).size();
-        }
-        if (completedDatacenters.size() != expectedCompletedCount || !successfulStatuses.contains(overallStatus)) {
+        if (completedDatacenters.size() != regionSpecificInfo.size() || !successfulStatuses.contains(overallStatus)) {
           // 1) For regular push, one or more DC could have an UNKNOWN status and never successfully reported a
           // completed status before,
           // but if the majority of datacenters have completed, we give up on the unreachable datacenter
@@ -2668,10 +2662,6 @@ public class VenicePushJob implements AutoCloseable {
 
           StringBuilder errorMsg = new StringBuilder().append("Push job error reported by controller: ")
               .append(pushJobSetting.veniceControllerUrl)
-              .append(
-                  StringUtils.isNotEmpty(pushJobSetting.targetedRegions)
-                      ? ". Zero or more than specified regions are in COMPLETED states. "
-                      : "")
               .append("\ncontroller response: ")
               .append(response);
 
