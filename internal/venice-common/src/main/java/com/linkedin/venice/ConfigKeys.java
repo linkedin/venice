@@ -1640,6 +1640,14 @@ public class ConfigKeys {
    */
   public static final String PUSH_STATUS_STORE_ENABLED = "push.status.store.enabled";
 
+  // Config to check whether the offline push will also monitor Da Vinci push status.
+  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED =
+      "offline.push.monitor.davinci.push.status.enabled";
+
+  // Config to determine the Da Vinci push status scanning interval in seconds.
+  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS =
+      "offline.push.monitor.davinci.push.status.scan.interval.in.seconds";
+
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
 

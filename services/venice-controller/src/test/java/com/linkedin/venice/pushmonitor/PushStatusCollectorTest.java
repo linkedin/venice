@@ -48,8 +48,13 @@ public class PushStatusCollectorTest {
 
     Consumer<String> pushCompleteConsumer = x -> pushCompletedCount.getAndIncrement();
     BiConsumer<String, String> pushErrorConsumer = (x, y) -> pushErrorCount.getAndIncrement();
-    PushStatusCollector pushStatusCollector =
-        new PushStatusCollector(storeRepository, pushStatusStoreReader, pushCompleteConsumer, pushErrorConsumer, 1);
+    PushStatusCollector pushStatusCollector = new PushStatusCollector(
+        storeRepository,
+        pushStatusStoreReader,
+        pushCompleteConsumer,
+        pushErrorConsumer,
+        true,
+        1);
     pushStatusCollector.start();
 
     pushStatusCollector.subscribeTopic(regularStoreTopicV1, 10);

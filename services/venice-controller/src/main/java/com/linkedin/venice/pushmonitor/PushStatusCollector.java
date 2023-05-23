@@ -33,23 +33,30 @@ public class PushStatusCollector {
   private final ReadWriteStoreRepository storeRepository;
   private final int daVinciPushStatusScanPeriodInSeconds;
   private final ScheduledExecutorService offlinePushCheckScheduler = Executors.newScheduledThreadPool(1);
+  private final boolean daVinciPushStatusScanEnabled;
 
   public PushStatusCollector(
       ReadWriteStoreRepository storeRepository,
       PushStatusStoreReader pushStatusStoreReader,
       Consumer<String> pushCompletedHandler,
       BiConsumer<String, String> pushErrorHandler,
-      int daVinciPushStatusScanPeriodInSeconds) {
+      boolean daVinciPushStatusScanEnabled,
+      int daVinciPushStatusScanIntervalInSeconds) {
     this.storeRepository = storeRepository;
     this.pushStatusStoreReader = pushStatusStoreReader;
     this.pushCompletedHandler = pushCompletedHandler;
     this.pushErrorHandler = pushErrorHandler;
-    this.daVinciPushStatusScanPeriodInSeconds = daVinciPushStatusScanPeriodInSeconds;
+    this.daVinciPushStatusScanEnabled = daVinciPushStatusScanEnabled;
+    this.daVinciPushStatusScanPeriodInSeconds = daVinciPushStatusScanIntervalInSeconds;
   }
 
   public void start() {
-    offlinePushCheckScheduler
-        .scheduleAtFixedRate(this::scanDaVinciPushStatus, 0, daVinciPushStatusScanPeriodInSeconds, TimeUnit.SECONDS);
+    if (daVinciPushStatusScanEnabled) {
+      offlinePushCheckScheduler
+          .scheduleAtFixedRate(this::scanDaVinciPushStatus, 0, daVinciPushStatusScanPeriodInSeconds, TimeUnit.SECONDS);
+    } else {
+      LOGGER.warn("Offline push monitoring Da Vinci push status is not enabled, will only check server push status.");
+    }
   }
 
   public void subscribeTopic(String topicName, int partitionCount) {
@@ -58,7 +65,8 @@ public class PushStatusCollector {
     if (store == null) {
       LOGGER.warn("Store {} not found in store repository, will not monitor Da Vinci push status", storeName);
     } else {
-      if (store.isDaVinciPushStatusStoreEnabled() && Version.parseVersionFromKafkaTopicName(topicName) > 1) {
+      if (daVinciPushStatusScanEnabled && store.isDaVinciPushStatusStoreEnabled()
+          && Version.parseVersionFromKafkaTopicName(topicName) > 1) {
         LOGGER.info("Will monitor Da Vinci push status for topic {}", topicName);
         topicToPushStatusMap.put(topicName, new TopicPushStatus(partitionCount));
       }
@@ -72,7 +80,7 @@ public class PushStatusCollector {
   public void handleServerPushStatusUpdate(String topicName, ExecutionStatus executionStatus, String detailsString) {
 
     TopicPushStatus topicPushStatus = topicToPushStatusMap.get(topicName);
-    if (topicPushStatus == null) {
+    if (daVinciPushStatusScanEnabled && topicPushStatus == null) {
       if (executionStatus.equals(ExecutionStatus.COMPLETED)) {
         pushCompletedHandler.accept(topicName);
       } else if (executionStatus.equals(ExecutionStatus.ERROR)) {

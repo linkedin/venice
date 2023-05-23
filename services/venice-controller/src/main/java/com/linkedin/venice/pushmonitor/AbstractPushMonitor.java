@@ -120,7 +120,8 @@ public abstract class AbstractPushMonitor
         pushStatusStoreReader,
         (topic) -> handleCompletedPush(getOfflinePush(topic)),
         (topic, details) -> handleErrorPush(getOfflinePush(topic), details),
-        10);
+        controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled(),
+        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds());
     pushStatusCollector.start();
   }
 
