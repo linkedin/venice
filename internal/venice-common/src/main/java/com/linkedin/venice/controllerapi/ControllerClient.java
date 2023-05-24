@@ -136,7 +136,7 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * @deprecated Use ControllerClientFactory#discoverAndConstructControllerClient
+   * @deprecated Use {@link ControllerClientFactory#discoverAndConstructControllerClient}
    */
   @Deprecated
   public static ControllerClient discoverAndConstructControllerClient(
@@ -149,7 +149,7 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * @deprecated Use ControllerClientFactory#getControllerClient
+   * @deprecated Use {@link ControllerClientFactory#getControllerClient}
    */
   @Deprecated
   public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls) {
@@ -157,7 +157,7 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * @deprecated Use ControllerClientFactory#getControllerClient
+   * @deprecated Use {@link ControllerClientFactory#getControllerClient}
    */
   @Deprecated
   public static ControllerClient constructClusterControllerClient(

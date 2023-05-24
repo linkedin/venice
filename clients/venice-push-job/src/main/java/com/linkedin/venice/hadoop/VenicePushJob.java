@@ -1687,22 +1687,20 @@ public class VenicePushJob implements AutoCloseable {
       String d2ZkHosts,
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
-    ControllerClient storeControllerClient;
     if (useD2ControllerClient) {
-      storeControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
+      return D2ControllerClientFactory.discoverAndConstructControllerClient(
           storeName,
           controllerD2ServiceName,
           d2ZkHosts,
           sslFactory,
           retryAttempts);
     } else {
-      storeControllerClient = ControllerClientFactory.discoverAndConstructControllerClient(
+      return ControllerClientFactory.discoverAndConstructControllerClient(
           storeName,
           pushJobSetting.veniceControllerUrl,
           sslFactory,
           retryAttempts);
     }
-    return storeControllerClient;
   }
 
   private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
