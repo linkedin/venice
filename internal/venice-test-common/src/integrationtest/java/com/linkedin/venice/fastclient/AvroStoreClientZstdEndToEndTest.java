@@ -70,13 +70,12 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
         BATCH_GET_KEY_SIZE.toArray());
   }
 
-  /** the below tests are used for long tail retry cases which are flaky, so disabling them
-   * for this class */
+  /** the below tests are used for long tail retry cases which are flaky,
+   * so disabling them for this class */
   @Override
-  @DataProvider(name = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode")
-  public Object[][] oneBooleanStoreMetadataFetchMode() {
-    return DataProviderUtils
-        .allPermutationGenerator((permutation) -> false, DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
+  @DataProvider(name = "FastClient-One-Boolean")
+  public Object[][] oneBoolean() {
+    return DataProviderUtils.allPermutationGenerator((permutation) -> false, DataProviderUtils.BOOLEAN);
   }
 
   @Override

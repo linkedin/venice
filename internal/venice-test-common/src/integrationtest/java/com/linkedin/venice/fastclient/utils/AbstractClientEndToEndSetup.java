@@ -186,6 +186,11 @@ public abstract class AbstractClientEndToEndSetup {
         BATCH_GET_KEY_SIZE.toArray());
   }
 
+  @DataProvider(name = "FastClient-One-Boolean")
+  public Object[][] oneBoolean() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN);
+  }
+
   @DataProvider(name = "fastClientHTTPVariantsAndStoreMetadataFetchModes")
   public static Object[][] httpVariantsAndStoreMetadataFetchModes() {
     return DataProviderUtils.allPermutationGenerator(FASTCLIENT_HTTP_VARIANTS, STORE_METADATA_FETCH_MODES);
