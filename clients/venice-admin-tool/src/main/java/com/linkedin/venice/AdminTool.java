@@ -101,7 +101,6 @@ import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -680,32 +679,24 @@ public class AdminTool {
     String parentUrl = getRequiredArgument(cmd, Arg.URL);
     String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
     String stores = getRequiredArgument(cmd, Arg.STORES);
+    String dateTimeStr = getRequiredArgument(cmd, Arg.DATETIME);
 
     String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL);
-    String dateTimeStr = getOptionalArgument(cmd, Arg.DATETIME);
 
     MonitorCommand.Params monitorParams = new MonitorCommand.Params();
     monitorParams.setTargetRegion(destFabric);
     monitorParams.setParentUrl(parentUrl);
     monitorParams.setSslFactory(sslFactory);
 
-    LocalDateTime dateTime = null;
-    if (dateTimeStr != null) {
-      try {
-        dateTime = LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-      } catch (DateTimeParseException e) {
-        throw new VeniceException(
-            String.format(
-                "Can not parse: %s, supported format: %s",
-                e.getParsedString(),
-                DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-      }
-    } else {
-      // Use current time in UTC as the default value, if no input.
-      dateTime = LocalDateTime.now(ZoneOffset.UTC);
-      System.out.println(String.format("Using default date time: %s", dateTime));
+    try {
+      monitorParams.setDateTime(LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+    } catch (DateTimeParseException e) {
+      throw new VeniceException(
+          String.format(
+              "Can not parse: %s, supported format: %s",
+              e.getParsedString(),
+              DateTimeFormatter.ISO_LOCAL_DATE_TIME));
     }
-    monitorParams.setDateTime(dateTime);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);

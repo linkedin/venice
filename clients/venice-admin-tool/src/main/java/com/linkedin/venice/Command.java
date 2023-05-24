@@ -455,7 +455,7 @@ public enum Command {
   ),
   MONITOR_DATA_RECOVERY(
       "monitor-data-recovery", "Monitor data recovery progress for a group of stores",
-      new Arg[] { URL, STORES, DEST_FABRIC }, new Arg[] { INTERVAL, DATETIME }
+      new Arg[] { URL, STORES, DEST_FABRIC, DATETIME }, new Arg[] { INTERVAL }
   );
 
   private final String commandName;
