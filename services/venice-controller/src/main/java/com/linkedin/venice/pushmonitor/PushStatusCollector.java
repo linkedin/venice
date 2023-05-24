@@ -36,7 +36,6 @@ public class PushStatusCollector {
   private final PushStatusStoreReader pushStatusStoreReader;
   private final ReadWriteStoreRepository storeRepository;
   private final int daVinciPushStatusScanPeriodInSeconds;
-  private final int pushStatusScanThreadNumber;
   private final ScheduledExecutorService offlinePushCheckScheduler = Executors.newScheduledThreadPool(1);
   private final ExecutorService pushStatusStoreScanExecutor;
   private final boolean daVinciPushStatusScanEnabled;
@@ -55,7 +54,6 @@ public class PushStatusCollector {
     this.pushErrorHandler = pushErrorHandler;
     this.daVinciPushStatusScanEnabled = daVinciPushStatusScanEnabled;
     this.daVinciPushStatusScanPeriodInSeconds = daVinciPushStatusScanIntervalInSeconds;
-    this.pushStatusScanThreadNumber = pushStatusScanThreadNumber;
     this.pushStatusStoreScanExecutor = Executors.newFixedThreadPool(pushStatusScanThreadNumber);
   }
 
@@ -146,7 +144,7 @@ public class PushStatusCollector {
   public void handleServerPushStatusUpdate(String topicName, ExecutionStatus executionStatus, String detailsString) {
 
     TopicPushStatus topicPushStatus = topicToPushStatusMap.get(topicName);
-    if (daVinciPushStatusScanEnabled && topicPushStatus == null) {
+    if ((!daVinciPushStatusScanEnabled) || topicPushStatus == null) {
       if (executionStatus.equals(ExecutionStatus.COMPLETED)) {
         pushCompletedHandler.accept(topicName);
       } else if (executionStatus.equals(ExecutionStatus.ERROR)) {
@@ -154,7 +152,10 @@ public class PushStatusCollector {
       }
     } else {
       // Update the server topic status in the data structure and wait for async DVC status scan thread to pick up.
-      topicPushStatus.setServerStatus(new ExecutionStatusWithDetails(executionStatus, detailsString));
+      topicToPushStatusMap.computeIfPresent(topicName, (topic, pushStatus) -> {
+        pushStatus.setServerStatus(new ExecutionStatusWithDetails(executionStatus, detailsString));
+        return pushStatus;
+      });
     }
   }
 
