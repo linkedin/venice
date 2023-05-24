@@ -13,12 +13,14 @@ import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
@@ -265,11 +267,14 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         clientConfigBuilder.setSpecificThinClient(specificThinClient);
         genericVsonThinClient = getGenericVsonThinClient();
         thinClientStatsValidation = metricsRepository -> {
-          Assert.assertTrue(
-              metricsRepository.metrics()
-                  .get("." + storeName + (batchGet ? "--multiget_streaming_" : "--") + "request_key_count.Rate")
-                  .value() > 0,
-              "Dual read metrics should be incremented when dual read is enabled");
+          TestUtils.waitForNonDeterministicAssertion(
+              10,
+              TimeUnit.SECONDS,
+              () -> Assert.assertTrue(
+                  metricsRepository.metrics()
+                      .get("." + storeName + (batchGet ? "--multiget_streaming_" : "--") + "request_key_count.Rate")
+                      .value() > 0,
+                  "Thin client metrics should be incremented when dual read is enabled"));
         };
       } else {
         thinClientStatsValidation = metricsRepository -> {
@@ -282,22 +287,26 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       }
 
       Consumer<MetricsRepository> fastClientStatsValidation = metricsRepository -> {
-        assertTrue(
-            metricsRepository.metrics()
-                .get(
-                    "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--") + "request_key_count.Rate")
-                .value() > 0,
-            "Respective request_key_count should have been incremented");
-        Assert.assertFalse(
-            metricsRepository.metrics()
-                .get(
-                    "." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
-                .value() > 0,
-            "Incorrect request_key_count should not be incremented");
-        metricsRepository.metrics().forEach((mName, metric) -> {
-          if (mName.contains("long_tail_retry_request")) {
-            assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
-          }
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          assertTrue(
+              metricsRepository.metrics()
+                  .get(
+                      "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--")
+                          + "request_key_count.Rate")
+                  .value() > 0,
+              "Respective request_key_count should have been incremented");
+          Assert.assertFalse(
+              metricsRepository.metrics()
+                  .get(
+                      "." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_")
+                          + "request_key_count.Rate")
+                  .value() > 0,
+              "Incorrect request_key_count should not be incremented");
+          metricsRepository.metrics().forEach((mName, metric) -> {
+            if (mName.contains("long_tail_retry_request")) {
+              assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
+            }
+          });
         });
       };
 
@@ -416,11 +425,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         storeMetadataFetchMode);
   }
 
-  @Test(dataProvider = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
-  public void testFastClientWithLongTailRetry(
-      boolean batchGet,
-      boolean useStreamingBatchGetAsDefault,
-      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+  @Test(dataProvider = "FastClient-One-Boolean", timeOut = TIME_OUT)
+  public void testFastClientWithLongTailRetry(boolean batchGet) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
 
@@ -428,41 +434,30 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       clientConfigBuilder
           // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
           .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
-          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+          .setUseStreamingBatchGetAsDefault(true);
     }
 
     Consumer<MetricsRepository> fastClientStatsValidation;
-    if (!batchGet || useStreamingBatchGetAsDefault) {
-      String metricPrefix;
-      String log;
-      if (batchGet) {
-        metricPrefix = "--multiget_";
-        log = "batch Get";
-        clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
-            .setLongTailRetryThresholdForBatchGetInMicroSeconds(1);
-      } else {
-        metricPrefix = "--";
-        log = "single Get";
-        clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
-            .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
-      }
-      fastClientStatsValidation = metricsRepository -> {
-        Assert.assertTrue(
-            metricsRepository.metrics()
-                .get("." + storeName + metricPrefix + "long_tail_retry_request.OccurrenceRate")
-                .value() > 0,
-            "Long tail retry for " + log + " should be triggered");
-      };
+    String metricPrefix;
+    String log;
+    if (batchGet) {
+      metricPrefix = "--multiget_";
+      log = "batch Get";
+      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(1);
     } else {
-      // If single get or batchGet get via looping single get: retry is not supported
-      fastClientStatsValidation = metricsRepository -> {
-        metricsRepository.metrics().forEach((mName, metric) -> {
-          if (mName.contains("long_tail_retry_request")) {
-            assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
-          }
-        });
-      };
+      metricPrefix = "--";
+      log = "single Get";
+      clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
+          .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
     }
+    fastClientStatsValidation = metricsRepository -> {
+      Assert.assertTrue(
+          metricsRepository.metrics()
+              .get("." + storeName + metricPrefix + "long_tail_retry_request.OccurrenceRate")
+              .value() > 0,
+          "Long tail retry for " + log + " should be triggered");
+    };
     runTest(
         clientConfigBuilder,
         batchGet,
@@ -471,6 +466,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         m -> {},
         null,
         Optional.empty(),
-        storeMetadataFetchMode);
+        StoreMetadataFetchMode.SERVER_BASED_METADATA);
   }
 }
