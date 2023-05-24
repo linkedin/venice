@@ -83,7 +83,6 @@ public abstract class AbstractPushMonitor
   private final long offlineJobResourceAssignmentWaitTimeInMilliseconds;
 
   private final PushStatusCollector pushStatusCollector;
-  private final PushStatusStoreReader pushStatusStoreReader;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -114,14 +113,14 @@ public abstract class AbstractPushMonitor
     this.helixClientThrottler =
         new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
     this.offlineJobResourceAssignmentWaitTimeInMilliseconds = controllerConfig.getOffLineJobWaitTimeInMilliseconds();
-    this.pushStatusStoreReader = pushStatusStoreReader;
     this.pushStatusCollector = new PushStatusCollector(
         metadataRepository,
         pushStatusStoreReader,
         (topic) -> handleCompletedPush(getOfflinePush(topic)),
         (topic, details) -> handleErrorPush(getOfflinePush(topic), details),
         controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled(),
-        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds());
+        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds(),
+        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber());
     pushStatusCollector.start();
   }
 

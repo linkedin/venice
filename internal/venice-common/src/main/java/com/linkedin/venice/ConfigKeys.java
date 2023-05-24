@@ -1648,6 +1648,10 @@ public class ConfigKeys {
   public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS =
       "offline.push.monitor.davinci.push.status.scan.interval.in.seconds";
 
+  // Config to determine the Da Vinci push status scanning worker thread number.
+  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER =
+      "offline.push.monitor.davinci.push.status.scan.thread.number";
+
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
 

@@ -64,6 +64,7 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
@@ -191,6 +192,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean offlinePushMonitorDaVinciPushStatusEnabled;
   private final int offlinePushMonitorDaVinciPushStatusScanIntervalInSeconds;
+
+  private final int offlinePushMonitorDaVinciPushStatusScanThreadNumber;
 
   private final boolean zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled;
 
@@ -419,6 +422,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
     this.offlinePushMonitorDaVinciPushStatusScanIntervalInSeconds =
         props.getInt(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 30);
+    this.offlinePushMonitorDaVinciPushStatusScanThreadNumber =
+        props.getInt(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER, 4);
+
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled =
         props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
     this.systemStoreAclSynchronizationDelayMs =
@@ -732,6 +738,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
     return offlinePushMonitorDaVinciPushStatusEnabled;
+  }
+
+  public int getOfflinePushMonitorDaVinciPushStatusScanThreadNumber() {
+    return offlinePushMonitorDaVinciPushStatusScanThreadNumber;
   }
 
   public boolean isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled() {

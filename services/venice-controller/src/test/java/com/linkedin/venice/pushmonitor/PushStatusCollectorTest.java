@@ -54,7 +54,8 @@ public class PushStatusCollectorTest {
         pushCompleteConsumer,
         pushErrorConsumer,
         true,
-        1);
+        1,
+        4);
     pushStatusCollector.start();
 
     pushStatusCollector.subscribeTopic(regularStoreTopicV1, 10);
