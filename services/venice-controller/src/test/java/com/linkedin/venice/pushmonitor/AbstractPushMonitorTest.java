@@ -99,6 +99,7 @@ public abstract class AbstractPushMonitorTest {
     mockControllerConfig = mock(VeniceControllerConfig.class);
     when(mockControllerConfig.isErrorLeaderReplicaFailOverEnabled()).thenReturn(true);
     when(mockControllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
+    when(mockControllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber()).thenReturn(4);
     monitor = getPushMonitor();
   }
 
