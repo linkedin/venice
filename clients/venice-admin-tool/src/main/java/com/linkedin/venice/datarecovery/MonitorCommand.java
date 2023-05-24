@@ -97,12 +97,12 @@ public class MonitorCommand extends Command {
                   "No ongoing offline pushes detected after given date time (%s), keep polling",
                   params.dateTime));
           return;
-        } else {
-          isOngoingOfflinePushDetected = true;
-          String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersion);
-          result.setFutureVersion(futureVersion);
-          result.setKafKaTopic(kafkaTopic);
         }
+
+        isOngoingOfflinePushDetected = true;
+        String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersion);
+        result.setFutureVersion(futureVersion);
+        result.setKafKaTopic(kafkaTopic);
       }
 
       // Query job status.
@@ -170,7 +170,6 @@ public class MonitorCommand extends Command {
     private String parentUrl;
     private Optional<SSLFactory> sslFactory;
 
-    // expected completion timestamp
     private LocalDateTime dateTime;
 
     public void setTargetRegion(String fabric) {
