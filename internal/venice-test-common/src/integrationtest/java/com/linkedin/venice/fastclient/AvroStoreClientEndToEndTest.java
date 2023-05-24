@@ -425,7 +425,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         storeMetadataFetchMode);
   }
 
-  @Test(dataProvider = "True-and-False", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-One-Boolean", timeOut = TIME_OUT)
   public void testFastClientWithLongTailRetry(boolean batchGet) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
