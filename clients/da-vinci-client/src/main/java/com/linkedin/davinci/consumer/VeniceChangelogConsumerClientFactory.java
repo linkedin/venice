@@ -5,13 +5,20 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
+import java.util.Properties;
 
 
 public class VeniceChangelogConsumerClientFactory {
@@ -23,10 +30,11 @@ public class VeniceChangelogConsumerClientFactory {
 
   private D2ControllerClient d2ControllerClient;
 
-  private KafkaConsumer consumer;
+  private PubSubConsumerAdapter consumer;
 
   protected ViewClassGetter viewClassGetter;
 
+  // TODO: Add PubSubConsumerFactory into the constructor, so that client can choose specific Pub Sub system's consumer.
   public VeniceChangelogConsumerClientFactory(
       ChangelogClientConfig globalChangelogClientConfig,
       MetricsRepository metricsRepository) {
@@ -39,7 +47,7 @@ public class VeniceChangelogConsumerClientFactory {
     this.d2ControllerClient = d2ControllerClient;
   }
 
-  protected void setConsumer(KafkaConsumer consumer) {
+  protected void setConsumer(PubSubConsumerAdapter consumer) {
     this.consumer = consumer;
   }
 
@@ -74,7 +82,7 @@ public class VeniceChangelogConsumerClientFactory {
       }
 
       // TODO: This is a redundant controller query. Need to condense it with the storeInfo query that happens
-      // inside the changecaptureclient itself
+      // inside the change capture client itself
       String viewClass =
           newStoreChangelogClientConfig.getViewName() == null ? "" : newStoreChangelogClientConfig.getViewName();
       if (!viewClass.isEmpty()) {
@@ -84,15 +92,29 @@ public class VeniceChangelogConsumerClientFactory {
             d2ControllerClient,
             globalChangelogClientConfig.getControllerRequestRetryCount());
       }
+      String consumerName = storeName + "-" + viewClass.getClass().getSimpleName();
       if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
         return new VeniceChangelogConsumerImpl(
             newStoreChangelogClientConfig,
-            consumer != null ? consumer : new KafkaConsumer<>(newStoreChangelogClientConfig.getConsumerProperties()));
+            consumer != null
+                ? consumer
+                : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
       }
       return new VeniceAfterImageConsumerImpl(
           newStoreChangelogClientConfig,
-          consumer != null ? consumer : new KafkaConsumer<>(newStoreChangelogClientConfig.getConsumerProperties()));
+          consumer != null
+              ? consumer
+              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
     });
+  }
+
+  private PubSubConsumerAdapter getConsumer(Properties consumerProps, String consumerName) {
+    KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    return new ApacheKafkaConsumerAdapterFactory()
+        .create(new VeniceProperties(consumerProps), false, kafkaPubSubMessageDeserializer, consumerName);
   }
 
   private String getViewClass(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries) {
