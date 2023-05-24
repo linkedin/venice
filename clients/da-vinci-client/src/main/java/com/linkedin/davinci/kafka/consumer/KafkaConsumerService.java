@@ -73,6 +73,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
 
   private final ExecutorService consumerExecutor;
   protected final String kafkaUrl;
+  protected final String kafkaUrlForLogger;
   private final Logger LOGGER;
 
   protected KafkaConsumerServiceStats stats;
@@ -101,7 +102,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       final KafkaConsumerServiceStats statsOverride,
       final boolean isKafkaConsumerOffsetCollectionEnabled) {
     this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
-    this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrl + "]");
+    this.kafkaUrlForLogger = kafkaUrl.replace(".", "_");
+    this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "]");
 
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(

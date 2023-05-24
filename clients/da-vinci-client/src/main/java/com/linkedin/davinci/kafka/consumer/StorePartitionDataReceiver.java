@@ -19,6 +19,7 @@ public class StorePartitionDataReceiver
   private final StoreIngestionTask storeIngestionTask;
   private final PubSubTopicPartition topicPartition;
   private final String kafkaUrl;
+  private final String kafkaUrlForLogger;
   private final int kafkaClusterId;
   private final Logger LOGGER;
 
@@ -32,8 +33,9 @@ public class StorePartitionDataReceiver
     this.storeIngestionTask = Validate.notNull(storeIngestionTask);
     this.topicPartition = Validate.notNull(topicPartition);
     this.kafkaUrl = Validate.notNull(kafkaUrl);
+    this.kafkaUrlForLogger = kafkaUrl.replace(".", "_");
     this.kafkaClusterId = kafkaClusterId;
-    this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrl + "]");
+    this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrlForLogger + "]");
     this.receivedRecordsCount = 0L;
   }
 
