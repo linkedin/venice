@@ -51,7 +51,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
@@ -103,15 +102,16 @@ public class VeniceChunkedResponse {
 
   // Whether the response has already completed or not
   private boolean responseCompleteCalled = false;
-  // Whether the response metadata has been sent or not
-  private final AtomicBoolean responseMetadataWriteInitiated = new AtomicBoolean(false);
-
   private final AtomicLong totalBytesReceived = new AtomicLong(0);
   private final Queue<Chunk> chunksToWrite = new ConcurrentLinkedQueue<Chunk>();
   private final Queue<Chunk> chunksAwaitingCallback = new ConcurrentLinkedQueue<Chunk>();
 
-  // Response metadata should be sent when everything is good.
-  private HttpResponse responseMetadata;
+  /**
+   * Initialized upon the first write. If null, then no writes occurred yet, and therefore the response metadata was
+   * not sent either.
+   *
+   * In the case of streaming batch gets, we expect that all servers should return the same value for this.
+   */
   private volatile CompressionStrategy responseCompression = null;
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
@@ -230,7 +230,7 @@ public class VeniceChunkedResponse {
         finish(new StreamingCallbackOnlyFreeResponseOnSuccess<>(((SuccessfulStreamingResponse) msg), promise));
         return true;
       } else if (msg instanceof FullHttpResponse) {
-        if (!responseMetadataWriteInitiated.get()) {
+        if (VeniceChunkedResponse.this.responseCompression == null) {
           // Error response before sending out any data yet
           return false;
         }
@@ -246,7 +246,7 @@ public class VeniceChunkedResponse {
               "Unexpected response status: " + status + ", and only non 200 status is expected here");
         }
       }
-      throw new VeniceException("Unexpected message type received: " + msg.getClass());
+      throw new VeniceException("Unexpected message type received: " + (msg == null ? "null" : msg.getClass()));
     }
   }
 
@@ -274,40 +274,41 @@ public class VeniceChunkedResponse {
       ByteBuf byteBuf,
       CompressionStrategy compression,
       StreamingCallback<Long> callback) {
-    if (this.requestType.equals(RequestType.MULTI_GET_STREAMING)) {
-      if (this.responseCompression == null) {
-        synchronized (this) {
-          if (this.responseCompression == null) {
-            this.responseCompression = compression;
-            this.responseMetadata = RESPONSE_META_MAP_FOR_MULTI_GET.get(compression);
-          }
+    boolean isFirstWrite = false;
+    if (this.responseCompression == null) {
+      synchronized (this) {
+        if (this.responseCompression == null) {
+          this.responseCompression = compression;
+          isFirstWrite = true;
         }
       }
-      if (!this.responseCompression.equals(compression)) {
-        // Defensive code, not expected
-        LOGGER.error(
-            "Received inconsistent compression for the new write: {}, and previous compression: {}",
-            compression,
-            this.responseCompression);
-        /**
-         * Skip the write with wrong compression.
-         * {@link VeniceResponseAggregator#buildStreamingResponse} will perform the same check
-         * when all the responses returned by storage nodes are ready, and when the inconsistency happens,
-         * {@link VeniceResponseAggregator} will return an error response instead to indicate the issue.
-         */
-        return CompletableFuture.completedFuture(0l);
-      }
-    } else {
-      responseMetadata = RESPONSE_META_FOR_COMPUTE;
+    }
+
+    boolean isMultiGetStreaming = this.requestType.equals(RequestType.MULTI_GET_STREAMING);
+    if (isMultiGetStreaming && !this.responseCompression.equals(compression)) {
+      // Defensive code, not expected
+      LOGGER.error(
+          "Received inconsistent compression for the new write: {}, and previous compression: {}",
+          compression,
+          this.responseCompression);
+      /**
+       * Skip the write with wrong compression.
+       * {@link VeniceResponseAggregator#buildStreamingResponse} will perform the same check
+       * when all the responses returned by storage nodes are ready, and when the inconsistency happens,
+       * {@link VeniceResponseAggregator} will return an error response instead to indicate the issue.
+       */
+      return CompletableFuture.completedFuture(0l);
     }
 
     /**
      * We would like to send out response metadata as late as possible, so that the error happened earlier
      * (such as request parsing error) could still be sent out with the right status code
      */
-    if (responseMetadataWriteInitiated.compareAndSet(false, true)) {
+    if (isFirstWrite) {
       // Send out response metadata
       ChannelPromise writePromise = ctx.newPromise().addListener(new ResponseMetadataWriteListener());
+      HttpResponse responseMetadata =
+          isMultiGetStreaming ? RESPONSE_META_MAP_FOR_MULTI_GET.get(compression) : RESPONSE_META_FOR_COMPUTE;
       chunkedWriteHandler.write(ctx, responseMetadata, writePromise);
       /**
        * {@link ChunkedWriteHandler#resumeTransfer()} invocation will try to flush more data to the client since more
