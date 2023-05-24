@@ -112,7 +112,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   /**
    * Creates a batchget request which uses scatter gather to fetch all keys from different replicas.
    */
-  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode")
+  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
   public void testBatchGetGenericClient(
       boolean useStreamingBatchGetAsDefault,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
@@ -163,7 +163,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     printAllStats();
   }
 
-  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode")
+  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
   public void testBatchGetSpecificClient(
       boolean useStreamingBatchGetAsDefault,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
@@ -212,7 +212,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     printAllStats();
   }
 
-  @Test(dataProvider = "StoreMetadataFetchModes")
+  @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
   public void testStreamingBatchGetGenericClient(StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -266,7 +266,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         "Incorrect request_key_count should not be incremented");
   }
 
-  @Test(dataProvider = "StoreMetadataFetchModes")
+  @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
   public void testStreamingBatchGetWithCallbackGenericClient(StoreMetadataFetchMode storeMetadataFetchMode)
       throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
