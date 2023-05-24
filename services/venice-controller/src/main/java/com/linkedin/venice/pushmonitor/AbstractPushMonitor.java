@@ -135,6 +135,7 @@ public abstract class AbstractPushMonitor
   }
 
   public void loadAllPushes(List<OfflinePushStatus> offlinePushStatusList) {
+    pushStatusCollector.start();
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
       // Subscribe to changes first
