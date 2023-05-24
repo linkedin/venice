@@ -41,6 +41,8 @@ public class ConfigKeys {
   public static final String KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS =
       ApacheKafkaProducerConfig.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 
+  public static final String KAFKA_CLIENT_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_CLIENT_ID_CONFIG;
+  public static final String KAFKA_GROUP_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_GROUP_ID_CONFIG;
   public static final String KAFKA_AUTO_OFFSET_RESET_CONFIG = ApacheKafkaConsumerConfig.KAFKA_AUTO_OFFSET_RESET_CONFIG;
   public static final String KAFKA_ENABLE_AUTO_COMMIT_CONFIG =
       ApacheKafkaConsumerConfig.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;

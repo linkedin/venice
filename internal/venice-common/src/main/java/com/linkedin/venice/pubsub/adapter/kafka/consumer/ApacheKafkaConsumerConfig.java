@@ -30,6 +30,8 @@ public class ApacheKafkaConsumerConfig {
       KAFKA_CONFIG_PREFIX + ApacheKafkaConsumerAdapter.CONSUMER_POLL_RETRY_TIMES_CONFIG;
   public static final String KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG =
       KAFKA_CONFIG_PREFIX + ApacheKafkaConsumerAdapter.CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
+  public static final String KAFKA_CLIENT_ID_CONFIG = KAFKA_CONFIG_PREFIX + ConsumerConfig.CLIENT_ID_CONFIG;
+  public static final String KAFKA_GROUP_ID_CONFIG = KAFKA_CONFIG_PREFIX + ConsumerConfig.GROUP_ID_CONFIG;
 
   private final Properties consumerProperties;
 
