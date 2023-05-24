@@ -101,7 +101,7 @@ public class TestClientSimulator implements Client {
   private boolean longTailRetryEnabledForSingleGet = false;
   private int longTailRetryThresholdForSingleGetInMicroseconds = 0;
   private boolean longTailRetryEnabledForBatchGet = false;
-  private int longTailRetryThresholdForBatchGetInMicroseconds = 0;
+  private int longTailRetryThresholdForBatchGetInMicroSeconds = 0;
 
   public TestClientSimulator() {
     // get()
@@ -497,9 +497,9 @@ public class TestClientSimulator implements Client {
     return this;
   }
 
-  public TestClientSimulator setLongTailRetryThresholdForBatchGetInMicroseconds(
-      int longTailRetryThresholdForBatchGetInMicroseconds) {
-    this.longTailRetryThresholdForBatchGetInMicroseconds = longTailRetryThresholdForBatchGetInMicroseconds;
+  public TestClientSimulator setLongTailRetryThresholdForBatchGetInMicroSeconds(
+      int longTailRetryThresholdForBatchGetInMicroSeconds) {
+    this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
     return this;
   }
 
@@ -514,7 +514,7 @@ public class TestClientSimulator implements Client {
     if (longTailRetryEnabledForBatchGet) {
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true);
       clientConfigBuilder
-          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroseconds);
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroSeconds);
     }
     if (longTailRetryEnabledForSingleGet) {
       clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true);

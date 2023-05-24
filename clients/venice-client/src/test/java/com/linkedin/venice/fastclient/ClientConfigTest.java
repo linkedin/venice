@@ -88,4 +88,14 @@ public class ClientConfigTest {
         .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000)
         .build();
   }
+
+  /** Setting useStreamingBatchGetAsDefault, no exceptions thrown */
+  @Test
+  public void testUseStreamingBatchGetAsDefault() {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+    clientConfigBuilder.setUseStreamingBatchGetAsDefault(true);
+    clientConfigBuilder.build();
+    clientConfigBuilder.setUseStreamingBatchGetAsDefault(false);
+    clientConfigBuilder.build();
+  }
 }

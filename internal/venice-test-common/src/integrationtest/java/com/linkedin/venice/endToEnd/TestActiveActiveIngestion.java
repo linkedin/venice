@@ -545,6 +545,7 @@ public class TestActiveActiveIngestion {
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testAAIngestionWithStoreView() throws Exception {
+    Long timestamp = System.currentTimeMillis();
     ControllerClient childControllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     String parentControllerURLs =
@@ -847,6 +848,15 @@ public class TestActiveActiveIngestion {
 
     polledChangeEvents.clear();
 
+    // This should get everything submitted to the CC topic on this version since the timestamp is before anything got
+    // transmitted
+    veniceChangelogConsumer.seekToTimestamp(timestamp);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 42);
+    });
+    polledChangeEvents.clear();
+
     // enable repush ttl
     props.setProperty(REPUSH_TTL_ENABLE, "true");
     TestWriteUtils.runPushJob("Run repush job with TTL", props);
@@ -923,6 +933,13 @@ public class TestActiveActiveIngestion {
 
     // Also should be nothing on the tail
     veniceAfterImageConsumer.seekToTail().join();
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 0);
+    });
+
+    // This should get everything submitted to the CC topic on this version (version 4 doesn't have anything)
+    veniceChangelogConsumer.seekToTimestamp(timestamp);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);

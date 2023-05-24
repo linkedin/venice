@@ -70,16 +70,12 @@ public interface PubSubAdminAdapter extends Closeable {
       PubSubTopicPartition pubSubTopicPartition,
       int maxAttempts,
       final boolean expectedResult) {
-    Duration defaultInitialBackoff = Duration.ofMillis(100);
-    Duration defaultMaxBackoff = Duration.ofSeconds(5);
-    Duration defaultMaxDuration = Duration.ofSeconds(60);
+    Duration defaultAttemptDuration = Duration.ofSeconds(60);
     return containsTopicWithPartitionCheckExpectationAndRetry(
         pubSubTopicPartition,
         maxAttempts,
         expectedResult,
-        defaultInitialBackoff,
-        defaultMaxBackoff,
-        defaultMaxDuration);
+        defaultAttemptDuration);
   }
 
   List<Class<? extends Throwable>> getRetriableExceptions();
@@ -114,24 +110,17 @@ public interface PubSubAdminAdapter extends Closeable {
       PubSubTopicPartition pubSubTopicPartition,
       int maxAttempts,
       final boolean expectedResult,
-      Duration initialBackoff,
-      Duration maxBackoff,
-      Duration maxDuration) {
-    if (initialBackoff.toMillis() > maxBackoff.toMillis()) {
-      throw new IllegalArgumentException(
-          "Initial backoff cannot be longer than max backoff. Got initial backoff in " + "millis: "
-              + initialBackoff.toMillis() + " and max backoff in mills: " + maxBackoff.toMillis());
-    }
+      Duration attemptDuration) {
 
     try {
-      return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+      return RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(() -> {
         if (expectedResult != this.containsTopicWithPartitionCheck(pubSubTopicPartition)) {
           throw new VeniceRetriableException(
               "Retrying containsTopic check to get expected result: " + expectedResult + " for :"
                   + pubSubTopicPartition);
         }
         return expectedResult;
-      }, maxAttempts, initialBackoff, maxBackoff, maxDuration, getRetriableExceptions());
+      }, maxAttempts, attemptDuration, getRetriableExceptions());
     } catch (VeniceRetriableException e) {
       return !expectedResult; // Eventually still not get the expected result
     }

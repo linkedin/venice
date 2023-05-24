@@ -122,10 +122,16 @@ public class VeniceChangelogConsumerImplTest {
 
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
-    veniceChangelogConsumer.seekToEndOfPush();
+    veniceChangelogConsumer.seekToTimestamp(System.currentTimeMillis() - 10000L);
     HashSet<TopicPartition> topicPartitions = new HashSet<>();
     topicPartitions.add(new TopicPartition(oldVersionTopic, 0));
     verify(mockKafkaConsumer).assign(topicPartitions);
+
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
+    veniceChangelogConsumer.seekToEndOfPush();
+    topicPartitions.add(new TopicPartition(oldVersionTopic, 0));
+    verify(mockKafkaConsumer, times(2)).assign(topicPartitions);
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);

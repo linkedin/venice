@@ -1,17 +1,79 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
+
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import java.util.AbstractMap;
 import java.util.Map;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.testng.annotations.DataProvider;
 
 
 public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest {
+  @Override
+  @DataProvider(name = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode")
+  public Object[][] fourBooleanANumberStoreMetadataFetchMode() {
+    return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean batchGet = (boolean) permutation[2];
+      boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
+      int batchGetKeySize = (int) permutation[4];
+      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[5];
+      if (!batchGet) {
+        if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
+          // these parameters are related only to batchGet, so just allowing 1 set
+          // to avoid duplicate tests
+          return false;
+        }
+      }
+      if (storeMetadataFetchMode == StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA) {
+        return false;
+      }
+      return true;
+    },
+        DataProviderUtils.BOOLEAN_FALSE, // dualRead
+        DataProviderUtils.BOOLEAN_FALSE, // speculativeQueryEnabled
+        DataProviderUtils.BOOLEAN, // batchGet
+        DataProviderUtils.BOOLEAN_TRUE, // useStreamingBatchGetAsDefault
+        BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
+        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
+  }
+
+  @Override
+  @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
+  public Object[][] threeBooleanAndANumber() {
+    return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean batchGet = (boolean) permutation[0];
+      int batchGetKeySize = (int) permutation[3];
+      if (!batchGet) {
+        if (batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
+          // these parameters are related only to batchGet, so just allowing 1 set
+          // to avoid duplicate tests
+          return false;
+        }
+      }
+      return true;
+    },
+        DataProviderUtils.BOOLEAN, // batchGet
+        DataProviderUtils.BOOLEAN_FALSE, // dualRead
+        DataProviderUtils.BOOLEAN_FALSE, // speculativeQueryEnabled
+        BATCH_GET_KEY_SIZE.toArray());
+  }
+
+  /** the below tests are used for long tail retry cases which are flaky,
+   * so disabling them for this class */
+  @Override
+  @DataProvider(name = "FastClient-One-Boolean")
+  public Object[][] oneBoolean() {
+    return DataProviderUtils.allPermutationGenerator((permutation) -> false, DataProviderUtils.BOOLEAN);
+  }
+
   @Override
   protected void prepareData() throws Exception {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
