@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -56,6 +55,11 @@ public class TestVeniceHelixResources {
         .getReadOnlyZKSharedSystemStoreRepository();
     doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin)
         .getReadOnlyZKSharedSchemaRepository();
+    VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
+    when(controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber()).thenReturn(4);
+    when(controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
+    when(controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled()).thenReturn(true);
+    when(controllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
     return new HelixVeniceClusterResources(
         cluster,
         zkClient,

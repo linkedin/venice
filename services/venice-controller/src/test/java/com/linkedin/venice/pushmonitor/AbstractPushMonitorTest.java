@@ -97,7 +97,8 @@ public abstract class AbstractPushMonitorTest {
     mockPushHealthStats = mock(AggPushHealthStats.class);
     clusterLockManager = new ClusterLockManager(clusterName);
     mockControllerConfig = mock(VeniceControllerConfig.class);
-    when(mockControllerConfig.isErrorLeaderReplicaFailOverEnabled()).thenReturn(true);
+    when(mockControllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled()).thenReturn(true);
+    when(mockControllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
     when(mockControllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
     when(mockControllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber()).thenReturn(4);
     monitor = getPushMonitor();
