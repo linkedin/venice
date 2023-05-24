@@ -132,7 +132,9 @@ def integrationTestBuckets = [
       "com.linkedin.venice.storagenode.*",
       "com.linkedin.venice.restart.*"],
   "G": [
-      "com.linkedin.venice.router.*"],
+      "com.linkedin.venice.router.*",
+      "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
+      "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest"],
   "H": [
       "com.linkedin.venice.fastclient.BatchGet*",
       "com.linkedin.venice.fastclient.schema.*",
@@ -168,10 +170,7 @@ def integrationTestBuckets = [
       "com.linkedin.venice.controller.AdminTool*",
       "com.linkedin.venice.controller.VeniceParentHelixAdminTest"],
   "Q": [
-      "com.linkedin.venice.controller.Test*"],
-  "R": [
-      "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
-      "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest"]
+      "com.linkedin.venice.controller.Test*"]
 ]
 
 integrationTestBuckets.each { name, patterns ->
