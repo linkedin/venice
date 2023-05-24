@@ -35,9 +35,14 @@ public class ApacheKafkaProducerConfig {
   public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
       KAFKA_CONFIG_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl." + KAFKA_BOOTSTRAP_SERVERS;
-  // N.B. do not attempt to change spelling, "kakfa", without carefully replacing all instances in use and some
-  // of them may be external to this repo
-  public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
+  /**
+   * N.B. do not attempt to change spelling, "kakfa", without carefully replacing all instances in use and some of them
+   * may be external to this repo
+   * @deprecated Use {@link KAFKA_OVER_SSL}
+   */
+  @Deprecated
+  public static final String SSL_TO_KAFKA_LEGACY = "ssl.to.kakfa";
+  public static final String KAFKA_OVER_SSL = KAFKA_CONFIG_PREFIX + "over.ssl";
 
   private final Properties producerProperties;
 
@@ -72,7 +77,7 @@ public class ApacheKafkaProducerConfig {
   }
 
   public static String getPubsubBrokerAddress(VeniceProperties properties) {
-    if (Boolean.parseBoolean(properties.getString(SSL_TO_KAFKA, "false"))) {
+    if (Boolean.parseBoolean(properties.getStringWithAlternative(SSL_TO_KAFKA_LEGACY, KAFKA_OVER_SSL, "false"))) {
       checkProperty(properties, SSL_KAFKA_BOOTSTRAP_SERVERS);
       return properties.getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
     }

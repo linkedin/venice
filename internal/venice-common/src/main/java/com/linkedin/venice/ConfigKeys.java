@@ -394,7 +394,14 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
-  public static final String SSL_TO_KAFKA = ApacheKafkaProducerConfig.SSL_TO_KAFKA;
+
+  /**
+   * This config key is a misspelling. It is now considered deprecated.
+   * @deprecated Use {@link KAFKA_OVER_SSL}
+   */
+  @Deprecated
+  public static final String SSL_TO_KAFKA_LEGACY = ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
+  public static final String KAFKA_OVER_SSL = ApacheKafkaProducerConfig.KAFKA_OVER_SSL;
   public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
   public static final String HYBRID_QUOTA_ENFORCEMENT_ENABLED = "server.hybrid.quota.enforcement.enabled";
   public static final String SERVER_DATABASE_MEMORY_STATS_ENABLED = "server.database.memory.stats.enabled";

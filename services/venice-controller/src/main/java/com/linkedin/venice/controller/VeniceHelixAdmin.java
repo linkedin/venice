@@ -3,10 +3,11 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
@@ -660,7 +661,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     VeniceProperties originalPros = controllerConfig.getProps();
     Properties clonedProperties = originalPros.toProperties();
-    if (originalPros.getBoolean(SSL_TO_KAFKA, false)) {
+    if (originalPros.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false)) {
       clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     } else {
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
@@ -5718,7 +5719,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * Test if ssl is enabled to Kafka.
-   * @see ConfigKeys#SSL_TO_KAFKA
+   * @see ConfigKeys#SSL_TO_KAFKA_LEGACY
+   * @see ConfigKeys#KAFKA_OVER_SSL
    */
   @Override
   public boolean isSslToKafka() {

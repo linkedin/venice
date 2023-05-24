@@ -111,6 +111,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final String clusterName;
   private final String zkAddress;
   private final String kafkaBootstrapServers;
+  private final boolean isSslToKafka;
 
   static final String REQUEST_TOPIC_ERROR_WRITES_DISABLED = "Write operations to the store are disabled.";
   static final String REQUEST_TOPIC_ERROR_BATCH_ONLY_STORE = "Online writes are only supported for hybrid stores.";
@@ -136,7 +137,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       String clusterName,
       String zkAddress,
-      String kafkaBootstrapServers) {
+      String kafkaBootstrapServers,
+      boolean isSslToKafka) {
     super();
     this.routingDataRepository = routingDataRepository;
     this.schemaRepo = schemaRepo;
@@ -148,6 +150,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.clusterName = clusterName;
     this.zkAddress = zkAddress;
     this.kafkaBootstrapServers = kafkaBootstrapServers;
+    this.isSslToKafka = isSslToKafka;
   }
 
   @Override
@@ -628,11 +631,13 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     responseObject.setName(storeName);
     responseObject.setPartitions(currentVersion.getPartitionCount());
     responseObject.setKafkaTopic(Version.composeRealTimeTopic(storeName));
+
     // RT topic only supports NO_OP compression
     responseObject.setCompressionStrategy(CompressionStrategy.NO_OP);
     // disable amplificationFactor logic on real-time topic
     responseObject.setAmplificationFactor(1);
     responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
+    responseObject.setEnableSSL(isSslToKafka);
     responseObject.setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
     responseObject.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
     responseObject.setPartitionerParams(storePartitionerConfig.getPartitionerParams());
