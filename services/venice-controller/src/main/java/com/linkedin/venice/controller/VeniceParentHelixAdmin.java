@@ -3421,12 +3421,13 @@ public class VeniceParentHelixAdmin implements Admin {
     int failCount = 0;
     Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
 
-    for (String region: controllerClients.keySet()) {
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      String region = entry.getKey();
       // if targetedRegions is present, only query the targeted regions
       if (!targetedRegionSet.isEmpty() && !targetedRegionSet.contains(region)) {
         continue;
       }
-      ControllerClient controllerClient = controllerClients.get(region);
+      ControllerClient controllerClient = entry.getValue();
       String leaderControllerUrl;
       try {
         leaderControllerUrl = controllerClient.getLeaderControllerUrl();
