@@ -170,8 +170,7 @@ def integrationTestBuckets = [
   "Q": [
       "com.linkedin.venice.controller.Test*"],
   "R": [
-      "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest"],
-  "S": [
+      "com.linkedin.venice.fastclient.AvroStoreClientGzipEndToEndTest",
       "com.linkedin.venice.fastclient.AvroStoreClientZstdEndToEndTest"]
 ]
 
