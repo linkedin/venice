@@ -60,19 +60,18 @@ public class PushMonitorUtils {
         }
         // We only compute status based on live instances.
         liveInstanceCount++;
+        if (status == completeStatus) {
+          continue;
+        }
         if (status == middleStatus) {
-          if (allInstancesCompleted) {
-            allInstancesCompleted = false;
-          }
-        } else if (status != completeStatus) {
-          if (allInstancesCompleted || allMiddleStatusReceived) {
-            allInstancesCompleted = false;
-            allMiddleStatusReceived = false;
-            if (status == ExecutionStatus.ERROR) {
-              erroredInstance = Optional.of(entry.getKey().toString());
-              break;
-            }
-          }
+          allInstancesCompleted = false;
+          continue;
+        }
+        allInstancesCompleted = false;
+        allMiddleStatusReceived = false;
+        if (status == ExecutionStatus.ERROR) {
+          erroredInstance = Optional.of(entry.getKey().toString());
+          break;
         }
       }
       if (allInstancesCompleted) {
@@ -81,32 +80,42 @@ public class PushMonitorUtils {
         incompletePartition.add(partitionId);
       }
     }
-    String statusDetail = null;
-    String details = "";
+    StringBuilder statusDetailStringBuilder = new StringBuilder();
     if (completedPartitions > 0) {
-      details += completedPartitions + "/" + partitionCount + " partitions completed in" + totalInstanceCount
-          + " Da Vinci instances.";
+      statusDetailStringBuilder.append(completedPartitions)
+          .append("/")
+          .append(partitionCount)
+          .append(" partitions completed in")
+          .append(totalInstanceCount)
+          .append(" Da Vinci instances.");
     }
     if (erroredInstance.isPresent()) {
-      details += "Found a failed instance in Da Vinci: " + erroredInstance + ". live instances: " + liveInstanceCount
-          + " total instances : " + totalInstanceCount;
+      statusDetailStringBuilder.append("Found a failed instance in Da Vinci: ")
+          .append(erroredInstance)
+          .append(". live instance count: ")
+          .append(liveInstanceCount)
+          .append(", total instance count: ")
+          .append(totalInstanceCount);
     }
     int incompleteSize = incompletePartition.size();
     if (incompleteSize > 0 && incompleteSize <= 5) {
-      details += ". Following partitions still not complete " + incompletePartition + ". live instances: "
-          + liveInstanceCount + " total instances : " + totalInstanceCount;
+      statusDetailStringBuilder.append(". Following partitions still not complete ")
+          .append(incompletePartition)
+          .append(". live instance count: ")
+          .append(liveInstanceCount)
+          .append(", total instance count : ")
+          .append(totalInstanceCount);
     }
-    if (details.length() != 0) {
-      statusDetail = details;
-    }
+    String statusDetail = statusDetailStringBuilder.toString();
     if (completedPartitions == partitionCount) {
       return new ExecutionStatusWithDetails(completeStatus, statusDetail);
-    } else if (allMiddleStatusReceived) {
-      return new ExecutionStatusWithDetails(middleStatus, statusDetail);
-    } else if (erroredInstance.isPresent()) {
-      return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail);
-    } else {
-      return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail);
     }
+    if (allMiddleStatusReceived) {
+      return new ExecutionStatusWithDetails(middleStatus, statusDetail);
+    }
+    if (erroredInstance.isPresent()) {
+      return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail);
+    }
+    return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail);
   }
 }

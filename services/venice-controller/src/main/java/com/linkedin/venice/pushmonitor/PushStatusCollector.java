@@ -142,20 +142,19 @@ public class PushStatusCollector {
   }
 
   public void handleServerPushStatusUpdate(String topicName, ExecutionStatus executionStatus, String detailsString) {
-
-    TopicPushStatus topicPushStatus = topicToPushStatusMap.get(topicName);
+    // Update the server topic status in the data structure and wait for async DVC status scan thread to pick up.
+    TopicPushStatus topicPushStatus = topicToPushStatusMap.computeIfPresent(topicName, (topic, pushStatus) -> {
+      pushStatus.setServerStatus(new ExecutionStatusWithDetails(executionStatus, detailsString));
+      return pushStatus;
+    });
+    // If scanning is not enabled or the topic is not subscribed for DVC push status scanning we will directly handle
+    // status update.
     if ((!daVinciPushStatusScanEnabled) || topicPushStatus == null) {
       if (executionStatus.equals(ExecutionStatus.COMPLETED)) {
         pushCompletedHandler.accept(topicName);
       } else if (executionStatus.equals(ExecutionStatus.ERROR)) {
         pushErrorHandler.accept(topicName, detailsString);
       }
-    } else {
-      // Update the server topic status in the data structure and wait for async DVC status scan thread to pick up.
-      topicToPushStatusMap.computeIfPresent(topicName, (topic, pushStatus) -> {
-        pushStatus.setServerStatus(new ExecutionStatusWithDetails(executionStatus, detailsString));
-        return pushStatus;
-      });
     }
   }
 
