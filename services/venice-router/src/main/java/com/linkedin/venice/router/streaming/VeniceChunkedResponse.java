@@ -284,8 +284,8 @@ public class VeniceChunkedResponse {
       }
     }
 
-    boolean isMultiGet = this.requestType.equals(RequestType.MULTI_GET_STREAMING);
-    if (isMultiGet && !this.responseCompression.equals(compression)) {
+    boolean isMultiGetStreaming = this.requestType.equals(RequestType.MULTI_GET_STREAMING);
+    if (isMultiGetStreaming && !this.responseCompression.equals(compression)) {
       // Defensive code, not expected
       LOGGER.error(
           "Received inconsistent compression for the new write: {}, and previous compression: {}",
@@ -308,7 +308,7 @@ public class VeniceChunkedResponse {
       // Send out response metadata
       ChannelPromise writePromise = ctx.newPromise().addListener(new ResponseMetadataWriteListener());
       HttpResponse responseMetadata =
-          isMultiGet ? RESPONSE_META_MAP_FOR_MULTI_GET.get(compression) : RESPONSE_META_FOR_COMPUTE;
+          isMultiGetStreaming ? RESPONSE_META_MAP_FOR_MULTI_GET.get(compression) : RESPONSE_META_FOR_COMPUTE;
       chunkedWriteHandler.write(ctx, responseMetadata, writePromise);
       /**
        * {@link ChunkedWriteHandler#resumeTransfer()} invocation will try to flush more data to the client since more
