@@ -34,6 +34,7 @@ public class VeniceChangelogConsumerClientFactory {
 
   protected ViewClassGetter viewClassGetter;
 
+  // TODO: Add PubSubConsumerFactory into the constructor, so that client can choose specific Pub Sub system's consumer.
   public VeniceChangelogConsumerClientFactory(
       ChangelogClientConfig globalChangelogClientConfig,
       MetricsRepository metricsRepository) {
