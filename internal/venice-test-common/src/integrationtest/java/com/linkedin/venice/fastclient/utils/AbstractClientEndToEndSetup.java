@@ -16,6 +16,7 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSIO
 import static org.testng.Assert.assertFalse;
 import static org.testng.AssertJUnit.assertNotNull;
 
+import com.google.common.collect.ImmutableList;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -116,7 +117,7 @@ public abstract class AbstractClientEndToEndSetup {
    * not be sent due to blocked instances. Setting this variable to be 100 from the tests for now.
    * This needs to be discussed further.
    */
-  static final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
+  protected static final ImmutableList<Object> BATCH_GET_KEY_SIZE = ImmutableList.of(2, recordCnt);
 
   @DataProvider(name = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode")
   public Object[][] fourBooleanANumberStoreMetadataFetchMode() {
@@ -125,7 +126,7 @@ public abstract class AbstractClientEndToEndSetup {
       boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
       int batchGetKeySize = (int) permutation[4];
       if (!batchGet) {
-        if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE[0]) {
+        if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
           // to avoid duplicate tests
           return false;
@@ -137,7 +138,7 @@ public abstract class AbstractClientEndToEndSetup {
         DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
         DataProviderUtils.BOOLEAN, // batchGet
         DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
-        BATCH_GET_KEY_SIZE, // batchGetKeySize
+        BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
 
@@ -167,11 +168,27 @@ public abstract class AbstractClientEndToEndSetup {
 
   @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
   public Object[][] threeBooleanAndANumber() {
-    return DataProviderUtils.allPermutationGenerator(
-        DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
-        BATCH_GET_KEY_SIZE);
+    return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean batchGet = (boolean) permutation[0];
+      int batchGetKeySize = (int) permutation[3];
+      if (!batchGet) {
+        if (batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
+          // these parameters are related only to batchGet, so just allowing 1 set
+          // to avoid duplicate tests
+          return false;
+        }
+      }
+      return true;
+    },
+        DataProviderUtils.BOOLEAN, // batchGet
+        DataProviderUtils.BOOLEAN, // dualRead
+        DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
+        BATCH_GET_KEY_SIZE.toArray());
+  }
+
+  @DataProvider(name = "FastClient-One-Boolean")
+  public Object[][] oneBoolean() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN);
   }
 
   @DataProvider(name = "fastClientHTTPVariantsAndStoreMetadataFetchModes")
