@@ -503,6 +503,18 @@ subprojects {
   }
 }
 
+task aggregateJavadoc(type: Javadoc) {
+  source subprojects.collect { project ->
+    project.sourceSets.main.allJava
+  }
+  classpath = files(subprojects.collect { project ->
+    project.sourceSets.main.compileClasspath
+  })
+  // generate javadoc with no warnings
+  getOptions().addStringOption('Xdoclint:none', '-quiet')
+  destinationDir = new File(buildDir, 'javadoc')
+}
+
 spotless {
   ratchetFrom "${git.getUpstreamRemote()}/main"
   java {
