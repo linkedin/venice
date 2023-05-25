@@ -230,7 +230,8 @@ public enum Arg {
   INTERVAL(
       "interval", "itv", true,
       "monitor data recovery progress at seconds close to the number specified by the interval parameter until tasks are finished"
-  ), DATETIME("datetime", "dtm", true, "Date and time stamp (DD/MM/YYYY HH:MM:SS)"),
+  ), 
+  DATETIME("datetime", "dtm", true, "Date and time stamp (DD-MM-YYYY HH:MM:SS) in UTC time zone for data recovery"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
 
   private final String argName;

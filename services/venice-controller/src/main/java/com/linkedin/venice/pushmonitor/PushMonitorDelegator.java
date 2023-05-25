@@ -88,9 +88,9 @@ public class PushMonitorDelegator implements PushMonitor {
       if (store == null) {
         throw new VeniceNoStoreException(
             Version.parseStoreFromKafkaTopicName(kafkaTopic),
-            Optional.of(
-                "Cannot find store metadata when tyring to allocate push status to push monitor."
-                    + "It's likely that the store has been deleted. topic: " + topicName));
+            null,
+            "Cannot find store metadata when tyring to allocate push status to push monitor."
+                + "It's likely that the store has been deleted. topic: " + topicName);
       }
       return partitionStatusBasedPushStatusMonitor;
     });
