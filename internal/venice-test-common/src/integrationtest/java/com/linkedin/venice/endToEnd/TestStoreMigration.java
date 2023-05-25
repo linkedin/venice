@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
@@ -301,6 +302,7 @@ public class TestStoreMigration {
     VeniceProperties backendConfig =
         DaVinciTestContext.getDaVinciPropertyBuilder(multiClusterWrapper.getZkServerWrapper().getAddress())
             .put(PUSH_STATUS_STORE_ENABLED, true)
+            .put(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 5)
             .build();
     D2Client d2Client =
         D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
