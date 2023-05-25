@@ -1,8 +1,8 @@
 package com.linkedin.venice.samza;
 
-import com.linkedin.davinci.consumer.*;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import java.io.ByteArrayInputStream;

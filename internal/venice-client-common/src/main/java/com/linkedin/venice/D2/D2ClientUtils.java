@@ -6,19 +6,27 @@ import static com.linkedin.venice.HttpConstants.HTTP_GET;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.Utils;
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -129,5 +137,54 @@ public class D2ClientUtils {
     RestRequestBuilder builder =
         new RestRequestBuilder(requestUri).setMethod(HTTPS_POST).setHeaders(headers).setEntity(body);
     return builder.build();
+  }
+
+  /**
+   * Utility function for building and starting a d2 client.
+   *
+   * @param d2ZkHost d2 zk host url
+   * @param d2ZkHostToClientEnvelopeMap a map that can be passed in and stored that keeps track of existing d2 clients
+   *                                    to avoid redundant client builds.
+   * @param sslFactory optional for setting up ssl parameters for the built client.  Won't take effect if the client was already
+   *                   built for a given zk host and is in the d2ZkHostToClientEnvelopeMap
+   * @return the built d2 client
+   */
+  public static D2Client getStartedD2Client(
+      String d2ZkHost,
+      Map<String, D2ClientEnvelope> d2ZkHostToClientEnvelopeMap,
+      Optional<SSLFactory> sslFactory) {
+    D2ClientEnvelope d2ClientEnvelope = d2ZkHostToClientEnvelopeMap.computeIfAbsent(d2ZkHost, zkHost -> {
+      String fsBasePath = Utils.getUniqueTempPath("d2");
+      D2Client d2Client = new D2ClientBuilder().setZkHosts(d2ZkHost)
+          .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
+          .setIsSSLEnabled(sslFactory.isPresent())
+          .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
+          .setFsBasePath(fsBasePath)
+          .setEnableSaveUriDataOnDisk(true)
+          .build();
+      D2ClientUtils.startClient(d2Client);
+      return new D2ClientEnvelope(d2Client, fsBasePath);
+    });
+    return d2ClientEnvelope.d2Client;
+  }
+
+  public static final class D2ClientEnvelope implements Closeable {
+    D2Client d2Client;
+    String fsBasePath;
+
+    D2ClientEnvelope(D2Client d2Client, String fsBasePath) {
+      this.d2Client = d2Client;
+      this.fsBasePath = fsBasePath;
+    }
+
+    @Override
+    public void close() throws IOException {
+      D2ClientUtils.shutdownClient(d2Client);
+      try {
+        FileUtils.deleteDirectory(new File(fsBasePath));
+      } catch (IOException e) {
+        LOGGER.info("Error in cleaning up: {}", fsBasePath);
+      }
+    }
   }
 }

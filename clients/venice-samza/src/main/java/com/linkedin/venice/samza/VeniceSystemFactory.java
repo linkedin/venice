@@ -14,6 +14,9 @@ import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME
 import static com.linkedin.venice.VeniceConstants.NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
+import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
@@ -23,6 +26,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -67,6 +71,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
   public static final String VENICE_PUSH_TYPE = "push.type";
 
+  public static final String DEFAULT_CHANGELOG_VIEW_NAME = "changeCaptureView";
+
   /**
    * Venice store name Samza application is going to produce to.
    */
@@ -99,6 +105,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public static final String VENICE_CHILD_CONTROLLER_D2_SERVICE = "venice.child.controller.d2.service";
   // D2 service name for parent cluster
   public static final String VENICE_PARENT_CONTROLLER_D2_SERVICE = "venice.parent.controller.d2.service";
+
+  public static final String VENICE_CHANGELOG_CONFIG_SUFFIX = "VeniceChangelogConsumer";
 
   // Legacy D2 service name for local cluster
   public static final String LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE = "VeniceController";
@@ -143,11 +151,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   @Override
   public SystemAdmin getAdmin(String systemName, Config config) {
     return new SinglePartitionWithoutOffsetsSystemAdmin();
-  }
-
-  @Override
-  public SystemConsumer getConsumer(String systemName, Config config, MetricsRegistry registry) {
-    throw new SamzaException("There is no Venice Consumer");
   }
 
   public Optional<String> getControllerDiscoveryUrl(Config config) {
@@ -460,6 +463,33 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     return getProducer(systemName, storeName, veniceAggregate, pushTypeString, config);
   }
 
+  @Override
+  public SystemConsumer getConsumer(String systemName, Config config, MetricsRegistry registry) {
+    final String prefix = SYSTEMS_PREFIX + systemName + DOT;
+    final String storeName = config.get(prefix + VENICE_STORE);
+    final String viewName = config.getOrDefault(prefix + VENICE_STORE, DEFAULT_CHANGELOG_VIEW_NAME);
+    final String localControllerD2Service = config.get(VENICE_CHILD_CONTROLLER_D2_SERVICE);
+
+    Optional<SSLFactory> sslFactory = Optional.empty();
+    boolean controllerSslEnabled = config.getBoolean(SSL_ENABLED, true);
+    if (controllerSslEnabled) {
+      LOGGER.info("Controller ACL is enabled.");
+      String sslFactoryClassName = config.get(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      Properties sslProps = getSslProperties(config);
+      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
+    }
+
+    ChangelogClientConfig changelogClientConfig = new ChangelogClientConfig().setViewName(viewName)
+        .setConsumerProperties(getChangelogBackendConfig(config))
+        .setControllerD2ServiceName(localControllerD2Service)
+        .setD2Client(D2ClientUtils.getStartedD2Client(localControllerD2Service, new HashMap<>(), sslFactory))
+        .setControllerRequestRetryCount(3);
+    // TODO: Need to look into an adapter between samza's MetricsRegistry and the tehuti metricsRepository
+    VeniceChangelogConsumerClientFactory factory =
+        new VeniceChangelogConsumerClientFactory(changelogClientConfig, null);
+    return new VeniceChangelogSystemConsumer<>(factory.getChangelogConsumer(storeName));
+  }
+
   /**
    * Convenience method to hide the ugliness of casting in just one place.
    *
@@ -535,6 +565,13 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     sslProperties.setProperty(SSL_TRUSTSTORE_LOCATION, samzaConfig.get(SSL_TRUSTSTORE_LOCATION));
     sslProperties.setProperty(SSL_TRUSTSTORE_PASSWORD, samzaConfig.get(SSL_TRUSTSTORE_PASSWORD));
     return sslProperties;
+  }
+
+  private Properties getChangelogBackendConfig(Config samzaConfig) {
+    Config backendConfig = samzaConfig.subset(VENICE_CHANGELOG_CONFIG_SUFFIX, true);
+    Properties backendProperties = new Properties();
+    backendProperties.putAll(backendConfig);
+    return backendProperties;
   }
 
   private static boolean isEmpty(String input) {

@@ -6,7 +6,6 @@ import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSO
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -51,7 +50,6 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -68,7 +66,6 @@ import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
-import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.SamzaException;
@@ -124,7 +121,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private final Time time;
   private final String runningFabric;
   private final boolean verifyLatestProtocolPresent;
-  private final Map<String, D2ClientEnvelope> d2ZkHostToClientEnvelopeMap = new HashMap<>();
+  private final Map<String, D2ClientUtils.D2ClientEnvelope> d2ZkHostToClientEnvelopeMap = new HashMap<>();
   private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaToIdsMap =
       new VeniceConcurrentHashMap<>();
 
@@ -441,8 +438,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         transportClient = new HttpTransportClient(discoveryUrl.get());
       }
     } else {
-      this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);
-      this.childColoD2Client = getStartedD2Client(veniceChildD2ZkHost);
+      this.primaryControllerColoD2Client =
+          D2ClientUtils.getStartedD2Client(primaryControllerColoD2ZKHost, d2ZkHostToClientEnvelopeMap, sslFactory);
+      this.childColoD2Client =
+          D2ClientUtils.getStartedD2Client(veniceChildD2ZkHost, d2ZkHostToClientEnvelopeMap, sslFactory);
+      ;
 
       // Discover cluster
       D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
@@ -880,41 +880,5 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   protected void setControllerClient(D2ControllerClient controllerClient) {
     this.controllerClient = controllerClient;
-  }
-
-  private D2Client getStartedD2Client(String d2ZkHost) {
-    D2ClientEnvelope d2ClientEnvelope = d2ZkHostToClientEnvelopeMap.computeIfAbsent(d2ZkHost, zkHost -> {
-      String fsBasePath = Utils.getUniqueTempPath("d2");
-      D2Client d2Client = new D2ClientBuilder().setZkHosts(d2ZkHost)
-          .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
-          .setIsSSLEnabled(sslFactory.isPresent())
-          .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
-          .setFsBasePath(fsBasePath)
-          .setEnableSaveUriDataOnDisk(true)
-          .build();
-      D2ClientUtils.startClient(d2Client);
-      return new D2ClientEnvelope(d2Client, fsBasePath);
-    });
-    return d2ClientEnvelope.d2Client;
-  }
-
-  private static final class D2ClientEnvelope implements Closeable {
-    D2Client d2Client;
-    String fsBasePath;
-
-    D2ClientEnvelope(D2Client d2Client, String fsBasePath) {
-      this.d2Client = d2Client;
-      this.fsBasePath = fsBasePath;
-    }
-
-    @Override
-    public void close() throws IOException {
-      D2ClientUtils.shutdownClient(d2Client);
-      try {
-        FileUtils.deleteDirectory(new File(fsBasePath));
-      } catch (IOException e) {
-        LOGGER.info("Error in cleaning up: {}", fsBasePath);
-      }
-    }
   }
 }
