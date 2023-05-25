@@ -14,7 +14,6 @@ import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -30,7 +29,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -249,19 +247,13 @@ public class VeniceController {
     if (!multiClusterConfigs.isParent() && multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
         && multiClusterConfigs.getControllerConfig(systemStoreCluster)
             .isSystemSchemaInitializationAtStartTimeEnabled()) {
-      UpdateStoreQueryParams metadataSystemStoreUpdate =
-          new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-              .setHybridOffsetLagThreshold(1)
-              .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
-              .setWriteComputationEnabled(true)
-              .setPartitionCount(1);
       ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
           new ControllerClientBackedSystemSchemaInitializer(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
               systemStoreCluster,
               (VeniceHelixAdmin) admin,
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
-              metadataSystemStoreUpdate,
+              VeniceHelixAdmin.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
               true,
               multiClusterConfigs.isControllerEnforceSSLOnly());
       metaSystemStoreSchemaInitializer.execute();

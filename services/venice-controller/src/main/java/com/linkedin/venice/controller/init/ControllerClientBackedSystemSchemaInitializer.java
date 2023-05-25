@@ -36,7 +36,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
   private final VeniceHelixAdmin admin;
   private final Schema keySchema;
   private final UpdateStoreQueryParams storeMetadataUpdate;
-  private final boolean autoRegisterDerivedComputeSchema;
+  private final boolean autoRegisterPartialUpdateSchema;
   private final boolean enforceSSLOnly;
   private ControllerClient controllerClient;
 
@@ -46,14 +46,14 @@ public class ControllerClientBackedSystemSchemaInitializer {
       VeniceHelixAdmin admin,
       Schema keySchema,
       UpdateStoreQueryParams storeMetadataUpdate,
-      boolean autoRegisterDerivedComputeSchema,
+      boolean autoRegisterPartialUpdateSchema,
       boolean enforceSSLOnly) {
     this.protocolDefinition = protocolDefinition;
     this.clusterName = systemStoreCluster;
     this.admin = admin;
     this.keySchema = keySchema;
     this.storeMetadataUpdate = storeMetadataUpdate;
-    this.autoRegisterDerivedComputeSchema = autoRegisterDerivedComputeSchema;
+    this.autoRegisterPartialUpdateSchema = autoRegisterPartialUpdateSchema;
     this.enforceSSLOnly = enforceSSLOnly;
   }
 
@@ -102,13 +102,13 @@ public class ControllerClientBackedSystemSchemaInitializer {
       if (schemaInLocalResources == null) {
         throw new VeniceException(
             "Invalid protocol definition: " + protocolDefinition.name() + " does not have a version " + version
-                + " even though that is inferior to the current version ("
+                + " even though it is less than or equal to the current version ("
                 + protocolDefinition.getCurrentProtocolVersion() + ").");
       }
       checkAndMayRegisterValueSchema(storeName, version, schemasInZk.get(version), schemaInLocalResources);
 
-      if (autoRegisterDerivedComputeSchema) {
-        checkAndMayRegisterWriteComputeSchema(storeName, version, schemaInLocalResources);
+      if (autoRegisterPartialUpdateSchema) {
+        checkAndMayRegisterPartialUpdateSchema(storeName, version, schemaInLocalResources);
       }
     }
   }
@@ -210,22 +210,22 @@ public class ControllerClientBackedSystemSchemaInitializer {
     }
   }
 
-  private void checkAndMayRegisterWriteComputeSchema(
+  private void checkAndMayRegisterPartialUpdateSchema(
       String storeName,
       int valueSchemaId,
       Schema schemaInLocalResources) {
-    String writeComputeSchema =
+    String partialUpdateSchema =
         WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(schemaInLocalResources).toString();
     SchemaResponse getSchemaResponse = controllerClient.retryableRequest(
         DEFAULT_RETRY_TIMES,
-        c -> c.getValueOrDerivedSchemaId(storeName, writeComputeSchema),
+        c -> c.getValueOrDerivedSchemaId(storeName, partialUpdateSchema),
         r -> r.getError().contains("Can not find any registered value schema nor derived schema"));
     if (getSchemaResponse.isError()) {
       if (getSchemaResponse.getError().contains("Can not find any registered value schema nor derived schema")) {
         // The derived schema doesn't exist right now, try to register it.
         SchemaResponse addDerivedSchemaResponse = controllerClient.retryableRequest(
             DEFAULT_RETRY_TIMES,
-            c -> c.addDerivedSchema(storeName, valueSchemaId, writeComputeSchema));
+            c -> c.addDerivedSchema(storeName, valueSchemaId, partialUpdateSchema));
         if (addDerivedSchemaResponse.isError()) {
           throw new VeniceException(
               "Error when adding derived schema for value schema v" + valueSchemaId + " to system store " + storeName
