@@ -5343,13 +5343,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store.isDaVinciPushStatusStoreEnabled() && (versionNumber > 1 || incrementalPushVersion.isPresent())) {
       if (store.getVersion(versionNumber).isPresent()) {
         Version version = store.getVersion(versionNumber).get();
-        ExecutionStatusWithDetails daVinciStatusAndDetails = incrementalPushVersion.isPresent()
-            ? PushMonitorUtils.getDaVinciPushStatusAndDetails(
-                pushStatusStoreReader.orElse(null),
-                version.kafkaTopicName(),
-                version.getPartitionCount(),
-                incrementalPushVersion)
-            : monitor.getDaVinciPushStatus(version.kafkaTopicName(), version.getPartitionCount());
+        ExecutionStatusWithDetails daVinciStatusAndDetails = PushMonitorUtils.getDaVinciPushStatusAndDetails(
+            pushStatusStoreReader.orElse(null),
+            version.kafkaTopicName(),
+            version.getPartitionCount(),
+            incrementalPushVersion);
         ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getStatus();
         String daVinciDetails = daVinciStatusAndDetails.getDetails();
         executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);

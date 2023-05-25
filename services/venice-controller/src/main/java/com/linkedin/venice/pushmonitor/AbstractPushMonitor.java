@@ -916,8 +916,6 @@ public abstract class AbstractPushMonitor
       OfflinePushStatus pushStatus,
       ExecutionStatus status,
       Optional<String> statusDetails) {
-    routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
-
     if (status.equals(ExecutionStatus.COMPLETED)) {
       pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), COMPLETED, null);
     } else if (status.equals(ExecutionStatus.ERROR)) {
@@ -934,6 +932,7 @@ public abstract class AbstractPushMonitor
   }
 
   protected void handleCompletedPush(OfflinePushStatus pushStatus) {
+    routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
     LOGGER.info(
         "Updating offline push status, push for: {} old status: {}, new status: {}",
         pushStatus.getKafkaTopic(),
@@ -972,6 +971,7 @@ public abstract class AbstractPushMonitor
   }
 
   protected void handleErrorPush(OfflinePushStatus pushStatus, String statusDetails) {
+    routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
     LOGGER.info(
         "Updating offline push status, push for: {} is now {}, new status: {}, statusDetails: {}",
         pushStatus.getKafkaTopic(),
@@ -1070,10 +1070,5 @@ public abstract class AbstractPushMonitor
 
   public RealTimeTopicSwitcher getRealTimeTopicSwitcher() {
     return realTimeTopicSwitcher;
-  }
-
-  @Override
-  public ExecutionStatusWithDetails getDaVinciPushStatus(String topic, int partitionCount) {
-    return pushStatusCollector.getDaVinciPushStatus(topic, partitionCount);
   }
 }

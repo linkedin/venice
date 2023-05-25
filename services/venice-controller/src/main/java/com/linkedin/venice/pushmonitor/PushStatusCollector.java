@@ -202,21 +202,6 @@ public class PushStatusCollector {
     }
   }
 
-  /**
-   * Try to fetch Da Vinci status from cached result. If the topic is not subscribed it will fall back to call push
-   * status reader to read it directly from store.
-   */
-  public ExecutionStatusWithDetails getDaVinciPushStatus(String topic, int partitionCount) {
-    if (daVinciPushStatusScanEnabled && isStarted.get()) {
-      TopicPushStatus pushStatus = topicToPushStatusMap.get(topic);
-      if (pushStatus != null && pushStatus.getDaVinciStatus() != null) {
-        return pushStatus.getDaVinciStatus();
-      }
-    }
-    return PushMonitorUtils
-        .getDaVinciPushStatusAndDetails(pushStatusStoreReader, topic, partitionCount, Optional.empty());
-  }
-
   // Visible for testing.
   Map<String, TopicPushStatus> getTopicToPushStatusMap() {
     return topicToPushStatusMap;
