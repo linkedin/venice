@@ -16,6 +16,7 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
@@ -69,7 +70,6 @@ public class RouterBackedSchemaReader implements SchemaReader {
    * schema are the latest value and update schemas.
    */
   private final Predicate<Schema> preferredSchemaFilter;
-  private final Duration valueSchemaRefreshPeriod;
   private final ScheduledExecutorService refreshSchemaExecutor;
   private final ScheduledFuture schemaRefreshFuture;
   private final ICProvider icProvider;
@@ -133,10 +133,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
     this.readerSchema = readerSchema;
     this.preferredSchemaFilter = preferredSchemaFilter.orElse(schema -> false);
     readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
-    this.valueSchemaRefreshPeriod = valueSchemaRefreshPeriod;
     this.icProvider = icProvider;
 
-    this.refreshSchemaExecutor = Executors.newSingleThreadScheduledExecutor();
+    this.refreshSchemaExecutor = Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("schema-refresh"));
     schemaRefreshFuture = refreshSchemaExecutor.scheduleAtFixedRate(
         () -> this.ensureSchemasAreRefreshed(loadUpdateSchemas.get(), true),
         valueSchemaRefreshPeriod.getSeconds(),
@@ -440,6 +439,10 @@ public class RouterBackedSchemaReader implements SchemaReader {
         }
       }
     } catch (Exception e) {
+      if (e instanceof InterruptedException) {
+        throw e;
+      }
+
       throw new VeniceClientException(
           "Got exception while trying to fetch all value schemas. " + getExceptionDetails(requestPath),
           e);
@@ -463,6 +466,10 @@ public class RouterBackedSchemaReader implements SchemaReader {
             .computeIfAbsent(valueSchemaId, id -> new DerivedSchemaEntry(valueSchemaId, updateSchemaId, schemaStr));
       }
     } catch (Exception e) {
+      if (e instanceof InterruptedException) {
+        throw e;
+      }
+
       throw new VeniceClientException(
           "Got exception while trying to fetch all update schemas. " + getExceptionDetails(requestPath),
           e);

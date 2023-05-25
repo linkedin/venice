@@ -5,7 +5,7 @@ import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -81,7 +81,7 @@ public class TestHybridQuota {
     sharedVenice.addVeniceRouter(routerProperties);
     // Added a server with shared consumer enabled.
     Properties serverPropertiesWithSharedConsumer = new Properties();
-    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
+    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA_LEGACY, "false");
     extraProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
     extraProperties.put(HYBRID_QUOTA_ENFORCEMENT_ENABLED, true);
     extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
