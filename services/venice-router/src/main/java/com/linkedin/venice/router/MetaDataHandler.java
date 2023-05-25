@@ -4,8 +4,8 @@ import static com.linkedin.venice.VeniceConstants.TYPE_PUSH_STATUS;
 import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
-import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
 import static com.linkedin.venice.router.api.RouterResourceType.TYPE_GET_UPDATE_SCHEMA;
@@ -26,13 +26,12 @@ import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
-import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.StoreJSONSerializer;
@@ -64,7 +63,6 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
@@ -158,63 +156,67 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
     RouterResourceType resourceType = helper.getResourceType(); // may be null
 
-    switch (resourceType) {
-      case TYPE_LEADER_CONTROLLER:
-      case TYPE_LEADER_CONTROLLER_LEGACY:
-        // URI: /leader_controller or /master_controller
-        handleControllerLookup(ctx);
-        break;
-      case TYPE_KEY_SCHEMA:
-        // URI: /key_schema/${storeName}
-        // For key schema lookup, we only consider storeName
-        handleKeySchemaLookup(ctx, helper);
-        break;
-      case TYPE_VALUE_SCHEMA:
-        // The request could fetch one value schema by id or all the value schema for the given store
-        // URI: /value_schema/{$storeName} - Get all the value schema
-        // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
-        handleValueSchemaLookup(ctx, helper);
-        break;
-      case TYPE_LATEST_VALUE_SCHEMA:
-        // The request could fetch the latest value schema for the given store
-        // URI: /latest_value_schema/{$storeName} - Get the latest value schema
-        handleLatestValueSchemaLookup(ctx, helper);
-        break;
-      case TYPE_GET_UPDATE_SCHEMA:
-        // URI: /update_schema/{$storeName} - Get all the update schema
-        // URI: /update_schema/{$storeName}/{$valueSchemaId} - Get single update schema
-        // The request could fetch the latest derived update schema of a specific value schema
-        handleUpdateSchemaLookup(ctx, helper);
-        break;
-      case TYPE_CLUSTER_DISCOVERY:
-        // URI: /discover_cluster/${storeName}
-        handleD2ServiceLookup(ctx, helper, req.headers());
-        break;
-      case TYPE_RESOURCE_STATE:
-        // URI: /resource_state
-        handleResourceStateLookup(ctx, helper);
-        break;
-      case TYPE_PUSH_STATUS:
-        // URI: /push_status
-        handlePushStatusLookUp(ctx, helper);
-        break;
-      case TYPE_STREAM_HYBRID_STORE_QUOTA:
-        handleStreamHybridStoreQuotaStatusLookup(ctx, helper);
-        break;
-      case TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA:
-        handleStreamReprocessingHybridStoreQuotaStatusLookup(ctx, helper);
-        break;
-      case TYPE_STORE_STATE:
-        handleStoreStateLookup(ctx, helper);
-        break;
-      case TYPE_REQUEST_TOPIC:
-        handleRequestTopic(ctx, helper, req);
-        break;
-      default:
-        // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
-        // since we're passing it on to the next handler, we need to retain an extra reference.
-        ReferenceCountUtil.retain(req);
-        ctx.fireChannelRead(req);
+    try {
+      switch (resourceType) {
+        case TYPE_LEADER_CONTROLLER:
+        case TYPE_LEADER_CONTROLLER_LEGACY:
+          // URI: /leader_controller or /master_controller
+          handleControllerLookup(ctx);
+          break;
+        case TYPE_KEY_SCHEMA:
+          // URI: /key_schema/${storeName}
+          // For key schema lookup, we only consider storeName
+          handleKeySchemaLookup(ctx, helper);
+          break;
+        case TYPE_VALUE_SCHEMA:
+          // The request could fetch one value schema by id or all the value schema for the given store
+          // URI: /value_schema/{$storeName} - Get all the value schema
+          // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
+          handleValueSchemaLookup(ctx, helper);
+          break;
+        case TYPE_LATEST_VALUE_SCHEMA:
+          // The request could fetch the latest value schema for the given store
+          // URI: /latest_value_schema/{$storeName} - Get the latest value schema
+          handleLatestValueSchemaLookup(ctx, helper);
+          break;
+        case TYPE_GET_UPDATE_SCHEMA:
+          // URI: /update_schema/{$storeName} - Get all the update schema
+          // URI: /update_schema/{$storeName}/{$valueSchemaId} - Get single update schema
+          // The request could fetch the latest derived update schema of a specific value schema
+          handleUpdateSchemaLookup(ctx, helper);
+          break;
+        case TYPE_CLUSTER_DISCOVERY:
+          // URI: /discover_cluster/${storeName}
+          handleD2ServiceLookup(ctx, helper, req);
+          break;
+        case TYPE_RESOURCE_STATE:
+          // URI: /resource_state
+          handleResourceStateLookup(ctx, helper);
+          break;
+        case TYPE_PUSH_STATUS:
+          // URI: /push_status
+          handlePushStatusLookUp(ctx, helper);
+          break;
+        case TYPE_STREAM_HYBRID_STORE_QUOTA:
+          handleStreamHybridStoreQuotaStatusLookup(ctx, helper);
+          break;
+        case TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA:
+          handleStreamReprocessingHybridStoreQuotaStatusLookup(ctx, helper);
+          break;
+        case TYPE_STORE_STATE:
+          handleStoreStateLookup(ctx, helper);
+          break;
+        case TYPE_REQUEST_TOPIC:
+          handleRequestTopic(ctx, helper, req);
+          break;
+        default:
+          // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
+          // since we're passing it on to the next handler, we need to retain an extra reference.
+          ReferenceCountUtil.retain(req);
+          ctx.fireChannelRead(req);
+      }
+    } catch (VeniceHttpException e) {
+      setupResponseAndFlush(HttpResponseStatus.valueOf(e.getHttpStatusCode()), e.getMessage().getBytes(), false, ctx);
     }
   }
 
@@ -372,54 +374,45 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
   }
 
-  private void handleD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpHeaders headers)
+  private void handleD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpRequest request)
       throws IOException {
     String storeName = helper.getResourceName();
-    checkResourceName(storeName, "/" + TYPE_CLUSTER_DISCOVERY + "/${storeName}");
+    if (StringUtils.isEmpty(storeName)) {
+      Map<String, String> queryParams = helper.extractQueryParameters(request);
+      storeName = queryParams.get(NAME);
+    }
+    checkResourceName(
+        storeName,
+        "/" + TYPE_CLUSTER_DISCOVERY + "/${storeName} or /" + TYPE_CLUSTER_DISCOVERY + "?store_name=${storeName}");
     Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
     if (!config.isPresent() || StringUtils.isEmpty(config.get().getCluster())) {
       String errorMsg = "Cluster for store: " + storeName + " doesn't exist";
-      setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
+      setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, ctx);
       return;
     }
     String clusterName = config.get().getCluster();
     String d2Service = getD2ServiceByClusterName(clusterName);
     if (StringUtils.isEmpty(d2Service)) {
       String errorMsg = "D2 service for store: " + storeName + " doesn't exist";
-      setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
+      setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, ctx);
       return;
     }
-    String serverD2Service = getServerD2ServiceByClusterName(clusterName);
-    if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
-      D2ServiceDiscoveryResponseV2 responseObject = new D2ServiceDiscoveryResponseV2();
-      responseObject.setCluster(config.get().getCluster());
-      responseObject.setName(config.get().getStoreName());
-      responseObject.setD2Service(d2Service);
-      responseObject.setServerD2Service(serverD2Service);
-      responseObject.setZkAddress(zkAddress);
-      responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
-      setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
-    } else {
-      D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
-      responseObject.setCluster(config.get().getCluster());
-      responseObject.setName(config.get().getStoreName());
-      responseObject.setD2Service(d2Service);
-      responseObject.setServerD2Service(serverD2Service);
-      setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
-    }
+
+    D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
+    responseObject.setCluster(config.get().getCluster());
+    responseObject.setName(config.get().getStoreName());
+    responseObject.setD2Service(d2Service);
+    responseObject.setServerD2Service(getServerD2ServiceByClusterName(clusterName));
+    responseObject.setZkAddress(zkAddress);
+    responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
   private void setupErrorD2DiscoveryResponseAndFlush(
       HttpResponseStatus status,
       String errorMsg,
-      HttpHeaders headers,
       ChannelHandlerContext ctx) throws IOException {
-    D2ServiceDiscoveryResponse responseObject;
-    if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
-      responseObject = new D2ServiceDiscoveryResponseV2();
-    } else {
-      responseObject = new D2ServiceDiscoveryResponse();
-    }
+    D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
     responseObject.setError(errorMsg);
     if (status.equals(NOT_FOUND)) {
       responseObject.setErrorType(ErrorType.STORE_NOT_FOUND);
@@ -670,7 +663,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void checkResourceName(String resourceName, String path) {
     if (StringUtils.isEmpty(resourceName)) {
-      throw new VeniceException("Resource name required, valid path should be : " + path);
+      throw new VeniceHttpException(BAD_REQUEST.code(), "Resource name required, valid path should be : " + path);
     }
   }
 

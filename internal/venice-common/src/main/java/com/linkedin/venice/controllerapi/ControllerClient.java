@@ -135,19 +135,31 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  /**
+   * @deprecated Use {@link ControllerClientFactory#discoverAndConstructControllerClient}
+   */
+  @Deprecated
   public static ControllerClient discoverAndConstructControllerClient(
       String storeName,
       String discoveryUrls,
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
-    String clusterName = discoverCluster(discoveryUrls, storeName, sslFactory, retryAttempts).getCluster();
-    return constructClusterControllerClient(clusterName, discoveryUrls, sslFactory);
+    return ControllerClientFactory
+        .discoverAndConstructControllerClient(storeName, discoveryUrls, sslFactory, retryAttempts);
   }
 
+  /**
+   * @deprecated Use {@link ControllerClientFactory#getControllerClient}
+   */
+  @Deprecated
   public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls) {
     return constructClusterControllerClient(clusterName, discoveryUrls, Optional.empty());
   }
 
+  /**
+   * @deprecated Use {@link ControllerClientFactory#getControllerClient}
+   */
+  @Deprecated
   public static ControllerClient constructClusterControllerClient(
       String clusterName,
       String discoveryUrls,
@@ -966,7 +978,7 @@ public class ControllerClient implements Closeable {
           ClusterStaleDataAuditResponse.class);
     } catch (Exception e) {
       return makeErrorResponse(
-          "controllerapi:ControllerClient:getClusterStaleStores - ",
+          "Failed to get stale stores in cluster: " + clusterName,
           e,
           ClusterStaleDataAuditResponse.class);
     }
@@ -997,7 +1009,7 @@ public class ControllerClient implements Closeable {
       String storeName,
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
-    try (ControllerClient client = new ControllerClient("*", discoveryUrls, sslFactory)) {
+    try (ControllerClient client = ControllerClientFactory.getControllerClient("*", discoveryUrls, sslFactory)) {
       return retryableRequest(client, retryAttempts, c -> c.discoverCluster(storeName));
     }
   }
@@ -1011,14 +1023,15 @@ public class ControllerClient implements Closeable {
       for (String url: urls) {
         try {
           // Because the way to get parameter is different between controller and router, in order to support query
-          // cluster
-          // from both cluster and router, we send the path "/discover_cluster?storename=$storeName" at first, if it
-          // does
-          // not work, try "/discover_cluster/$storeName"
+          // cluster from both cluster and router, we send the path "/discover_cluster?storename=$storeName" at first,
+          // if it does not work, try "/discover_cluster/$storeName"
           try {
             QueryParams params = getQueryParamsToDiscoverCluster(storeName);
             return transport.request(url, ControllerRoute.CLUSTER_DISCOVERY, params, D2ServiceDiscoveryResponse.class);
           } catch (VeniceHttpException e) {
+            // TODO: Routers also support fetching the store name via query params. So, once sufficient time has passed,
+            // this check can be changed to break out of the loop on non-5XX errors.
+
             String routerPath = ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName;
             return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
           }

@@ -12,7 +12,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
-import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.meta.QueryAction;
@@ -108,7 +108,7 @@ public class RequestBasedMetadataTest {
   private D2ServiceDiscovery getMockD2ServiceDiscovery(D2TransportClient d2TransportClient, String storeName) {
     D2ServiceDiscovery d2ServiceDiscovery = mock(D2ServiceDiscovery.class);
 
-    D2ServiceDiscoveryResponseV2 d2ServiceDiscoveryResponse = new D2ServiceDiscoveryResponseV2();
+    D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = new D2ServiceDiscoveryResponse();
 
     doReturn(d2ServiceDiscoveryResponse).when(d2ServiceDiscovery)
         .find(eq(d2TransportClient), eq(storeName), anyBoolean());

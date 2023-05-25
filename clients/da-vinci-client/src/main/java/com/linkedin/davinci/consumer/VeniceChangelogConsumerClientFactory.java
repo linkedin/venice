@@ -62,7 +62,7 @@ public class VeniceChangelogConsumerClientFactory {
       if (this.d2ControllerClient != null) {
         d2ControllerClient = this.d2ControllerClient;
       } else if (newStoreChangelogClientConfig.getD2Client() != null) {
-        d2ControllerClient = D2ControllerClientFactory.discoverAndConstructConrollerClient(
+        d2ControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
             storeName,
             globalChangelogClientConfig.getControllerD2ServiceName(),
             globalChangelogClientConfig.getControllerRequestRetryCount(),
