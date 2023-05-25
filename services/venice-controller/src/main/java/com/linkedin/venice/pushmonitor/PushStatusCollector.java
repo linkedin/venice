@@ -139,13 +139,16 @@ public class PushStatusCollector {
         continue;
       }
       LOGGER.info(
-          "Topic server push status: {}, Da Vinci push status: {}",
+          "Topic {} server push status: {}, Da Vinci push status: {}",
+          pushStatus.getTopicName(),
           serverStatus.getStatus(),
           daVinciStatus.getStatus());
-      if (isOverallPushCompleted(serverStatus, daVinciStatus)) {
+      if (serverStatus.getStatus().equals(ExecutionStatus.COMPLETED)
+          && daVinciStatus.getStatus().equals(ExecutionStatus.COMPLETED)) {
         pushStatus.setMonitoring(false);
         pushCompletedHandler.accept(pushStatus.getTopicName());
-      } else if (isOverallPushError(serverStatus, daVinciStatus)) {
+      } else if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)
+          || daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
         pushStatus.setMonitoring(false);
         StringBuilder pushErrorDetailStringBuilder = new StringBuilder();
         if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)) {
@@ -174,20 +177,6 @@ public class PushStatusCollector {
         pushErrorHandler.accept(topicName, detailsString);
       }
     }
-  }
-
-  private boolean isOverallPushCompleted(
-      ExecutionStatusWithDetails serverStatus,
-      ExecutionStatusWithDetails daVinciStatus) {
-    return serverStatus.getStatus().equals(ExecutionStatus.COMPLETED)
-        && daVinciStatus.getStatus().equals(ExecutionStatus.COMPLETED);
-  }
-
-  private boolean isOverallPushError(
-      ExecutionStatusWithDetails serverStatus,
-      ExecutionStatusWithDetails daVinciStatus) {
-    return serverStatus.getStatus().equals(ExecutionStatus.ERROR)
-        || daVinciStatus.getStatus().equals(ExecutionStatus.ERROR);
   }
 
   public void clear() {

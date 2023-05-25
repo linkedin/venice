@@ -38,11 +38,12 @@ public class PushMonitorUtils {
     ExecutionStatus middleStatus = incrementalPushVersion.isPresent()
         ? ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED
         : ExecutionStatus.END_OF_PUSH_RECEIVED;
-    Optional<String> erroredInstance = Optional.empty();
+    Optional<String> erroredReplica = Optional.empty();
+    int erroredPartitionId = 0;
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     int completedPartitions = 0;
-    int totalInstanceCount = 0;
-    int liveInstanceCount = 0;
+    int totalReplicaCount = 0;
+    int liveReplicaCount = 0;
     Set<Integer> incompletePartition = new HashSet<>();
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       Map<CharSequence, Integer> instances = reader.getPartitionStatus(
@@ -51,7 +52,7 @@ public class PushMonitorUtils {
           partitionId,
           incrementalPushVersion);
       boolean allInstancesCompleted = true;
-      totalInstanceCount += instances.size();
+      totalReplicaCount += instances.size();
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
         ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
         boolean isInstanceAlive = reader.isInstanceAlive(storeName, entry.getKey().toString());
@@ -59,7 +60,7 @@ public class PushMonitorUtils {
           continue;
         }
         // We only compute status based on live instances.
-        liveInstanceCount++;
+        liveReplicaCount++;
         if (status == completeStatus) {
           continue;
         }
@@ -70,7 +71,8 @@ public class PushMonitorUtils {
         allInstancesCompleted = false;
         allMiddleStatusReceived = false;
         if (status == ExecutionStatus.ERROR) {
-          erroredInstance = Optional.of(entry.getKey().toString());
+          erroredReplica = Optional.of(entry.getKey().toString());
+          erroredPartitionId = partitionId;
           break;
         }
       }
@@ -86,25 +88,28 @@ public class PushMonitorUtils {
           .append("/")
           .append(partitionCount)
           .append(" partitions completed in")
-          .append(totalInstanceCount)
-          .append(" Da Vinci instances.");
+          .append(totalReplicaCount)
+          .append(" Da Vinci replicas.");
     }
-    if (erroredInstance.isPresent()) {
-      statusDetailStringBuilder.append("Found a failed instance in Da Vinci: ")
-          .append(erroredInstance)
-          .append(". live instance count: ")
-          .append(liveInstanceCount)
-          .append(", total instance count: ")
-          .append(totalInstanceCount);
+    if (erroredReplica.isPresent()) {
+      statusDetailStringBuilder.append("Found a failed partition replica in Da Vinci: ")
+          .append("Partition: ")
+          .append(erroredPartitionId)
+          .append("Replica: ")
+          .append(erroredReplica)
+          .append(". Live replica count: ")
+          .append(liveReplicaCount)
+          .append(", total replica count: ")
+          .append(totalReplicaCount);
     }
     int incompleteSize = incompletePartition.size();
     if (incompleteSize > 0 && incompleteSize <= 5) {
       statusDetailStringBuilder.append(". Following partitions still not complete ")
           .append(incompletePartition)
-          .append(". live instance count: ")
-          .append(liveInstanceCount)
-          .append(", total instance count : ")
-          .append(totalInstanceCount);
+          .append(". Live replica count: ")
+          .append(liveReplicaCount)
+          .append(", total replica count: ")
+          .append(totalReplicaCount);
     }
     String statusDetail = statusDetailStringBuilder.toString();
     if (completedPartitions == partitionCount) {
@@ -113,7 +118,7 @@ public class PushMonitorUtils {
     if (allMiddleStatusReceived) {
       return new ExecutionStatusWithDetails(middleStatus, statusDetail);
     }
-    if (erroredInstance.isPresent()) {
+    if (erroredReplica.isPresent()) {
       return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail);
     }
     return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail);
