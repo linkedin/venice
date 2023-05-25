@@ -481,6 +481,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   void stopConsumptionAndReport(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
+    // Unsubscribe resource here so all incoming requests should be rejected and retried until handover is completed.
+    setResourceToBeUnsubscribed(topicName, partitionId);
     Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
     getStatusReportingExecutor().execute(() -> {
       try {
@@ -491,8 +493,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             partitionId,
             topicName);
       }
-      if (getReportClient().reportIngestionStatus(report)) {
-        setResourceToBeUnsubscribed(topicName, partitionId);
+      if (!getReportClient().reportIngestionStatus(report)) {
+        LOGGER.warn("Failed to deliver ingestion report to main process");
       }
     });
   }

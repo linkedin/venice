@@ -85,7 +85,7 @@ public class IsolatedIngestionServerTest {
     when(client.reportIngestionStatus(goodReport)).thenReturn(true);
     isolatedIngestionServer.stopConsumptionAndReport(goodReport);
 
-    verify(isolatedIngestionServer, times(0)).setResourceToBeUnsubscribed("topic", 0);
+    verify(isolatedIngestionServer, times(1)).setResourceToBeUnsubscribed("topic", 0);
     verify(isolatedIngestionServer, times(1)).setResourceToBeUnsubscribed("topic", 1);
   }
 }
