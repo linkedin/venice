@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -184,12 +185,14 @@ public class TestDataRecoveryClient {
   public void testMonitor() {
     for (ExecutionStatus status: new ExecutionStatus[] { ExecutionStatus.STARTED, ExecutionStatus.COMPLETED,
         ExecutionStatus.ERROR }) {
-      monitorRecovery(status);
-      verifyMonitorRecoveryResults(status);
+      for (boolean isCurrentVersionNewer: new boolean[] { true, false }) {
+        monitorRecovery(status, isCurrentVersionNewer);
+        verifyMonitorRecoveryResults(status, isCurrentVersionNewer);
+      }
     }
   }
 
-  private void monitorRecovery(ExecutionStatus status) {
+  private void monitorRecovery(ExecutionStatus status, boolean isCurrentVersionNewer) {
     int storePartitionCount = 100;
     int version = 10;
     String region = "ei";
@@ -205,12 +208,17 @@ public class TestDataRecoveryClient {
     JobStatusQueryResponse queryResponse = buildJobStatusQueryResponse(status, version);
     StoreResponse storeResponse = buildStoreResponse(storePartitionCount);
 
+    LocalDateTime now = LocalDateTime.now();
+    StoreHealthAuditResponse storeHealthResp =
+        buildStoreHealthAuditResponse(region, isCurrentVersionNewer ? now.plusMinutes(1) : now.minusMinutes(1));
+
     // Mock ControllerClient functions.
     ControllerClient mockedCli = mock(ControllerClient.class);
     doReturn(storeResponse).when(mockedCli).getStore(anyString());
     doReturn(discoveryResponse).when(mockedCli).discoverCluster(anyString());
     doReturn(statusResponse).when(mockedCli).getFutureVersions(anyString(), anyString());
     doReturn(queryResponse).when(mockedCli).queryDetailedJobStatus(anyString(), anyString());
+    doReturn(storeHealthResp).when(mockedCli).listStorePushInfo(anyString(), anyBoolean());
 
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
     doReturn(monitor).when(dataRecoveryClient).getMonitor();
@@ -218,10 +226,12 @@ public class TestDataRecoveryClient {
 
     MonitorCommand.Params monitorParams = new MonitorCommand.Params();
     monitorParams.setTargetRegion(region);
+    monitorParams.setDateTime(now);
     monitorParams.setPCtrlCliWithoutCluster(mockedCli);
 
     MonitorCommand mockMonitorCmd = spy(MonitorCommand.class);
     mockMonitorCmd.setParams(monitorParams);
+    mockMonitorCmd.setOngoingOfflinePushDetected(false);
     doReturn(mockedCli).when(mockMonitorCmd).buildControllerClient(any(), any(), any());
 
     // Inject the mocked command into the running system.
@@ -265,9 +275,27 @@ public class TestDataRecoveryClient {
     return jobResponse;
   }
 
-  private void verifyMonitorRecoveryResults(ExecutionStatus status) {
+  private StoreHealthAuditResponse buildStoreHealthAuditResponse(String region, LocalDateTime dateTime) {
+    StoreHealthAuditResponse resp = new StoreHealthAuditResponse();
+    RegionPushDetails details = new RegionPushDetails();
+    details.setPushStartTimestamp(dateTime.toString());
+    // build a map with one entry <region, details>.
+    resp.setRegionPushDetails(Collections.singletonMap(region, details));
+    return resp;
+  }
+
+  private void verifyMonitorRecoveryResults(ExecutionStatus status, boolean isCurrentVersionNewer) {
     int numOfStores = 3;
     Assert.assertEquals(monitor.getTasks().size(), numOfStores);
+
+    // If isCurrentVersionNewer is set to true, then we can claim that current version is good enough and done.
+    if (isCurrentVersionNewer) {
+      for (int i = 0; i < numOfStores; i++) {
+        Assert.assertTrue(monitor.getTasks().get(i).getTaskResult().isCoreWorkDone());
+        Assert.assertNotNull(monitor.getTasks().get(i).getTaskResult().getMessage());
+      }
+      return;
+    }
 
     if (status == ExecutionStatus.STARTED) {
       // Verify all stores in uncompleted state.

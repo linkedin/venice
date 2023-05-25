@@ -105,6 +105,9 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -681,6 +684,7 @@ public class AdminTool {
     String parentUrl = getRequiredArgument(cmd, Arg.URL);
     String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
     String stores = getRequiredArgument(cmd, Arg.STORES);
+    String dateTimeStr = getRequiredArgument(cmd, Arg.DATETIME);
 
     String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL);
 
@@ -688,6 +692,16 @@ public class AdminTool {
     monitorParams.setTargetRegion(destFabric);
     monitorParams.setParentUrl(parentUrl);
     monitorParams.setSslFactory(sslFactory);
+
+    try {
+      monitorParams.setDateTime(LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+    } catch (DateTimeParseException e) {
+      throw new VeniceException(
+          String.format(
+              "Can not parse: %s, supported format: %s",
+              e.getParsedString(),
+              DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+    }
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
