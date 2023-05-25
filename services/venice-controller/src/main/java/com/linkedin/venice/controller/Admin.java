@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -892,4 +893,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   default void clearInstanceMonitor(String clusterName) {
   }
+
+  Optional<PushStatusStoreReader> getPushStatusStoreReader();
 }

@@ -137,4 +137,6 @@ public interface PushMonitor {
   void recordPushPreparationDuration(String topic, long offlinePushWaitTimeInSecond);
 
   List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
+
+  boolean isOfflinePushMonitorDaVinciPushStatusEnabled();
 }

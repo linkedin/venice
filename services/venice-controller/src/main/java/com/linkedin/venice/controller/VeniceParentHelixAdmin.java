@@ -177,6 +177,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.GeneratedSchemaID;
@@ -5091,5 +5092,10 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     });
     getStoreGraveyard().removeStoreFromGraveyard(clusterName, storeName);
+  }
+
+  @Override
+  public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
+    throw new VeniceUnsupportedOperationException("Parent controller does not have Da Vinci push status store reader");
   }
 }

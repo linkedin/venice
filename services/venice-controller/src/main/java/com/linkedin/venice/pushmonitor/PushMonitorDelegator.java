@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
@@ -55,8 +56,8 @@ public class PushMonitorDelegator implements PushMonitor {
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
-      boolean disableErrorLeaderReplica,
-      long offlineJobResourceAssignmentWaitTimeInMilliseconds) {
+      VeniceControllerConfig controllerConfig,
+      PushStatusStoreReader pushStatusStoreReader) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
@@ -73,8 +74,8 @@ public class PushMonitorDelegator implements PushMonitor {
         aggregateRealTimeSourceKafkaUrl,
         activeActiveRealTimeSourceKafkaURLs,
         helixAdminClient,
-        disableErrorLeaderReplica,
-        offlineJobResourceAssignmentWaitTimeInMilliseconds);
+        controllerConfig,
+        pushStatusStoreReader);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();
@@ -212,5 +213,10 @@ public class PushMonitorDelegator implements PushMonitor {
 
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     return getPushMonitor(partitionAssignment.getTopic()).getReadyToServeInstances(partitionAssignment, partitionId);
+  }
+
+  @Override
+  public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
+    return partitionStatusBasedPushStatusMonitor.isOfflinePushMonitorDaVinciPushStatusEnabled();
   }
 }
