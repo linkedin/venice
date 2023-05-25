@@ -1440,7 +1440,7 @@ public class AdminConsumptionTaskTest {
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Admin topic remote consumption is enabled but no config found for the source Kafka bootstrap server url")
   public void testRemoteConsumptionEnabledButRemoteBootstrapUrlsAreMissing() {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
-    getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, true, null, 1);
+    getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, true, null, 3);
   }
 
   @Test
@@ -1448,13 +1448,13 @@ public class AdminConsumptionTaskTest {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager("remote.pubsub");
-    AdminConsumptionTask task = getAdminConsumptionTask(null, true, stats, 0, true, "remote.pubsub", 1);
+    AdminConsumptionTask task = getAdminConsumptionTask(null, true, stats, 0, true, "remote.pubsub", 3);
     Assert.assertEquals(task.getSourceKafkaClusterTopicManager(), topicManager);
   }
 
   @Test(timeOut = TIMEOUT)
   public void testLongRunningBadTask() throws Exception {
-    // This test will fail when the number of threads is 1.
+    // This test will fail when the AdminConsumptionTask maxWorkerThreadPoolSize is 1
     String storeName1 = "test_store1";
     String storeName2 = "test_store2";
     String storeTopicName1 = storeName1 + "_v1";
@@ -1497,7 +1497,7 @@ public class AdminConsumptionTaskTest {
 
     executor.submit(task);
 
-    // This will fail if the number of threads is 1
+    // Make sure that the "good" store tasks make progress while the "bad" store task is stuck
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
