@@ -668,7 +668,7 @@ public class AdminTool {
     EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
     cmdParams.setTargetRegion(destFabric);
     cmdParams.setParentUrl(parentUrl);
-    cmdParams.setSslFactory(sslFactory);
+    cmdParams.setSSLFactory(sslFactory);
     Long total;
 
     try (ControllerClient cli = new ControllerClient("*", parentUrl, sslFactory)) {
@@ -697,7 +697,7 @@ public class AdminTool {
     MonitorCommand.Params monitorParams = new MonitorCommand.Params();
     monitorParams.setTargetRegion(destFabric);
     monitorParams.setParentUrl(parentUrl);
-    monitorParams.setSslFactory(sslFactory);
+    monitorParams.setSSLFactory(sslFactory);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
