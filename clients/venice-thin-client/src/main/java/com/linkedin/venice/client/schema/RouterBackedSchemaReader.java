@@ -238,13 +238,10 @@ public class RouterBackedSchemaReader implements SchemaReader {
   @Override
   public void close() throws IOException {
     schemaRefreshFuture.cancel(true);
-    refreshSchemaExecutor.shutdown();
+    refreshSchemaExecutor.shutdownNow();
     try {
-      if (!refreshSchemaExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
-        refreshSchemaExecutor.shutdownNow();
-      }
+      refreshSchemaExecutor.awaitTermination(60, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
-      refreshSchemaExecutor.shutdownNow();
       LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
     }
     if (!externalClient) {
@@ -445,6 +442,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
       if (e instanceof InterruptedException) {
         throw e;
       }
+
       throw new VeniceClientException(
           "Got exception while trying to fetch all value schemas. " + getExceptionDetails(requestPath),
           e);
