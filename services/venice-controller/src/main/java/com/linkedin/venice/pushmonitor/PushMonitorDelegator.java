@@ -214,4 +214,9 @@ public class PushMonitorDelegator implements PushMonitor {
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     return getPushMonitor(partitionAssignment.getTopic()).getReadyToServeInstances(partitionAssignment, partitionId);
   }
+
+  @Override
+  public ExecutionStatusWithDetails getDaVinciPushStatus(String topic, int partitionCount) {
+    return getPushMonitor(topic).getDaVinciPushStatus(topic, partitionCount);
+  }
 }
