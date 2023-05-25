@@ -274,8 +274,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
+    // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
-        1,
+        maxWorkerThreadPoolSize,
         maxWorkerThreadPoolSize,
         60,
         TimeUnit.SECONDS,

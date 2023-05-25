@@ -25,6 +25,7 @@ import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -117,6 +118,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.mockito.AdditionalAnswers;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -205,7 +207,7 @@ public class AdminConsumptionTaskTest {
 
   private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, boolean isParent) {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
-    return getAdminConsumptionTask(pollStrategy, isParent, stats, 10000, false, null);
+    return getAdminConsumptionTask(pollStrategy, isParent, stats, 10000, false, null, 3);
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(
@@ -213,7 +215,7 @@ public class AdminConsumptionTaskTest {
       boolean isParent,
       AdminConsumptionStats stats,
       long adminConsumptionCycleTimeoutMs) {
-    return getAdminConsumptionTask(pollStrategy, isParent, stats, adminConsumptionCycleTimeoutMs, false, null);
+    return getAdminConsumptionTask(pollStrategy, isParent, stats, adminConsumptionCycleTimeoutMs, false, null, 3);
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(
@@ -222,7 +224,8 @@ public class AdminConsumptionTaskTest {
       AdminConsumptionStats stats,
       long adminConsumptionCycleTimeoutMs,
       boolean remoteConsumptionEnabled,
-      String remoteKafkaServerUrl) {
+      String remoteKafkaServerUrl,
+      int maxWorkerThreadPoolSize) {
     MockInMemoryConsumer inMemoryKafkaConsumer =
         new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
 
@@ -245,7 +248,7 @@ public class AdminConsumptionTaskTest {
         1,
         Optional.empty(),
         adminConsumptionCycleTimeoutMs,
-        1,
+        maxWorkerThreadPoolSize,
         pubSubTopicRepository,
         pubSubMessageDeserializer);
   }
@@ -1437,7 +1440,7 @@ public class AdminConsumptionTaskTest {
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Admin topic remote consumption is enabled but no config found for the source Kafka bootstrap server url")
   public void testRemoteConsumptionEnabledButRemoteBootstrapUrlsAreMissing() {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
-    getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, true, null);
+    getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, true, null, 1);
   }
 
   @Test
@@ -1445,7 +1448,94 @@ public class AdminConsumptionTaskTest {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager("remote.pubsub");
-    AdminConsumptionTask task = getAdminConsumptionTask(null, true, stats, 0, true, "remote.pubsub");
+    AdminConsumptionTask task = getAdminConsumptionTask(null, true, stats, 0, true, "remote.pubsub", 1);
     Assert.assertEquals(task.getSourceKafkaClusterTopicManager(), topicManager);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testLongRunningBadTask() throws Exception {
+    // This test will fail when the number of threads is 1.
+    String storeName1 = "test_store1";
+    String storeName2 = "test_store2";
+    String storeTopicName1 = storeName1 + "_v1";
+    String storeTopicName2 = storeName2 + "_v1";
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(
+        emptyKeyBytes,
+        getKillOfflinePushJobMessage(clusterName, storeTopicName1, 3),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(
+        emptyKeyBytes,
+        getKillOfflinePushJobMessage(clusterName, storeTopicName2, 4),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    // The store doesn't exist
+    when(admin.hasStore(clusterName, storeName1)).thenReturn(false);
+    when(admin.hasStore(clusterName, storeName2)).thenReturn(false);
+
+    // Delay by more than the cycle time. This will cause this thread to be interrupted.
+    // The task will be retried but will not succeed
+    doAnswer(AdditionalAnswers.answersWithDelay(2000, invocation -> {
+      return null;
+    })).when(admin).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
+
+    AdminConsumptionTask task = getAdminConsumptionTask(
+        new RandomPollStrategy(),
+        false,
+        mock(AdminConsumptionStats.class),
+        1000,
+        false,
+        null,
+        3);
+
+    executor.submit(task);
+
+    // This will fail if the number of threads is 1
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(
+            executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName2, -1L).longValue(),
+            4L));
+
+    Assert.assertEquals(getLastOffset(clusterName), -1L);
+    Assert.assertEquals(getLastExecutionId(clusterName), -1L);
+    Assert.assertEquals(task.getFailingOffset(), 1L);
+    Assert.assertEquals(task.getLastSucceededExecutionId().longValue(), -1L);
+    Assert.assertNull(task.getLastSucceededExecutionId(storeName1));
+    Assert.assertEquals(task.getLastSucceededExecutionId(storeName2).longValue(), 4L);
+
+    // Once we skip the failing message , the store should recover
+
+    task.skipMessageWithOffset(1);
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastOffset(clusterName), 4L));
+
+    Assert.assertEquals(getLastExecutionId(clusterName), 4L);
+    Assert.assertEquals(
+        executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName1, -1L).longValue(),
+        3L);
+    Assert.assertEquals(task.getFailingOffset(), -1L);
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+
+    verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
+
+    verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
+    verify(admin, times(1)).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
+
   }
 }
