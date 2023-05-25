@@ -3,18 +3,24 @@ package com.linkedin.venice.datarecovery;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 
 public class MonitorCommand extends Command {
   private MonitorCommand.Params params;
   private final MonitorCommand.Result result = new MonitorCommand.Result();
+
+  private boolean isOngoingOfflinePushDetected = false;
 
   // For unit test only.
   public MonitorCommand() {
@@ -27,6 +33,11 @@ public class MonitorCommand extends Command {
   // For unit test only.
   public void setParams(MonitorCommand.Params params) {
     this.params = params;
+  }
+
+  // For unit test only.
+  public void setOngoingOfflinePushDetected(boolean val) {
+    this.isOngoingOfflinePushDetected = val;
   }
 
   @Override
@@ -55,30 +66,48 @@ public class MonitorCommand extends Command {
       }
 
       result.setStoreInfo(storeResponse.getStore());
-      /*
-       * Find out store future version. A store has a meaningful future version only when there is an ongoing
-       * offline push for the store.
-       */
-      MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, storeName);
 
-      if (!response.getStoreStatusMap().containsKey(params.targetRegion)) {
-        completeCoreWorkWithError(String.format("No status for region: %s", params.targetRegion));
-        return;
+      if (!isOngoingOfflinePushDetected) {
+        LocalDateTime currentVersionStartDateTime = retrieveCurrentVersionDateTime(parentCtrlCli);
+        if (currentVersionStartDateTime.isAfter(params.dateTime)) {
+          // If we have a current version for the given store started after the given date time, claim done.
+          completeCoreWorkWithMessage(
+              String.format(
+                  "current ver is newer (%s) than date time (%s)",
+                  currentVersionStartDateTime,
+                  params.dateTime));
+          return;
+        }
+
+        /*
+         * Find out store future version. A store has a meaningful future version only when there is an ongoing
+         * offline push for the store.
+         */
+        MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, storeName);
+
+        if (!response.getStoreStatusMap().containsKey(params.targetRegion)) {
+          completeCoreWorkWithError(String.format("No status for region: %s", params.targetRegion));
+          return;
+        }
+
+        int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(params.targetRegion));
+        if (futureVersion == Store.NON_EXISTING_VERSION) {
+          result.setMessage(
+              String.format(
+                  "No ongoing offline pushes detected after given date time (%s), keep polling",
+                  params.dateTime));
+          return;
+        }
+
+        isOngoingOfflinePushDetected = true;
+        String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersion);
+        result.setFutureVersion(futureVersion);
+        result.setKafKaTopic(kafkaTopic);
       }
-
-      int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(params.targetRegion));
-      if (futureVersion == Store.NON_EXISTING_VERSION) {
-        completeCoreWorkWithMessage("No ongoing offline pushes");
-        return;
-      }
-
-      String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersion);
-      result.setFutureVersion(futureVersion);
-      result.setKafKaTopic(kafkaTopic);
 
       // Query job status.
       JobStatusQueryResponse jobStatusQueryResponse =
-          parentCtrlCli.queryDetailedJobStatus(kafkaTopic, params.targetRegion);
+          parentCtrlCli.queryDetailedJobStatus(result.kafKaTopic, params.targetRegion);
 
       if (jobStatusQueryResponse.isError()
           || jobStatusQueryResponse.getStatus().equalsIgnoreCase(ExecutionStatus.ERROR.toString())) {
@@ -97,6 +126,14 @@ public class MonitorCommand extends Command {
       // For other cases, report current status.
       result.setMessage(createReportMessage(jobStatusQueryResponse));
     }
+  }
+
+  // Retrieve the store's current version info.
+  private LocalDateTime retrieveCurrentVersionDateTime(ControllerClient parentCtrlCli) {
+    StoreHealthAuditResponse storeHealth = parentCtrlCli.listStorePushInfo(params.store, false);
+    RegionPushDetails targetRegion = storeHealth.getRegionPushDetails().get(params.targetRegion);
+    String dateTime = targetRegion.getPushStartTimestamp();
+    return LocalDateTime.parse(dateTime, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
   }
 
   // A placeholder function for future improvement.
@@ -133,6 +170,8 @@ public class MonitorCommand extends Command {
     private String parentUrl;
     private Optional<SSLFactory> sslFactory;
 
+    private LocalDateTime dateTime;
+
     public void setTargetRegion(String fabric) {
       this.targetRegion = fabric;
     }
@@ -147,6 +186,10 @@ public class MonitorCommand extends Command {
 
     public void setSslFactory(Optional<SSLFactory> sslFactory) {
       this.sslFactory = sslFactory;
+    }
+
+    public void setDateTime(LocalDateTime dataTime) {
+      this.dateTime = dataTime;
     }
   }
 
