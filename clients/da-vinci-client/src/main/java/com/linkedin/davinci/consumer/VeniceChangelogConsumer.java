@@ -61,21 +61,21 @@ public interface VeniceChangelogConsumer<K, V> {
   /**
    * Pause the client on all subscriptions. See {@link #pause(Set)} for more information.
    *
-   * @throws VeniceException if seek operation failed for any of the partitions.
+   * @throws VeniceException if operation failed for any of the partitions.
    */
   void pause();
 
   /**
    * Resume the client on all or subset of partitions this client is subscribed to and has paused.
    *
-   * @throws VeniceException if seek operation failed for any of the partitions.
+   * @throws VeniceException if operation failed for any of the partitions.
    */
   void resume(Set<Integer> partitions);
 
   /**
    * Pause the client on all subscriptions. See {@link #resume(Set)} for more information.
    *
-   * @throws VeniceException if pause operation failed for any of the partitions.
+   * @throws VeniceException if operation failed for any of the partitions.
    */
   void resume();
 
@@ -83,7 +83,7 @@ public interface VeniceChangelogConsumer<K, V> {
    * Pause the client on all or subset of partitions this client is subscribed to. Calls to {@link #poll(long)} will not
    * return results from paused partitions until {@link #resume(Set)} is called again later for those partitions.
    *
-   * @throws VeniceException if pause operation failed for any of the partitions.
+   * @throws VeniceException if operation failed for any of the partitions.
    */
   void pause(Set<Integer> partitions);
 
