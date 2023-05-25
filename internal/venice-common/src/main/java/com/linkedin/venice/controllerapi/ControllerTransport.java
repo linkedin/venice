@@ -58,10 +58,6 @@ public class ControllerTransport implements AutoCloseable {
     this.httpClient.start();
   }
 
-  public static ObjectMapper getObjectMapper() {
-    return OBJECT_MAPPER;
-  }
-
   @Override
   public void close() {
     Utils.closeQuietlyWithErrorLogged(this.httpClient);
@@ -182,7 +178,18 @@ public class ControllerTransport implements AutoCloseable {
 
     int statusCode = response.getStatusLine().getStatusCode();
     ContentType contentType = ContentType.getOrDefault(response.getEntity());
-    if (!contentType.getMimeType().equals(ContentType.APPLICATION_JSON.getMimeType())) {
+    if (contentType.getMimeType().equals(ContentType.TEXT_PLAIN.getMimeType())) {
+      LOGGER.warn(
+          "Controller returned unexpected response, request={}, response={}, content={}",
+          request,
+          response,
+          content);
+      ErrorType errorType = ErrorType.GENERAL_ERROR;
+      if (statusCode >= 400 && statusCode < 500) {
+        errorType = ErrorType.BAD_REQUEST;
+      }
+      throw new VeniceHttpException(statusCode, content, errorType);
+    } else if (!contentType.getMimeType().equals(ContentType.APPLICATION_JSON.getMimeType())) {
       LOGGER.warn("Bad controller response, request={}, response={}, content={}", request, response, content);
       throw new VeniceHttpException(
           statusCode,

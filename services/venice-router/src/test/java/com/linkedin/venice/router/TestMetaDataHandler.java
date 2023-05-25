@@ -21,7 +21,6 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
@@ -62,6 +61,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -175,7 +175,7 @@ public class TestMetaDataHandler {
     FullHttpResponse response =
         passRequestToMetadataHandler("http://myRouterHost:4567/leader_controller", routingRepo, null);
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     LeaderControllerResponse controllerResponse =
         OBJECT_MAPPER.readValue(response.content().array(), LeaderControllerResponse.class);
@@ -200,7 +200,7 @@ public class TestMetaDataHandler {
     FullHttpResponse response =
         passRequestToMetadataHandler("http://myRouterHost:4567/" + controllerUrl, routingRepo, null);
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     LeaderControllerResponse controllerResponse =
         OBJECT_MAPPER.readValue(response.content().array(), LeaderControllerResponse.class);
@@ -221,7 +221,7 @@ public class TestMetaDataHandler {
     FullHttpResponse response =
         passRequestToMetadataHandler("http://myRouterHost:4567/key_schema/" + storeName, null, schemaRepo);
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response.content().array(), SchemaResponse.class);
     Assert.assertEquals(schemaResponse.getId(), keySchemaId);
@@ -238,13 +238,16 @@ public class TestMetaDataHandler {
     FullHttpResponse response =
         passRequestToMetadataHandler("http://myRouterHost:4567/key_schema/" + storeName, null, null);
 
-    Assert.assertEquals(response.status().code(), 404);
+    Assert.assertEquals(response.status(), HttpResponseStatus.NOT_FOUND);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "text/plain");
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Resource name required.*")
+  @Test
   public void testInvalidKeySchemaPath() throws IOException {
-    passRequestToMetadataHandler("http://myRouterHost:4567/key_schema/", null, null);
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/key_schema/", null, null);
+    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
+    Assert
+        .assertTrue(new String(response.content().array(), StandardCharsets.UTF_8).contains("Resource name required"));
   }
 
   @Test
@@ -263,7 +266,7 @@ public class TestMetaDataHandler {
         null,
         schemaRepo);
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response.content().array(), SchemaResponse.class);
     Assert.assertEquals(schemaResponse.getId(), 1);
@@ -283,7 +286,7 @@ public class TestMetaDataHandler {
         null,
         null);
 
-    Assert.assertEquals(response.status().code(), 404);
+    Assert.assertEquals(response.status(), HttpResponseStatus.NOT_FOUND);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "text/plain");
   }
 
@@ -309,7 +312,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap());
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     MultiSchemaResponse multiSchemaResponse =
         OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaResponse.class);
@@ -338,7 +341,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap());
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     MultiSchemaResponse multiSchemaResponse =
         OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaResponse.class);
@@ -350,9 +353,12 @@ public class TestMetaDataHandler {
     Assert.assertEquals(schemas.length, 0);
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Resource name required.*")
+  @Test
   public void testInvalidValueSchemaPath() throws IOException {
-    passRequestToMetadataHandler("http://myRouterHost:4567/value_schema/", null, null);
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/value_schema/", null, null);
+    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
+    Assert
+        .assertTrue(new String(response.content().array(), StandardCharsets.UTF_8).contains("Resource name required"));
   }
 
   @Test
@@ -374,7 +380,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap());
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response.content().array(), SchemaResponse.class);
 
@@ -401,12 +407,16 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap());
 
-    Assert.assertEquals(response.status().code(), 500);
+    Assert.assertEquals(response.status(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Resource name required.*")
+  @Test
   public void testInvalidSupersetSchemaPath() throws IOException {
-    passRequestToMetadataHandler("http://myRouterHost:4567/latest_value_schema/", null, null);
+    FullHttpResponse response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/latest_value_schema/", null, null);
+    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
+    Assert
+        .assertTrue(new String(response.content().array(), StandardCharsets.UTF_8).contains("Resource name required"));
   }
 
   @Test
@@ -430,7 +440,7 @@ public class TestMetaDataHandler {
     FullHttpResponse response =
         passRequestToMetadataHandler("http://myRouterHost:4567/update_schema/" + storeName + "/1", null, schemaRepo);
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response.content().array(), SchemaResponse.class);
 
@@ -472,7 +482,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap());
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     MultiSchemaResponse multiSchemaResponse =
         OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaResponse.class);
@@ -503,7 +513,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap());
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     MultiSchemaResponse multiSchemaResponse =
         OBJECT_MAPPER.readValue(response.content().array(), MultiSchemaResponse.class);
@@ -537,7 +547,7 @@ public class TestMetaDataHandler {
         clusterToD2Map,
         clusterToServerD2Map);
 
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
     D2ServiceDiscoveryResponse d2ServiceResponse =
         OBJECT_MAPPER.readValue(response.content().array(), D2ServiceDiscoveryResponse.class);
@@ -545,6 +555,23 @@ public class TestMetaDataHandler {
     Assert.assertEquals(d2ServiceResponse.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse.isError());
+
+    FullHttpResponse response2 = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/discover_cluster?store_name=" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        clusterToD2Map,
+        clusterToServerD2Map);
+
+    Assert.assertEquals(response2.status(), HttpResponseStatus.OK);
+    Assert.assertEquals(response2.headers().get(CONTENT_TYPE), "application/json");
+    D2ServiceDiscoveryResponse d2ServiceResponse2 =
+        OBJECT_MAPPER.readValue(response2.content().array(), D2ServiceDiscoveryResponse.class);
+    Assert.assertEquals(d2ServiceResponse2.getCluster(), clusterName);
+    Assert.assertEquals(d2ServiceResponse2.getD2Service(), d2Service);
+    Assert.assertEquals(d2ServiceResponse2.getName(), storeName);
+    Assert.assertFalse(d2ServiceResponse2.isError());
   }
 
   @Test
@@ -560,7 +587,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap());
 
-    Assert.assertEquals(response.status().code(), 404);
+    Assert.assertEquals(response.status(), HttpResponseStatus.NOT_FOUND);
   }
 
   @Test
@@ -585,7 +612,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap(),
         Collections.emptyMap());
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     ResourceStateResponse resourceStateResponse =
         OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertTrue(resourceStateResponse.isReadyToServe());
@@ -601,7 +628,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap(),
         Collections.emptyMap());
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     resourceStateResponse = OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertFalse(resourceStateResponse.isReadyToServe());
     // Add one more ready to serve replica in each partition which should put the version to ready to serve.
@@ -616,7 +643,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap(),
         Collections.emptyMap());
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     resourceStateResponse = OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertTrue(resourceStateResponse.isReadyToServe());
   }
@@ -644,7 +671,7 @@ public class TestMetaDataHandler {
           storeConfigRepository,
           Collections.emptyMap(),
           Collections.emptyMap());
-      Assert.assertEquals(response.status().code(), 200);
+      Assert.assertEquals(response.status(), HttpResponseStatus.OK);
       ResourceStateResponse resourceStateResponse =
           OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
       Assert.assertTrue(resourceStateResponse.isReadyToServe());
@@ -673,7 +700,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         helixReadOnlyStoreRepository);
-    Assert.assertEquals(response.status().code(), 404);
+    Assert.assertEquals(response.status(), HttpResponseStatus.NOT_FOUND);
     Mockito.doReturn(Optional.of(new StoreConfig(Version.parseStoreFromKafkaTopicName(resourceName))))
         .when(storeConfigRepository)
         .getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName));
@@ -689,7 +716,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap(),
         Collections.emptyMap());
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     ResourceStateResponse resourceStateResponse =
         OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertTrue(resourceStateResponse.isError());
@@ -716,7 +743,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap(),
         Collections.emptyMap());
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     HybridStoreQuotaStatusResponse pushStatusResponse =
         OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
     Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
@@ -732,7 +759,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap(),
         Collections.emptyMap());
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     pushStatusResponse = OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
     Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_VIOLATED);
   }
@@ -757,7 +784,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap(),
         Collections.emptyMap());
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     HybridStoreQuotaStatusResponse pushStatusResponse =
         OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
     Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
@@ -773,7 +800,7 @@ public class TestMetaDataHandler {
         storeConfigRepository,
         Collections.emptyMap(),
         Collections.emptyMap());
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     pushStatusResponse = OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
     Assert.assertEquals(pushStatusResponse.getQuotaStatus(), HybridStoreQuotaStatus.QUOTA_VIOLATED);
   }
@@ -846,7 +873,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         mockStoreRepository);
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     StoreJSONSerializer storeSerializer = new StoreJSONSerializer();
     Store store = storeSerializer.deserialize(response.content().array(), null);
     Assert.assertEquals(store.getCurrentVersion(), 1);
@@ -860,7 +887,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         mockStoreRepository);
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     SystemStoreJSONSerializer systemStoreSerializer = new SystemStoreJSONSerializer();
     SerializableSystemStore serializableSystemStore =
         systemStoreSerializer.deserialize(response.content().array(), null);
@@ -880,7 +907,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         mockStoreRepository);
-    Assert.assertEquals(notFoundResponse.status().code(), 404);
+    Assert.assertEquals(notFoundResponse.status(), HttpResponseStatus.NOT_FOUND);
   }
 
   @Test
@@ -902,7 +929,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
-    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
     Assert.assertEquals(
         new String(response.content().array(), StandardCharsets.UTF_8),
         REQUEST_TOPIC_ERROR_WRITES_DISABLED);
@@ -926,7 +953,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
-    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
     Assert.assertEquals(
         new String(response.content().array(), StandardCharsets.UTF_8),
         REQUEST_TOPIC_ERROR_BATCH_ONLY_STORE);
@@ -961,7 +988,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
-    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
     Assert.assertEquals(
         new String(response.content().array(), StandardCharsets.UTF_8),
         REQUEST_TOPIC_ERROR_NO_CURRENT_VERSION);
@@ -997,7 +1024,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
-    Assert.assertEquals(response.status().code(), 500);
+    Assert.assertEquals(response.status(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
     Assert.assertEquals(
         new String(response.content().array(), StandardCharsets.UTF_8),
         REQUEST_TOPIC_ERROR_MISSING_CURRENT_VERSION);
@@ -1038,7 +1065,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
-    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
     Assert.assertEquals(
         new String(response.content().array(), StandardCharsets.UTF_8),
         REQUEST_TOPIC_ERROR_CURRENT_VERSION_NOT_HYBRID);
@@ -1078,7 +1105,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
-    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
     Assert.assertEquals(
         new String(response.content().array(), StandardCharsets.UTF_8),
         REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY);
@@ -1125,7 +1152,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     VersionCreationResponse versionCreationResponse =
         OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreationResponse.getName(), storeName);
@@ -1178,7 +1205,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     VersionCreationResponse versionCreationResponse =
         OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreationResponse.getName(), storeName);
@@ -1235,7 +1262,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
-    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
     VersionCreationResponse versionCreationResponse =
         OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
     Assert.assertEquals(versionCreationResponse.getName(), storeName);
@@ -1289,7 +1316,7 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
-    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(response.status(), HttpResponseStatus.BAD_REQUEST);
     Assert.assertEquals(
         new String(response.content().array(), StandardCharsets.UTF_8),
         String.format(
