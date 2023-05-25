@@ -1071,4 +1071,9 @@ public abstract class AbstractPushMonitor
   public RealTimeTopicSwitcher getRealTimeTopicSwitcher() {
     return realTimeTopicSwitcher;
   }
+
+  @Override
+  public ExecutionStatusWithDetails getDaVinciPushStatus(String topic, int partitionCount) {
+    return pushStatusCollector.getDaVinciPushStatus(topic, partitionCount);
+  }
 }
