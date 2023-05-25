@@ -215,4 +215,8 @@ public class PushMonitorDelegator implements PushMonitor {
     return getPushMonitor(partitionAssignment.getTopic()).getReadyToServeInstances(partitionAssignment, partitionId);
   }
 
+  @Override
+  public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
+    return partitionStatusBasedPushStatusMonitor.isOfflinePushMonitorDaVinciPushStatusEnabled();
+  }
 }

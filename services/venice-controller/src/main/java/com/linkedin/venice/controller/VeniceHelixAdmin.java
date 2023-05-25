@@ -5341,6 +5341,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Retrieve Da Vinci push status
     // Da Vinci can only subscribe to an existing version, so skip 1st push
     if (store.isDaVinciPushStatusStoreEnabled() && (versionNumber > 1 || incrementalPushVersion.isPresent())) {
+      if (monitor.isOfflinePushMonitorDaVinciPushStatusEnabled() && !incrementalPushVersion.isPresent()) {
+        // The offline push status will contain Da Vinci push status when either server or Da Vinci push status becomes
+        // terminal.
+        return new OfflinePushStatusInfo(executionStatus, details);
+      }
       if (store.getVersion(versionNumber).isPresent()) {
         Version version = store.getVersion(versionNumber).get();
         ExecutionStatusWithDetails daVinciStatusAndDetails = PushMonitorUtils.getDaVinciPushStatusAndDetails(

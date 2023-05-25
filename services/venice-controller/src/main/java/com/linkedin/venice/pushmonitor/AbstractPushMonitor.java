@@ -84,6 +84,8 @@ public abstract class AbstractPushMonitor
 
   private final PushStatusCollector pushStatusCollector;
 
+  private final boolean isOfflinePushMonitorDaVinciPushStatusEnabled;
+
   public AbstractPushMonitor(
       String clusterName,
       OfflinePushAccessor offlinePushAccessor,
@@ -121,6 +123,7 @@ public abstract class AbstractPushMonitor
         controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled(),
         controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds(),
         controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber());
+    this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled();
     pushStatusCollector.start();
   }
 
@@ -1070,5 +1073,10 @@ public abstract class AbstractPushMonitor
 
   public RealTimeTopicSwitcher getRealTimeTopicSwitcher() {
     return realTimeTopicSwitcher;
+  }
+
+  @Override
+  public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
+    return isOfflinePushMonitorDaVinciPushStatusEnabled;
   }
 }
