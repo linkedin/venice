@@ -49,6 +49,7 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -151,17 +152,18 @@ public class VeniceChangelogConsumerImplTest {
     }
     // Verify version swap happened.
 
-    verify(mockPubSubConsumer)
-        .subscribe(new PubSubTopicPartitionImpl(newChangeCaptureTopic, 0), OffsetRecord.LOWEST_OFFSET);
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(newChangeCaptureTopic, 0);
+    verify(mockPubSubConsumer).subscribe(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);
     pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
     Assert.assertTrue(pubSubMessages.isEmpty());
 
-    veniceChangelogConsumer.pause();
-    verify(mockKafkaConsumer).pause(any());
+    doReturn(Collections.singleton(pubSubTopicPartition)).when(mockPubSubConsumer).getAssignment();
+    veniceChangelogConsumer.pause(Collections.singleton(0));
+    verify(mockPubSubConsumer).pause(any());
 
-    veniceChangelogConsumer.resume();
-    verify(mockKafkaConsumer).resume(any());
+    veniceChangelogConsumer.resume(Collections.singleton(0));
+    verify(mockPubSubConsumer).resume(any());
   }
 
   @Test
@@ -223,12 +225,6 @@ public class VeniceChangelogConsumerImplTest {
       Utf8 pubSubMessageValue = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(pubSubMessageValue.toString(), "newValue" + i);
     }
-
-    veniceChangelogConsumer.pause();
-    verify(kafkaConsumer).pause(any());
-
-    veniceChangelogConsumer.resume();
-    verify(kafkaConsumer).resume(any());
 
     veniceChangelogConsumer.close();
     verify(mockPubSubConsumer, times(2)).batchUnsubscribe(any());
