@@ -57,17 +57,13 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -349,8 +345,6 @@ public class TopicManagerTest {
 
   @Test
   public void testListOffsetsOnEmptyTopic() {
-    KafkaConsumer<byte[], byte[]> mockConsumer = mock(KafkaConsumer.class);
-    doReturn(new HashMap<String, List<PartitionInfo>>()).when(mockConsumer).listTopics();
     Map<Integer, Long> offsets = topicManager.getTopicLatestOffsets(pubSubTopicRepository.getTopic("myTopic_v1"));
     Assert.assertEquals(offsets.size(), 0);
   }

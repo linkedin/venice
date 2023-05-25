@@ -68,6 +68,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -77,6 +78,8 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
@@ -84,12 +87,14 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.BufferedReader;
 import java.io.Console;
 import java.io.FileInputStream;
@@ -1381,9 +1386,9 @@ public class AdminTool {
     int partitionNumber = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
     int startingOffset = Integer.parseInt(getRequiredArgument(cmd, Arg.STARTING_OFFSET));
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
-
-    new ControlMessageDumper(consumerProps, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch()
-        .display();
+    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps)) {
+      new ControlMessageDumper(consumer, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch().display();
+    }
   }
 
   private static void queryKafkaTopic(CommandLine cmd) throws java.text.ParseException {
@@ -1399,14 +1404,16 @@ public class AdminTool {
 
     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
     dateFormat.setTimeZone(TimeZone.getTimeZone("America/Los_Angeles"));
-    TopicMessageFinder.find(
-        controllerClient,
-        consumerProps,
-        kafkaTopic,
-        keyString,
-        dateFormat.parse(startDateInPST).getTime(),
-        dateFormat.parse(endDateInPST).getTime(),
-        Long.parseLong(progressInterval));
+    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps)) {
+      TopicMessageFinder.find(
+          controllerClient,
+          consumer,
+          kafkaTopic,
+          keyString,
+          dateFormat.parse(startDateInPST).getTime(),
+          dateFormat.parse(endDateInPST).getTime(),
+          Long.parseLong(progressInterval));
+    }
   }
 
   private static void dumpKafkaTopic(CommandLine cmd) {
@@ -1438,20 +1445,22 @@ public class AdminTool {
     }
 
     boolean logMetadataOnly = cmd.hasOption(Arg.LOG_METADATA.toString());
-    try (KafkaTopicDumper ktd = new KafkaTopicDumper(
-        controllerClient,
-        consumerProps,
-        kafkaTopic,
-        partitionNumber,
-        startingOffset,
-        messageCount,
-        parentDir,
-        maxConsumeAttempts,
-        logMetadataOnly)) {
-      ktd.fetchAndProcess();
-    } catch (Exception e) {
-      System.err.println("Something went wrong during topic dump");
-      e.printStackTrace();
+    try (PubSubConsumerAdapter consumer = getConsumer(consumerProps)) {
+      try (KafkaTopicDumper ktd = new KafkaTopicDumper(
+          controllerClient,
+          consumer,
+          kafkaTopic,
+          partitionNumber,
+          startingOffset,
+          messageCount,
+          parentDir,
+          maxConsumeAttempts,
+          logMetadataOnly)) {
+        ktd.fetchAndProcess();
+      } catch (Exception e) {
+        System.err.println("Something went wrong during topic dump");
+        e.printStackTrace();
+      }
     }
   }
 
@@ -2846,4 +2855,14 @@ public class AdminTool {
       System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
     }
   }
+
+  private static PubSubConsumerAdapter getConsumer(Properties consumerProps) {
+    KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    return new ApacheKafkaConsumerAdapterFactory()
+        .create(new VeniceProperties(consumerProps), false, kafkaPubSubMessageDeserializer, "");
+  }
+
 }

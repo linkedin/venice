@@ -6,12 +6,14 @@ import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_
 import static com.linkedin.venice.ConfigKeys.KAFKA_AUTO_OFFSET_RESET_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BATCH_SIZE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MIN_BYTES_CONFIG;
+import static com.linkedin.venice.ConfigKeys.KAFKA_GROUP_ID_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_POLL_RECORDS_CONFIG;
@@ -123,7 +125,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -1062,13 +1063,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private Properties getKafkaConsumerProperties(VeniceStoreVersionConfig storeConfig) {
     Properties kafkaConsumerProperties = getCommonKafkaConsumerProperties(storeConfig);
     String groupId = getGroupId(storeConfig.getStoreVersionName());
-    kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+    kafkaConsumerProperties.setProperty(KAFKA_GROUP_ID_CONFIG, groupId);
     /**
      * Temporarily we are going to use group_id as client_id as well since it is unique in cluster level.
      * With unique client_id, it will be easier for us to check Kafka consumer related metrics through JMX.
      * TODO: Kafka is throttling based on client_id, need to investigate whether we should use Kafka throttling or not.
      */
-    kafkaConsumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, groupId);
+    kafkaConsumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, groupId);
     return kafkaConsumerProperties;
   }
 

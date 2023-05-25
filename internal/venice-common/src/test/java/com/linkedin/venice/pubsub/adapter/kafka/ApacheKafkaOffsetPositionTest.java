@@ -1,11 +1,12 @@
 package com.linkedin.venice.pubsub.adapter.kafka;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubPositionType;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
@@ -118,5 +119,10 @@ public class ApacheKafkaOffsetPositionTest {
     ApacheKafkaOffsetPosition kafkaPosition2 = new ApacheKafkaOffsetPosition(wireFormat.rawBytes);
     assertEquals(kafkaPosition2.getOffset(), kafkaPosition.getOffset());
     assertEquals(kafkaPosition2, kafkaPosition);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  void testIllegalPosition() {
+    new ApacheKafkaOffsetPosition(OffsetRecord.LOWEST_OFFSET - 1);
   }
 }
