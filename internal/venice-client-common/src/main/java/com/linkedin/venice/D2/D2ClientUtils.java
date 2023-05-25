@@ -12,18 +12,19 @@ import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.commons.io.FileUtils;
@@ -154,7 +155,7 @@ public class D2ClientUtils {
       Map<String, D2ClientEnvelope> d2ZkHostToClientEnvelopeMap,
       Optional<SSLFactory> sslFactory) {
     D2ClientEnvelope d2ClientEnvelope = d2ZkHostToClientEnvelopeMap.computeIfAbsent(d2ZkHost, zkHost -> {
-      String fsBasePath = Utils.getUniqueTempPath("d2");
+      String fsBasePath = getUniqueTempPath("d2");
       D2Client d2Client = new D2ClientBuilder().setZkHosts(d2ZkHost)
           .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
           .setIsSSLEnabled(sslFactory.isPresent())
@@ -166,6 +167,17 @@ public class D2ClientUtils {
       return new D2ClientEnvelope(d2Client, fsBasePath);
     });
     return d2ClientEnvelope.d2Client;
+  }
+
+  // TODO: This code is copied from venice-common, but bringing it in introduces a circular dependency. Need to take
+  // time
+  // to sort that out.
+  public static String getUniqueTempPath(String prefix) {
+    return Paths.get(FileUtils.getTempDirectoryPath(), getUniqueString(prefix)).toAbsolutePath().toString();
+  }
+
+  public static String getUniqueString(String prefix) {
+    return String.format("%s_%x_%x", prefix, System.nanoTime(), ThreadLocalRandom.current().nextInt());
   }
 
   public static final class D2ClientEnvelope implements Closeable {

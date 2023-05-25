@@ -130,6 +130,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    */
   private final Map<SystemProducer, Pair<Boolean, Boolean>> systemProducerStatues;
 
+  private final Map<String, D2ClientUtils.D2ClientEnvelope> d2ZkHostToClientEnvelopeMap = new HashMap<>();
+
   /**
    * All the required configs to build a SSL Factory
    */
@@ -482,7 +484,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     ChangelogClientConfig changelogClientConfig = new ChangelogClientConfig().setViewName(viewName)
         .setConsumerProperties(getChangelogBackendConfig(config))
         .setControllerD2ServiceName(localControllerD2Service)
-        .setD2Client(D2ClientUtils.getStartedD2Client(localControllerD2Service, new HashMap<>(), sslFactory))
+        .setD2Client(
+            D2ClientUtils.getStartedD2Client(localControllerD2Service, d2ZkHostToClientEnvelopeMap, sslFactory))
         .setControllerRequestRetryCount(3);
     // TODO: Need to look into an adapter between samza's MetricsRegistry and the tehuti metricsRepository
     VeniceChangelogConsumerClientFactory factory =
