@@ -64,7 +64,7 @@ public class VenicePulsarSinkConfig implements Serializable {
   @FieldDoc(defaultValue = "", help = "Additional configuration for the Venice writer")
   private Map<String, String> writerConfig = new HashMap<>();
 
-  public static VeniceSinkConfig load(Map<String, Object> map, SinkContext sinkContext) throws IOException {
+  public static VenicePulsarSinkConfig load(Map<String, Object> map, SinkContext sinkContext) throws IOException {
     LOGGER.info("Loading config {}", map);
     return IOConfigUtils.loadWithSecrets(map, VenicePulsarSinkConfig.class, sinkContext);
   }

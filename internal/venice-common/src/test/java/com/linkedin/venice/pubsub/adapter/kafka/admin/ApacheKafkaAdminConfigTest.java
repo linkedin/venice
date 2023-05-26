@@ -4,6 +4,7 @@ import static org.testng.Assert.*;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
+import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.testng.annotations.Test;
 
