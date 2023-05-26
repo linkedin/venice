@@ -483,20 +483,30 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     int partitionId = report.partitionId;
     // Unsubscribe resource here so all incoming requests should be rejected and retried until handover is completed.
     setResourceToBeUnsubscribed(topicName, partitionId);
-    Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
-    getStatusReportingExecutor().execute(() -> {
-      try {
-        executionFuture.get();
-      } catch (ExecutionException | InterruptedException e) {
-        LOGGER.warn(
-            "Encounter exception when trying to stop consumption and close storage for {} of topic: {}",
-            partitionId,
-            topicName);
-      }
-      if (!getReportClient().reportIngestionStatus(report)) {
-        LOGGER.warn("Failed to deliver ingestion report to main process");
-      }
-    });
+    // Wait for all pending ingestion action on this partition to be completed in async fashion, which is expected to be
+    // fast.
+    getStoreIngestionService().waitIngestionTaskToCompleteAllPartitionPendingActions(topicName, partitionId, 100, 300);
+    if (getStoreIngestionService().isPartitionConsuming(topicName, partitionId)) {
+      Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
+      getStatusReportingExecutor().execute(() -> {
+        try {
+          executionFuture.get();
+        } catch (ExecutionException | InterruptedException e) {
+          LOGGER.warn(
+              "Encounter exception when trying to stop consumption and close storage for {} of topic: {}",
+              partitionId,
+              topicName);
+        }
+        if (!getReportClient().reportIngestionStatus(report)) {
+          LOGGER.warn("Failed to deliver ingestion report to main process");
+        }
+      });
+    } else {
+      // If pending ingestion action stops consumption (unsubscribe), we will not handover ingestion and we should
+      // restore the subscribed state.
+      LOGGER.warn("Topic: {}, partition: {} is not consuming, will not handover ingestion.", topicName, partitionId);
+      setResourceToBeSubscribed(topicName, partitionId);
+    }
   }
 
   /**
