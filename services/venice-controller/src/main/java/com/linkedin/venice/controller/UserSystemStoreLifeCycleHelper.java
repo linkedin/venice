@@ -100,7 +100,8 @@ public class UserSystemStoreLifeCycleHelper {
             Optional.empty(),
             -1,
             Optional.empty(),
-            false);
+            false,
+            null);
       }
       parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
       createdSystemStoreTypes.add(systemStoreType);

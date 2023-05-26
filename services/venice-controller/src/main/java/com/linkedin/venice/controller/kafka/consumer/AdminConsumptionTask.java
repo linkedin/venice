@@ -237,6 +237,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
 
+  /**
+   * The local region name of the controller.
+   */
+  private final String regionName;
+
   public AdminConsumptionTask(
       String clusterName,
       PubSubConsumerAdapter consumer,
@@ -252,7 +257,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       long processingCycleTimeoutInMs,
       int maxWorkerThreadPoolSize,
       PubSubTopicRepository pubSubTopicRepository,
-      KafkaPubSubMessageDeserializer pubSubMessageDeserializer) {
+      KafkaPubSubMessageDeserializer pubSubMessageDeserializer,
+      String regionName) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
@@ -286,6 +292,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     this.pubSubTopic = pubSubTopicRepository.getTopic(topic);
+    this.regionName = regionName;
 
     if (remoteConsumptionEnabled) {
       if (!remoteKafkaServerUrl.isPresent()) {
@@ -497,7 +504,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 admin,
                 executionIdAccessor,
                 isParentController,
-                stats));
+                stats,
+                regionName));
         stores.add(entry.getKey());
       }
     }

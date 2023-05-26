@@ -61,6 +61,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CON
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
@@ -261,7 +262,39 @@ public class ControllerClient implements Closeable {
         sourceGridFabric,
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
-        false);
+        false,
+        null);
+  }
+
+  public VersionCreationResponse requestTopicForWrites(
+      String storeName,
+      long storeSize,
+      PushType pushType,
+      String pushJobId,
+      boolean sendStartOfPush,
+      boolean sorted,
+      boolean wcEnabled,
+      Optional<String> partitioners,
+      Optional<String> compressionDictionary,
+      Optional<String> sourceGridFabric,
+      boolean batchJobHeartbeatEnabled,
+      long rewindTimeInSecondsOverride,
+      boolean deferVersionSwap) {
+    return requestTopicForWrites(
+        storeName,
+        storeSize,
+        pushType,
+        pushJobId,
+        sendStartOfPush,
+        sorted,
+        wcEnabled,
+        partitioners,
+        compressionDictionary,
+        sourceGridFabric,
+        batchJobHeartbeatEnabled,
+        rewindTimeInSecondsOverride,
+        deferVersionSwap,
+        null);
   }
 
   /**
@@ -282,7 +315,8 @@ public class ControllerClient implements Closeable {
    * @param batchJobHeartbeatEnabled whether batch push job enables the heartbeat
    * @param rewindTimeInSecondsOverride if a valid value is specified (>=0) for hybrid store, this param will override
    *                                       the default store-level rewindTimeInSeconds config.
-   *
+   * @param deferVersionSwap whether to defer version swap after the push is done
+   * @param targetedRegions the list of regions that is separated by comma for targeted region push.
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(
@@ -298,7 +332,8 @@ public class ControllerClient implements Closeable {
       Optional<String> sourceGridFabric,
       boolean batchJobHeartbeatEnabled,
       long rewindTimeInSecondsOverride,
-      boolean deferVersionSwap) {
+      boolean deferVersionSwap,
+      String targetedRegions) {
     QueryParams params = newParams().add(NAME, storeName)
         // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
@@ -313,6 +348,9 @@ public class ControllerClient implements Closeable {
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
         .add(DEFER_VERSION_SWAP, deferVersionSwap);
+    if (StringUtils.isNotEmpty(targetedRegions)) {
+      params.add(TARGETED_REGIONS, targetedRegions);
+    }
 
     return request(ControllerRoute.REQUEST_TOPIC, params, VersionCreationResponse.class);
   }
@@ -618,13 +656,24 @@ public class ControllerClient implements Closeable {
    * extended timeout is meant for the parent controller to query each colo's child controller for the job status and
    * aggregate the results. Use {@link ControllerClient#queryJobStatus(String, Optional)} instead if the target is a
    * child controller.
+   * @param kafkaTopic, the version topic name of the push job.
+   * @param incrementalPushVersion, the optional incremental push version of the push job.
+   * @param targetedRegions, the list of regions that is separated by comma for targeted region push.
+   * @return
    */
+  public JobStatusQueryResponse queryOverallJobStatus(
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
+      String targetedRegions) {
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, 5 * QUERY_JOB_STATUS_TIMEOUT, targetedRegions);
+  }
+
   public JobStatusQueryResponse queryOverallJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, 5 * QUERY_JOB_STATUS_TIMEOUT);
+    return queryOverallJobStatus(kafkaTopic, incrementalPushVersion, null);
   }
 
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
-    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT);
+    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT, null);
   }
 
   /**
@@ -633,17 +682,29 @@ public class ControllerClient implements Closeable {
    * target is a parent controller.
    */
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT);
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, null);
   }
 
   public JobStatusQueryResponse queryJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
-      int timeoutMs) {
+      String targetedRegions) {
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, targetedRegions);
+  }
+
+  public JobStatusQueryResponse queryJobStatus(
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
+      int timeoutMs,
+      String targetedRegions) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     QueryParams params =
         newParams().add(NAME, storeName).add(VERSION, version).add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion);
+
+    if (StringUtils.isNotEmpty(targetedRegions)) {
+      params.add(TARGETED_REGIONS, targetedRegions);
+    }
     return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null);
   }
 

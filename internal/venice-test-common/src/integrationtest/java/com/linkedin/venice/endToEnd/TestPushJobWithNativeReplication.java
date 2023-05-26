@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
@@ -17,6 +18,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_P
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
@@ -125,7 +128,7 @@ public class TestPushJobWithNativeReplication {
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
                                                                                                          // "venice-cluster1",
                                                                                                          // ...];
-  private final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
+  private static final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
 
   private static final String VPJ_HEARTBEAT_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"
   private static final String VPJ_HEARTBEAT_STORE_NAME =
@@ -163,6 +166,7 @@ public class TestPushJobWithNativeReplication {
     controllerProps
         .put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_CLUSTER);
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
+    controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-0");
 
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
@@ -521,25 +525,6 @@ public class TestPushJobWithNativeReplication {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testNativeReplicationForSourceOverride() throws Exception {
-    motherOfAllTests(
-        "testNativeReplicationForSourceOverride",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
-        100,
-        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          UpdateStoreQueryParams updateStoreParams =
-              new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc-1");
-          TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
-
-          try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
-            job.run();
-            // Verify the kafka URL being returned to the push job is the same as dc-1 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
-          }
-        });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void testClusterLevelAdminCommandForNativeReplication() throws Exception {
     motherOfAllTests(
         "testClusterLevelAdminCommandForNativeReplication",
@@ -876,6 +861,91 @@ public class TestPushJobWithNativeReplication {
       Assert.assertEquals(vcr2.getErrorType(), ErrorType.CONCURRENT_BATCH_PUSH);
       Assert.assertEquals(vcr2.getExceptionType(), ExceptionType.BAD_REQUEST);
     }
+  }
+
+  /**
+   * The targeted region push should only push to the source region defined in the native replication, other regions should
+   * not receive any data.
+   * @throws IOException
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testTargetedRegionPushJob() throws Exception {
+    motherOfAllTests(
+        "testTargetedRegionPushJob",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        100,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+          // start a regular push job
+          try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
+            job.run();
+            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              // Current version should become 1 at both 2 data centers
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 1);
+              }
+            });
+          }
+
+          // start a targeted region push which should only increase the version to 2 in dc-0
+          props.put(TARGETED_REGION_PUSH_ENABLED, true);
+          try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              Map<String, Integer> coloVersions =
+                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+              coloVersions.forEach((colo, version) -> {
+                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
+                  Assert.assertEquals((int) version, 2);
+                } else {
+                  Assert.assertEquals((int) version, 1);
+                }
+              });
+            });
+          }
+
+          // specify two regions, so both dc-0 and dc-1 is updated to version 3
+          props.setProperty(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
+          try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              // Current version should become 1 at both 2 data centers
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 3);
+              }
+            });
+          }
+
+          // emergency source is dc-0 so dc-1 isn't selected to be the source fabric but the push should still complete
+          props.setProperty(TARGETED_REGION_PUSH_LIST, "dc-1");
+          try (VenicePushJob job = new VenicePushJob("Test push job 4", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              Map<String, Integer> coloVersions =
+                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+              coloVersions.forEach((colo, version) -> {
+                if (colo.equals("dc-1")) {
+                  Assert.assertEquals((int) version, 4);
+                } else {
+                  Assert.assertEquals((int) version, 3);
+                }
+              });
+            });
+          }
+        });
   }
 
   private interface NativeReplicationTest {

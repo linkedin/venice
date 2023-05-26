@@ -71,6 +71,7 @@ public class AdminExecutionTask implements Callable<Void> {
    */
   private final Logger LOGGER;
   private final String clusterName;
+  private final String regionName;
   private final String storeName;
   private final Queue<AdminOperationWrapper> internalTopic;
   private final VeniceHelixAdmin admin;
@@ -90,7 +91,8 @@ public class AdminExecutionTask implements Callable<Void> {
       VeniceHelixAdmin admin,
       ExecutionIdAccessor executionIdAccessor,
       boolean isParentController,
-      AdminConsumptionStats stats) {
+      AdminConsumptionStats stats,
+      String regionName) {
     this.LOGGER = LOGGER;
     this.clusterName = clusterName;
     this.storeName = storeName;
@@ -101,6 +103,7 @@ public class AdminExecutionTask implements Callable<Void> {
     this.executionIdAccessor = executionIdAccessor;
     this.isParentController = isParentController;
     this.stats = stats;
+    this.regionName = regionName;
   }
 
   @Override
@@ -622,18 +625,30 @@ public class AdminExecutionTask implements Callable<Void> {
             replicationMetadataVersionId);
       }
     } else {
-      // New version for regular Venice store.
-      admin.addVersionAndStartIngestion(
-          clusterName,
-          storeName,
-          pushJobId,
-          versionNumber,
-          numberOfPartitions,
-          pushType,
-          remoteKafkaBootstrapServers,
-          rewindTimeInSecondsOverride,
-          replicationMetadataVersionId,
-          message.versionSwapDeferred);
+      boolean skipConsumption = message.targetedRegions != null && !message.targetedRegions.isEmpty()
+          && message.targetedRegions.stream().map(Object::toString).noneMatch(regionName::equals);
+      if (skipConsumption) {
+        // for targeted region push, only allow specified region to process add version message
+        LOGGER.info(
+            "Skip the add version message for store {} in region {} since this is targeted region push and "
+                + "local region is not the targeted region list {}",
+            storeName,
+            regionName,
+            message.targetedRegions.toString());
+      } else {
+        // New version for regular Venice store.
+        admin.addVersionAndStartIngestion(
+            clusterName,
+            storeName,
+            pushJobId,
+            versionNumber,
+            numberOfPartitions,
+            pushType,
+            remoteKafkaBootstrapServers,
+            rewindTimeInSecondsOverride,
+            replicationMetadataVersionId,
+            message.versionSwapDeferred);
+      }
     }
   }
 
