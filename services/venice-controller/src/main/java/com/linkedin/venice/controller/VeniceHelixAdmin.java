@@ -5666,37 +5666,52 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> sourceGridFabric,
       Optional<String> emergencySourceRegion,
       String targetedRegions) {
-
     String sourceFabric = emergencySourceRegion.orElse(null);
 
-    if (sourceGridFabric.isPresent() && (sourceFabric == null || sourceFabric.isEmpty())) {
-      sourceFabric = sourceGridFabric.get();
+    // always respect emergency region so return directly if it is not empty
+    if (StringUtils.isNotEmpty(sourceFabric)) {
+      return sourceFabric;
     }
 
-    if (sourceFabric == null || sourceFabric.isEmpty()) {
-      sourceFabric = store.getNativeReplicationSourceFabric();
+    Set<String> regions = targetedRegions != null ? RegionUtils.parseRegionsFilterList(targetedRegions) : null;
+
+    if (sourceGridFabric.isPresent()) {
+      sourceFabric = getPreferredRegion(sourceGridFabric.get(), regions);
     }
 
-    if (sourceFabric == null || sourceFabric.isEmpty()) {
-      sourceFabric = getMultiClusterConfigs().getControllerConfig(clusterName).getNativeReplicationSourceFabric();
+    if (StringUtils.isEmpty(sourceFabric)) {
+      sourceFabric = getPreferredRegion(store.getNativeReplicationSourceFabric(), regions);
     }
 
-    if (targetedRegions != null) {
-      Set<String> regions = RegionUtils.parseRegionsFilterList(targetedRegions);
-      if (!regions.contains(sourceFabric) && !emergencySourceRegion.isPresent()) {
-        // user specifies a targeted region that isn't the chosen source fabric, so randomly choose one
-        // but emergency source region should always be respected.
-        String selection = regions.iterator().next();
-        LOGGER.warn(
-            "User specified targeted regions: {}, but source fabric: {} is not in the list. Use {} from the list instead",
-            targetedRegions,
-            sourceFabric,
-            selection);
-        sourceFabric = selection;
-      }
+    if (StringUtils.isEmpty(sourceFabric)) {
+      sourceFabric = getPreferredRegion(
+          getMultiClusterConfigs().getControllerConfig(clusterName).getNativeReplicationSourceFabric(),
+          regions);
     }
 
+    if (StringUtils.isEmpty(sourceFabric) && regions != null) {
+      String selection = regions.iterator().next();
+      LOGGER.warn(
+          "User specified targeted regions: {} for store {} but default source fabric selection is not in the list. Use {} from the list instead",
+          targetedRegions,
+          store.getName(),
+          selection);
+      sourceFabric = selection;
+    }
     return sourceFabric;
+  }
+
+  /**
+   * Select the preferred regions from the given set if the set is provided.
+   * @param candidate
+   * @param regions
+   * @return
+   */
+  private String getPreferredRegion(String candidate, Set<String> regions) {
+    if (regions == null || regions.contains(candidate)) {
+      return candidate;
+    }
+    return null;
   }
 
   /**

@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
@@ -165,6 +166,7 @@ public class TestPushJobWithNativeReplication {
     controllerProps
         .put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_CLUSTER);
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
+    controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-0");
 
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
@@ -941,6 +943,25 @@ public class TestPushJobWithNativeReplication {
                   .values()) {
                 Assert.assertEquals(version, 3);
               }
+            });
+          }
+
+          // emergency source is dc-0 so dc-1 isn't selected to be the source fabric but the push should still complete
+          props.setProperty(TARGETED_REGION_PUSH_LIST, "dc-1");
+          try (VenicePushJob job = new VenicePushJob("Test push job 4", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              Map<String, Integer> coloVersions =
+                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+              coloVersions.forEach((colo, version) -> {
+                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
+                  Assert.assertEquals((int) version, 3);
+                } else {
+                  Assert.assertEquals((int) version, 4);
+                }
+              });
             });
           }
         });

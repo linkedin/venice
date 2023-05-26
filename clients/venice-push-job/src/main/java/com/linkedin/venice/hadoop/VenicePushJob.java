@@ -2310,10 +2310,8 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException(
             "The store either does not have native replication mode enabled or set up default source fabric.");
       }
-      if (StringUtils.isNotEmpty(setting.targetedRegions)) {
-        if (setting.isIncrementalPush) {
-          throw new VeniceException("Incremental push is not supported while using targeted region push mode");
-        }
+      if (setting.isIncrementalPush) {
+        throw new VeniceException("Incremental push is not supported while using targeted region push mode");
       }
     }
 

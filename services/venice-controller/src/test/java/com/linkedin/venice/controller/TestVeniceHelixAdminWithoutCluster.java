@@ -288,5 +288,24 @@ public class TestVeniceHelixAdminWithoutCluster {
     Assert.assertEquals(
         admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.empty(), Optional.empty(), null),
         "dc-4");
+
+    /**
+     * When we have the following setup:
+     * source fabric is dc-1,
+     * store config is dc-3,
+     * cluster config is dc-4,
+     * targeted regions is dc-0, dc-2, dc-4, dc-99
+     *
+     * we should pick dc-4 as the source fabric even though it has lower priority than dc-3, but it's in the targeted list
+     */
+    doReturn("dc-3").when(store).getNativeReplicationSourceFabric();
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric(
+            "test_cluster",
+            store,
+            Optional.of("dc-1"),
+            Optional.empty(),
+            "dc-99, dc-0, dc-4, dc-2"),
+        "dc-4");
   }
 }
