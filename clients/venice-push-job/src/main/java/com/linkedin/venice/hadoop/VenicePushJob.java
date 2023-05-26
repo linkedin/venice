@@ -2593,7 +2593,7 @@ public class VenicePushJob implements AutoCloseable {
    * If any datacenter report an explicit error status, we throw an exception and fail the job. However, datacenters
    * with COMPLETED status will be serving new data.
    */
-  private void pollStatusUntilComplete(
+  void pollStatusUntilComplete(
       Optional<String> incrementalPushVersion,
       ControllerClient controllerClient,
       PushJobSetting pushJobSetting,
