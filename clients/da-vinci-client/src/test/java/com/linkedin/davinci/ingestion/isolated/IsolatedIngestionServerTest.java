@@ -13,7 +13,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -22,7 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -60,46 +59,33 @@ public class IsolatedIngestionServerTest {
 
   @Test
   public void testStopConsumptionAndReport() {
-    Map<String, Map<Integer, AtomicReference<IsolatedIngestionStatus>>> topicPartitionSubscriptionMap =
-        new VeniceConcurrentHashMap<>();
+    Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap = new VeniceConcurrentHashMap<>();
     IsolatedIngestionServer isolatedIngestionServer = mock(IsolatedIngestionServer.class);
     when(isolatedIngestionServer.getTopicPartitionSubscriptionMap()).thenReturn(topicPartitionSubscriptionMap);
     ExecutorService statusReportingExecutor = Executors.newSingleThreadExecutor();
     when(isolatedIngestionServer.getStatusReportingExecutor()).thenReturn(statusReportingExecutor);
     doCallRealMethod().when(isolatedIngestionServer).stopConsumptionAndReport(any());
-    doCallRealMethod().when(isolatedIngestionServer).maybeUnsubscribeResource(anyString(), anyInt());
-    doCallRealMethod().when(isolatedIngestionServer).maybeInitializeResourceStatus(anyString(), anyInt());
-    doCallRealMethod().when(isolatedIngestionServer).isResourceIngestionStateExist(anyString(), anyInt());
+    doCallRealMethod().when(isolatedIngestionServer).setResourceToBeUnsubscribed(anyString(), anyInt());
     when(isolatedIngestionServer.submitStopConsumptionAndCloseStorageTask(any()))
         .thenReturn(CompletableFuture.completedFuture(null));
     IsolatedIngestionRequestClient client = mock(IsolatedIngestionRequestClient.class);
     when(isolatedIngestionServer.getReportClient()).thenReturn(client);
 
+    IngestionTaskReport badReport = new IngestionTaskReport();
+    badReport.topicName = "topic";
+    badReport.partitionId = 0;
+    badReport.reportType = 0;
+    when(client.reportIngestionStatus(badReport)).thenReturn(false);
+    isolatedIngestionServer.stopConsumptionAndReport(badReport);
+
     IngestionTaskReport goodReport = new IngestionTaskReport();
     goodReport.topicName = "topic";
-    goodReport.partitionId = 0;
+    goodReport.partitionId = 1;
     goodReport.reportType = 0;
     when(client.reportIngestionStatus(goodReport)).thenReturn(true);
-
     isolatedIngestionServer.stopConsumptionAndReport(goodReport);
-    verify(isolatedIngestionServer, times(1)).maybeUnsubscribeResource("topic", 0);
-    verify(client, times(0)).reportIngestionStatus(goodReport);
 
-    isolatedIngestionServer.maybeInitializeResourceStatus("topic", 0);
-    isolatedIngestionServer.stopConsumptionAndReport(goodReport);
-    verify(isolatedIngestionServer, times(2)).maybeUnsubscribeResource("topic", 0);
-    verify(client, times(0)).reportIngestionStatus(goodReport);
-
-    isolatedIngestionServer.maybeInitializeResourceStatus("topic", 0).set(IsolatedIngestionStatus.UNSUBSCRIBED);
-    isolatedIngestionServer.stopConsumptionAndReport(goodReport);
-    verify(isolatedIngestionServer, times(3)).maybeUnsubscribeResource("topic", 0);
-    verify(client, times(0)).reportIngestionStatus(goodReport);
-
-    isolatedIngestionServer.maybeInitializeResourceStatus("topic", 0).set(IsolatedIngestionStatus.RUNNING);
-    isolatedIngestionServer.stopConsumptionAndReport(goodReport);
-    verify(isolatedIngestionServer, times(4)).maybeUnsubscribeResource("topic", 0);
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, true, () -> {
-      verify(client, times(1)).reportIngestionStatus(goodReport);
-    });
+    verify(isolatedIngestionServer, times(1)).setResourceToBeUnsubscribed("topic", 0);
+    verify(isolatedIngestionServer, times(1)).setResourceToBeUnsubscribed("topic", 1);
   }
 }

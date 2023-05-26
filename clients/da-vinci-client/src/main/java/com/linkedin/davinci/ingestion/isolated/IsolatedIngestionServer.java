@@ -67,6 +67,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -77,7 +78,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -125,7 +125,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
    * is either maintained in the process or in the process of being reported back. All ingestion commands regarding this
    * resource will be rejected and retried in the main process.
    */
-  private final Map<String, Map<Integer, AtomicReference<IsolatedIngestionStatus>>> topicPartitionSubscriptionMap =
+  private final Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap =
       new VeniceConcurrentHashMap<>();
   private final Map<String, Double> metricsMap = new VeniceConcurrentHashMap<>();
   /**
@@ -344,8 +344,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   public void cleanupTopicPartitionState(String topicName, int partitionId) {
-    Map<Integer, AtomicReference<IsolatedIngestionStatus>> partitionSubscriptionMap =
-        topicPartitionSubscriptionMap.get(topicName);
+    Map<Integer, AtomicBoolean> partitionSubscriptionMap = topicPartitionSubscriptionMap.get(topicName);
     if (partitionSubscriptionMap != null) {
       partitionSubscriptionMap.remove(partitionId);
     }
@@ -438,56 +437,36 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         leaderSessionId);
   }
 
-  /**
-   * Try to update the status from running to unsubscribed during partition handover time. If the current status is not
-   * running, we should not proceed as it means stop/drop actions might have kicked in.
-   */
-  public boolean maybeUnsubscribeResource(String topicName, int partition) {
-    return maybeInitializeResourceStatus(topicName, partition)
-        .compareAndSet(IsolatedIngestionStatus.RUNNING, IsolatedIngestionStatus.UNSUBSCRIBED);
+  // Set the topic partition state to be unsubscribed.
+  public void setResourceToBeUnsubscribed(String topicName, int partition) {
+    getTopicPartitionSubscriptionMap().computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, p -> new AtomicBoolean(false))
+        .set(false);
   }
 
-  /**
-   * Try to update the status from stopped to running state.
-   * It should only be used for start consumption
-   * If the current state is already the terminal state, it is OK to return success directly.
-   */
-  public boolean maybeSetResourceToRunning(String topicName, int partition) {
-    AtomicReference<IsolatedIngestionStatus> status = maybeInitializeResourceStatus(topicName, partition);
-    if (status.get().equals(IsolatedIngestionStatus.RUNNING)) {
-      return true;
-    }
-    return status.compareAndSet(IsolatedIngestionStatus.STOPPED, IsolatedIngestionStatus.RUNNING);
+  // Set the topic partition state to be subscribed.
+  public void setResourceToBeSubscribed(String topicName, int partition) {
+    getTopicPartitionSubscriptionMap().computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, p -> new AtomicBoolean(true))
+        .set(true);
   }
 
-  /**
-   * Try to update the status from stopped to running state.
-   * It should only be used for stop consumption / drop partition.
-   * If the current state is already the terminal state, it is OK to return success directly.
-   */
-  public boolean maybeSetResourceToStopped(String topicName, int partition) {
-    AtomicReference<IsolatedIngestionStatus> status = maybeInitializeResourceStatus(topicName, partition);
-    if (status.get().equals(IsolatedIngestionStatus.STOPPED)) {
-      return true;
-    }
-    return status.compareAndSet(IsolatedIngestionStatus.RUNNING, IsolatedIngestionStatus.STOPPED);
-  }
-
-  public AtomicReference<IsolatedIngestionStatus> maybeInitializeResourceStatus(String topicName, int partition) {
-    return getTopicPartitionSubscriptionMap().computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
-        .computeIfAbsent(partition, p -> new AtomicReference<>(IsolatedIngestionStatus.STOPPED));
-  }
-
-  public boolean isResourceIngestionStateExist(String topicName, int partition) {
-    Map<Integer, AtomicReference<IsolatedIngestionStatus>> statusMap =
-        getTopicPartitionSubscriptionMap().get(topicName);
-    if (statusMap == null) {
+  // Check if topic partition is being subscribed.
+  public boolean isResourceSubscribed(String topicName, int partition) {
+    AtomicBoolean subscription =
+        getTopicPartitionSubscriptionMap().getOrDefault(topicName, Collections.emptyMap()).get(partition);
+    if (subscription == null) {
       return false;
     }
-    return statusMap.containsKey(partition);
+    return subscription.get();
   }
 
-  Map<String, Map<Integer, AtomicReference<IsolatedIngestionStatus>>> getTopicPartitionSubscriptionMap() {
+  public void maybeSubscribeNewResource(String topicName, int partition) {
+    getTopicPartitionSubscriptionMap().computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, p -> new AtomicBoolean(true));
+  }
+
+  Map<String, Map<Integer, AtomicBoolean>> getTopicPartitionSubscriptionMap() {
     return topicPartitionSubscriptionMap;
   }
 
@@ -503,27 +482,21 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     // Unsubscribe resource here so all incoming requests should be rejected and retried until handover is completed.
-    if (maybeUnsubscribeResource(topicName, partitionId)) {
-      Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
-      getStatusReportingExecutor().execute(() -> {
-        try {
-          executionFuture.get();
-        } catch (ExecutionException | InterruptedException e) {
-          LOGGER.warn(
-              "Encounter exception when trying to stop consumption and close storage for {} of topic: {}",
-              partitionId,
-              topicName);
-        }
-        if (!getReportClient().reportIngestionStatus(report)) {
-          LOGGER.warn("Failed to deliver ingestion report to main process");
-        }
-      });
-    } else {
-      LOGGER.warn(
-          "Resource topic: {}, partition: {} is not in expected status, will not report ingestion status",
-          topicName,
-          partitionId);
-    }
+    setResourceToBeUnsubscribed(topicName, partitionId);
+    Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
+    getStatusReportingExecutor().execute(() -> {
+      try {
+        executionFuture.get();
+      } catch (ExecutionException | InterruptedException e) {
+        LOGGER.warn(
+            "Encounter exception when trying to stop consumption and close storage for {} of topic: {}",
+            partitionId,
+            topicName);
+      }
+      if (!getReportClient().reportIngestionStatus(report)) {
+        LOGGER.warn("Failed to deliver ingestion report to main process");
+      }
+    });
   }
 
   /**

@@ -207,7 +207,9 @@ public class IsolatedIngestionBackendTest {
     when(backend.isTopicPartitionHosted(topic, 1)).thenReturn(true);
     when(backend.isTopicPartitionHosted(topic, 2)).thenReturn(true);
     backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 0, 123L, "", Optional.empty());
-    verify(backend, times(0)).getCompletionHandlingExecutor();
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+      verify(backend, times(0)).getCompletionHandlingExecutor();
+    });
     backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 1, 123L, "", Optional.empty());
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
       verify(backend, times(1)).getCompletionHandlingExecutor();

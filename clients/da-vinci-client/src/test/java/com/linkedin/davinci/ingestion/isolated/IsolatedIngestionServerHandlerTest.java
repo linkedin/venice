@@ -5,8 +5,8 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -18,13 +18,10 @@ public class IsolatedIngestionServerHandlerTest {
     String topic = "testTopic_v1";
     int partitionId = 2;
 
-    Map<String, Map<Integer, AtomicReference<IsolatedIngestionStatus>>> topicPartitionSubscriptionMap =
-        new VeniceConcurrentHashMap<>();
+    Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap = new VeniceConcurrentHashMap<>();
     IsolatedIngestionServer mockedServer = Mockito.mock(IsolatedIngestionServer.class);
-    Mockito.when(mockedServer.maybeSetResourceToStopped(topic, partitionId)).thenCallRealMethod();
+    Mockito.when(mockedServer.isResourceSubscribed(topic, partitionId)).thenCallRealMethod();
     Mockito.when(mockedServer.getTopicPartitionSubscriptionMap()).thenReturn(topicPartitionSubscriptionMap);
-    Mockito.when(mockedServer.maybeInitializeResourceStatus(topic, partitionId)).thenCallRealMethod();
-    Mockito.when(mockedServer.isResourceIngestionStateExist(topic, partitionId)).thenCallRealMethod();
     IsolatedIngestionServerHandler isolatedIngestionServerHandler = new IsolatedIngestionServerHandler(mockedServer);
     IngestionTaskReport ingestionTaskReport = IsolatedIngestionUtils.createIngestionTaskReport(topic, partitionId);
     AtomicInteger executionCount = new AtomicInteger(0);
@@ -37,8 +34,8 @@ public class IsolatedIngestionServerHandlerTest {
 
     // Validate that a ready-to-serve topic partition should reject the command.
     ingestionTaskReport.setIsPositive(true);
-    Map<Integer, AtomicReference<IsolatedIngestionStatus>> topicMap = new VeniceConcurrentHashMap<>();
-    topicMap.put(partitionId, new AtomicReference<>(IsolatedIngestionStatus.UNSUBSCRIBED));
+    Map<Integer, AtomicBoolean> topicMap = new VeniceConcurrentHashMap<>();
+    topicMap.put(partitionId, new AtomicBoolean(false));
     topicPartitionSubscriptionMap.put(topic, topicMap);
     isolatedIngestionServerHandler
         .validateAndExecuteCommand(command, ingestionTaskReport, () -> executionCount.addAndGet(1));
@@ -47,18 +44,10 @@ public class IsolatedIngestionServerHandlerTest {
 
     // Validate that an active topic partition subscription should execute the command.
     ingestionTaskReport.setIsPositive(true);
-    topicPartitionSubscriptionMap.get(topic).get(partitionId).set(IsolatedIngestionStatus.RUNNING);
+    topicPartitionSubscriptionMap.get(topic).get(partitionId).set(true);
     isolatedIngestionServerHandler
         .validateAndExecuteCommand(command, ingestionTaskReport, () -> executionCount.addAndGet(1));
     Assert.assertEquals(executionCount.get(), 1);
-    Assert.assertTrue(ingestionTaskReport.isPositive);
-
-    // Validate that a stopped topic partition subscription should execute the command.
-    ingestionTaskReport.setIsPositive(true);
-    topicPartitionSubscriptionMap.get(topic).get(partitionId).set(IsolatedIngestionStatus.STOPPED);
-    isolatedIngestionServerHandler
-        .validateAndExecuteCommand(command, ingestionTaskReport, () -> executionCount.addAndGet(1));
-    Assert.assertEquals(executionCount.get(), 2);
     Assert.assertTrue(ingestionTaskReport.isPositive);
   }
 }
