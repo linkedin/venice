@@ -35,10 +35,20 @@ import org.apache.logging.log4j.core.config.Configurator;
 public class ProducerTool {
   private static final Option STORE_OPTION =
       Option.builder().option("s").longOpt("store").hasArg().required().desc("Store name").build();
-  private static final Option KEY_OPTION =
-      Option.builder().option("k").longOpt("key").hasArg().required().desc("Key string").build();
-  private static final Option VALUE_OPTION =
-      Option.builder().option("v").longOpt("value").hasArg().required().desc("Value string").build();
+  private static final Option KEY_OPTION = Option.builder()
+      .option("k")
+      .longOpt("key")
+      .hasArg()
+      .required()
+      .desc("Key of the record. Complex types must be specified as JSON")
+      .build();
+  private static final Option VALUE_OPTION = Option.builder()
+      .option("v")
+      .longOpt("value")
+      .hasArg()
+      .required()
+      .desc("Value of the record. Complex types must be specified as JSON")
+      .build();
   private static final Option VENICE_URL_OPTION = Option.builder()
       .option("vu")
       .longOpt("veniceUrl")
@@ -50,7 +60,7 @@ public class ProducerTool {
       .option("dsn")
       .longOpt("d2ServiceName")
       .hasArg()
-      .desc("D2 service name for cluster discovery. Mandatory if Venice URL is a ZK address")
+      .desc("D2 service name for cluster discovery. default: " + ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME)
       .build();
   private static final Option CONFIG_PATH_OPTION =
       Option.builder().option("cp").longOpt("configPath").hasArg().desc("Path to config file").build();
@@ -87,7 +97,7 @@ public class ProducerTool {
     writeToStore(producerContext);
   }
 
-  // Check if the CLI args specify any of -h or --help options
+  // Check if the CLI args specify either of -h or --help options
   private static boolean checkForHelp(String[] args) {
     for (String arg: args) {
       if (arg.equals("-" + HELP_OPTION.getOpt())) {
@@ -122,6 +132,8 @@ public class ProducerTool {
       String sslFactoryClassName =
           producerContext.configProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
       producerContext.sslFactory = SslUtils.getSSLFactory(producerContext.configProperties, sslFactoryClassName);
+    } else {
+      producerContext.configProperties = new Properties();
     }
 
     // Verify the ssl engine is set up correctly.
@@ -133,7 +145,8 @@ public class ProducerTool {
     }
 
     if (!producerContext.veniceUrl.startsWith("http")) {
-      producerContext.d2ServiceName = validateRequiredOption(cmd, D2_SERVICE_NAME_OPTION);
+      producerContext.d2ServiceName =
+          cmd.getOptionValue(D2_SERVICE_NAME_OPTION, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     }
     return producerContext;
   }
