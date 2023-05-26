@@ -3,10 +3,11 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
@@ -153,10 +154,12 @@ import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdap
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatusWithDetails;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
+import com.linkedin.venice.pushmonitor.PushMonitorUtils;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
@@ -661,7 +664,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     VeniceProperties originalPros = controllerConfig.getProps();
     Properties clonedProperties = originalPros.toProperties();
-    if (originalPros.getBoolean(SSL_TO_KAFKA, false)) {
+    if (originalPros.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false)) {
       clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     } else {
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
@@ -4059,8 +4062,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     Store originalStore = getStore(clusterName, storeName);
     if (originalStore == null) {
-      throw new VeniceException(
-          "The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
+      throw new VeniceNoStoreException(storeName, clusterName);
     }
     if (originalStore.isHybrid()) {
       // If this is a hybrid store, always try to disable compaction if RT topic exists.
@@ -5416,12 +5418,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Retrieve Da Vinci push status
     // Da Vinci can only subscribe to an existing version, so skip 1st push
     if (store.isDaVinciPushStatusStoreEnabled() && (versionNumber > 1 || incrementalPushVersion.isPresent())) {
+      if (monitor.isOfflinePushMonitorDaVinciPushStatusEnabled() && !incrementalPushVersion.isPresent()) {
+        // The offline push status will contain Da Vinci push status when either server or Da Vinci push status becomes
+        // terminal.
+        return new OfflinePushStatusInfo(executionStatus, details);
+      }
       if (store.getVersion(versionNumber).isPresent()) {
         Version version = store.getVersion(versionNumber).get();
-        Pair<ExecutionStatus, String> daVinciStatusAndDetails =
-            getDaVinciPushStatusAndDetails(version, incrementalPushVersion);
-        ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getFirst();
-        String daVinciDetails = daVinciStatusAndDetails.getSecond();
+        ExecutionStatusWithDetails daVinciStatusAndDetails = PushMonitorUtils.getDaVinciPushStatusAndDetails(
+            pushStatusStoreReader.orElse(null),
+            version.kafkaTopicName(),
+            version.getPartitionCount(),
+            incrementalPushVersion);
+        ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getStatus();
+        String daVinciDetails = daVinciStatusAndDetails.getDetails();
         executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
         if (details != null || daVinciDetails != null) {
           String overallDetails = "";
@@ -5446,96 +5456,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     List<ExecutionStatus> statuses = Arrays.asList(veniceStatus, daVinciStatus);
     statuses.sort(Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
     return statuses.get(0);
-  }
-
-  /**
-   * getDaVinciPushStatusAndDetails checks all partitions and compute a final status.
-   * Inside each partition, getDaVinciPushStatusAndDetails will compute status based on all active replicas/Da Vinci instances.
-   * A replica/Da Vinci instance sent heartbeat to controllers recently is considered active.
-   */
-  private Pair<ExecutionStatus, String> getDaVinciPushStatusAndDetails(
-      Version version,
-      Optional<String> incrementalPushVersion) {
-    if (!pushStatusStoreReader.isPresent()) {
-      throw new VeniceException("D2Client must be provided to read from push status store.");
-    }
-    int partitionCount = version.getPartitionCount();
-    LOGGER.info("Getting Da Vinci push status for store: {}", version.getStoreName());
-    boolean allMiddleStatusReceived = true;
-    ExecutionStatus completeStatus = incrementalPushVersion.isPresent()
-        ? ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED
-        : ExecutionStatus.COMPLETED;
-    ExecutionStatus middleStatus = incrementalPushVersion.isPresent()
-        ? ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED
-        : ExecutionStatus.END_OF_PUSH_RECEIVED;
-    Optional<String> erroredInstance = Optional.empty();
-    String storeName = version.getStoreName();
-    int completedPartitions = 0;
-    int totalInstanceCount = 0;
-    int liveInstanceCount = 0;
-    Set<Integer> incompletePartition = new HashSet<>();
-    for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-      Map<CharSequence, Integer> instances = pushStatusStoreReader.get()
-          .getPartitionStatus(storeName, version.getNumber(), partitionId, incrementalPushVersion);
-      boolean allInstancesCompleted = true;
-      totalInstanceCount += instances.size();
-      for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
-        ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
-        boolean isInstanceAlive = pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString());
-
-        if (isInstanceAlive) {
-          liveInstanceCount++;
-        }
-        if (status == middleStatus) {
-          if (allInstancesCompleted && isInstanceAlive) {
-            allInstancesCompleted = false;
-          }
-        } else if (status != completeStatus) {
-          if (allInstancesCompleted || allMiddleStatusReceived) {
-            if (isInstanceAlive) {
-              allInstancesCompleted = false;
-              allMiddleStatusReceived = false;
-              if (status == ExecutionStatus.ERROR) {
-                erroredInstance = Optional.of(entry.getKey().toString());
-                break;
-              }
-            }
-          }
-        }
-      }
-      if (allInstancesCompleted) {
-        completedPartitions++;
-      } else {
-        incompletePartition.add(partitionId);
-      }
-    }
-    String statusDetail = null;
-    String details = "";
-    if (completedPartitions > 0) {
-      details += completedPartitions + "/" + partitionCount + " partitions completed in" + totalInstanceCount
-          + " Da Vinci instances.";
-    }
-    if (erroredInstance.isPresent()) {
-      details += "Found a failed instance in Da Vinci: " + erroredInstance + ". live instances: " + liveInstanceCount
-          + " total instances : " + totalInstanceCount;
-    }
-    int incompleteSize = incompletePartition.size();
-    if (incompleteSize > 0 && incompleteSize <= 5) {
-      details += ". Following partitions still not complete " + incompletePartition + ". live instances: "
-          + liveInstanceCount + " total instances : " + totalInstanceCount;
-    }
-    if (details.length() != 0) {
-      statusDetail = details;
-    }
-    if (completedPartitions == partitionCount) {
-      return new Pair<>(completeStatus, statusDetail);
-    } else if (allMiddleStatusReceived) {
-      return new Pair<>(middleStatus, statusDetail);
-    } else if (erroredInstance.isPresent()) {
-      return new Pair<>(ExecutionStatus.ERROR, statusDetail);
-    } else {
-      return new Pair<>(ExecutionStatus.STARTED, statusDetail);
-    }
   }
 
   // TODO remove this method once we are fully on HaaS
@@ -5812,7 +5732,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * Test if ssl is enabled to Kafka.
-   * @see ConfigKeys#SSL_TO_KAFKA
+   * @see ConfigKeys#SSL_TO_KAFKA_LEGACY
+   * @see ConfigKeys#KAFKA_OVER_SSL
    */
   @Override
   public boolean isSslToKafka() {
@@ -6438,8 +6359,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     StoreConfig config = storeConfigRepo.getStoreConfigOrThrow(storeName);
     if (config == null || StringUtils.isEmpty(config.getCluster())) {
       throw new VeniceNoStoreException(
-          "Could not find the given store: " + storeName
-              + ". Make sure the store is created and the provided store name is correct");
+          storeName,
+          null,
+          "Make sure the store is created and the provided store name is correct");
     }
     String clusterName = config.getCluster();
     String d2Service = multiClusterConfigs.getClusterToD2Map().get(clusterName);
@@ -6729,9 +6651,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        */
       Store originalStore = getStore(clusterName, storeName.get());
       if (originalStore == null) {
-        throw new VeniceException(
-            "The store '" + storeName.get() + "' in cluster '" + clusterName
-                + "' does not exist, and thus cannot be updated.");
+        throw new VeniceNoStoreException(storeName.get(), clusterName);
       }
       boolean shouldUpdateNativeReplication = false;
       switch (storeType) {
@@ -6856,9 +6776,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        */
       Store originalStore = getStore(clusterName, storeName.get());
       if (originalStore == null) {
-        throw new VeniceException(
-            "The store '" + storeName.get() + "' in cluster '" + clusterName
-                + "' does not exist, and thus cannot be updated.");
+        throw new VeniceNoStoreException(storeName.get(), clusterName);
       }
       boolean shouldUpdateActiveActiveReplication = false;
       switch (storeType) {
@@ -7793,6 +7711,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     checkKafkaTopicAndHelixResource(clusterName, storeName, true, true, true);
     storeGraveyard.removeStoreFromGraveyard(clusterName, storeName);
+  }
+
+  @Override
+  public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
+    return pushStatusStoreReader;
   }
 
   // Visible for testing

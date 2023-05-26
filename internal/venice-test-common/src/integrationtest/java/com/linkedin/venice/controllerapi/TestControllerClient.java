@@ -53,7 +53,7 @@ public class TestControllerClient {
 
   @Test
   public void testObjectMapperIgnoringUnknownProperties() throws IOException {
-    ObjectMapper objectMapper = ControllerTransport.getObjectMapper();
+    ObjectMapper objectMapper = ObjectMapperFactory.getInstance();
     String field1Value = "field1_value";
     String jsonStr = "{\"field1\":\"" + field1Value + "\",\"field3\":\"" + field1Value + "\"}";
     TestJsonObject jsonObject = objectMapper.readValue(jsonStr, TestJsonObject.class);

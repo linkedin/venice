@@ -88,6 +88,7 @@ public class SchemaRoutes extends AbstractRoute {
         if (!isAllowListUser(request) && !hasWriteAccessToTopic(request)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("User is neither Admin nor has write access to topic to run " + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ADD_VALUE_SCHEMA.getParams(), admin);

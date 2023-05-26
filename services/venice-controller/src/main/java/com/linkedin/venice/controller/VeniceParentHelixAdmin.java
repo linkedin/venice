@@ -177,6 +177,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.GeneratedSchemaID;
@@ -2288,9 +2289,8 @@ public class VeniceParentHelixAdmin implements Admin {
 
       Store currStore = getVeniceHelixAdmin().getStore(clusterName, storeName);
       if (currStore == null) {
-        String errorMessage = "store does not exist, and thus cannot be updated.";
-        LOGGER.error(errorMessagePrefix + errorMessage);
-        throw new VeniceException(errorMessagePrefix + errorMessage);
+        LOGGER.error(errorMessagePrefix + "store does not exist, and thus cannot be updated.");
+        throw new VeniceNoStoreException(storeName, clusterName);
       }
       UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
       setStore.clusterName = clusterName;
@@ -5199,5 +5199,10 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     });
     getStoreGraveyard().removeStoreFromGraveyard(clusterName, storeName);
+  }
+
+  @Override
+  public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
+    throw new VeniceUnsupportedOperationException("Parent controller does not have Da Vinci push status store reader");
   }
 }

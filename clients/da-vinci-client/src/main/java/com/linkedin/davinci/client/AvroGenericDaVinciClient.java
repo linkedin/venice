@@ -39,7 +39,7 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -574,7 +574,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return GenericRecordChunkingAdapter.INSTANCE;
   }
 
-  private D2ServiceDiscoveryResponseV2 discoverService() {
+  private D2ServiceDiscoveryResponse discoverService() {
     try (TransportClient client = getTransportClient(clientConfig)) {
       if (!(client instanceof D2TransportClient)) {
         throw new VeniceClientException(
@@ -582,7 +582,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
                 + client.getClass());
       }
       D2ServiceDiscovery serviceDiscovery = new D2ServiceDiscovery();
-      D2ServiceDiscoveryResponseV2 response = serviceDiscovery.find((D2TransportClient) client, getStoreName());
+      D2ServiceDiscoveryResponse response = serviceDiscovery.find((D2TransportClient) client, getStoreName());
       logger.info(
           "Venice service discovered, clusterName={}, zkAddress={}, kafkaBootstrapServers={}",
           response.getCluster(),
@@ -595,7 +595,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   }
 
   private VeniceConfigLoader buildVeniceConfig() {
-    D2ServiceDiscoveryResponseV2 discoveryResponse = discoverService();
+    D2ServiceDiscoveryResponse discoveryResponse = discoverService();
     String clusterName = discoveryResponse.getCluster();
     String zkAddress = discoveryResponse.getZkAddress();
     String kafkaBootstrapServers = discoveryResponse.getKafkaBootstrapServers();

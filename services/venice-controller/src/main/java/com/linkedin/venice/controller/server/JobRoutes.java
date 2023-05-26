@@ -21,6 +21,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.IncrementalPushVersionsResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -119,6 +120,7 @@ public class JobRoutes extends AbstractRoute {
           response.status(HttpStatus.SC_FORBIDDEN);
           responseObject
               .setError("You don't have permission to kill this push job; please grant write ACL for yourself.");
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, KILL_OFFLINE_PUSH_JOB.getParams(), admin);
