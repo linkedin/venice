@@ -25,6 +25,7 @@ import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -33,15 +34,16 @@ import org.apache.logging.log4j.core.config.Configurator;
 
 public class ProducerTool {
   private static final Option STORE_OPTION =
-      Option.builder().option("s").longOpt("store").hasArg().desc("Store name").build();
+      Option.builder().option("s").longOpt("store").hasArg().required().desc("Store name").build();
   private static final Option KEY_OPTION =
-      Option.builder().option("k").longOpt("key").hasArg().desc("Key string").build();
+      Option.builder().option("k").longOpt("key").hasArg().required().desc("Key string").build();
   private static final Option VALUE_OPTION =
-      Option.builder().option("v").longOpt("value").hasArg().desc("Value string").build();
+      Option.builder().option("v").longOpt("value").hasArg().required().desc("Value string").build();
   private static final Option VENICE_URL_OPTION = Option.builder()
       .option("vu")
       .longOpt("veniceUrl")
       .hasArg()
+      .required()
       .desc("Router URL with http or https scheme or ZK address if using D2")
       .build();
   private static final Option D2_SERVICE_NAME_OPTION = Option.builder()
@@ -72,7 +74,15 @@ public class ProducerTool {
       return;
     }
 
-    CommandLine cmd = new DefaultParser().parse(CLI_OPTIONS, args);
+    CommandLine cmd = null;
+    try {
+      cmd = new DefaultParser().parse(CLI_OPTIONS, args);
+    } catch (ParseException e) {
+      System.out.println("[ERROR] " + e.getMessage());
+      printHelp();
+      System.exit(1);
+    }
+
     ProducerContext producerContext = validateOptionsAndExtractContext(cmd);
     writeToStore(producerContext);
   }
