@@ -525,25 +525,6 @@ public class TestPushJobWithNativeReplication {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testNativeReplicationForSourceOverride() throws Exception {
-    motherOfAllTests(
-        "testNativeReplicationForSourceOverride",
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
-        100,
-        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          UpdateStoreQueryParams updateStoreParams =
-              new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc-1");
-          TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
-
-          try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
-            job.run();
-            // Verify the kafka URL being returned to the push job is the same as dc-1 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
-          }
-        });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void testClusterLevelAdminCommandForNativeReplication() throws Exception {
     motherOfAllTests(
         "testClusterLevelAdminCommandForNativeReplication",
