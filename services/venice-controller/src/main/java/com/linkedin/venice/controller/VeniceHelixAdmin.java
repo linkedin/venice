@@ -316,6 +316,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   static final int VERSION_ID_UNSET = -1;
 
+  static final UpdateStoreQueryParams DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS =
+      new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
+          .setHybridOffsetLagThreshold(1)
+          .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
+          .setWriteComputationEnabled(true)
+          .setPartitionCount(1);
+
   // TODO remove this field and all invocations once we are fully on HaaS. Use the helixAdminClient instead.
   private final HelixAdmin admin;
   /**
@@ -561,36 +568,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
       // Add routine to create zk shared metadata system store
-      UpdateStoreQueryParams metadataSystemStoreUpdate =
-          new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-              .setHybridOffsetLagThreshold(1)
-              .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
-              .setWriteComputationEnabled(true)
-              .setPartitionCount(1);
       initRoutines.add(
           new SystemSchemaInitializationRoutine(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
               multiClusterConfigs,
               this,
               Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-              Optional.of(metadataSystemStoreUpdate),
+              Optional.of(DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS),
               true));
     }
     if (multiClusterConfigs.isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled()) {
       // Add routine to create zk shared da vinci push status system store
-      UpdateStoreQueryParams daVinciPushStatusSystemStoreUpdate =
-          new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-              .setHybridOffsetLagThreshold(1)
-              .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
-              .setWriteComputationEnabled(true)
-              .setPartitionCount(1);
       initRoutines.add(
           new SystemSchemaInitializationRoutine(
               AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE,
               multiClusterConfigs,
               this,
               Optional.of(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-              Optional.of(daVinciPushStatusSystemStoreUpdate),
+              Optional.of(DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS),
               true));
     }
 
@@ -7731,6 +7726,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
     return pushStatusStoreReader;
+  }
+
+  public Optional<SSLFactory> getSslFactory() {
+    return sslFactory;
   }
 
   // Visible for testing
