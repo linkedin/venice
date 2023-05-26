@@ -19,6 +19,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
@@ -513,6 +514,15 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
   }
 
+  public NewStoreResponse createNewSystemStore(String storeName, String owner, String keySchema, String valueSchema) {
+    QueryParams params = newParams().add(NAME, storeName)
+        .add(OWNER, owner)
+        .add(KEY_SCHEMA, keySchema)
+        .add(VALUE_SCHEMA, valueSchema)
+        .add(IS_SYSTEM_STORE, true);
+    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+  }
+
   public StoreMigrationResponse isStoreMigrationAllowed() {
     return request(ControllerRoute.STORE_MIGRATION_ALLOWED, newParams(), StoreMigrationResponse.class);
   }
@@ -613,7 +623,14 @@ public class ControllerClient implements Closeable {
   }
 
   public <R extends ControllerResponse> R retryableRequest(int totalAttempts, Function<ControllerClient, R> request) {
-    return retryableRequest(this, totalAttempts, request);
+    return retryableRequest(this, totalAttempts, request, r -> false);
+  }
+
+  public <R extends ControllerResponse> R retryableRequest(
+      int totalAttempts,
+      Function<ControllerClient, R> request,
+      Function<R, Boolean> abortRetryCondition) {
+    return retryableRequest(this, totalAttempts, request, abortRetryCondition);
   }
 
   /**
@@ -623,6 +640,14 @@ public class ControllerClient implements Closeable {
       C client,
       int totalAttempts,
       Function<C, R> request) {
+    return retryableRequest(client, totalAttempts, request, r -> false);
+  }
+
+  public static <C extends ControllerClient, R extends ControllerResponse> R retryableRequest(
+      C client,
+      int totalAttempts,
+      Function<C, R> request,
+      Function<R, Boolean> abortRetryCondition) {
     if (totalAttempts < 1) {
       throw new VeniceException(
           "Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
@@ -632,7 +657,8 @@ public class ControllerClient implements Closeable {
       R response = request.apply(client);
       // Do not retry if value schema is not found. TODO: Ideally response should not be an error but should return
       // INVALID schema ID in the response.
-      if (!response.isError() || currentAttempt == totalAttempts || valueSchemaNotFoundSchemaResponse(response)) {
+      if (!response.isError() || currentAttempt == totalAttempts || valueSchemaNotFoundSchemaResponse(response)
+          || abortRetryCondition.apply(response)) {
         return response;
       } else {
         LOGGER.warn(

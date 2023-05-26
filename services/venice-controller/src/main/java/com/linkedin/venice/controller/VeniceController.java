@@ -9,12 +9,14 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.controller.init.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
@@ -228,6 +230,7 @@ public class VeniceController {
     if (sslEnabled) {
       secureAdminServer.start();
     }
+    initializeSystemSchema(controllerService.getVeniceHelixAdmin());
     topicCleanupService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
@@ -237,6 +240,24 @@ public class VeniceController {
       LOGGER.info("Registered to service discovery: {}", serviceDiscoveryAnnouncer);
     });
     LOGGER.info("Controller is started.");
+  }
+
+  private void initializeSystemSchema(Admin admin) {
+    String systemStoreCluster = multiClusterConfigs.getSystemSchemaClusterName();
+    if (!multiClusterConfigs.isParent() && multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
+        && multiClusterConfigs.getControllerConfig(systemStoreCluster)
+            .isSystemSchemaInitializationAtStartTimeEnabled()) {
+      ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+              systemStoreCluster,
+              (VeniceHelixAdmin) admin,
+              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
+              VeniceHelixAdmin.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
+              true,
+              multiClusterConfigs.isControllerEnforceSSLOnly());
+      metaSystemStoreSchemaInitializer.execute();
+    }
   }
 
   /**

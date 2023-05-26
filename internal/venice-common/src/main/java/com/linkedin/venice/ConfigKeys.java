@@ -364,6 +364,12 @@ public class ConfigKeys {
   public static final String CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
       "controller.parent.external.superset.schema.generation.enabled";
 
+  /**
+   * Whether to initialize system schemas when controller starts. Default is true.
+   */
+  public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
+      "system.schema.initialization.at.start.time.enabled";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
 
