@@ -59,7 +59,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   private final VeniceConfigLoader configLoader;
   private final ExecutorService completionReportHandlingExecutor = Executors.newFixedThreadPool(10);
   private Process isolatedIngestionServiceProcess;
-  private AtomicBoolean isShuttingDown = new AtomicBoolean(false);
+  private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
 
   public IsolatedIngestionBackend(
       VeniceConfigLoader configLoader,
@@ -94,6 +94,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         .info("Created isolated ingestion backend with service port: {}, listener port: {}", servicePort, listenerPort);
   }
 
+  /**
+   * This API will issue {@link IngestionCommandType#START_CONSUMPTION} command. Based on resource metadata on main process,
+   * it will send the command to the process where it holds the resource. If resource never exists, it will be delivered
+   * to child process. If child process rejects the command due to conflicting metadata, command will be retried.
+   */
   @Override
   public void startConsumption(
       VeniceStoreVersionConfig storeConfig,
@@ -108,6 +113,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         () -> super.startConsumption(storeConfig, partition, leaderState));
   }
 
+  /**
+   * This API will issue {@link IngestionCommandType#STOP_CONSUMPTION} command. Based on resource metadata on main process,
+   * it will send the command to the process where it holds the resource. If child process rejects the command due to
+   * conflicting metadata, command will be retried.
+   */
   @Override
   public void stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
     String topicName = storeConfig.getStoreVersionName();
@@ -317,8 +327,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
             VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
             config.setRestoreDataPartitions(false);
             config.setRestoreMetadataPartition(false);
-            // Start partition consumption locally.
             try {
+              // Start partition consumption locally.
               startConsumptionLocally(config, partition, leaderState);
             } catch (Exception e) {
               LOGGER.warn(
@@ -328,11 +338,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
                   e);
             } finally {
               getMainIngestionMonitorService().setVersionPartitionToLocalIngestion(kafkaTopic, partition);
-              LOGGER.warn(
-                  "Finally done when resuming ingestion of topic: {}, partition: {} in main process",
-                  kafkaTopic,
-                  partition);
-
             }
           });
         } else {
