@@ -206,10 +206,6 @@ public class ApacheKafkaProducerConfig {
     }
   }
 
-  public static void copyKafkaSASLProperties(VeniceProperties configuration, Properties properties) {
-    copyKafkaSASLProperties(configuration.toProperties(), properties, true);
-  }
-
   public static void copyKafkaSASLProperties(
       VeniceProperties configuration,
       Properties properties,
