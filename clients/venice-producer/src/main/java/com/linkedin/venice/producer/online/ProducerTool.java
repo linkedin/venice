@@ -33,16 +33,15 @@ import org.apache.logging.log4j.core.config.Configurator;
 
 public class ProducerTool {
   private static final Option STORE_OPTION =
-      Option.builder().option("s").longOpt("store").hasArg().required().desc("Store name").build();
+      Option.builder().option("s").longOpt("store").hasArg().desc("Store name").build();
   private static final Option KEY_OPTION =
-      Option.builder().option("k").longOpt("key").hasArg().required().desc("Key string").build();
+      Option.builder().option("k").longOpt("key").hasArg().desc("Key string").build();
   private static final Option VALUE_OPTION =
-      Option.builder().option("v").longOpt("value").hasArg().required().desc("Value string").build();
+      Option.builder().option("v").longOpt("value").hasArg().desc("Value string").build();
   private static final Option VENICE_URL_OPTION = Option.builder()
       .option("vu")
       .longOpt("veniceUrl")
       .hasArg()
-      .required()
       .desc("Router URL with http or https scheme or ZK address if using D2")
       .build();
   private static final Option D2_SERVICE_NAME_OPTION = Option.builder()
@@ -68,12 +67,8 @@ public class ProducerTool {
     // Disable Logging
     Configurator.setAllLevels(LogManager.getRootLogger().getName(), Level.OFF);
 
-    String header = "Write a single key-value pair to Venice\n\n";
-    String footer = "\nPlease report issues to Venice team or at https://github.com/linkedin/venice/issues";
-
     if (checkForHelp(args)) {
-      HelpFormatter fmt = new HelpFormatter();
-      fmt.printHelp("venice-producer", header, CLI_OPTIONS, footer, true);
+      printHelp();
       return;
     }
 
@@ -94,6 +89,14 @@ public class ProducerTool {
       }
     }
     return false;
+  }
+
+  private static void printHelp() {
+    String header = "Write a single key-value pair to Venice\n\n";
+    String footer = "\nPlease report issues to Venice team or at https://github.com/linkedin/venice/issues";
+
+    HelpFormatter fmt = new HelpFormatter();
+    fmt.printHelp("venice-producer", header, CLI_OPTIONS, footer, true);
   }
 
   private static ProducerContext validateOptionsAndExtractContext(CommandLine cmd) throws IOException {
@@ -129,6 +132,7 @@ public class ProducerTool {
     String optionValue = cmd.getOptionValue(option.getOpt());
     if (StringUtils.isEmpty(optionValue)) {
       System.err.println("Option is mandatory: " + option);
+      printHelp();
       System.exit(1);
     }
 
