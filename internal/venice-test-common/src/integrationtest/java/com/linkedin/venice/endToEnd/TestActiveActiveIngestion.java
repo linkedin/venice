@@ -845,6 +845,17 @@ public class TestActiveActiveIngestion {
     // This should get everything submitted to the CC topic on this version since the timestamp is before anything got
     // transmitted
     veniceChangelogConsumer.seekToTimestamp(timestamp);
+
+    // test pause and resume
+    veniceChangelogConsumer.pause();
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 0);
+    });
+    veniceChangelogConsumer.resume();
+
+    // This should get everything submitted to the CC topic on this version since the timestamp is before anything got
+    // transmitted
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 42);

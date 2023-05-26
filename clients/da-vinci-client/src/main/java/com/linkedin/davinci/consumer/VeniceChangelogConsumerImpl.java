@@ -253,6 +253,48 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   @Override
+  public void pause() {
+    this.pause(
+        pubSubConsumer.getAssignment()
+            .stream()
+            .map(PubSubTopicPartition::getPartitionNumber)
+            .collect(Collectors.toSet()));
+  }
+
+  @Override
+  public void resume(Set<Integer> partitions) {
+    synchronized (pubSubConsumer) {
+      Set<PubSubTopicPartition> currentSubscriptions = pubSubConsumer.getAssignment();
+      for (PubSubTopicPartition partition: currentSubscriptions) {
+        if (partitions.contains(partition.getPartitionNumber())) {
+          pubSubConsumer.resume(partition);
+        }
+      }
+    }
+  }
+
+  @Override
+  public void resume() {
+    this.resume(
+        pubSubConsumer.getAssignment()
+            .stream()
+            .map(PubSubTopicPartition::getPartitionNumber)
+            .collect(Collectors.toSet()));
+  }
+
+  @Override
+  public void pause(Set<Integer> partitions) {
+    synchronized (pubSubConsumer) {
+      Set<PubSubTopicPartition> currentSubscriptions = pubSubConsumer.getAssignment();
+      for (PubSubTopicPartition partition: currentSubscriptions) {
+        if (partitions.contains(partition.getPartitionNumber())) {
+          pubSubConsumer.pause(partition);
+        }
+      }
+    }
+  }
+
+  @Override
   public CompletableFuture<Void> seekToEndOfPush() {
     return seekToEndOfPush(
         pubSubConsumer.getAssignment()
