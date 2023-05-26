@@ -771,7 +771,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             -1,
             1,
             Optional.empty(),
-            false);
+            false,
+            null);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
@@ -799,7 +800,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           -1,
           1,
           Optional.empty(),
-          false);
+          false,
+          null);
     }
   }
 
@@ -925,7 +927,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           -1,
           Optional.empty(),
-          false);
+          false,
+          null);
       verify(internalAdmin, never()).addVersionAndTopicOnly(
           clusterName,
           storeName,
@@ -986,7 +989,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             -1,
             1,
             Optional.empty(),
-            false);
+            false,
+            null);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
@@ -1011,7 +1015,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           -1,
           Optional.empty(),
-          false);
+          false,
+          null);
       verify(internalAdmin).addVersionAndTopicOnly(
           clusterName,
           storeName,
@@ -1028,7 +1033,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           -1,
           1,
           Optional.empty(),
-          false);
+          false,
+          null);
     }
   }
 
@@ -1101,7 +1107,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             -1,
             1,
             Optional.empty(),
-            false);
+            false,
+            null);
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         spy(new PartialMockVeniceParentHelixAdmin(internalAdmin, config))) {
       Version newVersion = partialMockParentAdmin.incrementVersionIdempotent(
@@ -1118,9 +1125,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           -1,
           Optional.empty(),
-          false);
+          false,
+          null);
       verify(partialMockParentAdmin, never())
-          .sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion, 1, Version.PushType.BATCH);
+          .sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion, 1, Version.PushType.BATCH, null);
       Assert.assertEquals(newVersion, version);
     }
   }
@@ -1179,7 +1187,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             -1,
             Optional.empty(),
-            false);
+            false,
+            null);
 
     Version version2 = new VersionImpl(storeName, 2, incomingPushId);
     doReturn(new Pair(true, version2)).when(mockInternalAdmin)
@@ -1219,7 +1228,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         Optional.empty(),
         -1,
         Optional.empty(),
-        false);
+        false,
+        null);
 
     verify(mockParentAdmin, times(1)).killOfflinePush(clusterName, version.kafkaTopicName(), true);
   }
@@ -1278,7 +1288,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             -1,
             Optional.empty(),
-            false);
+            false,
+            null);
 
     Version version2 = new VersionImpl(storeName, 2, incomingPushId);
     doReturn(new Pair(true, version2)).when(mockInternalAdmin)
@@ -1298,7 +1309,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             -1,
             1,
             Optional.empty(),
-            false);
+            false,
+            null);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -1320,7 +1332,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             -1,
             Optional.empty(),
-            false));
+            false,
+            null));
 
     verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
   }
@@ -1379,7 +1392,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             -1,
             Optional.empty(),
-            false);
+            false,
+            null);
 
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
@@ -1399,7 +1413,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         Optional.empty(),
         -1,
         Optional.empty(),
-        false);
+        false,
+        null);
 
     verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
   }
@@ -2243,7 +2258,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               -1,
               1,
               Optional.empty(),
-              false);
+              false,
+              null);
 
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
@@ -2274,7 +2290,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               Optional.empty(),
               -1,
               Optional.empty(),
-              false);
+              false,
+              null);
           Assert.fail("Incremental push should fail if the previous batch push is not in COMPLETE state.");
         } catch (Exception e) {
           /**
@@ -2298,7 +2315,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
                 Optional.empty(),
                 -1,
                 Optional.empty(),
-                false),
+                false,
+                null),
             newVersion,
             "Unexpected new version returned by incrementVersionIdempotent");
         // Parent should kill the lingering job.
@@ -2331,7 +2349,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             -1,
             1,
             Optional.empty(),
-            false);
+            false,
+            null);
     doReturn(new Pair<>(true, storeBVersion)).when(internalAdmin)
         .addVersionAndTopicOnly(
             clusterName,
@@ -2349,7 +2368,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             -1,
             1,
             Optional.empty(),
-            false);
+            false,
+            null);
     doReturn(new Exception("test")).when(internalAdmin).getLastExceptionForStore(clusterName, storeA);
     doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
         .when(veniceWriter)
@@ -2514,6 +2534,33 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(details.getPartitionDetails().size(), numOfPartition);
     for (int i = 0; i < numOfPartition; i++) {
       Assert.assertEquals(details.getPartitionDetails().get(i).getReplicaDetails().size(), replicationFactor);
+    }
+  }
+
+  @Test
+  public void testTargetedRegionValidation() {
+    try {
+      parentAdmin.incrementVersionIdempotent(
+          "test",
+          "test",
+          "test",
+          1,
+          1,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          null,
+          null,
+          -1,
+          null,
+          false,
+          "invalidRegion");
+      Assert.fail("Test should fail, but doesn't");
+    } catch (VeniceException e) {
+      Assert.assertEquals(
+          e.getMessage(),
+          "One of the targeted region invalidRegion is not a valid region in cluster test");
     }
   }
 }

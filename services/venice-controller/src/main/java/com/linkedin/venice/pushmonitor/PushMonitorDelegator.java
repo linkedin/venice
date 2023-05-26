@@ -35,7 +35,6 @@ public class PushMonitorDelegator implements PushMonitor {
   private static final Logger LOGGER = LogManager.getLogger(PushMonitorDelegator.class);
 
   private final ReadWriteStoreRepository metadataRepository;
-  private final OfflinePushAccessor offlinePushAccessor;
   private final String clusterName;
   private final ClusterLockManager clusterLockManager;
 
@@ -60,7 +59,6 @@ public class PushMonitorDelegator implements PushMonitor {
       PushStatusStoreReader pushStatusStoreReader) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
-    this.offlinePushAccessor = offlinePushAccessor;
 
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(
         clusterName,
