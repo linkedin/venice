@@ -937,10 +937,10 @@ public class TestPushJobWithNativeReplication {
                   parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
               coloVersions.forEach((colo, version) -> {
-                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
-                  Assert.assertEquals((int) version, 3);
-                } else {
+                if (colo.equals("dc-1")) {
                   Assert.assertEquals((int) version, 4);
+                } else {
+                  Assert.assertEquals((int) version, 3);
                 }
               });
             });
