@@ -77,6 +77,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
@@ -280,14 +281,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
-    amplificationFactorAdapter.execute(
-        topicPartition.getPartitionNumber(),
-        subPartition -> consumerActionsQueue.add(
-            new ConsumerAction(
-                STANDBY_TO_LEADER,
-                new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
-                nextSeqNum(),
-                checker)));
+    amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
+      partitionToPendingConsumerActionCountMap.computeIfAbsent(subPartition, x -> new AtomicInteger(0))
+          .incrementAndGet();
+      consumerActionsQueue.add(
+          new ConsumerAction(
+              STANDBY_TO_LEADER,
+              new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
+              nextSeqNum(),
+              checker));
+    });
   }
 
   @Override
@@ -295,14 +298,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
     throwIfNotRunning();
-    amplificationFactorAdapter.execute(
-        topicPartition.getPartitionNumber(),
-        subPartition -> consumerActionsQueue.add(
-            new ConsumerAction(
-                LEADER_TO_STANDBY,
-                new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
-                nextSeqNum(),
-                checker)));
+    amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
+      partitionToPendingConsumerActionCountMap.computeIfAbsent(subPartition, x -> new AtomicInteger(0))
+          .incrementAndGet();
+      consumerActionsQueue.add(
+          new ConsumerAction(
+              LEADER_TO_STANDBY,
+              new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
+              nextSeqNum(),
+              checker));
+    });
   }
 
   @Override

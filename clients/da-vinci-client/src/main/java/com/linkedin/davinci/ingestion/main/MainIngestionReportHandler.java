@@ -110,7 +110,6 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     // Relay the notification to parent service's listener.
     switch (reportType) {
       case COMPLETED:
-        mainIngestionMonitorService.setVersionPartitionToLocalIngestion(topicName, partitionId);
         // Set LeaderState passed from child process to cache.
         LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.valueOf(report.leaderFollowerState);
         notifierHelper(

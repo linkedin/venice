@@ -731,6 +731,48 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
+  public void waitIngestionTaskToCompleteAllPartitionPendingActions(
+      String topicName,
+      int partition,
+      long retryIntervalInMs,
+      int numRetries) {
+    if (!topicPartitionHasAnyPendingActions(topicName, partition)) {
+      LOGGER.info("Topic: {}, partition: {} has no pending ingestion action.", topicName, partition);
+      return;
+    }
+
+    try {
+      long startTimeInMs = System.currentTimeMillis();
+      for (int i = 0; i < numRetries; i++) {
+        if (!topicPartitionHasAnyPendingActions(topicName, partition)) {
+          LOGGER.info(
+              "Partition: {} of topic: {} has stopped consumption in {} ms.",
+              partition,
+              topicName,
+              LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+          break;
+        }
+        sleep(retryIntervalInMs);
+      }
+      LOGGER.error(
+          "Topic: {}, partition: {} is still having pending ingestion action for it to stop for {} ms.",
+          topicName,
+          partition,
+          numRetries * retryIntervalInMs);
+    } catch (InterruptedException e) {
+      LOGGER.warn("Waiting for partition to clear up pending ingestion action was interrupted", e);
+      currentThread().interrupt();
+    }
+  }
+
+  public boolean topicPartitionHasAnyPendingActions(String topic, int partition) {
+    try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
+      StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
+      return ingestionTask != null && ingestionTask.isRunning()
+          && ingestionTask.hasPendingPartitionIngestionAction(partition);
+    }
+  }
+
   @Override
   public VeniceConfigLoader getVeniceConfigLoader() {
     return veniceConfigLoader;
