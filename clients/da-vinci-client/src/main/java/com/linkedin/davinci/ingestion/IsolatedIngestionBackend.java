@@ -282,7 +282,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         .equals(MainPartitionIngestionStatus.MAIN);
   }
 
-  boolean isTopicPartitionIngesting(String topicName, int partition) {
+  boolean isTopicPartitionHosted(String topicName, int partition) {
     return !getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.NOT_EXIST);
   }
@@ -295,6 +295,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     return configLoader;
   }
 
+  void startConsumptionLocally(
+      VeniceStoreVersionConfig storeVersionConfig,
+      int partition,
+      Optional<LeaderFollowerStateType> leaderState) {
+    super.startConsumption(storeVersionConfig, partition, leaderState);
+  }
+
   VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
@@ -305,13 +312,28 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
           String message,
           Optional<LeaderFollowerStateType> leaderState) {
         // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
-        if (isTopicPartitionIngesting(kafkaTopic, partition)) {
+        if (isTopicPartitionHosted(kafkaTopic, partition)) {
           getCompletionHandlingExecutor().submit(() -> {
             VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
             config.setRestoreDataPartitions(false);
             config.setRestoreMetadataPartition(false);
             // Start partition consumption locally.
-            startConsumption(config, partition, leaderState);
+            try {
+              startConsumptionLocally(config, partition, leaderState);
+            } catch (Exception e) {
+              LOGGER.warn(
+                  "Caught exception when resuming ingestion of topic: {}, partition: {} in main process",
+                  kafkaTopic,
+                  partition,
+                  e);
+            } finally {
+              getMainIngestionMonitorService().setVersionPartitionToLocalIngestion(kafkaTopic, partition);
+              LOGGER.warn(
+                  "Finally done when resuming ingestion of topic: {}, partition: {} in main process",
+                  kafkaTopic,
+                  partition);
+
+            }
           });
         } else {
           LOGGER.error(
@@ -331,7 +353,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       Runnable localCommandRunnable) {
     do {
       if (isTopicPartitionHostedInMainProcess(topicName, partition)
-          || (!isTopicPartitionIngesting(topicName, partition) && command != START_CONSUMPTION)) {
+          || (!isTopicPartitionHosted(topicName, partition) && command != START_CONSUMPTION)) {
         LOGGER.info(
             "Executing command {} of topic: {}, partition: {} in main process process.",
             command,
