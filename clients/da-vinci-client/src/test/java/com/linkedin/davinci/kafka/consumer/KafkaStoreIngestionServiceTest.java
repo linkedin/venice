@@ -131,6 +131,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     properties.put(KAFKA_BOOTSTRAP_SERVERS, dummyKafkaUrl);
     VeniceProperties mockVeniceProperties = new VeniceProperties(properties);
     doReturn(mockVeniceProperties).when(mockVeniceClusterConfig).getClusterProperties();
+    doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getClusterProperties();
 
     doReturn(mockVeniceServerConfig).when(mockVeniceConfigLoader).getVeniceServerConfig();
     doReturn(mockVeniceClusterConfig).when(mockVeniceConfigLoader).getVeniceClusterConfig();
