@@ -25,7 +25,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -33,10 +32,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * This class add tests for {@link RetriableAvroGenericStoreClient#get}
- * <br><br>
- * For batchGet() testing:
- * {@link BatchGetAvroStoreClientUnitTest} tests cases for streamingBatchGet() including retries.
+ * This class add tests for {@link RetriableAvroGenericStoreClient#get} and
+ * {@link RetriableAvroGenericStoreClient#batchGet}
  */
 
 public class RetriableAvroGenericStoreClientTest {
@@ -92,29 +89,6 @@ public class RetriableAvroGenericStoreClientTest {
       ClientConfig clientConfig) {
     return new DispatchingAvroGenericStoreClient(null, clientConfig) {
       private int requestCnt = 0;
-
-      @Override
-      public void start() throws VeniceClientException {
-      }
-
-      @Override
-      public void close() {
-      }
-
-      @Override
-      public String getStoreName() {
-        return null;
-      }
-
-      @Override
-      public Schema getKeySchema() {
-        return null;
-      }
-
-      @Override
-      public Schema getLatestValueSchema() {
-        return null;
-      }
 
       @Override
       protected CompletableFuture get(GetRequestContext requestContext, Object key) throws VeniceClientException {
@@ -190,7 +164,7 @@ public class RetriableAvroGenericStoreClientTest {
       protected CompletableFuture<VeniceResponseMap> streamingBatchGet(
           BatchGetRequestContext requestContext,
           Set keys) {
-        return null;
+        throw new VeniceClientException("Implementation not added");
       }
     };
   }

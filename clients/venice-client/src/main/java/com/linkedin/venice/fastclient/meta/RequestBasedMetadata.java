@@ -391,7 +391,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * Used for test only
    * @param d2ServiceDiscovery
    */
-  synchronized void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
+  public synchronized void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
     this.d2ServiceDiscovery = d2ServiceDiscovery;
   }
 }
