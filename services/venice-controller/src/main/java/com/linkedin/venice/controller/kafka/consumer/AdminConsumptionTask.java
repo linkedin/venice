@@ -64,6 +64,10 @@ import org.apache.logging.log4j.Logger;
  * This class is used to create a task, which will consume the admin messages from the special admin topics.
  */
 public class AdminConsumptionTask implements Runnable, Closeable {
+  // Setting this to a value so that admin queue will not go out of memory in case of too many admin messages.
+  // If we hit this number , there is most likely something seriously wrong with the system.
+  private static final int MAX_WORKER_QUEUE_SIZE = 10000;
+
   private static class AdminErrorInfo {
     long offset;
     Exception exception;
@@ -280,12 +284,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
+    // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
-        1,
+        maxWorkerThreadPoolSize,
         maxWorkerThreadPoolSize,
         60,
         TimeUnit.SECONDS,
-        new LinkedBlockingQueue<>(),
+        new LinkedBlockingQueue<>(MAX_WORKER_QUEUE_SIZE),
         new DaemonThreadFactory("Venice-Admin-Execution-Task"));
     this.undelegatedRecords = new LinkedList<>();
     this.stats.setAdminConsumptionFailedOffset(failingOffset);
