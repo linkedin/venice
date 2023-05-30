@@ -154,7 +154,7 @@ public class VenicePushJobTest {
     ControllerClient client = mock(ControllerClient.class);
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("UNKNOWN").when(response).getStatus();
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()));
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null));
     VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client);
     VenicePushJob.PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
     pushJobSetting.jobStatusInUnknownStateTimeoutMs = 10;
