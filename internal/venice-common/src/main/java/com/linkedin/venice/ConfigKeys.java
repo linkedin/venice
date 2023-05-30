@@ -364,6 +364,12 @@ public class ConfigKeys {
   public static final String CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
       "controller.parent.external.superset.schema.generation.enabled";
 
+  /**
+   * Whether to initialize system schemas when controller starts. Default is true.
+   */
+  public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
+      "system.schema.initialization.at.start.time.enabled";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
 
@@ -394,7 +400,14 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
-  public static final String SSL_TO_KAFKA = ApacheKafkaProducerConfig.SSL_TO_KAFKA;
+
+  /**
+   * This config key is a misspelling. It is now considered deprecated.
+   * @deprecated Use {@link KAFKA_OVER_SSL}
+   */
+  @Deprecated
+  public static final String SSL_TO_KAFKA_LEGACY = ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
+  public static final String KAFKA_OVER_SSL = ApacheKafkaProducerConfig.KAFKA_OVER_SSL;
   public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
   public static final String HYBRID_QUOTA_ENFORCEMENT_ENABLED = "server.hybrid.quota.enforcement.enabled";
   public static final String SERVER_DATABASE_MEMORY_STATS_ENABLED = "server.database.memory.stats.enabled";
@@ -1639,6 +1652,18 @@ public class ConfigKeys {
    * Config to control if push status store is enabled and should be initialized
    */
   public static final String PUSH_STATUS_STORE_ENABLED = "push.status.store.enabled";
+
+  // Config to check whether the offline push will also monitor Da Vinci push status.
+  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED =
+      "offline.push.monitor.davinci.push.status.enabled";
+
+  // Config to determine the Da Vinci push status scanning interval in seconds.
+  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS =
+      "offline.push.monitor.davinci.push.status.scan.interval.in.seconds";
+
+  // Config to determine the Da Vinci push status scanning worker thread number.
+  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER =
+      "offline.push.monitor.davinci.push.status.scan.thread.number";
 
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";

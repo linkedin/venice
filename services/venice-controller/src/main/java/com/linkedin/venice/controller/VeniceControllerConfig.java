@@ -62,6 +62,9 @@ import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_T
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
+import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED;
+import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
@@ -70,6 +73,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
@@ -187,6 +191,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    */
   private final boolean isDaVinciPushStatusStoreEnabled;
 
+  private final boolean offlinePushMonitorDaVinciPushStatusEnabled;
+  private final int offlinePushMonitorDaVinciPushStatusScanIntervalInSeconds;
+
+  private final int offlinePushMonitorDaVinciPushStatusScanThreadNumber;
+
   private final boolean zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled;
 
   /**
@@ -251,6 +260,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
 
   private final boolean parentExternalSupersetSchemaGenerationEnabled;
+
+  private final boolean systemSchemaInitializationAtStartTimeEnabled;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -410,6 +421,13 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds =
         props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
     this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
+    this.offlinePushMonitorDaVinciPushStatusEnabled =
+        props.getBoolean(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
+    this.offlinePushMonitorDaVinciPushStatusScanIntervalInSeconds =
+        props.getInt(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 30);
+    this.offlinePushMonitorDaVinciPushStatusScanThreadNumber =
+        props.getInt(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER, 4);
+
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled =
         props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
     this.systemStoreAclSynchronizationDelayMs =
@@ -444,6 +462,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     this.parentExternalSupersetSchemaGenerationEnabled =
         props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
+    this.systemSchemaInitializationAtStartTimeEnabled =
+        props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true);
   }
 
   private void validateActiveActiveConfigs() {
@@ -717,6 +737,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return isDaVinciPushStatusStoreEnabled;
   }
 
+  public int getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds() {
+    return offlinePushMonitorDaVinciPushStatusScanIntervalInSeconds;
+  }
+
+  public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
+    return offlinePushMonitorDaVinciPushStatusEnabled;
+  }
+
+  public int getOfflinePushMonitorDaVinciPushStatusScanThreadNumber() {
+    return offlinePushMonitorDaVinciPushStatusScanThreadNumber;
+  }
+
   public boolean isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled() {
     return zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled;
   }
@@ -818,6 +850,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isParentExternalSupersetSchemaGenerationEnabled() {
     return parentExternalSupersetSchemaGenerationEnabled;
+  }
+
+  public boolean isSystemSchemaInitializationAtStartTimeEnabled() {
+    return systemSchemaInitializationAtStartTimeEnabled;
   }
 
   /**

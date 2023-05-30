@@ -9,6 +9,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
@@ -66,6 +67,10 @@ public class IsolatedIngestionServerTest {
     when(isolatedIngestionServer.getStatusReportingExecutor()).thenReturn(statusReportingExecutor);
     doCallRealMethod().when(isolatedIngestionServer).stopConsumptionAndReport(any());
     doCallRealMethod().when(isolatedIngestionServer).setResourceToBeUnsubscribed(anyString(), anyInt());
+    KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
+    when(storeIngestionService.isPartitionConsuming(anyString(), anyInt())).thenReturn(true);
+    when(isolatedIngestionServer.getStoreIngestionService()).thenReturn(storeIngestionService);
+
     when(isolatedIngestionServer.submitStopConsumptionAndCloseStorageTask(any()))
         .thenReturn(CompletableFuture.completedFuture(null));
     IsolatedIngestionRequestClient client = mock(IsolatedIngestionRequestClient.class);
@@ -85,7 +90,12 @@ public class IsolatedIngestionServerTest {
     when(client.reportIngestionStatus(goodReport)).thenReturn(true);
     isolatedIngestionServer.stopConsumptionAndReport(goodReport);
 
-    verify(isolatedIngestionServer, times(0)).setResourceToBeUnsubscribed("topic", 0);
+    verify(isolatedIngestionServer, times(1)).setResourceToBeUnsubscribed("topic", 0);
     verify(isolatedIngestionServer, times(1)).setResourceToBeUnsubscribed("topic", 1);
+    verify(storeIngestionService, times(1)).waitIngestionTaskToCompleteAllPartitionPendingActions("topic", 0, 100, 300);
+    verify(storeIngestionService, times(1)).waitIngestionTaskToCompleteAllPartitionPendingActions("topic", 1, 100, 300);
+    verify(storeIngestionService, times(1)).isPartitionConsuming("topic", 0);
+    verify(storeIngestionService, times(1)).isPartitionConsuming("topic", 1);
+
   }
 }

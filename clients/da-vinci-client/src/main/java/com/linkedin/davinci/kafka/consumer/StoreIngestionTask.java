@@ -170,6 +170,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AtomicBoolean emitMetrics; // TODO: remove this once we migrate to versioned stats
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
+  protected final Map<Integer, AtomicInteger> partitionToPendingConsumerActionCountMap;
   protected final StorageMetadataService storageMetadataService;
   protected final TopicManagerRepository topicManagerRepository;
   protected final CachedKafkaMetadataGetter cachedKafkaMetadataGetter;
@@ -326,6 +327,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
+    this.partitionToPendingConsumerActionCountMap = new VeniceConcurrentHashMap<>();
 
     // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling
     // kill message
@@ -472,14 +474,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Optional<LeaderFollowerStateType> leaderState) {
     throwIfNotRunning();
     statusReportAdapter.initializePartitionReportStatus(topicPartition.getPartitionNumber());
-    amplificationFactorAdapter.execute(
-        topicPartition.getPartitionNumber(),
-        subPartition -> consumerActionsQueue.add(
-            new ConsumerAction(
-                SUBSCRIBE,
-                new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
-                nextSeqNum(),
-                amplificationFactorAdapter.isLeaderSubPartition(subPartition) ? leaderState : Optional.empty())));
+    amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
+      partitionToPendingConsumerActionCountMap.computeIfAbsent(subPartition, x -> new AtomicInteger(0))
+          .incrementAndGet();
+      consumerActionsQueue.add(
+          new ConsumerAction(
+              SUBSCRIBE,
+              new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
+              nextSeqNum(),
+              amplificationFactorAdapter.isLeaderSubPartition(subPartition) ? leaderState : Optional.empty()));
+    });
   }
 
   /**
@@ -487,13 +491,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void unSubscribePartition(PubSubTopicPartition topicPartition) {
     throwIfNotRunning();
-    amplificationFactorAdapter.execute(
-        topicPartition.getPartitionNumber(),
-        subPartition -> consumerActionsQueue.add(
-            new ConsumerAction(
-                UNSUBSCRIBE,
-                new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
-                nextSeqNum())));
+    amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
+      partitionToPendingConsumerActionCountMap.computeIfAbsent(subPartition, x -> new AtomicInteger(0))
+          .incrementAndGet();
+      consumerActionsQueue.add(
+          new ConsumerAction(
+              UNSUBSCRIBE,
+              new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
+              nextSeqNum()));
+    });
   }
 
   public boolean hasAnySubscription() {
@@ -505,13 +511,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void resetPartitionConsumptionOffset(PubSubTopicPartition topicPartition) {
     throwIfNotRunning();
-    amplificationFactorAdapter.execute(
-        topicPartition.getPartitionNumber(),
-        subPartition -> consumerActionsQueue.add(
-            new ConsumerAction(
-                RESET_OFFSET,
-                new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
-                nextSeqNum())));
+    amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
+      partitionToPendingConsumerActionCountMap.computeIfAbsent(subPartition, x -> new AtomicInteger(0))
+          .incrementAndGet();
+      consumerActionsQueue.add(
+          new ConsumerAction(
+              RESET_OFFSET,
+              new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
+              nextSeqNum()));
+    });
   }
 
   public String getStoreName() {
@@ -529,6 +537,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract void demoteToStandby(
       PubSubTopicPartition topicPartition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
+
+  public boolean hasPendingPartitionIngestionAction(int userPartition) {
+    return amplificationFactorAdapter.meetsAny(userPartition, subPartition -> {
+      AtomicInteger atomicInteger = partitionToPendingConsumerActionCountMap.get(subPartition);
+      if (atomicInteger == null) {
+        return false;
+      }
+      return atomicInteger.get() > 0;
+    });
+  }
 
   public void kill() {
     synchronized (this) {
@@ -1377,7 +1395,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         action.incrementAttempt();
         processConsumerAction(action, store);
         // Remove the action that is processed recently (not necessarily the head of consumerActionsQueue).
-        consumerActionsQueue.remove(action);
+        if (consumerActionsQueue.remove(action)) {
+          partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
+        }
         LOGGER.info("Finished consumer action {}", action);
       } catch (VeniceIngestionTaskKilledException | InterruptedException e) {
         throw e;
@@ -1391,7 +1411,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
 
         // Remove the action that is failed to execute recently (not necessarily the head of consumerActionsQueue).
-        consumerActionsQueue.remove(action);
+        if (consumerActionsQueue.remove(action)) {
+          partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
+        }
         if (state != null && !state.isCompletionReported()) {
           reportError(
               "Error when processing consumer action: " + action,

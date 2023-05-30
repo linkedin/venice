@@ -205,4 +205,9 @@ public class ControllerApiConstants {
   public static final String LATEST_SUPERSET_SCHEMA_ID = "latest_superset_schema_id";
   public static final String ENABLE_DISABLED_REPLICAS = "enable_disabled_replicas";
 
+  /**
+   * String representation of the list of regions that is separated by comma for targeted region push
+   */
+  public static final String TARGETED_REGIONS = "targeted_regions";
+
 }

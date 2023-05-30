@@ -646,13 +646,15 @@ ext.createDiffFile = { ->
         ':!internal/venice-test-common/*',
         ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java',
         ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/init/*',
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceController.java',
         ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',
         ':!services/venice-router/src/main/java/com/linkedin/venice/router/streaming/VeniceChunkedResponse.java',
         ':!services/venice-standalone/*', // exclude the entire standalone project
         ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
         ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',
-        ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/OnlineProducerFactory.java',
+        ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/OnlineProducerFactory.java',
+        ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/ProducerTool.java',
 
         // Other files that have tests but are not executed in the regular unit test task
         ':!internal/alpini/*'

@@ -154,7 +154,8 @@ public class TestMetaDataHandler {
         Optional.of(hybridStoreQuotaRepository),
         "test-cluster",
         ZK_ADDRESS,
-        KAFKA_BOOTSTRAP_SERVERS);
+        KAFKA_BOOTSTRAP_SERVERS,
+        false);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
     Mockito.verify(ctx).writeAndFlush(captor.capture());
@@ -828,7 +829,8 @@ public class TestMetaDataHandler {
         Optional.of(hybridStoreQuotaRepository),
         clusterName,
         ZK_ADDRESS,
-        KAFKA_BOOTSTRAP_SERVERS);
+        KAFKA_BOOTSTRAP_SERVERS,
+        false);
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
     Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());
