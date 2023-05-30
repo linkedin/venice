@@ -2,11 +2,7 @@ package com.linkedin.venice;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.doCallRealMethod;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -34,6 +30,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -105,7 +103,7 @@ public class TestDataRecoveryClient {
     D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
     r.setCluster("test");
     doReturn(r).when(controllerClient).discoverCluster(anyString());
-    doReturn(controllerClient).when(mockCmd).buildControllerClient(any(), any(), any());
+    doReturn(controllerClient).when(mockCmd).buildControllerClient(anyString(), anyString(), any());
 
     doReturn(tasks).when(estimator).buildTasks(any(), any());
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
@@ -140,6 +138,10 @@ public class TestDataRecoveryClient {
     cmdParams.setCommand("cmd");
     cmdParams.setExtraCommandArgs("args");
     cmdParams.setPCtrlCliWithoutCluster(controllerClient);
+    cmdParams.setUrl("https://localhost:7036");
+    cmdParams.setTimestamp("2999-12-31T00:00:00");
+    cmdParams.setSSLFactory(Optional.empty());
+    cmdParams.setDestFabric("ei-ltx1");
 
     D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
     r.setCluster("test");
@@ -167,11 +169,22 @@ public class TestDataRecoveryClient {
     List<DataRecoveryTask> tasks = buildTasks(storeName, mockStoreRepushCmd, cmdParams);
     doReturn(tasks).when(executor).buildTasks(any(), any());
 
+    // Store filtering mocks
+    StoreHealthAuditResponse storeHealthInfoMock = mock(StoreHealthAuditResponse.class);
+    Map<String, RegionPushDetails> regionPushDetailsMapMock = new HashMap<>();
+    RegionPushDetails regionPushDetailsMock = mock(RegionPushDetails.class);
+    doReturn("1970-12-31T23:59:59.171961").when(regionPushDetailsMock).getPushStartTimestamp();
+    regionPushDetailsMapMock.put("ei-ltx1", regionPushDetailsMock);
+    doReturn(regionPushDetailsMapMock).when(storeHealthInfoMock).getRegionPushDetails();
+    doReturn(storeHealthInfoMock).when(controllerClient).listStorePushInfo(anyString(), anyBoolean());
+
     // Partial mock of Client class to confirm to-be-repushed stores from standard input.
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
     doReturn(executor).when(dataRecoveryClient).getExecutor();
     doCallRealMethod().when(dataRecoveryClient).execute(any(), any());
     doReturn(true).when(dataRecoveryClient).confirmStores(any());
+    doCallRealMethod().when(dataRecoveryClient).filterStoresWithOngoingRepush(any(), any());
+    doReturn(controllerClient).when(dataRecoveryClient).buildControllerClient(anyString(), anyString(), any());
     // client executes three store recovery.
     DataRecoveryClient.DataRecoveryParams drParams = new DataRecoveryClient.DataRecoveryParams("store1,store2,store3");
     drParams.setNonInteractive(true);

@@ -64,7 +64,7 @@ public class StoreRepushCommand extends Command {
     cmd.add(this.params.command);
     cmd.add(this.params.extraCommandArgs);
     cmd.add(String.format("--store '%s'", this.params.store));
-    cmd.add(String.format("--fabric '%s'", this.params.sourceFabric));
+    cmd.add(String.format("--fabric '%s'", this.params.destFabric));
     return cmd;
   }
 
@@ -142,7 +142,7 @@ public class StoreRepushCommand extends Command {
     // command name.
     private String command;
     // source fabric.
-    private String sourceFabric;
+    private String destFabric;
     // extra arguments to command.
     private String extraCommandArgs;
     // expected completion timestamp
@@ -162,10 +162,6 @@ public class StoreRepushCommand extends Command {
       this.url = url;
     }
 
-    public Optional<SSLFactory> getSSLFactory() {
-      return sslFactory;
-    }
-
     public void setSSLFactory(Optional<SSLFactory> sslFactory) {
       this.sslFactory = sslFactory;
     }
@@ -182,8 +178,8 @@ public class StoreRepushCommand extends Command {
       return this.timestamp;
     }
 
-    public String getSourceFabric() {
-      return this.sourceFabric;
+    public String getDestFabric() {
+      return this.destFabric;
     }
 
     public void setDebug(boolean debug) {
@@ -198,12 +194,12 @@ public class StoreRepushCommand extends Command {
       this.extraCommandArgs = args;
     }
 
-    public void setSourceFabric(String fabric) {
-      this.sourceFabric = fabric;
+    public void setDestFabric(String fabric) {
+      this.destFabric = fabric;
     }
 
     public void setTimestamp(String timestamp) {
-      DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd-yyyy HH:mm:ss");
+      DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
       LocalDateTime time = LocalDateTime.parse(timestamp, formatter);
       this.timestamp = time;
     }

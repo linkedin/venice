@@ -5,6 +5,7 @@ import static com.linkedin.venice.datarecovery.DataRecoveryWorker.INTERVAL_UNSET
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.meta.RegionPushDetails;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -52,44 +53,52 @@ public class DataRecoveryClient {
     return monitor;
   }
 
-  public void filterStoresWithOngoingRepush(Set<String> storesList, StoreRepushCommand.Params params) {
+  public Set<String> filterStoresWithOngoingRepush(Set<String> storesList, StoreRepushCommand.Params params) {
+    Set<String> ret = new HashSet<>();
     String url = params.getUrl();
     ControllerClient cli = params.getPCtrlCliWithoutCluster();
     LocalDateTime timestamp = params.getTimestamp();
-    String sourceFabric = params.getSourceFabric();
+    String destFabric = params.getDestFabric();
     for (String s: storesList) {
       String clusterName = cli.discoverCluster(s).getCluster();
-      try (ControllerClient parentCtrlCli = new ControllerClient(clusterName, url, Optional.empty())) {
+      try (ControllerClient parentCtrlCli = buildControllerClient(clusterName, url, Optional.empty())) {
         StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(s, false);
-        RegionPushDetails regionPushDetails = storeHealthInfo.getRegionPushDetails().get(sourceFabric);
+        RegionPushDetails regionPushDetails = storeHealthInfo.getRegionPushDetails().get(destFabric);
         String latestTimestamp = regionPushDetails.getPushStartTimestamp();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSS");
         LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, formatter);
-        if (latestPushStartTime.compareTo(timestamp) > 0) {
+        if (latestPushStartTime.compareTo(timestamp) <= 0) {
+          ret.add(s);
+        } else {
           LOGGER.warn(
               "Removing store " + s
                   + " from stores list, as the has a push job started more recently than the input timestamp.");
-          storesList.remove(s);
         }
       } catch (Exception e) {
         LOGGER.warn("Removing store " + s + "from stores list due to exception " + e);
-        storesList.remove(s);
       }
     }
+    return ret;
+  }
+
+  public ControllerClient buildControllerClient(String clusterName, String url, Optional<SSLFactory> sslFactory) {
+    return new ControllerClient(clusterName, url, sslFactory);
   }
 
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
-    filterStoresWithOngoingRepush(storeNames, cmdParams);
-    if (storeNames == null || storeNames.isEmpty()) {
+    Set<String> filteredStoreNames = filterStoresWithOngoingRepush(storeNames, cmdParams);
+    if (filteredStoreNames == null || filteredStoreNames.isEmpty()) {
       LOGGER.warn("store list is empty, exit.");
       return;
     }
-    if (!drParams.isNonInteractive && !confirmStores(storeNames)) {
+    if (!drParams.isNonInteractive && !confirmStores(filteredStoreNames)) {
       return;
     }
+    LOGGER.error(filteredStoreNames.size() + "ASDF123");
+    LOGGER.warn(filteredStoreNames.size() + "ASDF123");
 
-    getExecutor().perform(storeNames, cmdParams);
+    getExecutor().perform(filteredStoreNames, cmdParams);
     getExecutor().shutdownAndAwaitTermination();
   }
 

@@ -628,11 +628,10 @@ public class AdminTool {
 
   private static void executeDataRecovery(CommandLine cmd) {
     String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
-    String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
     String stores = getRequiredArgument(cmd, Arg.STORES);
     String timestamp = getRequiredArgument(cmd, Arg.DATETIME);
     String url = getRequiredArgument(cmd, Arg.URL);
-    // String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
 
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
@@ -640,7 +639,7 @@ public class AdminTool {
 
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
     cmdParams.setCommand(recoveryCommand);
-    cmdParams.setSourceFabric(sourceFabric);
+    cmdParams.setDestFabric(destFabric);
     cmdParams.setTimestamp(timestamp);
     cmdParams.setSSLFactory(sslFactory);
     cmdParams.setUrl(url);
