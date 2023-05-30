@@ -44,6 +44,8 @@ import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaReader;
@@ -150,7 +152,11 @@ public class VeniceServer {
             .setClientConfigForConsumer(clientConfigForConsumer.orElse(null))
             .setIcProvider(icProvider)
             .setServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers)
-            .setPubSubClientsFactory(new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()))
+            .setPubSubClientsFactory(
+                new PubSubClientsFactory(
+                    new ApacheKafkaProducerAdapterFactory(),
+                    new ApacheKafkaConsumerAdapterFactory(),
+                    new ApacheKafkaAdminAdapterFactory()))
             .build());
   }
 
@@ -706,9 +712,12 @@ public class VeniceServer {
   }
 
   public static void run(VeniceConfigLoader veniceConfigService, boolean joinThread) throws Exception {
-
+    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
+        new ApacheKafkaProducerAdapterFactory(),
+        new ApacheKafkaConsumerAdapterFactory(),
+        new ApacheKafkaAdminAdapterFactory());
     VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService)
-        .setPubSubClientsFactory(new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()))
+        .setPubSubClientsFactory(pubSubClientsFactory)
         .build();
     final VeniceServer server = new VeniceServer(serverContext);
     if (!server.isStarted()) {
