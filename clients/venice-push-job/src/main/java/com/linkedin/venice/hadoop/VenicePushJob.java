@@ -2676,11 +2676,11 @@ public class VenicePushJob implements AutoCloseable {
         return;
       }
       long bootstrapToOnlineTimeoutInHours = storeSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
-      long durationInHr = TimeUnit.MILLISECONDS.toHours(System.currentTimeMillis() - pollStartTimeMs);
-      if (durationInHr > bootstrapToOnlineTimeoutInHours) {
+      long durationMs = System.currentTimeMillis() - pollStartTimeMs;
+      if (durationMs > TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours)) {
         throw new VeniceException(
             "Failing push-job for store " + storeSetting.storeResponse.getName() + " which is still running after "
-                + durationInHr + " hours.");
+                + TimeUnit.MILLISECONDS.toHours(durationMs) + " hours.");
       }
       if (!overallStatus.equals(ExecutionStatus.UNKNOWN)) {
         unknownStateStartTimeMs = 0;

@@ -16,7 +16,12 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -164,12 +169,14 @@ public class VenicePushJobTest {
     topicInfo.topic = "abc";
     pushJob.storeSetting = new VenicePushJob.StoreSetting();
     pushJob.storeSetting.storeResponse = new StoreResponse();
+    pushJob.storeSetting.storeResponse.setName("abc");
     StoreInfo storeInfo = new StoreInfo();
-    storeInfo.setBootstrapToOnlineTimeoutInHours(1);
+    storeInfo.setBootstrapToOnlineTimeoutInHours(0);
     pushJob.storeSetting.storeResponse.setStore(storeInfo);
-    Assert.expectThrows(
+    VeniceException exception = Assert.expectThrows(
         VeniceException.class,
         () -> pushJob.pollStatusUntilComplete(Optional.empty(), client, pushJobSetting, topicInfo));
+    Assert.assertEquals(exception.getMessage(), "Failing push-job for store abc which is still running after 0 hours.");
   }
 
   private Properties getRepushReadyProps() {
