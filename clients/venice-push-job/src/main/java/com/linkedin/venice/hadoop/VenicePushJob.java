@@ -21,6 +21,7 @@ import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -389,6 +390,25 @@ public class VenicePushJob implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
 
   /**
+   * Config to enable single targeted region push mode in VPJ.
+   * In this mode, the VPJ will only push data to a single colo/region first, perform validation and finally
+   * leverage data recovery/repush to propagate data globally.
+   * The single solo/region is decided by the store config in {@link StoreResponse#getStore()}}.
+   * For multiple targeted regions push, may use the advanced mode. See {@link #TARGETED_REGION_PUSH_LIST}.
+   */
+  public static final String TARGETED_REGION_PUSH_ENABLED = "targeted.region.push.enabled";
+
+  /**
+   * This is experimental config to specify a list of regions used for targeted region push in VPJ.
+   * {@link #TARGETED_REGION_PUSH_ENABLED} has to be enabled to use this config.
+   * In this mode, the VPJ will only push data to the provided regions first, perform validation and finally
+   * leverage data recovery/repush to propagate data globally.
+   * The input should be split by comma, e.g. "dc-0,dc-1,dc-2".
+   * For single colo targeted region push, see {@link #TARGETED_REGION_PUSH_ENABLED}.
+   */
+  public static final String TARGETED_REGION_PUSH_LIST = "targeted.region.push.list";
+
+  /**
    * Since the job is calculating the raw data file size, which is not accurate because of compression,
    * key/value schema and backend storage overhead, we are applying this factor to provide a more
    * reasonable estimation.
@@ -495,6 +515,8 @@ public class VenicePushJob implements AutoCloseable {
     String livenessHeartbeatStoreName;
     boolean multiRegion;
     boolean d2Routing;
+    String targetedRegions;
+    boolean isTargetedRegionPushEnabled;
   }
 
   protected PushJobSetting pushJobSetting;
@@ -666,6 +688,14 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     pushJobSettingToReturn.repushTTLInSeconds = NOT_SET;
+    pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
+    if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
+      if (pushJobSettingToReturn.isTargetedRegionPushEnabled) {
+        pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGION_PUSH_LIST);
+      } else {
+        throw new VeniceException("Targeted region push list is only supported when targeted region push is enabled");
+      }
+    }
 
     if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
       throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
@@ -1046,7 +1076,9 @@ public class VenicePushJob implements AutoCloseable {
         // Update and send push job details with new info to the controller
         pushJobDetails.pushId = pushId;
         pushJobDetails.partitionCount = kafkaTopicInfo.partitionCount;
-        pushJobDetails.valueCompressionStrategy = kafkaTopicInfo.compressionStrategy.getValue();
+        pushJobDetails.valueCompressionStrategy = kafkaTopicInfo.compressionStrategy != null
+            ? kafkaTopicInfo.compressionStrategy.getValue()
+            : CompressionStrategy.NO_OP.getValue();
         pushJobDetails.chunkingEnabled = kafkaTopicInfo.chunkingEnabled;
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.TOPIC_CREATED.getValue()));
         pushJobHeartbeatSender = createPushJobHeartbeatSender(isSslEnabled());
@@ -1223,7 +1255,7 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void runJobAndUpdateStatus() throws IOException {
+  void runJobAndUpdateStatus() throws IOException {
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_MAP_REDUCE_JOB);
     runningJob = runJobWithConfig(jobConf);
     validateCountersAfterPush();
@@ -1694,7 +1726,7 @@ public class VenicePushJob implements AutoCloseable {
           sslFactory,
           retryAttempts);
     } else {
-      return ControllerClient.discoverAndConstructControllerClient(
+      return ControllerClientFactory.discoverAndConstructControllerClient(
           storeName,
           pushJobSetting.veniceControllerUrl,
           sslFactory,
@@ -2103,7 +2135,7 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * This method will validate the key schema in the input file against the one registered in Venice.
    */
-  private void validateKeySchema(
+  void validateKeySchema(
       ControllerClient controllerClient,
       PushJobSetting setting,
       PushJobSchemaInfo pushJobSchemaInfo,
@@ -2178,7 +2210,7 @@ public class VenicePushJob implements AutoCloseable {
   /***
    * This method will talk to controller to validate value schema.
    */
-  private void validateValueSchema(
+  void validateValueSchema(
       ControllerClient controllerClient,
       PushJobSetting setting,
       PushJobSchemaInfo pushJobSchemaInfo,
@@ -2271,6 +2303,17 @@ public class VenicePushJob implements AutoCloseable {
     storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
     storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
     storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+    if (setting.isTargetedRegionPushEnabled && setting.targetedRegions == null) {
+      // only override the targeted regions if it is not set and it is a single region push
+      setting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
+      if (StringUtils.isEmpty(setting.targetedRegions)) {
+        throw new VeniceException(
+            "The store either does not have native replication mode enabled or set up default source fabric.");
+      }
+      if (setting.isIncrementalPush) {
+        throw new VeniceException("Incremental push is not supported while using targeted region push mode");
+      }
+    }
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
     storeSetting.hybridStoreConfig = hybridStoreConfig;
@@ -2342,7 +2385,7 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
    */
-  private void createNewStoreVersion(
+  void createNewStoreVersion(
       PushJobSetting setting,
       long inputFileDataSize,
       ControllerClient controllerClient,
@@ -2385,7 +2428,8 @@ public class VenicePushJob implements AutoCloseable {
             Optional.ofNullable(setting.sourceGridFabric),
             setting.livenessHeartbeatEnabled,
             setting.rewindTimeInSecondsOverride,
-            setting.deferVersionSwap));
+            setting.deferVersionSwap,
+            setting.targetedRegions));
     if (versionCreationResponse.isError()) {
       if (ErrorType.CONCURRENT_BATCH_PUSH.equals(versionCreationResponse.getErrorType())) {
         LOGGER.error("Unable to run this job since another batch push is running. See the error message for details.");
@@ -2585,7 +2629,9 @@ public class VenicePushJob implements AutoCloseable {
       JobStatusQueryResponse response = ControllerClient.retryableRequest(
           controllerClient,
           pushJobSetting.controllerStatusPollRetries,
-          client -> client.queryOverallJobStatus(topicToMonitor, incrementalPushVersion));
+          client -> client
+              .queryOverallJobStatus(topicToMonitor, incrementalPushVersion, pushJobSetting.targetedRegions));
+
       if (response.isError()) {
         // status could not be queried which could be due to a communication error.
         throw new VeniceException(
@@ -2607,12 +2653,18 @@ public class VenicePushJob implements AutoCloseable {
 
       if (overallStatus.isTerminal()) {
         if (completedDatacenters.size() != regionSpecificInfo.size() || !successfulStatuses.contains(overallStatus)) {
-          // One or more DC could have an UNKNOWN status and never successfully reported a completed status before,
+          // 1) For regular push, one or more DC could have an UNKNOWN status and never successfully reported a
+          // completed status before,
           // but if the majority of datacenters have completed, we give up on the unreachable datacenter
           // and start truncating the data topic.
-          throw new VeniceException(
-              "Push job error reported by controller: " + pushJobSetting.veniceControllerUrl + "\ncontroller response: "
-                  + response.toString());
+          // 2) For targeted region push, not all targeted regions have completed.
+
+          StringBuilder errorMsg = new StringBuilder().append("Push job error reported by controller: ")
+              .append(pushJobSetting.veniceControllerUrl)
+              .append("\ncontroller response: ")
+              .append(response);
+
+          throw new VeniceException(errorMsg.toString());
         }
 
         // Every known datacenter have successfully reported a completed status at least once.
@@ -2680,7 +2732,7 @@ public class VenicePushJob implements AutoCloseable {
     return detailsPresentWhenPreviouslyAbsent || detailsDifferentFromPreviously;
   }
 
-  protected void setupMRConf(
+  void setupMRConf(
       JobConf jobConf,
       TopicInfo topicInfo,
       PushJobSetting pushJobSetting,
@@ -2748,7 +2800,9 @@ public class VenicePushJob implements AutoCloseable {
     conf.set(KAFKA_BOOTSTRAP_SERVERS, topicInfo.kafkaUrl);
     conf.set(PARTITIONER_CLASS, topicInfo.partitionerClass);
     // flatten partitionerParams since JobConf class does not support set an object
-    topicInfo.partitionerParams.forEach(conf::set);
+    if (topicInfo.partitionerParams != null) {
+      topicInfo.partitionerParams.forEach(conf::set);
+    }
     conf.setInt(AMPLIFICATION_FACTOR, topicInfo.amplificationFactor);
     if (topicInfo.sslToKafka) {
       conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
@@ -2812,7 +2866,11 @@ public class VenicePushJob implements AutoCloseable {
     // Compression related
     // Note that COMPRESSION_STRATEGY is from topic creation response as it might be different from the store config
     // (eg: for inc push)
-    conf.set(COMPRESSION_STRATEGY, topicInfo.compressionStrategy.toString());
+    conf.set(
+        COMPRESSION_STRATEGY,
+        topicInfo.compressionStrategy != null
+            ? topicInfo.compressionStrategy.toString()
+            : CompressionStrategy.NO_OP.toString());
     conf.set(
         ZSTD_COMPRESSION_LEVEL,
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));

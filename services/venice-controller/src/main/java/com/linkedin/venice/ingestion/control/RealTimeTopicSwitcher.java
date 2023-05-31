@@ -60,9 +60,10 @@ public class RealTimeTopicSwitcher {
     this.veniceWriterFactory = veniceWriterFactory;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.timer = new SystemTime();
-    this.destKafkaBootstrapServers = veniceProperties.getBoolean(ConfigKeys.SSL_TO_KAFKA, false)
-        ? veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS)
-        : veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    this.destKafkaBootstrapServers =
+        veniceProperties.getBooleanWithAlternative(ConfigKeys.KAFKA_OVER_SSL, ConfigKeys.SSL_TO_KAFKA_LEGACY, false)
+            ? veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS)
+            : veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
     int kafkaReplicationFactor = veniceProperties.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
     this.kafkaReplicationFactorForRTTopics =
         veniceProperties.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);

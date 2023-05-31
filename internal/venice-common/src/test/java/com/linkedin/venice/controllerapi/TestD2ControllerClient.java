@@ -50,7 +50,6 @@ public class TestD2ControllerClient {
     try (D2ControllerClient controllerClient =
         new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, TEST_ZK_ADDRESS, Optional.empty())) {
     }
-    ;
   }
 
   @Test
@@ -89,7 +88,6 @@ public class TestD2ControllerClient {
       D2ServiceDiscoveryResponse response1 = controllerClient.discoverCluster(TEST_STORE);
       Assert.assertEquals(response1.getCluster(), TEST_CLUSTER);
     }
-    ;
 
     D2ClientFactory.release(TEST_ZK_ADDRESS);
   }
@@ -118,15 +116,18 @@ public class TestD2ControllerClient {
     }).when(mockD2Client).restRequest(any());
 
     D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client);
-    Assert.assertThrows(
-        VeniceException.class,
-        () -> D2ControllerClient.discoverCluster(TEST_ZK_ADDRESS, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1));
+    Assert.assertTrue(
+        D2ControllerClient.discoverCluster(TEST_ZK_ADDRESS, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1).isError());
+
+    Assert.assertTrue(
+        D2ControllerClient.discoverCluster(mockD2Client, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1).isError());
 
     try (D2ControllerClient controllerClient = D2ControllerClientFactory
         .getControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, TEST_ZK_ADDRESS, Optional.empty())) {
-      Assert.assertThrows(VeniceException.class, () -> controllerClient.discoverCluster(TEST_STORE));
+      // D2ControllerClient should follow the behavior of the base class and return an error response
+      D2ServiceDiscoveryResponse response = controllerClient.discoverCluster(TEST_STORE);
+      Assert.assertTrue(response.isError());
     }
-    ;
 
     D2ClientFactory.release(TEST_ZK_ADDRESS);
   }
@@ -163,7 +164,6 @@ public class TestD2ControllerClient {
       String leaderController = controllerClient.discoverLeaderController();
       Assert.assertEquals(leaderController, leaderControllerResponse.getUrl());
     }
-    ;
 
     try (D2ControllerClient controllerClient = new D2ControllerClient(
         TEST_CONTROLLER_D2_SERVICE,
@@ -173,7 +173,6 @@ public class TestD2ControllerClient {
       String leaderController = controllerClient.discoverLeaderController();
       Assert.assertEquals(leaderController, leaderControllerResponse.getSecureUrl());
     }
-    ;
 
     D2ClientFactory.release(TEST_ZK_ADDRESS);
   }
@@ -212,7 +211,6 @@ public class TestD2ControllerClient {
       URL responseUrl = new URL(controllerClient.discoverLeaderController());
       Assert.assertEquals(responseUrl.getPort(), 1578);
     }
-    ;
 
     D2ClientFactory.release(TEST_ZK_ADDRESS);
   }

@@ -59,6 +59,35 @@ public interface VeniceChangelogConsumer<K, V> {
   CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions);
 
   /**
+   * Pause the client on all subscriptions. See {@link #pause(Set)} for more information.
+   *
+   * @throws VeniceException if operation failed for any of the partitions.
+   */
+  void pause();
+
+  /**
+   * Resume the client on all or subset of partitions this client is subscribed to and has paused.
+   *
+   * @throws VeniceException if operation failed for any of the partitions.
+   */
+  void resume(Set<Integer> partitions);
+
+  /**
+   * Pause the client on all subscriptions. See {@link #resume(Set)} for more information.
+   *
+   * @throws VeniceException if operation failed for any of the partitions.
+   */
+  void resume();
+
+  /**
+   * Pause the client on all or subset of partitions this client is subscribed to. Calls to {@link #poll(long)} will not
+   * return results from paused partitions until {@link #resume(Set)} is called again later for those partitions.
+   *
+   * @throws VeniceException if operation failed for any of the partitions.
+   */
+  void pause(Set<Integer> partitions);
+
+  /**
    * Seek to the end of the push for all subscribed partitions. See {@link #seekToEndOfPush(Set)} for more information.
    *
    * @return a future which completes when the operation has succeeded for all partitions.

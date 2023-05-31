@@ -91,6 +91,7 @@ import com.linkedin.venice.unit.kafka.consumer.poll.PubSubTopicPartitionOffset;
 import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -101,6 +102,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -247,7 +249,8 @@ public class AdminConsumptionTaskTest {
         adminConsumptionCycleTimeoutMs,
         1,
         pubSubTopicRepository,
-        pubSubMessageDeserializer);
+        pubSubMessageDeserializer,
+        "dc-0");
   }
 
   private PubSubTopicPartitionOffset getTopicPartitionOffsetPair(PubSubProduceResult produceResult) {
@@ -1376,6 +1379,51 @@ public class AdminConsumptionTaskTest {
         eq(schemaMeta.definition.toString()));
   }
 
+  @Test
+  public void testAddVersionMsgHandlingForTargetedRegionPush() throws Exception {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, stats, 10000);
+    executor.submit(task);
+    String mockPushJobId = "mock push job id";
+    int versionNumber = 1;
+    int numberOfPartitions = 1;
+
+    // Sending 3 messages.
+    // dc-0 is the default region for the testing suite so the message for "dc-1" and "dc-2" should be ignored.
+    veniceWriter.put(
+        emptyKeyBytes,
+        getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L, "dc-1"),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    veniceWriter.put(
+        emptyKeyBytes,
+        getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 2L, "dc-2"),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    veniceWriter.put(
+        emptyKeyBytes,
+        getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 3L, "dc-0"),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      verify(admin, times(1)).addVersionAndStartIngestion(
+          clusterName,
+          storeName,
+          mockPushJobId,
+          versionNumber,
+          numberOfPartitions,
+          Version.PushType.BATCH,
+          null,
+          -1,
+          1,
+          false);
+    });
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
   private byte[] getStoreCreationMessage(
       String clusterName,
       String storeName,
@@ -1418,6 +1466,17 @@ public class AdminConsumptionTaskTest {
       int versionNum,
       int numberOfPartitions,
       long executionId) {
+    return getAddVersionMessage(clusterName, storeName, pushJobId, versionNum, numberOfPartitions, executionId, null);
+  }
+
+  private byte[] getAddVersionMessage(
+      String clusterName,
+      String storeName,
+      String pushJobId,
+      int versionNum,
+      int numberOfPartitions,
+      long executionId,
+      String targetedRegions) {
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = clusterName;
     addVersion.storeName = storeName;
@@ -1426,6 +1485,9 @@ public class AdminConsumptionTaskTest {
     addVersion.numberOfPartitions = numberOfPartitions;
     addVersion.rewindTimeInSecondsOverride = -1;
     addVersion.timestampMetadataVersionId = 1;
+    if (targetedRegions != null) {
+      addVersion.targetedRegions = new ArrayList<>(RegionUtils.parseRegionsFilterList(targetedRegions));
+    }
 
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.ADD_VERSION.getValue();

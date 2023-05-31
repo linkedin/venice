@@ -867,9 +867,10 @@ public class TestVenicePushJobCheckpoints {
             any(),
             anyBoolean(),
             anyLong(),
-            anyBoolean())).thenReturn(versionCreationResponse);
+            anyBoolean(),
+            any())).thenReturn(versionCreationResponse);
     JobStatusQueryResponse jobStatusQueryResponse = createJobStatusQueryResponseMock();
-    when(controllerClient.queryOverallJobStatus(anyString(), any())).thenReturn(jobStatusQueryResponse);
+    when(controllerClient.queryOverallJobStatus(anyString(), any(), any())).thenReturn(jobStatusQueryResponse);
 
     ControllerResponse controllerResponse = mock(ControllerResponse.class);
     when(controllerResponse.isError()).thenReturn(false);

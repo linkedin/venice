@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
@@ -34,7 +35,6 @@ public class PushMonitorDelegator implements PushMonitor {
   private static final Logger LOGGER = LogManager.getLogger(PushMonitorDelegator.class);
 
   private final ReadWriteStoreRepository metadataRepository;
-  private final OfflinePushAccessor offlinePushAccessor;
   private final String clusterName;
   private final ClusterLockManager clusterLockManager;
 
@@ -55,11 +55,10 @@ public class PushMonitorDelegator implements PushMonitor {
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
-      boolean disableErrorLeaderReplica,
-      long offlineJobResourceAssignmentWaitTimeInMilliseconds) {
+      VeniceControllerConfig controllerConfig,
+      PushStatusStoreReader pushStatusStoreReader) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
-    this.offlinePushAccessor = offlinePushAccessor;
 
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(
         clusterName,
@@ -73,8 +72,8 @@ public class PushMonitorDelegator implements PushMonitor {
         aggregateRealTimeSourceKafkaUrl,
         activeActiveRealTimeSourceKafkaURLs,
         helixAdminClient,
-        disableErrorLeaderReplica,
-        offlineJobResourceAssignmentWaitTimeInMilliseconds);
+        controllerConfig,
+        pushStatusStoreReader);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();
@@ -88,9 +87,9 @@ public class PushMonitorDelegator implements PushMonitor {
       if (store == null) {
         throw new VeniceNoStoreException(
             Version.parseStoreFromKafkaTopicName(kafkaTopic),
-            Optional.of(
-                "Cannot find store metadata when tyring to allocate push status to push monitor."
-                    + "It's likely that the store has been deleted. topic: " + topicName));
+            null,
+            "Cannot find store metadata when tyring to allocate push status to push monitor."
+                + "It's likely that the store has been deleted. topic: " + topicName);
       }
       return partitionStatusBasedPushStatusMonitor;
     });
@@ -212,5 +211,10 @@ public class PushMonitorDelegator implements PushMonitor {
 
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     return getPushMonitor(partitionAssignment.getTopic()).getReadyToServeInstances(partitionAssignment, partitionId);
+  }
+
+  @Override
+  public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
+    return partitionStatusBasedPushStatusMonitor.isOfflinePushMonitorDaVinciPushStatusEnabled();
   }
 }

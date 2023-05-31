@@ -114,7 +114,6 @@ public class VeniceControllerService extends AbstractVeniceService {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     for (String cluster: multiClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService = new AdminConsumerService(
-          cluster,
           internalAdmin,
           multiClusterConfigs.getControllerConfig(cluster),
           metricsRepository,

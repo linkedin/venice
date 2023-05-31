@@ -15,7 +15,7 @@ import org.testng.annotations.Test;
 
 
 public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void testServerReadQuota() throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)

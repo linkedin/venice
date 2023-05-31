@@ -17,6 +17,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixState;
@@ -66,6 +67,8 @@ public abstract class AbstractPushMonitorTest {
   private AggPushHealthStats mockPushHealthStats;
   protected ClusterLockManager clusterLockManager;
 
+  protected VeniceControllerConfig mockControllerConfig;
+
   private final static String clusterName = Utils.getUniqueString("test_cluster");
   private final static String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
   private String storeName;
@@ -93,6 +96,12 @@ public abstract class AbstractPushMonitorTest {
     mockRoutingDataRepo = mock(RoutingDataRepository.class);
     mockPushHealthStats = mock(AggPushHealthStats.class);
     clusterLockManager = new ClusterLockManager(clusterName);
+    mockControllerConfig = mock(VeniceControllerConfig.class);
+    when(mockControllerConfig.isErrorLeaderReplicaFailOverEnabled()).thenReturn(true);
+    when(mockControllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled()).thenReturn(true);
+    when(mockControllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
+    when(mockControllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
+    when(mockControllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber()).thenReturn(4);
     monitor = getPushMonitor();
   }
 
@@ -937,6 +946,10 @@ public abstract class AbstractPushMonitorTest {
 
   protected ReadWriteStoreRepository getMockStoreRepo() {
     return mockStoreRepo;
+  }
+
+  protected VeniceControllerConfig getMockControllerConfig() {
+    return mockControllerConfig;
   }
 
   protected RoutingDataRepository getMockRoutingDataRepo() {

@@ -1,5 +1,9 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_AUTO_OFFSET_RESET_CONFIG;
+import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
+import static com.linkedin.venice.ConfigKeys.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
+
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -18,7 +22,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ThreadFactory;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 
 
 /**
@@ -44,7 +47,6 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final KafkaPubSubMessageDeserializer pubSubMessageDeserializer;
 
   public AdminConsumerService(
-      String cluster,
       VeniceHelixAdmin admin,
       VeniceControllerConfig config,
       MetricsRepository metricsRepository,
@@ -107,7 +109,8 @@ public class AdminConsumerService extends AbstractVeniceService {
         config.getAdminConsumptionCycleTimeoutMs(),
         config.getAdminConsumptionMaxWorkerThreadPoolSize(),
         pubSubTopicRepository,
-        pubSubMessageDeserializer);
+        pubSubMessageDeserializer,
+        config.getRegionName());
   }
 
   /**
@@ -198,15 +201,15 @@ public class AdminConsumerService extends AbstractVeniceService {
     String pubSubServerUrl = remoteConsumptionEnabled ? remoteKafkaServerUrl.get() : localKafkaServerUrl;
     Properties kafkaConsumerProperties = admin.getPubSubSSLProperties(pubSubServerUrl).toProperties();
     /**
-     * {@link ConsumerConfig.CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.
+     * {@link KAFKA_CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.
      */
-    kafkaConsumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, clusterName);
-    kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    kafkaConsumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, clusterName);
+    kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
     /**
      * Reason to disable auto_commit
      * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
      */
-    kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+    kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
     return consumerFactory
         .create(new VeniceProperties(kafkaConsumerProperties), false, pubSubMessageDeserializer, clusterName);
   }

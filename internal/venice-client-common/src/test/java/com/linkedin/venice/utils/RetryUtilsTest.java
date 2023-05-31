@@ -288,14 +288,13 @@ public class RetryUtilsTest {
         .thenThrow(IllegalStateException.class)
         .thenReturn(2);
     long startTime = System.currentTimeMillis();
-    Assert.assertEquals(
-        (int) RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(
-            () -> obj.getAnInteger() + 1,
-            2,
-            Duration.ofMillis(1000),
-            Arrays.asList(IllegalStateException.class, IllegalArgumentException.class)),
-        3);
-    Assert.assertTrue((System.currentTimeMillis() - startTime) > 2000);
+    Assert.assertEquals((int) RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(() -> {
+      // Give the action some non-trivial time to make sure no precision error.
+      Utils.sleep(100);
+      return obj.getAnInteger() + 1;
+    }, 2, Duration.ofMillis(1000), Arrays.asList(IllegalStateException.class, IllegalArgumentException.class)), 3);
+    long timeSpentInMs = (System.currentTimeMillis() - startTime);
+    Assert.assertTrue(timeSpentInMs > 2000, "Time spent in attempts " + timeSpentInMs + "ms");
     verify(obj, times(3)).getAnInteger();
     reset(obj);
   }

@@ -26,7 +26,7 @@ public class JobRoutesTest {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(true).when(mockAdmin).isLeaderControllerFor(anyString());
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED)).when(mockAdmin)
-        .getOffLinePushStatus(anyString(), anyString(), any(), any());
+        .getOffLinePushStatus(anyString(), anyString(), any(), any(), any());
 
     doReturn(2).when(mockAdmin).getReplicationFactor(anyString(), anyString());
 
@@ -35,7 +35,7 @@ public class JobRoutesTest {
     int version = 5;
     JobRoutes jobRoutes = new JobRoutes(false, Optional.empty());
     JobStatusQueryResponse response =
-        jobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty(), null);
+        jobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty(), null, null);
 
     Map<String, String> extraInfo = response.getExtraInfo();
     LOGGER.info("extraInfo: {}", extraInfo);

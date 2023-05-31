@@ -3,10 +3,11 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
@@ -22,6 +23,7 @@ import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
 import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
+import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
 import static com.linkedin.venice.views.ViewUtils.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.views.ViewUtils.SUB_PARTITION_COUNT;
@@ -152,10 +154,12 @@ import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdap
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatusWithDetails;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
+import com.linkedin.venice.pushmonitor.PushMonitorUtils;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
@@ -191,6 +195,7 @@ import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -290,7 +295,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceHelixAdmin.class);
   private static final int RECORD_COUNT = 10;
-  private static final String REGION_FILTER_LIST_SEPARATOR = ",\\s*";
 
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String controllerClusterName;
@@ -660,7 +664,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     VeniceProperties originalPros = controllerConfig.getProps();
     Properties clonedProperties = originalPros.toProperties();
-    if (originalPros.getBoolean(SSL_TO_KAFKA, false)) {
+    if (originalPros.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false)) {
       clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     } else {
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
@@ -1875,6 +1879,43 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  public Pair<Boolean, Version> addVersionAndTopicOnly(
+      String clusterName,
+      String storeName,
+      String pushJobId,
+      int versionNumber,
+      int numberOfPartitions,
+      int replicationFactor,
+      boolean sendStartOfPush,
+      boolean sorted,
+      PushType pushType,
+      String compressionDictionary,
+      String remoteKafkaBootstrapServers,
+      Optional<String> sourceGridFabric,
+      long rewindTimeInSecondsOverride,
+      int replicationMetadataVersionId,
+      Optional<String> emergencySourceRegion,
+      boolean versionSwapDeferred) {
+    return addVersionAndTopicOnly(
+        clusterName,
+        storeName,
+        pushJobId,
+        versionNumber,
+        numberOfPartitions,
+        replicationFactor,
+        sendStartOfPush,
+        sorted,
+        pushType,
+        compressionDictionary,
+        remoteKafkaBootstrapServers,
+        sourceGridFabric,
+        rewindTimeInSecondsOverride,
+        replicationMetadataVersionId,
+        emergencySourceRegion,
+        versionSwapDeferred,
+        null);
+  }
+
   /**
    * A wrapper to invoke VeniceHelixAdmin#addVersion to only increment the version and create the topic(s) needed
    * without starting ingestion.
@@ -1895,7 +1936,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred) {
+      boolean versionSwapDeferred,
+      String targetedRegions) {
     return addVersion(
         clusterName,
         storeName,
@@ -1914,7 +1956,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         rewindTimeInSecondsOverride,
         replicationMetadataVersionId,
         emergencySourceRegion,
-        versionSwapDeferred);
+        versionSwapDeferred,
+        targetedRegions);
   }
 
   /**
@@ -2196,6 +2239,47 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             useFastKafkaOperationTimeout));
   }
 
+  private Pair<Boolean, Version> addVersion(
+      String clusterName,
+      String storeName,
+      String pushJobId,
+      int versionNumber,
+      int numberOfPartitions,
+      int replicationFactor,
+      boolean startIngestion,
+      boolean sendStartOfPush,
+      boolean sorted,
+      boolean useFastKafkaOperationTimeout,
+      Version.PushType pushType,
+      String compressionDictionary,
+      String remoteKafkaBootstrapServers,
+      Optional<String> sourceGridFabric,
+      long rewindTimeInSecondsOverride,
+      int replicationMetadataVersionId,
+      Optional<String> emergencySourceRegion,
+      boolean versionSwapDeferred) {
+    return addVersion(
+        clusterName,
+        storeName,
+        pushJobId,
+        versionNumber,
+        numberOfPartitions,
+        replicationFactor,
+        startIngestion,
+        sendStartOfPush,
+        sorted,
+        useFastKafkaOperationTimeout,
+        pushType,
+        compressionDictionary,
+        remoteKafkaBootstrapServers,
+        sourceGridFabric,
+        rewindTimeInSecondsOverride,
+        replicationMetadataVersionId,
+        emergencySourceRegion,
+        versionSwapDeferred,
+        null);
+  }
+
   /**
    * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for.
    * Add version is a multi step process that can be broken down to three main steps:
@@ -2223,7 +2307,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       long rewindTimeInSecondsOverride,
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred) {
+      boolean versionSwapDeferred,
+      String targetedRegions) {
     if (isClusterInMaintenanceMode(clusterName)) {
       throw new HelixClusterMaintenanceModeException(clusterName);
     }
@@ -2341,18 +2426,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
             } else {
               /**
-               * AddVersion is invoked by directly querying controllers; there are 3 different configs that
-               * can determine where the source fabric is:
-               * 1. Cluster level config
-               * 2. Push job config which can identify where the push starts from, which has a higher
-               *    priority than cluster level config
-               * 3. Store level config
-               * 4. Emergency source fabric config in parent controller config, which has the highest priority;
-               *    By default, it's not used unless specified. It has the highest priority because it can be used to fail
-               *    over a push.
+               * AddVersion is invoked by directly querying controllers
                */
-              String sourceFabric =
-                  getNativeReplicationSourceFabric(clusterName, store, sourceGridFabric, emergencySourceRegion);
+              String sourceFabric = getNativeReplicationSourceFabric(
+                  clusterName,
+                  store,
+                  sourceGridFabric,
+                  emergencySourceRegion,
+                  targetedRegions);
               sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
               if (sourceKafkaBootstrapServers == null) {
                 sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
@@ -2611,7 +2692,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred) {
+      boolean versionSwapDeferred,
+      String targetedRegions) {
+    if (StringUtils.isNotEmpty(targetedRegions)) {
+      /**
+       * only parent controller should handle this request. See {@link VeniceParentHelixAdmin#incrementVersionIdempotent}
+       */
+      throw new VeniceException(
+          "Request of creating versions/topics for targeted region push should only be sent to parent controller");
+    }
     checkControllerLeadershipFor(clusterName);
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersion();
@@ -3973,8 +4062,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     Store originalStore = getStore(clusterName, storeName);
     if (originalStore == null) {
-      throw new VeniceException(
-          "The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
+      throw new VeniceNoStoreException(storeName, clusterName);
     }
     if (originalStore.isHybrid()) {
       // If this is a hybrid store, always try to disable compaction if RT topic exists.
@@ -4479,16 +4567,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         StoreViewUtils.convertViewConfigToStoreViewConfig(oldViewConfigMap);
     mergedConfigs.putAll(StoreViewUtils.convertStringMapViewToStoreViewConfigRecord(viewParameters));
     return mergedConfigs;
-  }
-
-  /**
-   * A helper function to split a region list with {@link VeniceHelixAdmin#REGION_FILTER_LIST_SEPARATOR}
-   */
-  protected static Set<String> parseRegionsFilterList(String regionsFilterList) {
-    Set<String> fabrics = new HashSet<>();
-    String[] tokens = regionsFilterList.trim().toLowerCase().split(REGION_FILTER_LIST_SEPARATOR);
-    Collections.addAll(fabrics, tokens);
-    return fabrics;
   }
 
   /**
@@ -5208,18 +5286,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic) {
-    return getOffLinePushStatus(clusterName, kafkaTopic, Optional.empty(), null);
+    return getOffLinePushStatus(clusterName, kafkaTopic, Optional.empty(), null, null);
   }
 
   /**
-   * @see Admin#getOffLinePushStatus(String, String, Optional, String)
+   * @see Admin#getOffLinePushStatus(String, String, Optional, String, String).
    */
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(
       String clusterName,
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
-      String region) {
+      String region,
+      String targetedRegions) {
     checkControllerLeadershipFor(clusterName);
     if (region != null) {
       checkCurrentFabricMatchesExpectedFabric(region);
@@ -5339,12 +5418,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Retrieve Da Vinci push status
     // Da Vinci can only subscribe to an existing version, so skip 1st push
     if (store.isDaVinciPushStatusStoreEnabled() && (versionNumber > 1 || incrementalPushVersion.isPresent())) {
+      if (monitor.isOfflinePushMonitorDaVinciPushStatusEnabled() && !incrementalPushVersion.isPresent()) {
+        // The offline push status will contain Da Vinci push status when either server or Da Vinci push status becomes
+        // terminal.
+        return new OfflinePushStatusInfo(executionStatus, details);
+      }
       if (store.getVersion(versionNumber).isPresent()) {
         Version version = store.getVersion(versionNumber).get();
-        Pair<ExecutionStatus, String> daVinciStatusAndDetails =
-            getDaVinciPushStatusAndDetails(version, incrementalPushVersion);
-        ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getFirst();
-        String daVinciDetails = daVinciStatusAndDetails.getSecond();
+        ExecutionStatusWithDetails daVinciStatusAndDetails = PushMonitorUtils.getDaVinciPushStatusAndDetails(
+            pushStatusStoreReader.orElse(null),
+            version.kafkaTopicName(),
+            version.getPartitionCount(),
+            incrementalPushVersion);
+        ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getStatus();
+        String daVinciDetails = daVinciStatusAndDetails.getDetails();
         executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
         if (details != null || daVinciDetails != null) {
           String overallDetails = "";
@@ -5369,96 +5456,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     List<ExecutionStatus> statuses = Arrays.asList(veniceStatus, daVinciStatus);
     statuses.sort(Comparator.comparingInt(STATUS_PRIORITIES::indexOf));
     return statuses.get(0);
-  }
-
-  /**
-   * getDaVinciPushStatusAndDetails checks all partitions and compute a final status.
-   * Inside each partition, getDaVinciPushStatusAndDetails will compute status based on all active replicas/Da Vinci instances.
-   * A replica/Da Vinci instance sent heartbeat to controllers recently is considered active.
-   */
-  private Pair<ExecutionStatus, String> getDaVinciPushStatusAndDetails(
-      Version version,
-      Optional<String> incrementalPushVersion) {
-    if (!pushStatusStoreReader.isPresent()) {
-      throw new VeniceException("D2Client must be provided to read from push status store.");
-    }
-    int partitionCount = version.getPartitionCount();
-    LOGGER.info("Getting Da Vinci push status for store: {}", version.getStoreName());
-    boolean allMiddleStatusReceived = true;
-    ExecutionStatus completeStatus = incrementalPushVersion.isPresent()
-        ? ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED
-        : ExecutionStatus.COMPLETED;
-    ExecutionStatus middleStatus = incrementalPushVersion.isPresent()
-        ? ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED
-        : ExecutionStatus.END_OF_PUSH_RECEIVED;
-    Optional<String> erroredInstance = Optional.empty();
-    String storeName = version.getStoreName();
-    int completedPartitions = 0;
-    int totalInstanceCount = 0;
-    int liveInstanceCount = 0;
-    Set<Integer> incompletePartition = new HashSet<>();
-    for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-      Map<CharSequence, Integer> instances = pushStatusStoreReader.get()
-          .getPartitionStatus(storeName, version.getNumber(), partitionId, incrementalPushVersion);
-      boolean allInstancesCompleted = true;
-      totalInstanceCount += instances.size();
-      for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
-        ExecutionStatus status = ExecutionStatus.fromInt(entry.getValue());
-        boolean isInstanceAlive = pushStatusStoreReader.get().isInstanceAlive(storeName, entry.getKey().toString());
-
-        if (isInstanceAlive) {
-          liveInstanceCount++;
-        }
-        if (status == middleStatus) {
-          if (allInstancesCompleted && isInstanceAlive) {
-            allInstancesCompleted = false;
-          }
-        } else if (status != completeStatus) {
-          if (allInstancesCompleted || allMiddleStatusReceived) {
-            if (isInstanceAlive) {
-              allInstancesCompleted = false;
-              allMiddleStatusReceived = false;
-              if (status == ExecutionStatus.ERROR) {
-                erroredInstance = Optional.of(entry.getKey().toString());
-                break;
-              }
-            }
-          }
-        }
-      }
-      if (allInstancesCompleted) {
-        completedPartitions++;
-      } else {
-        incompletePartition.add(partitionId);
-      }
-    }
-    String statusDetail = null;
-    String details = "";
-    if (completedPartitions > 0) {
-      details += completedPartitions + "/" + partitionCount + " partitions completed in" + totalInstanceCount
-          + " Da Vinci instances.";
-    }
-    if (erroredInstance.isPresent()) {
-      details += "Found a failed instance in Da Vinci: " + erroredInstance + ". live instances: " + liveInstanceCount
-          + " total instances : " + totalInstanceCount;
-    }
-    int incompleteSize = incompletePartition.size();
-    if (incompleteSize > 0 && incompleteSize <= 5) {
-      details += ". Following partitions still not complete " + incompletePartition + ". live instances: "
-          + liveInstanceCount + " total instances : " + totalInstanceCount;
-    }
-    if (details.length() != 0) {
-      statusDetail = details;
-    }
-    if (completedPartitions == partitionCount) {
-      return new Pair<>(completeStatus, statusDetail);
-    } else if (allMiddleStatusReceived) {
-      return new Pair<>(middleStatus, statusDetail);
-    } else if (erroredInstance.isPresent()) {
-      return new Pair<>(ExecutionStatus.ERROR, statusDetail);
-    } else {
-      return new Pair<>(ExecutionStatus.STARTED, statusDetail);
-    }
   }
 
   // TODO remove this method once we are fully on HaaS
@@ -5654,6 +5651,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Source fabric selection priority:
+   * 1. Parent controller emergency source fabric config.
+   * 2. VPJ plugin targeted region config, however it will compute all selections based on the criteria below to select the source region.
+   * 3. VPJ plugin source grid fabric config.
+   * 4. Store level source fabric config.
+   * 5. Cluster level source fabric config.
    * @return the selected source fabric for a given store.
    */
   @Override
@@ -5661,29 +5664,54 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String clusterName,
       Store store,
       Optional<String> sourceGridFabric,
-      Optional<String> emergencySourceRegion) {
-    /**
-     * Source fabric selection priority:
-     * 1. Parent controller emergency source fabric config.
-     * 2. VPJ plugin source grid fabric config.
-     * 3. Store level source fabric config.
-     * 4. Cluster level source fabric config.
-     */
+      Optional<String> emergencySourceRegion,
+      String targetedRegions) {
     String sourceFabric = emergencySourceRegion.orElse(null);
 
-    if (sourceGridFabric.isPresent() && (sourceFabric == null || sourceFabric.isEmpty())) {
-      sourceFabric = sourceGridFabric.get();
+    // always respect emergency region so return directly if it is not empty
+    if (StringUtils.isNotEmpty(sourceFabric)) {
+      return sourceFabric;
     }
 
-    if (sourceFabric == null || sourceFabric.isEmpty()) {
-      sourceFabric = store.getNativeReplicationSourceFabric();
+    Set<String> regions = targetedRegions != null ? RegionUtils.parseRegionsFilterList(targetedRegions) : null;
+
+    if (sourceGridFabric.isPresent()) {
+      sourceFabric = getPreferredRegion(sourceGridFabric.get(), regions);
     }
 
-    if (sourceFabric == null || sourceFabric.isEmpty()) {
-      sourceFabric = multiClusterConfigs.getControllerConfig(clusterName).getNativeReplicationSourceFabric();
+    if (StringUtils.isEmpty(sourceFabric)) {
+      sourceFabric = getPreferredRegion(store.getNativeReplicationSourceFabric(), regions);
     }
 
+    if (StringUtils.isEmpty(sourceFabric)) {
+      sourceFabric = getPreferredRegion(
+          getMultiClusterConfigs().getControllerConfig(clusterName).getNativeReplicationSourceFabric(),
+          regions);
+    }
+
+    if (StringUtils.isEmpty(sourceFabric) && regions != null) {
+      String selection = regions.iterator().next();
+      LOGGER.warn(
+          "User specified targeted regions: {} for store {} but default source fabric selection is not in the list. Use {} from the list instead",
+          targetedRegions,
+          store.getName(),
+          selection);
+      sourceFabric = selection;
+    }
     return sourceFabric;
+  }
+
+  /**
+   * Select the preferred regions from the given set if the set is provided.
+   * @param candidate
+   * @param regions
+   * @return
+   */
+  private String getPreferredRegion(String candidate, Set<String> regions) {
+    if (regions == null || regions.contains(candidate)) {
+      return candidate;
+    }
+    return null;
   }
 
   /**
@@ -5719,7 +5747,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * Test if ssl is enabled to Kafka.
-   * @see ConfigKeys#SSL_TO_KAFKA
+   * @see ConfigKeys#SSL_TO_KAFKA_LEGACY
+   * @see ConfigKeys#KAFKA_OVER_SSL
    */
   @Override
   public boolean isSslToKafka() {
@@ -6345,8 +6374,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     StoreConfig config = storeConfigRepo.getStoreConfigOrThrow(storeName);
     if (config == null || StringUtils.isEmpty(config.getCluster())) {
       throw new VeniceNoStoreException(
-          "Could not find the given store: " + storeName
-              + ". Make sure the store is created and the provided store name is correct");
+          storeName,
+          null,
+          "Make sure the store is created and the provided store name is correct");
     }
     String clusterName = config.getCluster();
     String d2Service = multiClusterConfigs.getClusterToD2Map().get(clusterName);
@@ -6636,9 +6666,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        */
       Store originalStore = getStore(clusterName, storeName.get());
       if (originalStore == null) {
-        throw new VeniceException(
-            "The store '" + storeName.get() + "' in cluster '" + clusterName
-                + "' does not exist, and thus cannot be updated.");
+        throw new VeniceNoStoreException(storeName.get(), clusterName);
       }
       boolean shouldUpdateNativeReplication = false;
       switch (storeType) {
@@ -6763,9 +6791,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        */
       Store originalStore = getStore(clusterName, storeName.get());
       if (originalStore == null) {
-        throw new VeniceException(
-            "The store '" + storeName.get() + "' in cluster '" + clusterName
-                + "' does not exist, and thus cannot be updated.");
+        throw new VeniceNoStoreException(storeName.get(), clusterName);
       }
       boolean shouldUpdateActiveActiveReplication = false;
       switch (storeType) {
@@ -7700,5 +7726,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     checkKafkaTopicAndHelixResource(clusterName, storeName, true, true, true);
     storeGraveyard.removeStoreFromGraveyard(clusterName, storeName);
+  }
+
+  @Override
+  public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
+    return pushStatusStoreReader;
+  }
+
+  // Visible for testing
+  VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
+    return multiClusterConfigs;
   }
 }
