@@ -100,7 +100,7 @@ public class VeniceChangelogSystemConsumer<K, V> implements SystemConsumer, Clos
       Set<SystemStreamPartition> systemStreamPartitions,
       long timeout) throws InterruptedException {
 
-    // consumer.pause();
+    consumer.pause();
     HashMap<Integer, SystemStreamPartition> partitionsToPoll = new HashMap<>();
     Map<SystemStreamPartition, List<IncomingMessageEnvelope>> transformedResult = new HashMap<>();
     for (SystemStreamPartition systemStreamPartition: systemStreamPartitions) {
@@ -108,7 +108,7 @@ public class VeniceChangelogSystemConsumer<K, V> implements SystemConsumer, Clos
       transformedResult.put(systemStreamPartition, new ArrayList<>());
     }
 
-    // consumer.resume(partitionsToPoll.keySet());
+    consumer.resume(partitionsToPoll.keySet());
 
     try {
       Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> results = consumer.poll(timeout);
