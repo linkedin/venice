@@ -26,7 +26,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -356,7 +355,7 @@ public class DualReadAvroGenericStoreClientTest {
       fail("Exception is expected here when both clients return error");
     } catch (Exception e) {
       // expected
-      Assert.assertEquals(e.getClass(), ExecutionException.class);
+      assertEquals(e.getClass(), ExecutionException.class);
     }
   }
 
@@ -425,7 +424,7 @@ public class DualReadAvroGenericStoreClientTest {
       fail("Exception is expected here when both clients return error");
     } catch (Exception e) {
       // expected
-      Assert.assertEquals(e.getClass(), ExecutionException.class);
+      assertEquals(e.getClass(), ExecutionException.class);
     }
   }
 }

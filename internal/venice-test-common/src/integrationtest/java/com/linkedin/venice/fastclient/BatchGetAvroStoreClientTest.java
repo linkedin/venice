@@ -1,5 +1,12 @@
 package com.linkedin.venice.fastclient;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -28,7 +35,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -140,23 +146,10 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = results.get(key);
-      Assert.assertEquals(value.get(VALUE_FIELD_NAME), i);
+      assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    Assert
-        .assertTrue(
-            metricsRepository.metrics()
-                .get(
-                    "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--") + "request_key_count.Rate")
-                .value() > 0,
-            "Respective request_key_count should have been incremented");
-    Assert
-        .assertFalse(
-            metricsRepository.metrics()
-                .get(
-                    "." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
-                .value() > 0,
-            "Incorrect request_key_count should not be incremented");
+    validateMetrics(metricsRepository, useStreamingBatchGetAsDefault);
 
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
@@ -190,23 +183,10 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = results.get(key);
-      Assert.assertEquals(value.get(VALUE_FIELD_NAME), i);
+      assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    Assert
-        .assertTrue(
-            metricsRepository.metrics()
-                .get(
-                    "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--") + "request_key_count.Rate")
-                .value() > 0,
-            "Respective request_key_count should have been incremented");
-    Assert
-        .assertFalse(
-            metricsRepository.metrics()
-                .get(
-                    "." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
-                .value() > 0,
-            "Incorrect request_key_count should not be incremented");
+    validateMetrics(metricsRepository, useStreamingBatchGetAsDefault);
 
     specificFastClient.close();
     printAllStats();
@@ -232,38 +212,33 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
 
     VeniceResponseMap<String, GenericRecord> veniceResponseMap =
         genericFastClient.streamingBatchGet(keys).get(5, TimeUnit.SECONDS);
-    Assert.assertEquals(veniceResponseMap.getNonExistingKeys().size(), 1);
-    Assert.assertTrue(veniceResponseMap.isFullResponse());
-    Assert.assertEquals(veniceResponseMap.getTotalEntryCount(), recordCnt + 1); // 1 for nonExisting key
+    assertEquals(veniceResponseMap.getNonExistingKeys().size(), 1);
+    assertTrue(veniceResponseMap.isFullResponse());
+    assertEquals(veniceResponseMap.getTotalEntryCount(), recordCnt + 1); // 1 for nonExisting key
 
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = veniceResponseMap.get(key);
-      Assert.assertNotNull(value, "Expected non null value but got  null for key " + key);
-      Assert.assertEquals(
+      assertNotNull(value, "Expected non null value but got  null for key " + key);
+      assertEquals(
           value.get(VALUE_FIELD_NAME),
           i,
           "Expected value " + i + " for key " + key + " but got " + value.get(VALUE_FIELD_NAME));
     }
-    Assert.assertEquals(
+    assertEquals(
         veniceResponseMap.size(),
         recordCnt,
         "Incorrect record count . Expected " + recordCnt + " actual " + veniceResponseMap.size());
-    Assert.assertFalse(
+    assertFalse(
         veniceResponseMap.containsKey("nonExisting"),
         " Results contained nonExisting key with value " + veniceResponseMap.get("nonExisting"));
-    Assert.assertNotNull(veniceResponseMap.getNonExistingKeys(), " Expected non existing keys to be not null");
-    Assert.assertEquals(
+    assertNotNull(veniceResponseMap.getNonExistingKeys(), " Expected non existing keys to be not null");
+    assertEquals(
         veniceResponseMap.getNonExistingKeys().size(),
         1,
         "Incorrect non existing key size . Expected  1 got " + veniceResponseMap.getNonExistingKeys().size());
 
-    Assert.assertTrue(
-        metricsRepository.metrics().get("." + storeName + "--multiget_request_key_count.Rate").value() > 0,
-        "Respective request_key_count should have been incremented");
-    Assert.assertFalse(
-        metricsRepository.metrics().get("." + storeName + "--request_key_count.Rate").value() > 0,
-        "Incorrect request_key_count should not be incremented");
+    validateMetrics(metricsRepository, true);
   }
 
   @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
@@ -292,7 +267,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       public void onRecordReceived(String key, GenericRecord value) {
         LOGGER.info("Record received {}:{}", key, value);
         if ("nonExisting".equals(key)) {
-          Assert.assertNull(value);
+          assertNull(value);
         } else {
           if (results.containsKey(key)) {
             isDuplicate.set(true);
@@ -305,7 +280,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       @Override
       public void onCompletion(Optional<Exception> exception) {
         LOGGER.info("Exception received {}", exception);
-        Assert.assertEquals(exception, Optional.empty());
+        assertEquals(exception, Optional.empty());
         isComplete.set(true);
         completeLatch.countDown();
       }
@@ -313,42 +288,37 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
 
     // Wait until isComplete is true or timeout
     if (!completeLatch.await(TIME_OUT_IN_SECONDS, TimeUnit.SECONDS)) {
-      Assert.fail("Test did not complete within timeout");
+      fail("Test did not complete within timeout");
     }
 
-    Assert.assertFalse(isDuplicate.get(), "Duplicate records received");
+    assertFalse(isDuplicate.get(), "Duplicate records received");
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = results.get(key);
-      Assert.assertNotNull(value, "Expected non null value but got null for key " + key);
-      Assert.assertEquals(
+      assertNotNull(value, "Expected non null value but got null for key " + key);
+      assertEquals(
           value.get(VALUE_FIELD_NAME),
           i,
           "Expected value " + i + " for key " + key + " but got " + value.get(VALUE_FIELD_NAME));
     }
-    Assert.assertEquals(
+    assertEquals(
         results.size(),
         recordCnt,
         "Incorrect record count . Expected " + recordCnt + " actual " + results.size());
-    Assert.assertFalse(
+    assertFalse(
         results.containsKey("nonExisting"),
         " Results contained nonExisting key with value " + results.get("nonExisting"));
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     List<Double> metricValues = stats.getMetricValues("multiget_request_key_count", "Avg");
-    Assert.assertEquals(metricValues.get(0), 101.0);
+    assertEquals(metricValues.get(0), 101.0);
     metricValues = stats.getMetricValues("multiget_success_request_key_count", "Avg");
-    Assert.assertEquals(metricValues.get(0), 100.0);
+    assertEquals(metricValues.get(0), 100.0);
 
     LOGGER.info(
         "STATS: latency -> {}",
         stats.buildSensorStatSummary("multiget_healthy_request_latency", "99thPercentile"));
 
-    Assert.assertTrue(
-        metricsRepository.metrics().get("." + storeName + "--multiget_request_key_count.Rate").value() > 0,
-        "Respective request_key_count should have been incremented");
-    Assert.assertFalse(
-        metricsRepository.metrics().get("." + storeName + "--request_key_count.Rate").value() > 0,
-        "Incorrect request_key_count should not be incremented");
+    validateMetrics(metricsRepository, true);
     printAllStats();
   }
 }

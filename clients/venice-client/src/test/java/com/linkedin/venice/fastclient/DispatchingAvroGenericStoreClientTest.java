@@ -1,7 +1,11 @@
 package com.linkedin.venice.fastclient;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.r2.transport.common.Client;
@@ -31,7 +35,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
-import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -149,23 +152,21 @@ public class DispatchingAvroGenericStoreClientTest {
   private void validateRetryMetrics(boolean batchGet, String metricPrefix, boolean useStreamingBatchGetAsDefault) {
     // not supporting retry here: so all retry related metrics should not increment
     if (batchGet) {
-      Assert.assertFalse(
-          metrics.get("." + STORE_NAME + metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
       if (useStreamingBatchGetAsDefault) {
-        Assert.assertFalse(batchGetRequestContext.longTailRetryTriggered);
+        assertFalse(batchGetRequestContext.longTailRetryTriggered);
       }
-      Assert.assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "retry_request_key_count.Rate").value() > 0);
-      Assert.assertFalse(batchGetRequestContext.numberOfKeysSentInRetryRequest > 0);
-      Assert.assertFalse(
-          metrics.get("." + STORE_NAME + metricPrefix + "retry_request_success_key_count.Rate").value() > 0);
-      Assert.assertFalse(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "retry_request_key_count.Rate").value() > 0);
+      assertFalse(batchGetRequestContext.numberOfKeysSentInRetryRequest > 0);
+      assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "retry_request_success_key_count.Rate").value() > 0);
+      assertFalse(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0);
     } else {
-      Assert.assertFalse(metrics.get("." + STORE_NAME + "--error_retry_request.OccurrenceRate").value() > 0);
-      Assert.assertFalse(getRequestContext.errorRetryRequestTriggered);
-      Assert.assertFalse(metrics.get("." + STORE_NAME + "--long_tail_retry_request.OccurrenceRate").value() > 0);
-      Assert.assertFalse(getRequestContext.longTailRetryRequestTriggered);
-      Assert.assertFalse(metrics.get("." + STORE_NAME + "--retry_request_win.OccurrenceRate").value() > 0);
-      Assert.assertFalse(getRequestContext.retryWin);
+      assertFalse(metrics.get("." + STORE_NAME + "--error_retry_request.OccurrenceRate").value() > 0);
+      assertFalse(getRequestContext.errorRetryRequestTriggered);
+      assertFalse(metrics.get("." + STORE_NAME + "--long_tail_retry_request.OccurrenceRate").value() > 0);
+      assertFalse(getRequestContext.longTailRetryRequestTriggered);
+      assertFalse(metrics.get("." + STORE_NAME + "--retry_request_win.OccurrenceRate").value() > 0);
+      assertFalse(getRequestContext.retryWin);
     }
   }
 
@@ -190,18 +191,17 @@ public class DispatchingAvroGenericStoreClientTest {
       setUpClient();
       getRequestContext = new GetRequestContext();
       String value = statsAvroGenericStoreClient.get(getRequestContext, "test_key").get().toString();
-      Assert.assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
+      assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
       metrics = getStats(clientConfig);
-      Assert.assertTrue(metrics.get("." + STORE_NAME + "--healthy_request.OccurrenceRate").value() > 0);
-      Assert.assertTrue(metrics.get("." + STORE_NAME + "--healthy_request_latency.Avg").value() > 0);
-      Assert.assertFalse(metrics.get("." + STORE_NAME + "--unhealthy_request.OccurrenceRate").value() > 0);
-      Assert.assertFalse(metrics.get("." + STORE_NAME + "--unhealthy_request_latency.Avg").value() > 0);
-      Assert.assertFalse(
-          metrics.get("." + STORE_NAME + "--no_available_replica_request_count.OccurrenceRate").value() > 0);
-      Assert.assertFalse(getRequestContext.noAvailableReplica);
-      Assert.assertEquals(metrics.get("." + STORE_NAME + "--request_key_count.Max").value(), 1.0);
-      Assert.assertEquals(metrics.get("." + STORE_NAME + "--success_request_key_count.Max").value(), 1.0);
-      Assert.assertEquals(getRequestContext.successRequestKeyCount.get(), 1);
+      assertTrue(metrics.get("." + STORE_NAME + "--healthy_request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get("." + STORE_NAME + "--healthy_request_latency.Avg").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + "--unhealthy_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + "--unhealthy_request_latency.Avg").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + "--no_available_replica_request_count.OccurrenceRate").value() > 0);
+      assertFalse(getRequestContext.noAvailableReplica);
+      assertEquals(metrics.get("." + STORE_NAME + "--request_key_count.Max").value(), 1.0);
+      assertEquals(metrics.get("." + STORE_NAME + "--success_request_key_count.Max").value(), 1.0);
+      assertEquals(getRequestContext.successRequestKeyCount.get(), 1);
 
       validateRetryMetrics();
     } finally {
@@ -218,16 +218,15 @@ public class DispatchingAvroGenericStoreClientTest {
       fail();
     } catch (Exception e) {
       metrics = getStats(clientConfig);
-      Assert.assertFalse(metrics.get("." + STORE_NAME + "--healthy_request.OccurrenceRate").value() > 0);
-      Assert.assertFalse(metrics.get("." + STORE_NAME + "--healthy_request_latency.Avg").value() > 0);
-      Assert.assertTrue(metrics.get("." + STORE_NAME + "--unhealthy_request.OccurrenceRate").value() > 0);
-      Assert.assertTrue(metrics.get("." + STORE_NAME + "--unhealthy_request_latency.Avg").value() > 0);
-      Assert.assertFalse(
-          metrics.get("." + STORE_NAME + "--no_available_replica_request_count.OccurrenceRate").value() > 0);
-      Assert.assertFalse(getRequestContext.noAvailableReplica);
-      Assert.assertEquals(metrics.get("." + STORE_NAME + "--request_key_count.Max").value(), 1.0);
-      Assert.assertFalse(metrics.get("." + STORE_NAME + "--success_request_key_count.Max").value() > 0);
-      Assert.assertEquals(getRequestContext.successRequestKeyCount.get(), 0);
+      assertFalse(metrics.get("." + STORE_NAME + "--healthy_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + "--healthy_request_latency.Avg").value() > 0);
+      assertTrue(metrics.get("." + STORE_NAME + "--unhealthy_request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get("." + STORE_NAME + "--unhealthy_request_latency.Avg").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + "--no_available_replica_request_count.OccurrenceRate").value() > 0);
+      assertFalse(getRequestContext.noAvailableReplica);
+      assertEquals(metrics.get("." + STORE_NAME + "--request_key_count.Max").value(), 1.0);
+      assertFalse(metrics.get("." + STORE_NAME + "--success_request_key_count.Max").value() > 0);
+      assertEquals(getRequestContext.successRequestKeyCount.get(), 0);
 
       validateRetryMetrics();
     } finally {
@@ -246,37 +245,35 @@ public class DispatchingAvroGenericStoreClientTest {
           (Map<String, String>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       if (useStreamingBatchGetAsDefault) {
         BATCH_GET_KEYS.stream().forEach(key -> {
-          Assert.assertTrue(BATCH_GET_VALUE_RESPONSE.get(key).contentEquals(value.get(key)));
+          assertTrue(BATCH_GET_VALUE_RESPONSE.get(key).contentEquals(value.get(key)));
         });
       } else {
         // uses single get, so based on the mock, any key will return SINGLE_GET_VALUE_RESPONSE as the value.
         // also: batchGetRequestContext is not usable anymore
         BATCH_GET_KEYS.stream().forEach(key -> {
-          Assert.assertTrue(SINGLE_GET_VALUE_RESPONSE.contentEquals(value.get(key)));
+          assertTrue(SINGLE_GET_VALUE_RESPONSE.contentEquals(value.get(key)));
         });
       }
       metrics = getStats(clientConfig, RequestType.MULTI_GET);
       String metricPrefix = useStreamingBatchGetAsDefault ? "--multiget_" : "--";
-      Assert.assertTrue(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
-      Assert.assertTrue(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request_latency.Avg").value() > 0);
-      Assert.assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
-      Assert.assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
-      Assert.assertFalse(
+      assertTrue(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request_latency.Avg").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
+      assertFalse(
           metrics.get("." + STORE_NAME + metricPrefix + "no_available_replica_request_count.OccurrenceRate")
               .value() > 0);
       if (useStreamingBatchGetAsDefault) {
-        Assert.assertFalse(batchGetRequestContext.noAvailableReplica);
+        assertFalse(batchGetRequestContext.noAvailableReplica);
       }
       if (useStreamingBatchGetAsDefault) {
-        Assert.assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 2.0);
-        Assert
-            .assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value(), 2.0);
-        Assert.assertEquals(batchGetRequestContext.successRequestKeyCount.get(), 2);
+        assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 2.0);
+        assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value(), 2.0);
+        assertEquals(batchGetRequestContext.successRequestKeyCount.get(), 2);
       } else {
         // using single get: so 1 will be recorded twice rather than 2
-        Assert.assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 1.0);
-        Assert
-            .assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value(), 1.0);
+        assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 1.0);
+        assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value(), 1.0);
       }
 
       validateRetryMetrics(true, metricPrefix, useStreamingBatchGetAsDefault);
@@ -295,18 +292,18 @@ public class DispatchingAvroGenericStoreClientTest {
     } catch (Exception e) {
       metrics = getStats(clientConfig, RequestType.MULTI_GET);
       String metricPrefix = useStreamingBatchGetAsDefault ? "--multiget_" : "--";
-      Assert.assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
-      Assert.assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request_latency.Avg").value() > 0);
-      Assert.assertTrue(metrics.get("." + STORE_NAME + metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
-      Assert.assertTrue(metrics.get("." + STORE_NAME + metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request_latency.Avg").value() > 0);
+      assertTrue(metrics.get("." + STORE_NAME + metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get("." + STORE_NAME + metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
       if (useStreamingBatchGetAsDefault) {
-        Assert.assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 2.0);
-        Assert.assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value() > 0);
-        Assert.assertEquals(batchGetRequestContext.successRequestKeyCount.get(), 0);
+        assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 2.0);
+        assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value() > 0);
+        assertEquals(batchGetRequestContext.successRequestKeyCount.get(), 0);
       } else {
         // using single get: so 1 will be recorded twice rather than 2
-        Assert.assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 1.0);
-        Assert.assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value() > 0);
+        assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 1.0);
+        assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value() > 0);
       }
 
       validateRetryMetrics(true, metricPrefix, useStreamingBatchGetAsDefault);

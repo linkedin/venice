@@ -2,13 +2,13 @@ package com.linkedin.venice.fastclient.meta;
 
 import static com.linkedin.venice.fastclient.meta.utils.RequestBasedMetadataTestUtils.KEY_SCHEMA;
 import static com.linkedin.venice.fastclient.meta.utils.RequestBasedMetadataTestUtils.VALUE_SCHEMA;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.meta.utils.RequestBasedMetadataTestUtils;
 import java.io.IOException;
 import java.util.Collections;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -25,15 +25,14 @@ public class RequestBasedMetadataTest {
 
     try {
       requestBasedMetadata = RequestBasedMetadataTestUtils.getMockMetaData(clientConfig, storeName);
-      Assert.assertEquals(requestBasedMetadata.getStoreName(), storeName);
-      Assert.assertEquals(requestBasedMetadata.getCurrentStoreVersion(), CURRENT_VERSION);
-      Assert
-          .assertEquals(requestBasedMetadata.getReplicas(CURRENT_VERSION, 0), Collections.singletonList(REPLICA_NAME));
-      Assert.assertEquals(requestBasedMetadata.getKeySchema().toString(), KEY_SCHEMA);
-      Assert.assertEquals(requestBasedMetadata.getValueSchema(1).toString(), VALUE_SCHEMA);
-      Assert.assertEquals(requestBasedMetadata.getLatestValueSchemaId(), Integer.valueOf(1));
-      Assert.assertEquals(requestBasedMetadata.getLatestValueSchema().toString(), VALUE_SCHEMA);
-      Assert.assertEquals(
+      assertEquals(requestBasedMetadata.getStoreName(), storeName);
+      assertEquals(requestBasedMetadata.getCurrentStoreVersion(), CURRENT_VERSION);
+      assertEquals(requestBasedMetadata.getReplicas(CURRENT_VERSION, 0), Collections.singletonList(REPLICA_NAME));
+      assertEquals(requestBasedMetadata.getKeySchema().toString(), KEY_SCHEMA);
+      assertEquals(requestBasedMetadata.getValueSchema(1).toString(), VALUE_SCHEMA);
+      assertEquals(requestBasedMetadata.getLatestValueSchemaId(), Integer.valueOf(1));
+      assertEquals(requestBasedMetadata.getLatestValueSchema().toString(), VALUE_SCHEMA);
+      assertEquals(
           requestBasedMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, CURRENT_VERSION),
           RequestBasedMetadataTestUtils.getZstdVeniceCompressor(storeName));
     } finally {
