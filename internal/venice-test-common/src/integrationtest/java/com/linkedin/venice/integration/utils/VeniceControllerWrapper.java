@@ -58,6 +58,7 @@ import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -107,6 +108,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final MetricsRepository metricsRepository;
   private final String regionName;
 
+  private final PubSubClientsFactory pubSubClientsFactory;
+
   private VeniceControllerWrapper(
       String regionName,
       String serviceName,
@@ -118,7 +121,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       boolean isParent,
       List<ServiceDiscoveryAnnouncer> d2ServerList,
       String zkAddress,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      PubSubClientsFactory pubSubClientsFactory) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.configs = configs;
@@ -129,6 +133,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.d2ServerList = d2ServerList;
     this.metricsRepository = metricsRepository;
     this.regionName = regionName;
+    this.pubSubClientsFactory = pubSubClientsFactory;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(VeniceControllerCreateOptions options) {
@@ -313,6 +318,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (passedSupersetSchemaGenerator != null && passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
         supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
       }
+
       VeniceController veniceController = new VeniceController(
           propertiesList,
           metricsRepository,
@@ -322,7 +328,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           d2Client,
           consumerClientConfig,
           Optional.empty(),
-          supersetSchemaGenerator);
+          supersetSchemaGenerator,
+          options.getKafkaBroker().getPubSubClientsFactory());
       return new VeniceControllerWrapper(
           options.getRegionName(),
           serviceName,
@@ -334,7 +341,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           options.isParent(),
           d2ServerList,
           options.getZkAddress(),
-          metricsRepository);
+          metricsRepository,
+          options.getKafkaBroker().getPubSubClientsFactory());
     };
   }
 

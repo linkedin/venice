@@ -16,6 +16,10 @@ import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
@@ -59,11 +63,12 @@ public class VeniceController {
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
   private static final String CONTROLLER_SERVICE_NAME = "venice-controller";
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubClientsFactory pubSubClientsFactory;
 
   /**
    * This constructor is being used in integration test.
    *
-   * @see #VeniceController(List, MetricsRepository, List, Optional, Optional, D2Client, Optional, Optional, Optional)
+   * @see #VeniceController(List, MetricsRepository, List, Optional, Optional, D2Client, Optional, Optional, Optional, PubSubClientsFactory)
    */
   public VeniceController(
       List<VeniceProperties> propertiesList,
@@ -77,7 +82,11 @@ public class VeniceController {
         Optional.empty(),
         authorizerService,
         d2Client,
-        Optional.empty());
+        Optional.empty(),
+        new PubSubClientsFactory(
+            new ApacheKafkaProducerAdapterFactory(),
+            new ApacheKafkaConsumerAdapterFactory(),
+            new ApacheKafkaAdminAdapterFactory()));
   }
 
   public VeniceController(
@@ -97,7 +106,33 @@ public class VeniceController {
         d2Client,
         routerClientConfig,
         Optional.empty(),
-        Optional.empty());
+        Optional.empty(),
+        new PubSubClientsFactory(
+            new ApacheKafkaProducerAdapterFactory(),
+            new ApacheKafkaConsumerAdapterFactory(),
+            new ApacheKafkaAdminAdapterFactory()));
+  }
+
+  public VeniceController(
+      List<VeniceProperties> propertiesList,
+      MetricsRepository metricsRepository,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
+      D2Client d2Client,
+      Optional<ClientConfig> routerClientConfig,
+      PubSubClientsFactory pubSubClientsFactory) {
+    this(
+        propertiesList,
+        metricsRepository,
+        serviceDiscoveryAnnouncers,
+        accessController,
+        authorizerService,
+        d2Client,
+        routerClientConfig,
+        Optional.empty(),
+        Optional.empty(),
+        pubSubClientsFactory);
   }
 
   /**
@@ -129,7 +164,8 @@ public class VeniceController {
       D2Client d2Client,
       Optional<ClientConfig> routerClientConfig,
       Optional<ICProvider> icProvider,
-      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
+      PubSubClientsFactory pubSubClientsFactory) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
     this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
@@ -141,6 +177,7 @@ public class VeniceController {
     this.routerClientConfig = routerClientConfig;
     this.icProvider = icProvider;
     this.externalSupersetSchemaGenerator = externalSupersetSchemaGenerator;
+    this.pubSubClientsFactory = pubSubClientsFactory;
     createServices();
   }
 
@@ -156,7 +193,8 @@ public class VeniceController {
         routerClientConfig,
         icProvider,
         externalSupersetSchemaGenerator,
-        pubSubTopicRepository);
+        pubSubTopicRepository,
+        pubSubClientsFactory);
 
     adminServer = new AdminSparkServer(
         // no need to pass the hostname, we are binding to all the addresses
