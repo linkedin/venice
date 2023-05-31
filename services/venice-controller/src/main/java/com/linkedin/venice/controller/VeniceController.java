@@ -24,7 +24,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
-import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -61,79 +60,9 @@ public class VeniceController {
   private final Optional<ClientConfig> routerClientConfig;
   private final Optional<ICProvider> icProvider;
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
-  private static final String CONTROLLER_SERVICE_NAME = "venice-controller";
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final PubSubClientsFactory pubSubClientsFactory;
-
-  /**
-   * This constructor is being used in integration test.
-   *
-   * @see #VeniceController(List, MetricsRepository, List, Optional, Optional, D2Client, Optional, Optional, Optional, PubSubClientsFactory)
-   */
-  public VeniceController(
-      List<VeniceProperties> propertiesList,
-      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
-      Optional<AuthorizerService> authorizerService,
-      D2Client d2Client) {
-    this(
-        propertiesList,
-        TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME),
-        serviceDiscoveryAnnouncers,
-        Optional.empty(),
-        authorizerService,
-        d2Client,
-        Optional.empty(),
-        new PubSubClientsFactory(
-            new ApacheKafkaProducerAdapterFactory(),
-            new ApacheKafkaConsumerAdapterFactory(),
-            new ApacheKafkaAdminAdapterFactory()));
-  }
-
-  public VeniceController(
-      List<VeniceProperties> propertiesList,
-      MetricsRepository metricsRepository,
-      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
-      Optional<DynamicAccessController> accessController,
-      Optional<AuthorizerService> authorizerService,
-      D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig) {
-    this(
-        propertiesList,
-        metricsRepository,
-        serviceDiscoveryAnnouncers,
-        accessController,
-        authorizerService,
-        d2Client,
-        routerClientConfig,
-        Optional.empty(),
-        Optional.empty(),
-        new PubSubClientsFactory(
-            new ApacheKafkaProducerAdapterFactory(),
-            new ApacheKafkaConsumerAdapterFactory(),
-            new ApacheKafkaAdminAdapterFactory()));
-  }
-
-  public VeniceController(
-      List<VeniceProperties> propertiesList,
-      MetricsRepository metricsRepository,
-      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
-      Optional<DynamicAccessController> accessController,
-      Optional<AuthorizerService> authorizerService,
-      D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig,
-      PubSubClientsFactory pubSubClientsFactory) {
-    this(
-        propertiesList,
-        metricsRepository,
-        serviceDiscoveryAnnouncers,
-        accessController,
-        authorizerService,
-        d2Client,
-        routerClientConfig,
-        Optional.empty(),
-        Optional.empty(),
-        pubSubClientsFactory);
-  }
+  static final String CONTROLLER_SERVICE_NAME = "venice-controller";
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -152,9 +81,8 @@ public class VeniceController {
    *        a {@link D2Client} used for interacting with child controllers.
    * @param routerClientConfig
    *        an optional {@link ClientConfig} used for reading schema from routers.
-   * @param icProvider
-   *        an {@link ICProvider} used for injecting custom tracing functionality.
    */
+  @Deprecated
   public VeniceController(
       List<VeniceProperties> propertiesList,
       MetricsRepository metricsRepository,
@@ -162,22 +90,36 @@ public class VeniceController {
       Optional<DynamicAccessController> accessController,
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig,
-      Optional<ICProvider> icProvider,
-      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
-      PubSubClientsFactory pubSubClientsFactory) {
-    this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
-    this.metricsRepository = metricsRepository;
-    this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
+      Optional<ClientConfig> routerClientConfig) {
+    this(
+        new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
+            .setMetricsRepository(metricsRepository)
+            .setServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers)
+            .setAccessController(accessController.orElse(null))
+            .setAuthorizerService(authorizerService.orElse(null))
+            .setD2Client(d2Client)
+            .setRouterClientConfig(routerClientConfig.orElse(null))
+            .setPubSubClientsFactory(
+                new PubSubClientsFactory(
+                    new ApacheKafkaProducerAdapterFactory(),
+                    new ApacheKafkaConsumerAdapterFactory(),
+                    new ApacheKafkaAdminAdapterFactory()))
+            .build());
+  }
+
+  public VeniceController(VeniceControllerContext ctx) {
+    this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(ctx.getPropertiesList());
+    this.metricsRepository = ctx.getMetricsRepository();
+    this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
     Optional<SSLConfig> sslConfig = multiClusterConfigs.getSslConfig();
     this.sslEnabled = sslConfig.isPresent() && sslConfig.get().isControllerSSLEnabled();
-    this.accessController = accessController;
-    this.authorizerService = authorizerService;
-    this.d2Client = d2Client;
-    this.routerClientConfig = routerClientConfig;
-    this.icProvider = icProvider;
-    this.externalSupersetSchemaGenerator = externalSupersetSchemaGenerator;
-    this.pubSubClientsFactory = pubSubClientsFactory;
+    this.accessController = Optional.ofNullable(ctx.getAccessController());
+    this.authorizerService = Optional.ofNullable(ctx.getAuthorizerService());
+    this.d2Client = ctx.getD2Client();
+    this.routerClientConfig = Optional.ofNullable(ctx.getRouterClientConfig());
+    this.icProvider = Optional.ofNullable(ctx.getIcProvider());
+    this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
+    this.pubSubClientsFactory = ctx.getPubSubClientsFactory();
     createServices();
   }
 
@@ -348,11 +290,17 @@ public class VeniceController {
     D2Client d2Client =
         new D2ClientBuilder().setZkHosts(controllerProps.getString(ZOOKEEPER_ADDRESS)).setIsSSLEnabled(false).build();
     D2ClientUtils.startClient(d2Client);
+    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
+        new ApacheKafkaProducerAdapterFactory(),
+        new ApacheKafkaConsumerAdapterFactory(),
+        new ApacheKafkaAdminAdapterFactory());
     VeniceController controller = new VeniceController(
-        Arrays.asList(new VeniceProperties[] { controllerProps }),
-        new ArrayList<>(),
-        Optional.empty(),
-        d2Client);
+        new VeniceControllerContext.Builder()
+            .setPropertiesList(Arrays.asList(new VeniceProperties[] { controllerProps }))
+            .setServiceDiscoveryAnnouncers(new ArrayList<>())
+            .setD2Client(d2Client)
+            .setPubSubClientsFactory(pubSubClientsFactory)
+            .build());
     controller.start();
     addShutdownHook(controller, d2Client);
     if (joinThread) {

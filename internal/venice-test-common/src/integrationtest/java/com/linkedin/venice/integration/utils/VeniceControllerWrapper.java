@@ -50,6 +50,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
+import com.linkedin.venice.controller.VeniceControllerContext;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
@@ -318,18 +319,16 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (passedSupersetSchemaGenerator != null && passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
         supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
       }
-
-      VeniceController veniceController = new VeniceController(
-          propertiesList,
-          metricsRepository,
-          d2ServerList,
-          Optional.empty(),
-          Optional.ofNullable(options.getAuthorizerService()),
-          d2Client,
-          consumerClientConfig,
-          Optional.empty(),
-          supersetSchemaGenerator,
-          options.getKafkaBroker().getPubSubClientsFactory());
+      VeniceControllerContext ctx = new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
+          .setMetricsRepository(metricsRepository)
+          .setServiceDiscoveryAnnouncers(d2ServerList)
+          .setAuthorizerService(options.getAuthorizerService())
+          .setD2Client(d2Client)
+          .setRouterClientConfig(consumerClientConfig.orElse(null))
+          .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
+          .setPubSubClientsFactory(options.getKafkaBroker().getPubSubClientsFactory())
+          .build();
+      VeniceController veniceController = new VeniceController(ctx);
       return new VeniceControllerWrapper(
           options.getRegionName(),
           serviceName,
@@ -414,7 +413,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       d2ServerList.add(createD2Server(zkAddress, securePort, true, isParent));
     }
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
-    service = new VeniceController(configs, d2ServerList, Optional.empty(), d2Client);
+    service = new VeniceController(
+        new VeniceControllerContext.Builder().setPropertiesList(configs)
+            .setServiceDiscoveryAnnouncers(d2ServerList)
+            .setD2Client(d2Client)
+            .setPubSubClientsFactory(pubSubClientsFactory)
+            .build());
   }
 
   /***
