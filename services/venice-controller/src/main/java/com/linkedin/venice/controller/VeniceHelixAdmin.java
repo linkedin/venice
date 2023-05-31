@@ -503,7 +503,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         commonConfig.getRefreshIntervalForZkReconnectInMs());
     storeConfigRepo.refresh();
     this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
-    veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
+    veniceWriterFactory = new VeniceWriterFactory(
+        commonConfig.getProps().toProperties(),
+        pubSubClientsFactory.getProducerAdapterFactory(),
+        null);
     this.realTimeTopicSwitcher = new RealTimeTopicSwitcher(
         topicManagerRepository.getTopicManager(),
         veniceWriterFactory,
