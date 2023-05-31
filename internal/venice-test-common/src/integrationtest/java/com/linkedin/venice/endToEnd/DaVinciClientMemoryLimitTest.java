@@ -77,16 +77,8 @@ public class DaVinciClientMemoryLimitTest {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 10L);
-    clusterConfig.put(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_NO_DAVINCI_STATUS_REPORT_RETRY_MAX_ATTEMPTS, 5); // To
-                                                                                                                     // allow
-                                                                                                                     // more
-                                                                                                                     // times
-                                                                                                                     // for
-                                                                                                                     // DaVinci
-                                                                                                                     // clients
-                                                                                                                     // to
-                                                                                                                     // report
-                                                                                                                     // status
+    // To allow more times for DaVinci clients to report status
+    clusterConfig.put(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_NO_DAVINCI_STATUS_REPORT_RETRY_MAX_ATTEMPTS, 5);
     venice = ServiceFactory.getVeniceCluster(1, 2, 1, 1, 100, false, false, clusterConfig);
     d2Client = new D2ClientBuilder().setZkHosts(venice.getZk().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
@@ -445,11 +437,17 @@ public class DaVinciClientMemoryLimitTest {
         // Hybrid store ingestion should be stuck and verify the metrics
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           assertEquals(
-              metricsRepository.metrics().get("." + hybridStoreName + "--stuck_ingestion.Gauge").value(),
+              metricsRepository.metrics()
+                  .get("." + hybridStoreName + "--ingestion_stuck_by_memory_constraint.Gauge")
+                  .value(),
               1.0d);
-          assertEquals(metricsRepository.metrics().get(".total--stuck_ingestion.Gauge").value(), 1.0d);
           assertEquals(
-              metricsRepository.metrics().get("." + batchOnlyStoreName + "--stuck_ingestion.Gauge").value(),
+              metricsRepository.metrics().get(".total--ingestion_stuck_by_memory_constraint.Gauge").value(),
+              1.0d);
+          assertEquals(
+              metricsRepository.metrics()
+                  .get("." + batchOnlyStoreName + "--ingestion_stuck_by_memory_constraint.Gauge")
+                  .value(),
               0.0d);
         });
 
@@ -459,11 +457,17 @@ public class DaVinciClientMemoryLimitTest {
         // After removing the batch-only store, the hybrid store should resume
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           assertEquals(
-              metricsRepository.metrics().get("." + hybridStoreName + "--stuck_ingestion.Gauge").value(),
+              metricsRepository.metrics()
+                  .get("." + hybridStoreName + "--ingestion_stuck_by_memory_constraint.Gauge")
+                  .value(),
               0.0d);
-          assertEquals(metricsRepository.metrics().get(".total--stuck_ingestion.Gauge").value(), 0.0d);
           assertEquals(
-              metricsRepository.metrics().get("." + batchOnlyStoreName + "--stuck_ingestion.Gauge").value(),
+              metricsRepository.metrics().get(".total--ingestion_stuck_by_memory_constraint.Gauge").value(),
+              0.0d);
+          assertEquals(
+              metricsRepository.metrics()
+                  .get("." + batchOnlyStoreName + "--ingestion_stuck_by_memory_constraint.Gauge")
+                  .value(),
               0.0d);
         });
 

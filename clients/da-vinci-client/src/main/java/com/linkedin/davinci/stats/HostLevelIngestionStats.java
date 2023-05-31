@@ -258,12 +258,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
                         : task.getStorageEngine().getRMDSizeInBytes())
                 .sum()));
     registerSensor(
-        "stuck_ingestion",
+        "ingestion_stuck_by_memory_constraint",
         new Gauge(
             () -> ingestionTaskMap.values()
                 .stream()
                 .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
-                .mapToLong(task -> task.isStuck() ? 1 : 0)
+                .mapToLong(task -> task.isStuckByMemoryConstraint() ? 1 : 0)
                 .sum()));
 
     // Stats which are per-store only:

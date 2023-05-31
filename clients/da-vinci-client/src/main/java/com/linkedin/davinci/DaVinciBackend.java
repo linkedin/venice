@@ -283,7 +283,7 @@ public class DaVinciBackend implements Closeable {
         }
       } catch (VeniceNoStoreException e) {
         // The store does not exist in Venice anymore, so it will be deleted.
-        LOGGER.info("Store does not exist, will delete invalid local version: {}", storageEngineName);
+        LOGGER.warn("Store does not exist, will delete invalid local version: {}", storageEngineName);
         storeShouldBeDeleted = true;
       }
       if (storeShouldBeDeleted) {

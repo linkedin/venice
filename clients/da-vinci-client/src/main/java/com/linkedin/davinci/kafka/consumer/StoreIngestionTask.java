@@ -1082,7 +1082,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (partitionException instanceof MemoryLimitExhaustedException
             || partitionException.getCause() instanceof MemoryLimitExhaustedException
                 && isCurrentVersion.getAsBoolean()) {
-          LOGGER.info(
+          LOGGER.warn(
               "Encountered MemoryLimitExhaustedException, and ingestion task will try to reopen the database and"
                   + " resume the consumption after killing ingestion tasks for non current versions");
           /**
@@ -1097,9 +1097,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               pubSubTopicPartition.getPartitionNumber());
           runnableForKillIngestionTasksForNonCurrentVersions.run();
           if (storageEngine.hasMemorySpaceLeft()) {
-            if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
-              unSubscribePartition(pubSubTopicPartition);
-            }
+            unSubscribePartition(pubSubTopicPartition);
             /**
              * DaVinci ingestion hits memory limit and we would like to retry it in the following way:
              * 1. Kill the ingestion tasks for non-current versions.
@@ -3537,7 +3535,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaVersionTopic;
   }
 
-  public boolean isStuck() {
+  public boolean isStuckByMemoryConstraint() {
     for (PartitionExceptionInfo ex: partitionIngestionExceptionList) {
       if (ex == null) {
         continue;
