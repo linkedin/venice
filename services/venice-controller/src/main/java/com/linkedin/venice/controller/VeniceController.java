@@ -31,6 +31,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -119,7 +120,7 @@ public class VeniceController {
     this.routerClientConfig = Optional.ofNullable(ctx.getRouterClientConfig());
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
-    this.pubSubClientsFactory = ctx.getPubSubClientsFactory();
+    this.pubSubClientsFactory = Objects.requireNonNull(ctx.getPubSubClientsFactory(), "PubSubClientsFactory is null");
     createServices();
   }
 
