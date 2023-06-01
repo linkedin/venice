@@ -24,7 +24,9 @@ import it.unimi.dsi.fastutil.ints.IntSet;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,17 +45,22 @@ import org.apache.logging.log4j.Logger;
 public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRepository {
   private static final Logger LOGGER = LogManager.getLogger(HelixCustomizedViewOfflinePushRepository.class);
   private final ReentrantReadWriteLock resourceAssignmentRWLock = new ReentrantReadWriteLock();
-  private static final String LEADER_FOLLOWER_VENICE_STATE_FILLER = "N/A";
 
   private final Map<String, Integer> resourceToPartitionCountMap = new VeniceConcurrentHashMap<>();
 
   private final ReadOnlyStoreRepository storeRepository;
 
-  public HelixCustomizedViewOfflinePushRepository(SafeHelixManager manager, ReadOnlyStoreRepository storeRepository) {
+  private final boolean enableReplicaStatusHistory;
+
+  public HelixCustomizedViewOfflinePushRepository(
+      SafeHelixManager manager,
+      ReadOnlyStoreRepository storeRepository,
+      boolean enableReplicaStatusHistory) {
     super(manager);
     dataSource.put(PropertyType.CUSTOMIZEDVIEW, Collections.singletonList(HelixPartitionState.OFFLINE_PUSH.name()));
     this.storeRepository = storeRepository;
     this.storeRepository.registerStoreDataChangedListener(new StoreChangeListener());
+    this.enableReplicaStatusHistory = enableReplicaStatusHistory;
   }
 
   @Override
@@ -65,19 +72,11 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
     if (partition == null) {
       return Collections.emptyList();
     }
-    return partition.getAllInstances()
+    return partition.getAllInstancesByExecutionStatus()
         .entrySet()
         .stream()
         .flatMap(
-            e -> e.getValue()
-                .stream()
-                .map(
-                    instance -> new ReplicaState(
-                        partitionId,
-                        instance.getNodeId(),
-                        LEADER_FOLLOWER_VENICE_STATE_FILLER,
-                        e.getKey(),
-                        e.getKey().equals(ExecutionStatus.COMPLETED.name()))))
+            e -> e.getValue().stream().map(instance -> new ReplicaState(partitionId, instance.getNodeId(), e.getKey())))
         .collect(Collectors.toList());
   }
 
@@ -86,7 +85,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
     try (AutoCloseableLock ignored = AutoCloseableLock.of(resourceAssignmentRWLock.readLock())) {
       partition = resourceAssignment.getPartition(kafkaTopic, partitionId);
     }
-    return partition == null ? 0 : partition.getInstancesInState(COMPLETED.name()).size();
+    return partition == null ? 0 : partition.getInstancesInState(COMPLETED).size();
   }
 
   /* Returns map of partitionId and the number of completed replicas in that partition */
@@ -127,6 +126,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
       Set<String> resourcesInCustomizedView =
           customizedViewCollection.stream().map(CustomizedView::getResourceName).collect(Collectors.toSet());
 
+      Set<String> instancesSeenInCustomizedViewButMissingFromLiveInstances = new HashSet<>();
       for (CustomizedView customizedView: customizedViewCollection) {
         String resourceName = customizedView.getResourceName();
         int partitionCount = resourceToPartitionCountMap.getOrDefault(resourceName, -1);
@@ -150,7 +150,7 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
         for (String partitionName: customizedView.getPartitionSet()) {
           // Get instance to customized state map for this partition from local memory.
           Map<String, String> instanceStateMap = customizedView.getStateMap(partitionName);
-          Map<String, List<Instance>> stateToInstanceMap = new HashMap<>();
+          EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstanceMap = new EnumMap<>(ExecutionStatus.class);
           // Populate customized state to instance set map
           for (Map.Entry<String, String> entry: instanceStateMap.entrySet()) {
             String instanceName = entry.getKey();
@@ -164,28 +164,36 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
                 LOGGER.warn("Instance: {} unrecognized status: {}.", instanceName, instanceState);
                 continue;
               }
-              stateToInstanceMap.computeIfAbsent(status.toString(), s -> new ArrayList<>()).add(instance);
+              executionStatusToInstanceMap.computeIfAbsent(status, s -> new ArrayList<>()).add(instance);
             } else {
-              LOGGER.warn("Cannot find instance '{}' in /LIVEINSTANCES", instanceName);
+              instancesSeenInCustomizedViewButMissingFromLiveInstances.add(instanceName);
             }
           }
           // Update partitionAssignment of customized state
           int partitionId = HelixUtils.getPartitionId(partitionName);
-          partitionAssignment.addPartition(new Partition(partitionId, stateToInstanceMap));
+          partitionAssignment
+              .addPartition(new Partition(partitionId, new EnumMap<>(HelixState.class), executionStatusToInstanceMap));
 
           // Update partition status to trigger callback
           // Note we do not change the callback function which listens on PartitionStatus change, instead, we populate
           // partition status with partition assignment data of customized view
           PartitionStatus partitionStatus = new PartitionStatus(partitionId);
-          stateToInstanceMap.forEach(
-              (key, value) -> value.forEach(
-                  instance -> partitionStatus.updateReplicaStatus(instance.getNodeId(), ExecutionStatus.valueOf(key))));
+          for (Map.Entry<ExecutionStatus, List<Instance>> entry: executionStatusToInstanceMap.entrySet()) {
+            for (Instance instance: entry.getValue()) {
+              partitionStatus.updateReplicaStatus(instance.getNodeId(), entry.getKey(), enableReplicaStatusHistory);
+            }
+          }
           listenerManager.trigger(
               resourceName,
               listener -> listener
                   .onPartitionStatusChange(resourceName, ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus)));
         }
         newResourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
+      }
+      if (!instancesSeenInCustomizedViewButMissingFromLiveInstances.isEmpty()) {
+        LOGGER.warn(
+            "The following instances were found in the CV, but missing from Live Instances: {}",
+            instancesSeenInCustomizedViewButMissingFromLiveInstances);
       }
       final ResourceAssignmentChanges updates;
       try (AutoCloseableLock ignored = AutoCloseableLock.of(resourceAssignmentRWLock.writeLock())) {
@@ -214,11 +222,6 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
         listenerManager.trigger(kafkaTopic, listener -> listener.onRoutingDataDeleted(kafkaTopic));
       }
     }
-  }
-
-  @Override
-  public void refreshRoutingDataForResource(String kafkaTopic) {
-    throw new VeniceException("The function of refreshRoutingDataForResource is not implemented");
   }
 
   // test only
@@ -251,8 +254,8 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
 
       resourceToPartitionCountMap.entrySet().removeIf(entry -> {
         String storeName = Version.parseStoreFromKafkaTopicName(entry.getKey());
-        int version = Version.parseVersionFromVersionTopicName(entry.getKey());
-        return store.getName().equals(storeName) && !versionsSet.contains(version);
+        return store.getName().equals(storeName)
+            && !versionsSet.contains(Version.parseVersionFromVersionTopicName(entry.getKey()));
       });
 
       String newResourceName = Version.composeKafkaTopic(store.getName(), currentVersion);

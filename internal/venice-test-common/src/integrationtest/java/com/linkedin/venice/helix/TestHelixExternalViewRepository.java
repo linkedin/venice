@@ -7,7 +7,6 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
-import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
@@ -141,19 +140,6 @@ public class TestHelixExternalViewRepository {
       Assert.assertEquals(instancesList.get(0).getPort(), newHttpPort);
     });
     newManager.disconnect();
-  }
-
-  @Test
-  public void testGetReplicaStates() {
-    List<ReplicaState> replicaStates = repository.getReplicaStates(resourceName, 0);
-    Assert.assertEquals(replicaStates.size(), 1, "Unexpected replication factor");
-    ReplicaState replicaState = replicaStates.iterator().next();
-    Assert.assertEquals(replicaState.getPartition(), 0, "Unexpected partition number");
-    Assert.assertNotNull(replicaState.getParticipantId(), "Participant id should not be null");
-    Assert.assertEquals(replicaState.getExternalViewStatus(), HelixState.ONLINE_STATE);
-    Assert.assertEquals(
-        replicaState.isReadyToServe(),
-        replicaState.getExternalViewStatus().equals(HelixState.ONLINE_STATE));
   }
 
   @Test

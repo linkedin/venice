@@ -1,9 +1,11 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
@@ -54,9 +56,9 @@ public class TestHolisticSeverHealthCheck {
     cluster.close();
   }
 
-  private boolean verifyNodeReplicasState(String nodeId, NodeReplicasReadinessState state) {
-    NodeReplicasReadinessResponse response = controllerClient.nodeReplicasReadiness(nodeId);
-    return !response.isError() && response.getNodeState() == state;
+  private void verifyNodeReplicasState(String nodeId, NodeReplicasReadinessState state) {
+    NodeReplicasReadinessResponse response = assertCommand(controllerClient.nodeReplicasReadiness(nodeId));
+    assertEquals(response.getNodeState(), state);
   }
 
   private boolean verifyNodeIsError(String nodeId) {
@@ -68,7 +70,7 @@ public class TestHolisticSeverHealthCheck {
     String wrongNodeId = "incorrect_node_id";
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
-      Assert.assertTrue(verifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
+      verifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY);
       Assert.assertTrue(verifyNodeIsError(wrongNodeId));
     }
   }
@@ -76,7 +78,7 @@ public class TestHolisticSeverHealthCheck {
   private void verifyNodesAreInExpectedState(NodeReplicasReadinessState state) {
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
-      Assert.assertTrue(verifyNodeReplicasState(nodeId, state));
+      verifyNodeReplicasState(nodeId, state);
     }
   }
 
@@ -160,7 +162,7 @@ public class TestHolisticSeverHealthCheck {
     // Wait until the servers are in the ready state again.
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
-      TestUtils.waitForNonDeterministicCompletion(
+      TestUtils.waitForNonDeterministicAssertion(
           120,
           TimeUnit.SECONDS,
           () -> verifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));

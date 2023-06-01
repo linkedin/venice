@@ -45,13 +45,6 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
   void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener);
 
   /**
-   * In case any delays for routing data updates, we sometimes refresh the data from zk
-   * to get the latest resource statuses.
-   * @param kafkaTopic
-   */
-  void refreshRoutingDataForResource(String kafkaTopic);
-
-  /**
    * Get the map contains all live instances which key is instance Id and value is the instance object.
    */
   Map<String, Instance> getLiveInstancesMap();

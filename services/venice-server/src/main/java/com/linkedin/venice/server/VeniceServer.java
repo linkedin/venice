@@ -342,7 +342,7 @@ public class VeniceServer {
     CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture =
         managerFuture.thenApply(manager -> {
           HelixCustomizedViewOfflinePushRepository customizedView =
-              new HelixCustomizedViewOfflinePushRepository(manager, metadataRepo);
+              new HelixCustomizedViewOfflinePushRepository(manager, metadataRepo, false);
           customizedView.refresh();
           return customizedView;
         });

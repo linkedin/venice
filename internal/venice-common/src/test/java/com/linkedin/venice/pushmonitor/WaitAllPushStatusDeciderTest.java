@@ -75,10 +75,10 @@ public class WaitAllPushStatusDeciderTest extends TestPushStatusDecider {
   public void testGetPartitionStatus() {
     PartitionStatus partitionStatus = new PartitionStatus(0);
 
-    Map<Instance, String> instanceToStateMap = new HashMap<>();
-    instanceToStateMap.put(new Instance("instance0", "host0", 1), HelixState.STANDBY_STATE);
-    instanceToStateMap.put(new Instance("instance1", "host1", 1), HelixState.STANDBY_STATE);
-    instanceToStateMap.put(new Instance("instance2", "host2", 1), HelixState.LEADER_STATE);
+    Map<Instance, HelixState> instanceToStateMap = new HashMap<>();
+    instanceToStateMap.put(new Instance("instance0", "host0", 1), HelixState.STANDBY);
+    instanceToStateMap.put(new Instance("instance1", "host1", 1), HelixState.STANDBY);
+    instanceToStateMap.put(new Instance("instance2", "host2", 1), HelixState.LEADER);
 
     // Not enough replicas
     partitionStatus.updateReplicaStatus("instance0", COMPLETED);
@@ -111,7 +111,7 @@ public class WaitAllPushStatusDeciderTest extends TestPushStatusDecider {
         statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, null),
         ERROR);
 
-    instanceToStateMap.put(new Instance("instance3", "host3", 1), HelixState.STANDBY_STATE);
+    instanceToStateMap.put(new Instance("instance3", "host3", 1), HelixState.STANDBY);
     Assert.assertEquals(
         statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, null),
         STARTED);

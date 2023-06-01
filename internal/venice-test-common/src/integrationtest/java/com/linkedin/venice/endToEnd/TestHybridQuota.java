@@ -191,7 +191,7 @@ public class TestHybridQuota {
       version.setPartitionCount(3);
       store.addVersion(version);
       writeStoreRepository.addStore(store);
-      offlinePushRepository = new HelixCustomizedViewOfflinePushRepository(readManager, writeStoreRepository);
+      offlinePushRepository = new HelixCustomizedViewOfflinePushRepository(readManager, writeStoreRepository, false);
       hybridStoreQuotaOnlyRepository = new HelixHybridStoreQuotaRepository(readManager);
       offlinePushRepository.refresh();
       hybridStoreQuotaOnlyRepository.refresh();

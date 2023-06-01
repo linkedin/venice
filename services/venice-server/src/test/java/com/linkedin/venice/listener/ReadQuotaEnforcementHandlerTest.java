@@ -17,7 +17,6 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
@@ -95,7 +94,7 @@ public class ReadQuotaEnforcementHandlerTest {
     List<ReplicaState> replicaStates = new ArrayList<>();
     ReplicaState thisReplicaState = mock(ReplicaState.class);
     doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
-    doReturn(ExecutionStatus.COMPLETED.name()).when(thisReplicaState).getVenicePushStatus();
+    doReturn(true).when(thisReplicaState).isReadyToServe();
     replicaStates.add(thisReplicaState);
     when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
 
@@ -133,11 +132,11 @@ public class ReadQuotaEnforcementHandlerTest {
     List<ReplicaState> replicaStates = new ArrayList<>();
     ReplicaState thisReplicaState = mock(ReplicaState.class);
     doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
-    doReturn(ExecutionStatus.COMPLETED.name()).when(thisReplicaState).getVenicePushStatus();
+    doReturn(true).when(thisReplicaState).isReadyToServe();
     replicaStates.add(thisReplicaState);
     ReplicaState otherReplicaState = mock(ReplicaState.class);
     doReturn(otherInstance.getNodeId()).when(otherReplicaState).getParticipantId();
-    doReturn(ExecutionStatus.COMPLETED.name()).when(otherReplicaState).getVenicePushStatus();
+    doReturn(true).when(otherReplicaState).isReadyToServe();
     replicaStates.add(otherReplicaState);
     when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
 

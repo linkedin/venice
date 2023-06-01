@@ -24,7 +24,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
-import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.helix.SystemStoreJSONSerializer;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -598,11 +597,9 @@ public class TestMetaDataHandler {
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Mockito.doReturn(2).when(routingDataRepository).getNumberOfPartitions(resourceName);
     List<ReplicaState> replicaStates0 = new ArrayList<>();
-    replicaStates0
-        .add(new ReplicaState(0, "test-host_0", HelixState.LEADER_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates0.add(new ReplicaState(0, "test-host_0", ExecutionStatus.COMPLETED));
     List<ReplicaState> replicaStates1 = new ArrayList<>();
-    replicaStates1
-        .add(new ReplicaState(1, "test-host_1", HelixState.LEADER_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates1.add(new ReplicaState(1, "test-host_1", ExecutionStatus.COMPLETED));
     Mockito.doReturn(replicaStates0).when(routingDataRepository).getReplicaStates(resourceName, 0);
     Mockito.doReturn(replicaStates1).when(routingDataRepository).getReplicaStates(resourceName, 1);
 
@@ -618,10 +615,8 @@ public class TestMetaDataHandler {
         OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertTrue(resourceStateResponse.isReadyToServe());
     // Add a not ready to serve replica in partition 0 which should put the version to not ready to serve.
-    replicaStates0
-        .add(new ReplicaState(0, "test-host_2", HelixState.STANDBY_STATE, ExecutionStatus.STARTED.toString(), false));
-    replicaStates1
-        .add(new ReplicaState(1, "test-host_3", HelixState.STANDBY_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates0.add(new ReplicaState(0, "test-host_2", ExecutionStatus.STARTED));
+    replicaStates1.add(new ReplicaState(1, "test-host_3", ExecutionStatus.COMPLETED));
     response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/resource_state/" + resourceName,
         routingDataRepository,
@@ -633,10 +628,8 @@ public class TestMetaDataHandler {
     resourceStateResponse = OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertFalse(resourceStateResponse.isReadyToServe());
     // Add one more ready to serve replica in each partition which should put the version to ready to serve.
-    replicaStates0
-        .add(new ReplicaState(0, "test-host_4", HelixState.STANDBY_STATE, ExecutionStatus.COMPLETED.toString(), true));
-    replicaStates1
-        .add(new ReplicaState(1, "test-host_5", HelixState.STANDBY_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates0.add(new ReplicaState(0, "test-host_4", ExecutionStatus.COMPLETED));
+    replicaStates1.add(new ReplicaState(1, "test-host_5", ExecutionStatus.COMPLETED));
     response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/resource_state/" + resourceName,
         routingDataRepository,
@@ -656,8 +649,7 @@ public class TestMetaDataHandler {
     RoutingDataRepository routingDataRepository = Mockito.mock(RoutingDataRepository.class);
     List<String> systemStoreResources = new ArrayList<>();
     List<ReplicaState> replicaStates = new ArrayList<>();
-    replicaStates
-        .add(new ReplicaState(0, "test-host_0", HelixState.ONLINE_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates.add(new ReplicaState(0, "test-host_0", ExecutionStatus.COMPLETED));
     for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.values()) {
       String resourceName = Version.composeKafkaTopic(systemStoreType.getSystemStoreName(storeName), 1);
       systemStoreResources.add(resourceName);
@@ -706,8 +698,7 @@ public class TestMetaDataHandler {
         .when(storeConfigRepository)
         .getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName));
     List<ReplicaState> replicaStates0 = new ArrayList<>();
-    replicaStates0
-        .add(new ReplicaState(0, "test-host_0", HelixState.LEADER_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates0.add(new ReplicaState(0, "test-host_0", ExecutionStatus.COMPLETED));
     Mockito.doReturn(replicaStates0).when(routingDataRepository).getReplicaStates(resourceName, 0);
     Mockito.doReturn(Collections.emptyList()).when(routingDataRepository).getReplicaStates(resourceName, 1);
     response = passRequestToMetadataHandler(

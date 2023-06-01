@@ -13,7 +13,7 @@ public class Replica {
   private final Instance instance;
   private final int partitionId;
   private final String resource;
-  private String status;
+  private HelixState status;
 
   public Replica(
       @JsonProperty("instance") Instance instance,
@@ -36,11 +36,18 @@ public class Replica {
     return resource;
   }
 
-  public String getStatus() {
+  public HelixState getStatus() {
     return status;
   }
 
+  /** Used by the JSON deserializer */
   public void setStatus(String status) {
+    if (status != null) {
+      this.status = HelixState.valueOf(status);
+    }
+  }
+
+  public void setStatus(HelixState status) {
     this.status = status;
   }
 
@@ -51,7 +58,9 @@ public class Replica {
     joiner.add("Host:").add(instance.getUrl());
     joiner.add("Resource:").add(resource);
     joiner.add("Partition:").add(Integer.toString(partitionId));
-    joiner.add("Status:").add(status);
+    if (status != null) {
+      joiner.add("Status:").add(status.toString());
+    }
     return joiner.toString();
   }
 }

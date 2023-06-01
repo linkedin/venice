@@ -16,7 +16,16 @@ public class ReadOnlyPartitionStatus extends PartitionStatus {
   }
 
   @Override
-  public void updateProgress(String instanceId, long progress) {
+  public void updateReplicaStatus(String instanceId, ExecutionStatus newStatus, boolean enableStatusHistory) {
+    throw new VeniceException("Unsupported operation in ReadonlyPartition status: updateProgress.");
+  }
+
+  @Override
+  public void updateReplicaStatus(
+      String instanceId,
+      ExecutionStatus newStatus,
+      String incrementalPushVersion,
+      long progress) {
     throw new VeniceException("Unsupported operation in ReadonlyPartition status: updateProgress.");
   }
 

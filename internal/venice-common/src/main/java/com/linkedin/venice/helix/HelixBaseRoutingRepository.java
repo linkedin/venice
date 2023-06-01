@@ -156,13 +156,10 @@ public abstract class HelixBaseRoutingRepository
    * This function is mainly used in VeniceVersionFinder#anyOfflinePartitions() when there is no online replica for
    * a specific partition, and it calls this function to get the partition assignment info for error msg. It's valid
    * case that there is no partition assignment for a specific partition and we return EMPTY_MAP.
-   *
-   * If the expectation for this function is more than just logging error message, we should invoke
-   * {@link RoutingDataRepository#refreshRoutingDataForResource(String)} to get a fresh partition assignment.
    */
-  public Map<String, List<Instance>> getAllInstances(String kafkaTopic, int partitionId) {
+  public Map<ExecutionStatus, List<Instance>> getAllInstances(String kafkaTopic, int partitionId) {
     Partition partition = getPartitionAssignments(kafkaTopic).getPartition(partitionId);
-    return partition != null ? partition.getAllInstances() : Collections.emptyMap();
+    return partition != null ? partition.getAllInstancesByExecutionStatus() : Collections.emptyMap();
   }
 
   @Override

@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,14 +64,16 @@ public abstract class PushStatusDecider {
       int replicationFactor = pushStatus.getReplicationFactor();
       int errorReplicasCount = partition.getErrorInstances().size();
       int completedReplicasCount = partition.getReadyToServeInstances().size();
-      int assignedReplicasCount = partition.getAllInstances().size();
-      logger.debug(
-          "Checking Push status for offline push for topic: {} Partition: {} has {} assigned replicas including {} error replicas, {} completed replicas.",
-          pushStatus.getKafkaTopic(),
-          partition.getId(),
-          assignedReplicasCount,
-          errorReplicasCount,
-          completedReplicasCount);
+      if (logger.isDebugEnabled()) {
+        int assignedReplicasCount = partition.getNumOfTotalInstances();
+        logger.debug(
+            "Checking Push status for offline push for topic: {} Partition: {} has {} assigned replicas including {} error replicas, {} completed replicas.",
+            pushStatus.getKafkaTopic(),
+            partition.getId(),
+            assignedReplicasCount,
+            errorReplicasCount,
+            completedReplicasCount);
+      }
 
       // Is push failed due to there is enough number of error replicas.
       if (!hasEnoughReplicasForOnePartition(replicationFactor - errorReplicasCount, replicationFactor)) {
@@ -129,7 +132,7 @@ public abstract class PushStatusDecider {
         ExecutionStatus executionStatus = getPartitionStatus(
             partitionStatus,
             pushStatus.getReplicationFactor(),
-            partition.getInstanceToStateMap(),
+            partition.getInstanceToHelixStateMap(),
             callback);
 
         if (executionStatus == ERROR) {
@@ -165,10 +168,8 @@ public abstract class PushStatusDecider {
       PartitionAssignment partitionAssignment,
       int partitionId) {
     return partitionAssignment.getPartition(partitionId)
-        .getAllInstances()
-        .values()
+        .getAllInstancesSet()
         .stream()
-        .flatMap(List::stream)
         .filter(
             instance -> PushStatusDecider
                 .getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(instance.getNodeId()))
@@ -251,23 +252,10 @@ public abstract class PushStatusDecider {
   protected ExecutionStatus getPartitionStatus(
       PartitionStatus partitionStatus,
       int replicationFactor,
-      Map<Instance, String> instanceToStateMap,
+      Map<Instance, HelixState> instanceToStateMap,
       DisableReplicaCallback callback) {
-    return getPartitionStatus(
-        partitionStatus,
-        replicationFactor,
-        instanceToStateMap,
-        getNumberOfToleratedErrors(),
-        callback);
-  }
-
-  protected ExecutionStatus getPartitionStatus(
-      PartitionStatus partitionStatus,
-      int replicationFactor,
-      Map<Instance, String> instanceToStateMap,
-      int numberOfToleratedErrors,
-      DisableReplicaCallback callback) {
-    Map<ExecutionStatus, Integer> executionStatusMap = new HashMap<>();
+    int numberOfToleratedErrors = getNumberOfToleratedErrors();
+    Map<ExecutionStatus, Integer> executionStatusMap = new EnumMap<>(ExecutionStatus.class);
 
     // when resources are running under L/F model, leader is usually taking more critical work and
     // are more important than followers. Therefore, we strictly require leaders to be completed before
@@ -275,10 +263,10 @@ public abstract class PushStatusDecider {
     // state.
     boolean isLeaderCompleted = true;
     int previouslyDisabledErrorReplica = 0;
-    for (Map.Entry<Instance, String> entry: instanceToStateMap.entrySet()) {
+    for (Map.Entry<Instance, HelixState> entry: instanceToStateMap.entrySet()) {
       ExecutionStatus currentStatus =
           getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(entry.getKey().getNodeId()));
-      if (entry.getValue().equals(HelixState.LEADER_STATE)) {
+      if (entry.getValue() == HelixState.LEADER) {
         if (!currentStatus.equals(COMPLETED)) {
           isLeaderCompleted = false;
         }
@@ -286,7 +274,7 @@ public abstract class PushStatusDecider {
             && !callback.isReplicaDisabled(entry.getKey().getNodeId(), partitionStatus.getPartitionId())) {
           callback.disableReplica(entry.getKey().getNodeId(), partitionStatus.getPartitionId());
         }
-      } else if (entry.getValue().equals(HelixState.OFFLINE_STATE)) {
+      } else if (entry.getValue() == HelixState.OFFLINE) {
         // If the replica is in offline state, check if its due to previously disabled replica or not.
         if (callback != null
             && callback.isReplicaDisabled(entry.getKey().getNodeId(), partitionStatus.getPartitionId())) {
@@ -297,20 +285,22 @@ public abstract class PushStatusDecider {
       executionStatusMap.merge(currentStatus, 1, Integer::sum);
     }
 
-    if (executionStatusMap.containsKey(COMPLETED)
-        && executionStatusMap.get(COMPLETED) >= (replicationFactor - numberOfToleratedErrors) && isLeaderCompleted) {
+    Integer statusCount = executionStatusMap.get(COMPLETED);
+    if (statusCount != null && statusCount >= (replicationFactor - numberOfToleratedErrors) && isLeaderCompleted) {
       return COMPLETED;
     }
 
-    if (executionStatusMap.containsKey(ERROR) && (executionStatusMap.get(ERROR)
-        + previouslyDisabledErrorReplica > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors)) {
+    statusCount = executionStatusMap.get(ERROR);
+    if (statusCount != null && (statusCount + previouslyDisabledErrorReplica > instanceToStateMap.size()
+        - replicationFactor + numberOfToleratedErrors)) {
       return ERROR;
     }
 
     /**
      * Report EOP if at least one replica has consumed an EOP control message
      */
-    if (executionStatusMap.containsKey(END_OF_PUSH_RECEIVED) && executionStatusMap.get(END_OF_PUSH_RECEIVED) > 0) {
+    statusCount = executionStatusMap.get(END_OF_PUSH_RECEIVED);
+    if (statusCount != null && statusCount > 0) {
       return END_OF_PUSH_RECEIVED;
     }
 

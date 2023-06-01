@@ -5847,7 +5847,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     partitionAssignment.getAllPartitions().forEach(partition -> {
       int partitionId = partition.getId();
-      partition.getAllInstances().forEach((helixState, instanceList) -> {
+      partition.getAllInstancesByHelixState().forEach((helixState, instanceList) -> {
         instanceList.forEach(instance -> {
           Replica replica = new Replica(instance, partitionId, kafkaTopic);
           replica.setStatus(helixState);

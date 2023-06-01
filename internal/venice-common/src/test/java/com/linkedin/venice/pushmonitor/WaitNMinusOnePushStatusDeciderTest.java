@@ -86,15 +86,15 @@ public class WaitNMinusOnePushStatusDeciderTest extends TestPushStatusDecider {
   public void testGetPartitionStatus() {
     PartitionStatus partitionStatus = new PartitionStatus(0);
 
-    Map<Instance, String> instanceToStateMap = new HashMap<>();
+    Map<Instance, HelixState> instanceToStateMap = new HashMap<>();
     Instance instance0 = new Instance("instance0", "host0", 1);
     Instance instance1 = new Instance("instance1", "host0", 1);
     Instance instance2 = new Instance("instance2", "host0", 1);
     Instance instance3 = new Instance("instance3", "host0", 1);
 
-    instanceToStateMap.put(instance0, HelixState.STANDBY_STATE);
-    instanceToStateMap.put(instance1, HelixState.STANDBY_STATE);
-    instanceToStateMap.put(instance2, HelixState.LEADER_STATE);
+    instanceToStateMap.put(instance0, HelixState.STANDBY);
+    instanceToStateMap.put(instance1, HelixState.STANDBY);
+    instanceToStateMap.put(instance2, HelixState.LEADER);
 
     // Not enough replicas
     partitionStatus.updateReplicaStatus("instance0", COMPLETED);
@@ -161,7 +161,7 @@ public class WaitNMinusOnePushStatusDeciderTest extends TestPushStatusDecider {
             .getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getDisableReplicaCallback("")),
         COMPLETED);
     // offline instance in error, job will still finish
-    instanceToStateMap.put(instance3, HelixState.OFFLINE_STATE);
+    instanceToStateMap.put(instance3, HelixState.OFFLINE);
     partitionStatus.updateReplicaStatus("instance3", ERROR);
     Assert.assertEquals(
         statusDecider
