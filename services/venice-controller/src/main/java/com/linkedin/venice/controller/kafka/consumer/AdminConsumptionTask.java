@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -827,6 +828,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               "Failed to handle operation type: " + adminOperation.operationType
                   + " because it does not contain a storeName field");
         }
+    }
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    if (systemStoreType != null) {
+      storeName = systemStoreType.extractRegularStoreName(storeName);
     }
     return storeName;
   }
