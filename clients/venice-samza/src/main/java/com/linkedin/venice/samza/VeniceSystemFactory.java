@@ -233,7 +233,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    * @param partitioners A list of comma-separated partitioners class names that are supported.
    */
   @SuppressWarnings("unused")
-  protected SystemProducer createSystemProducer(
+  protected VeniceSystemProducer createSystemProducer(
       String veniceChildD2ZkHost,
       String primaryControllerColoD2ZKHost,
       String primaryControllerD2Service,
@@ -272,7 +272,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    * @param sslFactory An optional {@link SSLFactory} that is used to communicate with other components using SSL
    * @param partitioners A list of comma-separated partitioners class names that are supported.
    */
-  protected SystemProducer createSystemProducer(
+  protected VeniceSystemProducer createSystemProducer(
       String veniceChildD2ZkHost,
       String primaryControllerColoD2ZKHost,
       String primaryControllerD2Service,
@@ -373,6 +373,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
           partitioners,
           SystemTime.INSTANCE);
       p.setRouterUrl(routerUrl);
+      p.applyAdditionalWriterConfigs(config);
       return p;
     }
 
@@ -430,7 +431,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service);
 
-    SystemProducer systemProducer = createSystemProducer(
+    VeniceSystemProducer systemProducer = createSystemProducer(
         localVeniceZKHosts,
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service,
@@ -443,6 +444,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         // need this
         sslFactory,
         partitioners);
+    systemProducer.applyAdditionalWriterConfigs(config);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
   }

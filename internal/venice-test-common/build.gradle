@@ -56,7 +56,6 @@ dependencies {
     // this will introduce another different mockito-all version
     exclude group: 'org.mockito', module: 'mockito-all'
   }
-
   implementation project(':clients:da-vinci-client')
   implementation project(':clients:venice-client')
   implementation project(':clients:venice-push-job')
@@ -99,6 +98,8 @@ dependencies {
   testImplementation project(':clients:venice-admin-tool')
   testImplementation project(':internal:alpini:common:alpini-common-base')
   testImplementation project(':internal:venice-common').sourceSets.test.output
+  testImplementation libraries.log4j2core
+  testImplementation libraries.log4j2api
 
   jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:' + jmh.jmhVersion.get()
   jmhImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
