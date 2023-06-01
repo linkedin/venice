@@ -143,14 +143,13 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   /**
-   * Not using retry in these tests, so none of the retry metrics should be incremented *
+   * Not using retry in these tests, so none of the retry metrics should be incremented
    */
   private void validateRetryMetrics() {
     validateRetryMetrics(false, "", false);
   }
 
   private void validateRetryMetrics(boolean batchGet, String metricPrefix, boolean useStreamingBatchGetAsDefault) {
-    // not supporting retry here: so all retry related metrics should not increment
     if (batchGet) {
       assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
       if (useStreamingBatchGetAsDefault) {
@@ -210,7 +209,7 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   @Test
-  public void testGetWithException() throws IOException {
+  public void testGetWithExceptionFromTransportLayer() throws IOException {
     try {
       setUpClient(false, true);
       getRequestContext = new GetRequestContext();
@@ -265,7 +264,7 @@ public class DispatchingAvroGenericStoreClientTest {
               .value() > 0);
       if (useStreamingBatchGetAsDefault) {
         assertFalse(batchGetRequestContext.noAvailableReplica);
-      }
+      } // else: locally created single get context will be used internally and not batchGetRequestContext
       if (useStreamingBatchGetAsDefault) {
         assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 2.0);
         assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value(), 2.0);
@@ -283,7 +282,7 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBatchGetWithException(boolean useStreamingBatchGetAsDefault) throws IOException {
+  public void testBatchGetWithExceptionFromTransportLayer(boolean useStreamingBatchGetAsDefault) throws IOException {
     try {
       setUpClient(useStreamingBatchGetAsDefault, true);
       batchGetRequestContext = new BatchGetRequestContext<>();
