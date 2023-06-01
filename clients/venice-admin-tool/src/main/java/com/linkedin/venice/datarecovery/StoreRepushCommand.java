@@ -199,9 +199,11 @@ public class StoreRepushCommand extends Command {
     }
 
     public void setTimestamp(String timestamp) {
-      DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
-      LocalDateTime time = LocalDateTime.parse(timestamp, formatter);
-      this.timestamp = time;
+      this.timestamp = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+
+    public Optional<SSLFactory> getSSLFactory() {
+      return sslFactory;
     }
 
     public void setTimestamp(LocalDateTime time) {

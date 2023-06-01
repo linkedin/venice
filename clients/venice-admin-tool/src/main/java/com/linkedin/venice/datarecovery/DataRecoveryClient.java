@@ -61,13 +61,12 @@ public class DataRecoveryClient {
     String destFabric = params.getDestFabric();
     for (String s: storesList) {
       String clusterName = cli.discoverCluster(s).getCluster();
-      try (ControllerClient parentCtrlCli = buildControllerClient(clusterName, url, Optional.empty())) {
+      try (ControllerClient parentCtrlCli = buildControllerClient(clusterName, url, params.getSSLFactory())) {
         StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(s, false);
         RegionPushDetails regionPushDetails = storeHealthInfo.getRegionPushDetails().get(destFabric);
         String latestTimestamp = regionPushDetails.getPushStartTimestamp();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSS");
-        LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, formatter);
-        if (latestPushStartTime.compareTo(timestamp) <= 0) {
+        LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        if (latestPushStartTime.isBefore(timestamp)) {
           ret.add(s);
         } else {
           LOGGER.warn(
@@ -95,10 +94,20 @@ public class DataRecoveryClient {
     if (!drParams.isNonInteractive && !confirmStores(filteredStoreNames)) {
       return;
     }
-    LOGGER.error(filteredStoreNames.size() + "ASDF123");
-    LOGGER.warn(filteredStoreNames.size() + "ASDF123");
 
     getExecutor().perform(filteredStoreNames, cmdParams);
+
+    // check if we filtered stores based on push info, report them
+    if (storeNames.size() != filteredStoreNames.size()) {
+      LOGGER.error("================");
+      LOGGER.error("REPUSH FAILED FOR SOME STORES:");
+      for (String store: storeNames) {
+        if (!filteredStoreNames.contains(store)) {
+          LOGGER.error(store);
+        }
+      }
+      LOGGER.error("================");
+    }
     getExecutor().shutdownAndAwaitTermination();
   }
 
