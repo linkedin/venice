@@ -64,6 +64,7 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_NO_DAVINCI_STATUS_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
@@ -195,6 +196,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int offlinePushMonitorDaVinciPushStatusScanIntervalInSeconds;
 
   private final int offlinePushMonitorDaVinciPushStatusScanThreadNumber;
+
+  private final int offlinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt;
 
   private final boolean zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled;
 
@@ -429,6 +432,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getInt(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 30);
     this.offlinePushMonitorDaVinciPushStatusScanThreadNumber =
         props.getInt(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER, 4);
+    this.offlinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt =
+        props.getInt(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_NO_DAVINCI_STATUS_REPORT_RETRY_MAX_ATTEMPTS, 0);
 
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled =
         props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
@@ -749,6 +754,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getOfflinePushMonitorDaVinciPushStatusScanThreadNumber() {
     return offlinePushMonitorDaVinciPushStatusScanThreadNumber;
+  }
+
+  public int getOfflinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt() {
+    return offlinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt;
   }
 
   public boolean isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled() {

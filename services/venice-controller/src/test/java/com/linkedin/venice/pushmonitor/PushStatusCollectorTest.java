@@ -2,6 +2,7 @@ package com.linkedin.venice.pushmonitor;
 
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -55,7 +56,8 @@ public class PushStatusCollectorTest {
         pushErrorConsumer,
         true,
         1,
-        4);
+        4,
+        1);
     pushStatusCollector.start();
 
     pushStatusCollector.subscribeTopic(regularStoreTopicV1, 10);
@@ -156,6 +158,87 @@ public class PushStatusCollectorTest {
         2,
         TimeUnit.SECONDS,
         true,
+        () -> Assert.assertEquals(pushErrorCount.get(), 1));
+  }
+
+  @Test
+  public void testPushStatusCollectorDaVinciStatusPollingRetry() {
+    ReadWriteStoreRepository storeRepository = mock(ReadWriteStoreRepository.class);
+    PushStatusStoreReader pushStatusStoreReader = mock(PushStatusStoreReader.class);
+
+    String daVinciStoreName = "daVinciStore";
+    String daVinciStoreTopicV1 = "daVinciStore_v1";
+    String daVinciStoreTopicV2 = "daVinciStore_v2";
+    String daVinciStoreTopicV3 = "daVinciStore_v3";
+
+    Store daVinciStore = mock(Store.class);
+    when(daVinciStore.isDaVinciPushStatusStoreEnabled()).thenReturn(true);
+    when(storeRepository.getStore(daVinciStoreName)).thenReturn(daVinciStore);
+
+    AtomicInteger pushCompletedCount = new AtomicInteger();
+    AtomicInteger pushErrorCount = new AtomicInteger();
+
+    Consumer<String> pushCompleteConsumer = x -> pushCompletedCount.getAndIncrement();
+    BiConsumer<String, String> pushErrorConsumer = (x, y) -> pushErrorCount.getAndIncrement();
+    PushStatusCollector pushStatusCollector = new PushStatusCollector(
+        storeRepository,
+        pushStatusStoreReader,
+        pushCompleteConsumer,
+        pushErrorConsumer,
+        true,
+        1,
+        4,
+        1);
+    pushStatusCollector.start();
+
+    pushCompletedCount.set(0);
+    pushErrorCount.set(0);
+    Map<CharSequence, Integer> successfulInstancePushStatus = Collections.singletonMap("instance", 10);
+    Map<CharSequence, Integer> errorInstancePushStatus = Collections.singletonMap("instance", 12);
+    Map<CharSequence, Integer> startedInstancePushStatus = Collections.singletonMap("instance", 2);
+
+    when(pushStatusStoreReader.getPartitionStatus(daVinciStoreName, 2, 0, Optional.empty()))
+        .thenReturn(Collections.emptyMap(), startedInstancePushStatus, successfulInstancePushStatus);
+    when(pushStatusStoreReader.getPartitionStatus(daVinciStoreName, 3, 0, Optional.empty()))
+        .thenReturn(Collections.emptyMap(), startedInstancePushStatus, errorInstancePushStatus);
+    when(pushStatusStoreReader.isInstanceAlive(daVinciStoreName, "instance")).thenReturn(true);
+    pushStatusCollector.subscribeTopic(daVinciStoreTopicV1, 1);
+    Assert.assertFalse(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV1));
+
+    // Da Vinci Topic v2, DVC success, Server success
+    pushCompletedCount.set(0);
+    pushErrorCount.set(0);
+    pushStatusCollector.subscribeTopic(daVinciStoreTopicV2, 1);
+    Assert.assertTrue(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV2));
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        false,
+        () -> verify(pushStatusStoreReader, times(3)).getPartitionStatus(daVinciStoreName, 2, 0, Optional.empty()));
+    Assert.assertEquals(pushCompletedCount.get(), 0);
+    pushStatusCollector.handleServerPushStatusUpdate(daVinciStoreTopicV2, ExecutionStatus.COMPLETED, null);
+    TestUtils.waitForNonDeterministicAssertion(
+        2,
+        TimeUnit.SECONDS,
+        false,
+        () -> Assert.assertEquals(pushCompletedCount.get(), 1));
+
+    // Da Vinci Topic v3, DVC ERROR, Server COMPLETED
+    pushCompletedCount.set(0);
+    pushErrorCount.set(0);
+    pushStatusCollector.subscribeTopic(daVinciStoreTopicV3, 1);
+    Assert.assertTrue(pushStatusCollector.getTopicToPushStatusMap().containsKey(daVinciStoreTopicV3));
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        false,
+        () -> verify(pushStatusStoreReader, times(3)).getPartitionStatus(daVinciStoreName, 3, 0, Optional.empty()));
+    Assert.assertEquals(pushErrorCount.get(), 0);
+    pushStatusCollector.handleServerPushStatusUpdate(daVinciStoreTopicV3, ExecutionStatus.COMPLETED, null);
+    TestUtils.waitForNonDeterministicAssertion(
+        2,
+        TimeUnit.SECONDS,
+        false,
         () -> Assert.assertEquals(pushErrorCount.get(), 1));
   }
 }
