@@ -96,7 +96,8 @@ public class PushMonitorUtils {
           return new ExecutionStatusWithDetails(
               ExecutionStatus.ERROR,
               " To many dead instances " + (totalReplicaCount - liveReplicaCount) + ", total instances "
-                  + totalReplicaCount, noDaVinciStatusReported);
+                  + totalReplicaCount,
+              noDaVinciStatusReported);
         }
       } else {
         storeVersionToDVCDeadInstanceTimeMap.put(topicName, System.currentTimeMillis());
