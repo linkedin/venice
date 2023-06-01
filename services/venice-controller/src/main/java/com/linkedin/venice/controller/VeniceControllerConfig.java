@@ -129,6 +129,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
   private final boolean parent;
+  private final List<String> childDataCenterAllowlist;
   private final Map<String, String> childDataCenterControllerUrlMap;
   private final String d2ServiceName;
   private final String clusterDiscoveryD2ServiceName;
@@ -291,9 +292,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     if (dataCenterAllowlist.isEmpty()) {
       this.childDataCenterControllerUrlMap = Collections.emptyMap();
       this.childDataCenterControllerD2Map = Collections.emptyMap();
+      this.childDataCenterAllowlist = Collections.emptyList();
     } else {
       this.childDataCenterControllerUrlMap = parseClusterMap(props, dataCenterAllowlist);
       this.childDataCenterControllerD2Map = parseClusterMap(props, dataCenterAllowlist, true);
+      this.childDataCenterAllowlist = Arrays.asList(dataCenterAllowlist.split(",\\s*"));
     }
     this.d2ServiceName =
         childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
@@ -574,6 +577,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public Map<String, String> getChildDataCenterKafkaUrlMap() {
     return childDataCenterKafkaUrlMap;
+  }
+
+  public List<String> getChildDataCenterAllowlist() {
+    return childDataCenterAllowlist;
   }
 
   public Set<String> getActiveActiveRealTimeSourceFabrics() {

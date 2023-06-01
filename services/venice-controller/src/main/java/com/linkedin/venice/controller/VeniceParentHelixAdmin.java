@@ -3704,6 +3704,18 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceUnsupportedOperationException("nodeReplicaReadiness is not supported");
   }
 
+  private boolean whetherToCreateNewDataRecoveryVersion(
+      String destFabric,
+      String clusterName,
+      StoreInfo destStore,
+      int versionNumber) {
+    // Currently new version data recovery is only supported for batch-only store.
+    // For existing data centers, current store version might be serving read requests. Need to create a new version.
+    // For new data centers or non-current version, it's ok to delete and recreate it. No need to create a new version.
+    return destStore.getHybridStoreConfig() == null && versionNumber == destStore.getCurrentVersion()
+        && multiClusterConfigs.getControllerConfig(clusterName).getChildDataCenterAllowlist().contains(destFabric);
+  }
+
   /**
    * @see Admin#initiateDataRecovery(String, String, int, String, String, boolean, Optional)
    */
@@ -3719,10 +3731,38 @@ public class VeniceParentHelixAdmin implements Admin {
     ControllerClient srcFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, sourceFabric);
     ControllerClient destFabricChildControllerClient =
         getFabricBuildoutControllerClient(clusterName, destinationFabric);
-    StoreInfo storeInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
-    Optional<Version> sourceVersion = storeInfo.getVersion(version);
+    StoreResponse srcStoreResponse = srcFabricChildControllerClient.getStore(storeName);
+    if (srcStoreResponse.isError()) {
+      throw new VeniceException(
+          "Error when getting store " + storeName + " from source fabric " + sourceFabric + ": "
+              + srcStoreResponse.getError());
+    }
+    StoreInfo srcStoreInfo = srcStoreResponse.getStore();
+    if (version == VERSION_ID_UNSET) {
+      version = srcStoreInfo.getCurrentVersion();
+    }
+    Optional<Version> sourceVersion = srcStoreInfo.getVersion(version);
     if (!sourceVersion.isPresent()) {
-      throw new VeniceException("Version: " + version + " does not exist in the given source fabric: " + sourceFabric);
+      throw new VeniceException(
+          "Version " + version + " does not exist in source fabric " + sourceFabric + " store " + storeName);
+    }
+    StoreResponse destStoreResponse = destFabricChildControllerClient.getStore(storeName);
+    if (destStoreResponse.isError()) {
+      throw new VeniceException(
+          "Error when getting store " + storeName + " from destination fabric " + destinationFabric + ": "
+              + destStoreResponse.getError());
+    }
+    if (whetherToCreateNewDataRecoveryVersion(destinationFabric, clusterName, destStoreResponse.getStore(), version)) {
+      Store parentStore = getStore(clusterName, storeName);
+      int newVersion = parentStore.peekNextVersion().getNumber();
+      getVeniceHelixAdmin().setStoreLargestUsedVersion(clusterName, storeName, newVersion);
+      LOGGER.info(
+          "Current version {}_v{} in {} might be serving read requests. Copying data to a new version {}.",
+          storeName,
+          version,
+          destinationFabric,
+          newVersion);
+      version = newVersion;
     }
     ControllerResponse destinationFabricResponse = destFabricChildControllerClient
         .dataRecovery(sourceFabric, destinationFabric, storeName, version, true, copyAllVersionConfigs, sourceVersion);
@@ -3746,13 +3786,38 @@ public class VeniceParentHelixAdmin implements Admin {
     ControllerClient srcFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, sourceFabric);
     ControllerClient destFabricChildControllerClient =
         getFabricBuildoutControllerClient(clusterName, destinationFabric);
-    StoreInfo sourceStoreInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
-    int amplificationFactor = sourceStoreInfo.getPartitionerConfig().getAmplificationFactor();
-    ControllerResponse destinationFabricResponse = destFabricChildControllerClient
-        .prepareDataRecovery(sourceFabric, destinationFabric, storeName, version, Optional.of(amplificationFactor));
-    if (destinationFabricResponse.isError()) {
+    StoreResponse srcStoreResponse = srcFabricChildControllerClient.getStore(storeName);
+    if (srcStoreResponse.isError()) {
       throw new VeniceException(
-          "Failed to prepare for data recovery in destination fabric, error: " + destinationFabricResponse.getError());
+          "Error when getting store " + storeName + " from source fabric " + sourceFabric + ": "
+              + srcStoreResponse.getError());
+    }
+    StoreInfo srcStoreInfo = srcStoreResponse.getStore();
+    if (version == VERSION_ID_UNSET) {
+      // If version number is not specified, prepare to copy data from source region current version.
+      version = srcStoreInfo.getCurrentVersion();
+    }
+    StoreResponse destStoreResponse = destFabricChildControllerClient.getStore(storeName);
+    if (destStoreResponse.isError()) {
+      throw new VeniceException(
+          "Error when getting store " + storeName + " from destination fabric " + destinationFabric + ": "
+              + destStoreResponse.getError());
+    }
+    if (whetherToCreateNewDataRecoveryVersion(destinationFabric, clusterName, destStoreResponse.getStore(), version)) {
+      LOGGER.info(
+          "Skip current version {}_v{} cleanup in {} as it might be serving read requests.",
+          storeName,
+          version,
+          destinationFabric);
+      return;
+    }
+    int amplificationFactor = srcStoreInfo.getPartitionerConfig().getAmplificationFactor();
+    ControllerResponse destFabricResponse = destFabricChildControllerClient
+        .prepareDataRecovery(sourceFabric, destinationFabric, storeName, version, Optional.of(amplificationFactor));
+    if (destFabricResponse.isError()) {
+      throw new VeniceException(
+          "Error when preparing data recovery for store " + storeName + " in destination fabric " + destinationFabric
+              + ": " + destFabricResponse.getError());
     }
   }
 
