@@ -25,6 +25,7 @@ import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicComplet
 import static com.linkedin.venice.utils.Time.MS_PER_DAY;
 import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyDouble;
@@ -75,6 +76,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
@@ -294,6 +296,8 @@ public abstract class StoreIngestionTaskTest {
   private PubSubTopicPartition fooTopicPartition;
   private PubSubTopicPartition barTopicPartition;
 
+  private Runnable runnableForKillNonCurrentVersion;
+
   private static final int PARTITION_COUNT = 10;
   private static final Set<Integer> ALL_PARTITIONS = new HashSet<>();
   static {
@@ -467,6 +471,8 @@ public abstract class StoreIngestionTaskTest {
         .getReplicationMetadataSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID, REPLICATION_METADATA_VERSION_ID);
 
     setDefaultStoreVersionStateSupplier();
+
+    runnableForKillNonCurrentVersion = mock(Runnable.class);
   }
 
   private VeniceWriter getVeniceWriter(String topic, PubSubProducerAdapter producerAdapter, int amplificationFactor) {
@@ -903,7 +909,8 @@ public abstract class StoreIngestionTaskTest {
         .setAggKafkaConsumerService(aggKafkaConsumerService)
         .setCompressorFactory(new StorageEngineBackedCompressorFactory(mockStorageMetadataService))
         .setPubSubTopicRepository(pubSubTopicRepository)
-        .setPartitionStateSerializer(partitionStateSerializer);
+        .setPartitionStateSerializer(partitionStateSerializer)
+        .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion);
   }
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
@@ -3347,6 +3354,41 @@ public abstract class StoreIngestionTaskTest {
 
       when(partitionConsumptionState.getLeaderFollowerState()).thenReturn(STANDBY);
       assertFalse(storeIngestionTaskUnderTest.shouldPersistRecord(pubSubMessage2, partitionConsumptionState));
+    }, false);
+  }
+
+  @Test
+  public void testIngestionTaskForNonCurrentVersionShouldFailWhenEncounteringMemoryLimitException() throws Exception {
+    doThrow(new MemoryLimitExhaustedException("mock exception")).when(mockAbstractStorageEngine)
+        .put(anyInt(), any(), (ByteBuffer) any());
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
+
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      verify(mockAbstractStorageEngine, timeout(1000)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
+      verify(mockLogNotifier, timeout(1000)).error(any(), eq(PARTITION_FOO), any(), isA(VeniceException.class));
+      verify(runnableForKillNonCurrentVersion, never()).run();
+    }, false);
+  }
+
+  @Test
+  public void testIngestionTaskForCurrentVersionShouldTryToKillOngoingPushWhenEncounteringMemoryLimitException()
+      throws Exception {
+    doThrow(new MemoryLimitExhaustedException("mock exception")).doNothing()
+        .when(mockAbstractStorageEngine)
+        .put(anyInt(), any(), (ByteBuffer) any());
+
+    isCurrentVersion = () -> true;
+
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
+    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      verify(mockAbstractStorageEngine, timeout(5000).times(2)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
+      verify(mockAbstractStorageEngine, timeout(1000)).reopenStoragePartition(PARTITION_FOO);
+      verify(mockLogNotifier, timeout(1000)).completed(anyString(), eq(PARTITION_FOO), anyLong(), anyString());
+      verify(runnableForKillNonCurrentVersion, times(1)).run();
     }, false);
   }
 

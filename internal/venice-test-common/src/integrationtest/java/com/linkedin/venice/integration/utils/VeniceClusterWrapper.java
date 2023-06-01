@@ -864,6 +864,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     waitVersion(metaSystemStoreName, 1);
   }
 
+  public void createPushStatusSystemStore(String storeName) {
+    String pushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+    assertCommand(controllerClient.get().emptyPush(pushStatusSystemStoreName, "createPushStatusSystemStore", 1L));
+    waitVersion(pushStatusSystemStoreName, 1);
+  }
+
   public static final String DEFAULT_KEY_SCHEMA = "\"int\"";
   public static final String DEFAULT_VALUE_SCHEMA = "\"int\"";
 

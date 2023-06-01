@@ -481,6 +481,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setCompressorFactory(compressorFactory)
         .setVeniceViewWriterFactory(viewWriterFactory)
         .setPubSubTopicRepository(pubSubTopicRepository)
+        .setRunnableForKillIngestionTasksForNonCurrentVersions(
+            serverConfig.getIngestionMemoryLimit() > 0 ? () -> killConsumptionTaskForNonCurrentVersions() : null)
         .build();
   }
 
@@ -919,6 +921,33 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         shutdownStoreIngestionTask(topicName);
       }
     }
+  }
+
+  /**
+   * This function will try to kill the ingestion tasks belonging to non-current versions.
+   * And this is mainly being used by memory limiter feature to free up resources when encountering memory
+   * exhausting issue.
+   *
+   */
+  private void killConsumptionTaskForNonCurrentVersions() {
+    // Find out all non-current versions
+    Set<String> topicNameSet = topicNameToIngestionTaskMap.keySet();
+    List<String> nonCurrentVersions = new ArrayList<>();
+    topicNameSet.forEach(topic -> {
+      String storeName = Version.parseStoreFromKafkaTopicName(topic);
+      int version = Version.parseVersionFromKafkaTopicName(topic);
+      Store store = metadataRepo.getStore(storeName);
+      if (store == null || version != store.getCurrentVersion()) {
+        nonCurrentVersions.add(topic);
+      }
+    });
+    if (nonCurrentVersions.isEmpty()) {
+      LOGGER.info("No ingestion task belonging to non-current version");
+      return;
+    }
+    LOGGER.info("Start killing the following ingestion tasks: {}", nonCurrentVersions);
+    nonCurrentVersions.forEach(topic -> killConsumptionTask(topic));
+    LOGGER.info("Finished killing the following ingestion tasks: {}", nonCurrentVersions);
   }
 
   /**

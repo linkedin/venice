@@ -206,6 +206,8 @@ public class StoreBackend {
         version.delete();
       }
     }
+    LOGGER.info("Finished the unsubscription from partitions {} of {}", partitions, storeName);
+
   }
 
   synchronized void trySubscribeDaVinciFutureVersion() {
