@@ -7,6 +7,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -15,6 +17,9 @@ import org.apache.logging.log4j.Logger;
  * This class contains some common util methods for push monitoring purpose.
  */
 public class PushMonitorUtils {
+  private static final long DAVINCI_DEAD_INSTANCE_REPORT_ERROR_WAIT = TimeUnit.MINUTES.toMillis(5);
+
+  private static final Map<String, Long> storeVersionToDVCDeadInstanceTimeMap = new ConcurrentHashMap<>();
   private static final Logger LOGGER = LogManager.getLogger(PushMonitorUtils.class);
 
   /**
@@ -41,16 +46,14 @@ public class PushMonitorUtils {
     Optional<String> erroredReplica = Optional.empty();
     int erroredPartitionId = 0;
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    int version = Version.parseVersionFromVersionTopicName(topicName);
     int completedPartitions = 0;
     int totalReplicaCount = 0;
     int liveReplicaCount = 0;
     Set<Integer> incompletePartition = new HashSet<>();
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-      Map<CharSequence, Integer> instances = reader.getPartitionStatus(
-          storeName,
-          Version.parseVersionFromVersionTopicName(topicName),
-          partitionId,
-          incrementalPushVersion);
+      Map<CharSequence, Integer> instances =
+          reader.getPartitionStatus(storeName, version, partitionId, incrementalPushVersion);
       boolean allInstancesCompleted = true;
       totalReplicaCount += instances.size();
       for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
@@ -82,12 +85,32 @@ public class PushMonitorUtils {
         incompletePartition.add(partitionId);
       }
     }
+    boolean noDaVinciStatusReported = totalReplicaCount == 0;
+
+    // Report error if too many davinci instances are not alive for over 5 mins
+    if (totalReplicaCount > 6 && liveReplicaCount < 0.5 * totalReplicaCount) {
+      Long lastUpdateTime = storeVersionToDVCDeadInstanceTimeMap.get(topicName);
+      if (lastUpdateTime != null) {
+        if (lastUpdateTime + DAVINCI_DEAD_INSTANCE_REPORT_ERROR_WAIT < System.currentTimeMillis()) {
+          storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
+          return new ExecutionStatusWithDetails(
+              ExecutionStatus.ERROR,
+              " To many dead instances " + (totalReplicaCount - liveReplicaCount) + ", total instances "
+                  + totalReplicaCount, noDaVinciStatusReported);
+        }
+      } else {
+        storeVersionToDVCDeadInstanceTimeMap.put(topicName, System.currentTimeMillis());
+      }
+    } else if (liveReplicaCount > 0.5 * totalReplicaCount) {
+      storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
+    }
+
     StringBuilder statusDetailStringBuilder = new StringBuilder();
     if (completedPartitions > 0) {
       statusDetailStringBuilder.append(completedPartitions)
           .append("/")
           .append(partitionCount)
-          .append(" partitions completed in")
+          .append(" partitions completed in ")
           .append(totalReplicaCount)
           .append(" Da Vinci replicas.");
     }
@@ -112,14 +135,15 @@ public class PushMonitorUtils {
           .append(totalReplicaCount);
     }
     String statusDetail = statusDetailStringBuilder.toString();
-    boolean noDaVinciStatusReported = totalReplicaCount == 0;
     if (completedPartitions == partitionCount) {
+      storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
       return new ExecutionStatusWithDetails(completeStatus, statusDetail, noDaVinciStatusReported);
     }
     if (allMiddleStatusReceived) {
       return new ExecutionStatusWithDetails(middleStatus, statusDetail, noDaVinciStatusReported);
     }
     if (erroredReplica.isPresent()) {
+      storeVersionToDVCDeadInstanceTimeMap.remove(topicName);
       return new ExecutionStatusWithDetails(ExecutionStatus.ERROR, statusDetail, noDaVinciStatusReported);
     }
     return new ExecutionStatusWithDetails(ExecutionStatus.STARTED, statusDetail, noDaVinciStatusReported);
