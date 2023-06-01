@@ -9,10 +9,13 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
 import java.util.Set;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -53,8 +56,10 @@ public class DataRecoveryClient {
     return monitor;
   }
 
-  public Set<String> filterStoresWithOngoingRepush(Set<String> storesList, StoreRepushCommand.Params params) {
-    Set<String> ret = new HashSet<>();
+  public Map<String, Pair<Boolean, String>> getRepushViability(
+      Set<String> storesList,
+      StoreRepushCommand.Params params) {
+    Map<String, Pair<Boolean, String>> ret = new HashMap<>();
     String url = params.getUrl();
     ControllerClient cli = params.getPCtrlCliWithoutCluster();
     LocalDateTime timestamp = params.getTimestamp();
@@ -67,14 +72,12 @@ public class DataRecoveryClient {
         String latestTimestamp = regionPushDetails.getPushStartTimestamp();
         LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         if (latestPushStartTime.isBefore(timestamp)) {
-          ret.add(s);
+          ret.put(s, Pair.of(true, ""));
         } else {
-          LOGGER.warn(
-              "Removing store " + s
-                  + " from stores list, as the has a push job started more recently than the input timestamp.");
+          ret.put(s, Pair.of(false, "ongoing repush"));
         }
       } catch (Exception e) {
-        LOGGER.warn("Removing store " + s + "from stores list due to exception " + e);
+        ret.put(s, Pair.of(false, e.toString()));
       }
     }
     return ret;
@@ -86,8 +89,16 @@ public class DataRecoveryClient {
 
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
-    Set<String> filteredStoreNames = filterStoresWithOngoingRepush(storeNames, cmdParams);
-    if (filteredStoreNames == null || filteredStoreNames.isEmpty()) {
+    Map<String, Pair<Boolean, String>> pushMap = getRepushViability(storeNames, cmdParams);
+    Set<String> filteredStoreNames = new HashSet<>();
+
+    for (Map.Entry<String, Pair<Boolean, String>> e: pushMap.entrySet()) {
+      if (e.getValue().getLeft() == true) {
+        filteredStoreNames.add(e.getKey());
+      }
+    }
+
+    if (pushMap == null || pushMap.isEmpty()) {
       LOGGER.warn("store list is empty, exit.");
       return;
     }
@@ -101,9 +112,9 @@ public class DataRecoveryClient {
     if (storeNames.size() != filteredStoreNames.size()) {
       LOGGER.error("================");
       LOGGER.error("REPUSH FAILED FOR SOME STORES:");
-      for (String store: storeNames) {
-        if (!filteredStoreNames.contains(store)) {
-          LOGGER.error(store);
+      for (Map.Entry<String, Pair<Boolean, String>> e: pushMap.entrySet()) {
+        if (e.getValue().getLeft() == false) {
+          LOGGER.error(e.getKey() + ":" + e.getValue().getRight());
         }
       }
       LOGGER.error("================");

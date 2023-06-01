@@ -184,7 +184,7 @@ public class TestDataRecoveryClient {
     doReturn(executor).when(dataRecoveryClient).getExecutor();
     doCallRealMethod().when(dataRecoveryClient).execute(any(), any());
     doReturn(true).when(dataRecoveryClient).confirmStores(any());
-    doCallRealMethod().when(dataRecoveryClient).filterStoresWithOngoingRepush(any(), any());
+    doCallRealMethod().when(dataRecoveryClient).getRepushViability(any(), any());
     doReturn(controllerClient).when(dataRecoveryClient).buildControllerClient(anyString(), anyString(), any());
     // client executes three store recovery.
     DataRecoveryClient.DataRecoveryParams drParams = new DataRecoveryClient.DataRecoveryParams("store1,store2,store3");
@@ -243,7 +243,7 @@ public class TestDataRecoveryClient {
     doReturn(executor).when(dataRecoveryClient).getExecutor();
     doCallRealMethod().when(dataRecoveryClient).execute(any(), any());
     doReturn(true).when(dataRecoveryClient).confirmStores(any());
-    doCallRealMethod().when(dataRecoveryClient).filterStoresWithOngoingRepush(any(), any());
+    doCallRealMethod().when(dataRecoveryClient).getRepushViability(any(), any());
     doReturn(controllerClient).when(dataRecoveryClient).buildControllerClient(anyString(), anyString(), any());
     // client executes three store recovery.
     DataRecoveryClient.DataRecoveryParams drParams = new DataRecoveryClient.DataRecoveryParams("store1,store2,store3");
