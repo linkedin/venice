@@ -37,7 +37,7 @@ public class ApacheKafkaAdminConfig {
           ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC,
           DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS);
     }
-    LOGGER.info("Kafka admin client properties: " + adminProperties);
+
   }
 
   public Properties getAdminProperties() {

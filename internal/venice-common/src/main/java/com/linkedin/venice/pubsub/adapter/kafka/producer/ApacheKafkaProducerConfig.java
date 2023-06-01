@@ -205,4 +205,41 @@ public class ApacheKafkaProducerConfig {
           e);
     }
   }
+
+  public static void copyKafkaSASLProperties(
+      VeniceProperties configuration,
+      Properties properties,
+      boolean stripPrefix) {
+    copyKafkaSASLProperties(configuration.toProperties(), properties, stripPrefix);
+  }
+
+  public static void copyKafkaSASLProperties(Properties configuration, Properties properties, boolean stripPrefix) {
+    String saslConfiguration = configuration.getProperty("kafka.sasl.jaas.config", "");
+    if (saslConfiguration != null && !saslConfiguration.isEmpty()) {
+      if (stripPrefix) {
+        properties.put("sasl.jaas.config", saslConfiguration);
+      } else {
+        properties.put("kafka.sasl.jaas.config", saslConfiguration);
+      }
+    }
+
+    String saslMechanism = configuration.getProperty("kafka.sasl.mechanism", "");
+    if (saslMechanism != null && !saslMechanism.isEmpty()) {
+      if (stripPrefix) {
+        properties.put("sasl.mechanism", saslMechanism);
+      } else {
+        properties.put("kafka.sasl.mechanism", saslMechanism);
+      }
+    }
+
+    String securityProtocol = configuration.getProperty("kafka.security.protocol", "");
+    if (securityProtocol != null && !securityProtocol.isEmpty()) {
+      if (stripPrefix) {
+        properties.put("security.protocol", securityProtocol);
+      } else {
+        properties.put("kafka.security.protocol", securityProtocol);
+      }
+    }
+
+  }
 }
