@@ -777,6 +777,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
+  public boolean isLiveUpdateSuppressionEnabled() {
+    return veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
+  }
+
   @Override
   public VeniceConfigLoader getVeniceConfigLoader() {
     return veniceConfigLoader;

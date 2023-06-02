@@ -521,7 +521,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
        */
       getStoreIngestionService()
           .waitIngestionTaskToCompleteAllPartitionPendingActions(topicName, partitionId, 100, 300);
-      if (getStoreIngestionService().isPartitionConsuming(topicName, partitionId)) {
+      /**
+       * For Da Vinci Live Update suppression, it is actively stopping ingestion so isPartitionConsuming() is not working.
+       * Since Da Vinci does not have issue of receiving stopConsumption and handover at the same time, original race
+       * condition won't be an issue for DVC.
+       */
+      boolean shouldHandoverResource = getStoreIngestionService().isPartitionConsuming(topicName, partitionId)
+          || getStoreIngestionService().isLiveUpdateSuppressionEnabled();
+      if (shouldHandoverResource) {
         VeniceStoreVersionConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
         // Make sure partition is not consuming, so we can safely close the rocksdb partition
         long startTimeInMs = System.currentTimeMillis();
