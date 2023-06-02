@@ -14,7 +14,8 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTIT
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
 import static org.testng.Assert.assertFalse;
-import static org.testng.AssertJUnit.assertNotNull;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableList;
 import com.linkedin.d2.balancer.D2Client;
@@ -53,10 +54,12 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -471,6 +474,29 @@ public abstract class AbstractClientEndToEndSetup {
             .setSpecificValueClass(TestValueSchema.class)
             .setVeniceURL(veniceCluster.getRandomRouterSslURL())
             .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+  }
+
+  protected void validateMetrics(MetricsRepository metricsRepository, boolean useStreamingBatchGetAsDefault) {
+    String metricPrefix = useStreamingBatchGetAsDefault ? "--multiget_" : "--";
+    Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+    assertTrue(
+        metrics.get("." + storeName + metricPrefix + "request_key_count.Rate").value() > 0,
+        "Respective request_key_count should have been incremented");
+    assertTrue(
+        metrics.get("." + storeName + metricPrefix + "success_request_key_count.Rate").value() > 0,
+        "Respective success_request_key_count should have been incremented");
+    // incorrect metric should not be incremented
+    assertFalse(
+        metrics.get("." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
+            .value() > 0,
+        "Incorrect request_key_count should not be incremented");
+
+    // no retry should be triggered
+    metrics.forEach((mName, metric) -> {
+      if (mName.contains("long_tail_retry_request")) {
+        assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
+      }
+    });
   }
 
   @AfterClass(alwaysRun = true)
