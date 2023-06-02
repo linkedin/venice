@@ -74,7 +74,6 @@ public class DataRecoveryClient {
           continue;
         }
         ControllerClient parentCtrlCli = buildControllerClient(clusterName, url, params.getSSLFactory());
-        MultiStoreStatusResponse storeStatusResponse = parentCtrlCli.getFutureVersions(clusterName, s);
         StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(s, false);
         Map<String, RegionPushDetails> regionPushDetails = storeHealthInfo.getRegionPushDetails();
         if (!regionPushDetails.containsKey(destFabric)) {
@@ -83,11 +82,17 @@ public class DataRecoveryClient {
         }
         String latestTimestamp = regionPushDetails.get(destFabric).getPushStartTimestamp();
         LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        if (latestPushStartTime.isBefore(timestamp)
-            && !storeStatusResponse.getStoreStatusMap().containsKey(destFabric)) {
-          ret.put(s, Pair.of(true, ""));
-        } else {
+
+        if (latestPushStartTime.isBefore(timestamp)) {
+          ret.put(s, Pair.of(false, "input timestamp earlier than latest push"));
+          continue;
+        }
+
+        MultiStoreStatusResponse storeStatusResponse = parentCtrlCli.getFutureVersions(clusterName, s);
+        if (storeStatusResponse.getStoreStatusMap().containsKey(destFabric)) {
           ret.put(s, Pair.of(false, "ongoing repush"));
+        } else {
+          ret.put(s, Pair.of(true, ""));
         }
       } catch (VeniceException e) {
         ret.put(s, Pair.of(false, "VeniceHttpException " + e.getErrorType().toString()));
