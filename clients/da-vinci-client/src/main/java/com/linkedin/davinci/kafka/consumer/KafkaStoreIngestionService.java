@@ -739,6 +739,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partition,
       long retryIntervalInMs,
       int numRetries) {
+    LOGGER.info("Waiting all ingestion action to complete for topic: {}, partition: {}", topicName, partition);
     if (!topicPartitionHasAnyPendingActions(topicName, partition)) {
       LOGGER.info("Topic: {}, partition: {} has no pending ingestion action.", topicName, partition);
       return;
@@ -753,7 +754,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               partition,
               topicName,
               LatencyUtils.getElapsedTimeInMs(startTimeInMs));
-          break;
+          return;
         }
         sleep(retryIntervalInMs);
       }
