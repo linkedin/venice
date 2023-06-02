@@ -9,6 +9,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -74,6 +76,11 @@ public class IsolatedIngestionServerTest {
     when(isolatedIngestionServer.getStoreIngestionService()).thenReturn(storeIngestionService);
     StorageService storageService = mock(StorageService.class);
     when(isolatedIngestionServer.getStorageService()).thenReturn(storageService);
+    VeniceStoreVersionConfig storeVersionConfig = mock(VeniceStoreVersionConfig.class);
+    when(storeVersionConfig.getStoreVersionName()).thenReturn("topic");
+    VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
+    when(configLoader.getStoreConfig(anyString())).thenReturn(storeVersionConfig);
+    when(isolatedIngestionServer.getConfigLoader()).thenReturn(configLoader);
 
     /*
     when(isolatedIngestionServer.submitStopConsumptionAndCloseStorageTask(anyString(), anyInt()))
