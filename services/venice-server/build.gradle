@@ -1,7 +1,6 @@
 plugins {
   id 'application'
   id 'com.github.johnrengelman.shadow'
-  id 'com.google.protobuf'
 }
 
 application {
@@ -49,11 +48,10 @@ dependencies {
   // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zkclient
 
-  implementation libraries.grpcNettyShaded
+  runtimeOnly libraries.grpcNettyShaded
   implementation libraries.grpcProtobuf
   implementation libraries.grpcStub
   compileOnly libraries.tomcatAnnotations
-  implementation libraries.guava
 
   testImplementation libraries.fastUtil
   testImplementation project(':internal:alpini:router:alpini-router-api')
