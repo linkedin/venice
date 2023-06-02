@@ -143,6 +143,7 @@ public class TestDataRecoveryClient {
     cmdParams.setTimestamp("2999-12-31T00:00:00");
     cmdParams.setSSLFactory(Optional.empty());
     cmdParams.setDestFabric("ei-ltx1");
+    cmdParams.setSourceFabric("ei-ltx1");
 
     D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
     r.setCluster("test");
@@ -178,6 +179,11 @@ public class TestDataRecoveryClient {
     regionPushDetailsMapMock.put("ei-ltx1", regionPushDetailsMock);
     doReturn(regionPushDetailsMapMock).when(storeHealthInfoMock).getRegionPushDetails();
     doReturn(storeHealthInfoMock).when(controllerClient).listStorePushInfo(anyString(), anyBoolean());
+
+    MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
+    Map<String, String> storeStatusMap = new HashMap<>();
+    doReturn(storeStatusMap).when(storeStatusResponse).getStoreStatusMap();
+    doReturn(storeStatusResponse).when(controllerClient).getFutureVersions(anyString(), anyString());
 
     // Partial mock of Client class to confirm to-be-repushed stores from standard input.
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
@@ -236,6 +242,12 @@ public class TestDataRecoveryClient {
     doReturn("2999-12-31T23:59:59.171961").when(regionPushDetailsMock).getPushStartTimestamp();
     regionPushDetailsMapMock.put("ei-ltx1", regionPushDetailsMock);
     doReturn(regionPushDetailsMapMock).when(storeHealthInfoMock).getRegionPushDetails();
+
+    MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
+    Map<String, String> storeStatusMap = new HashMap<>();
+    storeStatusMap.put("ei-ltx1", "7");
+    doReturn(storeStatusMap).when(storeStatusResponse).getStoreStatusMap();
+    doReturn(storeStatusResponse).when(controllerClient).getFutureVersions(anyString(), anyString());
     doReturn(storeHealthInfoMock).when(controllerClient).listStorePushInfo(anyString(), anyBoolean());
 
     // Partial mock of Client class to confirm to-be-repushed stores from standard input.

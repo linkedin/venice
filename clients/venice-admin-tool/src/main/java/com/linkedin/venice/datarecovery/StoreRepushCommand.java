@@ -141,8 +141,10 @@ public class StoreRepushCommand extends Command {
   public static class Params extends Command.Params {
     // command name.
     private String command;
-    // source fabric.
+    // dest fabric
     private String destFabric;
+    // source fabric.
+    private String sourceFabric;
     // extra arguments to command.
     private String extraCommandArgs;
     // expected completion timestamp
@@ -209,6 +211,15 @@ public class StoreRepushCommand extends Command {
     public void setTimestamp(LocalDateTime time) {
       this.timestamp = time;
     }
+
+    public String getSourceFabric() {
+      return sourceFabric;
+    }
+
+    public void setSourceFabric(String sourceFabric) {
+      this.sourceFabric = sourceFabric;
+    }
+
   }
 
   public static class Result extends Command.Result {
