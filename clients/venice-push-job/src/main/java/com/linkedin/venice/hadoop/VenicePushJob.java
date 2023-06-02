@@ -815,10 +815,7 @@ public class VenicePushJob implements AutoCloseable {
 
     // This mode of passing the topic name to VPJ is going to be deprecated.
     if (userProvidedTopicNameOptional.isPresent()) {
-      return getUserProvidedTopicName(
-          userProvidedStoreName,
-          userProvidedTopicNameOptional.get(),
-          pushJobSetting.controllerRetries);
+      return getUserProvidedTopicName(userProvidedStoreName, userProvidedTopicNameOptional.get());
     }
     // If VPJ has fabric name available use that to find the child colo version otherwise
     // use the largest version among the child colo to use as KIF input topic.
@@ -838,10 +835,7 @@ public class VenicePushJob implements AutoCloseable {
     return Version.composeKafkaTopic(userProvidedStoreName, version);
   }
 
-  private String getUserProvidedTopicName(
-      final String userProvidedStoreName,
-      String userProvidedTopicName,
-      int retryAttempts) {
+  private String getUserProvidedTopicName(final String userProvidedStoreName, String userProvidedTopicName) {
     String derivedStoreName = Version.parseStoreFromKafkaTopicName(userProvidedTopicName);
     if (!Objects.equals(derivedStoreName, userProvidedStoreName)) {
       throw new IllegalArgumentException(
@@ -853,15 +847,7 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     LOGGER.info("userProvidedStoreName: {}", userProvidedStoreName);
-    StoreResponse storeResponse =
-        ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getStore(userProvidedStoreName));
-    if (storeResponse.isError()) {
-      throw new VeniceException(
-          String.format(
-              "Fail to get store information for store %s with error %s",
-              userProvidedStoreName,
-              storeResponse.getError()));
-    }
+    StoreResponse storeResponse = retrieveStoreResponse(userProvidedStoreName);
     Map<String, Integer> coloToCurrentVersions = getCurrentStoreVersions(storeResponse);
     if (new HashSet<>(coloToCurrentVersions.values()).size() > 1) {
       LOGGER.info(
@@ -952,7 +938,7 @@ public class VenicePushJob implements AutoCloseable {
       validateKafkaMessageEnvelopeSchema(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
       inputDirectory = getInputURI(props);
-      storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
+      validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
 
       if (pushJobSetting.repushTTLEnabled && storeSetting.isWriteComputeEnabled) {
@@ -2164,12 +2150,7 @@ public class VenicePushJob implements AutoCloseable {
 
   protected void validateRemoteHybridSettings(PushJobSetting setting) {
     if (setting.validateRemoteReplayPolicy != null) {
-      StoreResponse response = ControllerClient
-          .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
-      if (response.isError()) {
-        throw new VeniceException(
-            "Failed to get store information to validate push settings! Error: " + response.getError());
-      }
+      StoreResponse response = retrieveStoreResponse(setting.storeName);
       HybridStoreConfig hybridStoreConfig = response.getStore().getHybridStoreConfig();
       if (!setting.validateRemoteReplayPolicy.equals(hybridStoreConfig.getBufferReplayPolicy())) {
         throw new VeniceException(
@@ -2288,39 +2269,29 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private StoreSetting getSettingsFromController(ControllerClient controllerClient, PushJobSetting setting) {
-    StoreSetting storeSetting = new StoreSetting();
-    StoreResponse storeResponse = ControllerClient
-        .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
+  /**
+   * Validate the store settings against the Push job settings and populate additional information if needed.
+   * @param controllerClient
+   * @param jobSetting
+   * @return
+   */
+  private void validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
+    StoreResponse storeResponse = retrieveStoreResponse(pushJobSetting.storeName);
 
-    if (storeResponse.isError()) {
-      throw new VeniceException("Can't get store info. " + storeResponse.getError());
-    }
-    storeSetting.storeResponse = storeResponse;
-    storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
-    storeSetting.isSchemaAutoRegisterFromPushJobEnabled =
-        storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
-    storeSetting.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
-    storeSetting.isRmdChunkingEnabled = storeResponse.getStore().isRmdChunkingEnabled();
-    storeSetting.compressionStrategy = storeResponse.getStore().getCompressionStrategy();
-    storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
-    storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
-    storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
-    if (setting.isTargetedRegionPushEnabled && setting.targetedRegions == null) {
+    if (jobSetting.isTargetedRegionPushEnabled && jobSetting.targetedRegions == null) {
       // only override the targeted regions if it is not set and it is a single region push
-      setting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
-      if (StringUtils.isEmpty(setting.targetedRegions)) {
+      jobSetting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
+      if (StringUtils.isEmpty(jobSetting.targetedRegions)) {
         throw new VeniceException(
             "The store either does not have native replication mode enabled or set up default source fabric.");
       }
-      if (setting.isIncrementalPush) {
+      if (jobSetting.isIncrementalPush) {
         throw new VeniceException("Incremental push is not supported while using targeted region push mode");
       }
     }
 
-    HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
-    storeSetting.hybridStoreConfig = hybridStoreConfig;
-    if (setting.repushTTLEnabled) {
+    HybridStoreConfig hybridStoreConfig = storeSetting.hybridStoreConfig;
+    if (jobSetting.repushTTLEnabled) {
       if (hybridStoreConfig == null) {
         throw new VeniceException("Repush TTL is only supported for real-time only store.");
       } else {
@@ -2328,27 +2299,28 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
-    if (setting.enableWriteCompute && !storeSetting.isWriteComputeEnabled) {
+    if (jobSetting.enableWriteCompute && !storeSetting.isWriteComputeEnabled) {
       throw new VeniceException("Store does not have write compute enabled.");
     }
 
-    if (setting.enableWriteCompute && (!storeSetting.isIncrementalPushEnabled || !setting.isIncrementalPush)) {
+    if (jobSetting.enableWriteCompute && (!storeSetting.isIncrementalPushEnabled || !jobSetting.isIncrementalPush)) {
       throw new VeniceException("Write compute is only available for incremental push jobs.");
     }
 
-    if (setting.enableWriteCompute && storeSetting.isWriteComputeEnabled) {
+    if (jobSetting.enableWriteCompute && storeSetting.isWriteComputeEnabled) {
       /*
         If write compute is enabled, we would perform a topic switch from the controller and have the
         controller be in charge of broadcasting start and end messages. We will disable
         sendControlMessagesDirectly to prevent races between the messages sent by the VenicePushJob and
         by the controller for topic switch.
        */
-      setting.sendControlMessagesDirectly = false;
+      jobSetting.sendControlMessagesDirectly = false;
     }
 
-    storeSetting.keySchema = getKeySchemaFromController(controllerClient, setting.controllerRetries, setting.storeName);
+    storeSetting.keySchema =
+        getKeySchemaFromController(controllerClient, jobSetting.controllerRetries, jobSetting.storeName);
 
-    if (setting.isSourceKafka) {
+    if (jobSetting.isSourceKafka) {
       int sourceVersionNumber = Version.parseVersionFromKafkaTopicName(pushJobSetting.kafkaInputTopic);
       Optional<Version> sourceVersion = storeResponse.getStore().getVersion(sourceVersionNumber);
 
@@ -2369,7 +2341,6 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException("Source version has chunking enabled while chunking is disabled in store config.");
       }
     }
-    return storeSetting;
   }
 
   private Map<String, Integer> getCurrentStoreVersions(StoreResponse storeResponse) {
@@ -2473,13 +2444,8 @@ public class VenicePushJob implements AutoCloseable {
        *
        * TODO: maybe we should fail fast before creating a new version.
        */
-      StoreResponse storeResponse = ControllerClient
-          .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
-      if (storeResponse.isError()) {
-        throw new VeniceException(
-            "Failed to retrieve store response with urls: " + setting.veniceControllerUrl + ", error: "
-                + storeResponse.getError());
-      }
+      StoreResponse storeResponse = retrieveStoreResponse(setting.storeName);
+
       int newVersionNum = kafkaTopicInfo.version;
       Optional<Version> newVersionOptional = storeResponse.getStore().getVersion(newVersionNum);
       if (!newVersionOptional.isPresent()) {
@@ -3285,6 +3251,35 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
     return path;
+  }
+
+  /**
+   * Cache the store response to avoid multiple calls to controller.
+   *
+   * @param storeName
+   * @return
+   */
+  private StoreResponse retrieveStoreResponse(String storeName) {
+    if (storeSetting == null) {
+      storeSetting = new StoreSetting();
+      StoreResponse storeResponse = ControllerClient
+          .retryableRequest(controllerClient, pushJobSetting.controllerRetries, c -> c.getStore(storeName));
+      if (storeResponse.isError()) {
+        throw new VeniceException("Can't get store info. " + storeResponse.getError());
+      }
+      storeSetting.storeResponse = storeResponse;
+      storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
+      storeSetting.isSchemaAutoRegisterFromPushJobEnabled =
+          storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
+      storeSetting.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
+      storeSetting.isRmdChunkingEnabled = storeResponse.getStore().isRmdChunkingEnabled();
+      storeSetting.compressionStrategy = storeResponse.getStore().getCompressionStrategy();
+      storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
+      storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
+      storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+      storeSetting.hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
+    }
+    return storeSetting.storeResponse;
   }
 
   /**
