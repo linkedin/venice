@@ -83,7 +83,7 @@ public class DataRecoveryClient {
         String latestTimestamp = regionPushDetails.get(destFabric).getPushStartTimestamp();
         LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
-        if (latestPushStartTime.isBefore(timestamp)) {
+        if (latestPushStartTime.isAfter(timestamp)) {
           ret.put(s, Pair.of(false, "input timestamp earlier than latest push"));
           continue;
         }
