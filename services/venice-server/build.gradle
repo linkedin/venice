@@ -1,6 +1,7 @@
 plugins {
   id 'application'
   id 'com.github.johnrengelman.shadow'
+  id 'com.google.protobuf'
 }
 
 application {
@@ -48,6 +49,12 @@ dependencies {
   // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zkclient
 
+  implementation libraries.grpcNettyShaded
+  implementation libraries.grpcProtobuf
+  implementation libraries.grpcStub
+  compileOnly libraries.tomcatAnnotations
+  implementation libraries.guava
+
   testImplementation libraries.fastUtil
   testImplementation project(':internal:alpini:router:alpini-router-api')
   testImplementation project(':services:venice-router')
@@ -60,6 +67,25 @@ jar {
         'Implementation-Version': project.version,
         'Main-Class': application.mainClass.get()
     ]
+  }
+}
+
+def grpcVersion = '1.54.1'
+def protobufVersion = '3.21.7'
+
+protobuf {
+  protoc {
+    artifact = 'com.google.protobuf:protoc:' + protobufVersion
+  }
+  plugins {
+    grpc {
+      artifact = 'io.grpc:protoc-gen-grpc-java:' + grpcVersion
+    }
+  }
+  generateProtoTasks {
+    all()*.plugins {
+      grpc {}
+    }
   }
 }
 

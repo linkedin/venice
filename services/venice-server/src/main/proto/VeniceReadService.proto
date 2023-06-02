@@ -1,0 +1,13 @@
+syntax = 'proto3';
+
+service VeniceServer {
+  rpc ServeRequest (ClientRequest) returns (ServerReply) {}
+}
+
+message ClientRequest {
+  string message = 1;
+}
+
+message ServerReply {
+  string message = 1;
+}
