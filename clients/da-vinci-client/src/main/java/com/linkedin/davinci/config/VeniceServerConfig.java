@@ -1,5 +1,7 @@
 package com.linkedin.davinci.config;
 
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -7,6 +9,8 @@ import static com.linkedin.venice.ConfigKeys.FAST_AVRO_FIELD_LIMIT_PER_METHOD;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
+import static com.linkedin.venice.ConfigKeys.INGESTION_MLOCK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_METRICS;
@@ -40,6 +44,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_SERVICE_EN
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
+import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INITIAL_WINDOW_SIZE;
@@ -120,12 +125,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * VeniceServerConfig maintains configs specific to Venice Server, Da Vinci client and Isolated Ingestion Service.
  */
 public class VeniceServerConfig extends VeniceClusterConfig {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceServerConfig.class);
   /**
    * Since the RT topic could be consumed by multiple store versions for Hybrid stores, we couldn't share the consumer across
    * different Hybrid store versions.
@@ -384,6 +393,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int sslHandshakeQueueCapacity;
 
+  private final long ingestionMemoryLimit;
+  private final boolean ingestionMlockEnabled;
+  private final List<String> forkedProcessJvmArgList;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -609,6 +622,87 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     unregisterMetricForDeletedStoreEnabled =
         serverProperties.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     fastAvroFieldLimitPerMethod = serverProperties.getInt(FAST_AVRO_FIELD_LIMIT_PER_METHOD, 100);
+
+    forkedProcessJvmArgList =
+        Arrays.asList(serverProperties.getString(SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "").split(";"))
+            .stream()
+            .map(s -> s.trim())
+            .filter(s -> s.length() > 0)
+            .collect(Collectors.toList());
+    ingestionMemoryLimit = extractIngestionMemoryLimit(serverProperties, ingestionMode, forkedProcessJvmArgList);
+    LOGGER.info("Ingestion memory limit: {} after subtracting other usages", ingestionMemoryLimit);
+    ingestionMlockEnabled = serverProperties.getBoolean(INGESTION_MLOCK_ENABLED, false);
+  }
+
+  long extractIngestionMemoryLimit(
+      VeniceProperties serverProperties,
+      IngestionMode configuredIngestionMode,
+      List<String> configuredForkedProcessJvmArgList) {
+    long extractedMemoryLimit = -1;
+    long configuredIngestionMemoryLimit = serverProperties.getSizeInBytes(INGESTION_MEMORY_LIMIT, -1l);
+    if (configuredIngestionMemoryLimit < 0) {
+      return extractedMemoryLimit;
+    }
+    // Check whether it is being used by DaVinci or not
+    if (!isDaVinciClient) {
+      throw new VeniceException(
+          "Config: " + INGESTION_MEMORY_LIMIT
+              + " is only meaningful for DaVinci and please remove this config for Venice Server deployment");
+    }
+    // Check whether rocksdb is using PT or not
+    if (!rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+      throw new VeniceException(
+          "Config: " + INGESTION_MEMORY_LIMIT + " is only meaningful when using RocksDB plaintable format");
+    }
+    long totalMemtableUsage = rocksDBServerConfig.getRocksDBTotalMemtableUsageCapInBytes();
+    // Check ingestion mode
+    if (configuredIngestionMode.equals(IngestionMode.ISOLATED)) {
+      /**
+       * When ingestion isolation is enabled, we need to subtract the usages from the following componnets:
+       * 1. Main process total memtable usage limit.
+       * 2. Heap size of isolated JVM process.
+       * 3. Total memtable usage limit in isolated process.
+       */
+
+      String forkedProcessHeapSizeStr = null;
+      for (String s: configuredForkedProcessJvmArgList) {
+        if (s.toLowerCase().startsWith("-xmx")) {
+          forkedProcessHeapSizeStr = s.toLowerCase().substring(4);
+          break;
+        }
+      }
+      if (forkedProcessHeapSizeStr == null || forkedProcessHeapSizeStr.length() == 0) {
+        throw new VeniceException(
+            "The max heap size of isolated process needs to be configured explicitly when enabling memory limiter");
+      }
+      LOGGER.info("Extracted max heap size of forked process: {} ", forkedProcessHeapSizeStr);
+      long forkedProcessHeapSize = VeniceProperties.convertSizeFromLiteral(forkedProcessHeapSizeStr);
+
+      long totalMemtableUsageInForkedProcess = serverProperties.getSizeInBytes(
+          INGESTION_ISOLATION_CONFIG_PREFIX + "." + ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES,
+          totalMemtableUsage);
+      LOGGER.info(
+          "Extracted total memtable table usage capacity in forked process: {}",
+          totalMemtableUsageInForkedProcess);
+
+      extractedMemoryLimit = configuredIngestionMemoryLimit - totalMemtableUsageInForkedProcess - forkedProcessHeapSize
+          - totalMemtableUsageInForkedProcess;
+      if (extractedMemoryLimit <= 0) {
+        throw new VeniceException(
+            "Ingestion memory limit: " + extractedMemoryLimit
+                + " should be positive after subtracting the usage from other components");
+      }
+    } else {
+      // We need to subtract the memtable usage from the configured limit
+      if (configuredIngestionMemoryLimit <= totalMemtableUsage) {
+        throw new VeniceException(
+            "Ingestion memory limit: " + configuredIngestionMemoryLimit
+                + " should be bigger than total memtable usage cap: " + totalMemtableUsage);
+      }
+      extractedMemoryLimit = configuredIngestionMemoryLimit - totalMemtableUsage;
+    }
+
+    return extractedMemoryLimit;
   }
 
   public int getListenerPort() {
@@ -1010,5 +1104,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getSslHandshakeQueueCapacity() {
     return sslHandshakeQueueCapacity;
+  }
+
+  public long getIngestionMemoryLimit() {
+    return ingestionMemoryLimit;
+  }
+
+  public List<String> getForkedProcessJvmArgList() {
+    return forkedProcessJvmArgList;
+  }
+
+  public boolean isIngestionMlockEnabled() {
+    return ingestionMlockEnabled;
   }
 }

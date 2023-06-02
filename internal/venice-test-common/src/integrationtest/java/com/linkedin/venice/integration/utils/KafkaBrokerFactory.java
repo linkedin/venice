@@ -72,6 +72,12 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
       // Setup ssl related configs for kafka.
       Properties sslConfig = KafkaSSLUtils.getLocalKafkaBrokerSSlConfig(DEFAULT_HOST_NAME, port, sslPort);
       sslConfig.entrySet().stream().forEach(entry -> configMap.put((String) entry.getKey(), entry.getValue()));
+      configs.getAdditionalBrokerConfiguration().forEach((key, value) -> {
+        String replace = value.replace("$PORT", port + "").replace("$HOSTNAME", DEFAULT_HOST_NAME);
+        LOGGER.info("Set custom additional value {}: {}", key, replace);
+        configMap.put(key, replace);
+      });
+
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       KafkaServer kafkaServer = KafkaBrokerWrapper.instantiateNewKafkaServer(kafkaConfig, configs.getMockTime());
       LOGGER.info("KafkaBroker URL: {}:{}", kafkaServer.config().hostName(), kafkaServer.config().port());

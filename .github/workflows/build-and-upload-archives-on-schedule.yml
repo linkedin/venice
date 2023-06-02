@@ -2,7 +2,7 @@ name: Venice Publication Pipeline
 
 on:
   schedule:
-    - cron: "30 20 * * 3"
+    - cron: "30 20 * * 2,4"
   workflow_dispatch:
 
 jobs:

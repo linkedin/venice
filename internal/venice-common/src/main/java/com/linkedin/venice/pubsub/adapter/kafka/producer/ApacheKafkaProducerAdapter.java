@@ -41,7 +41,6 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
   }
 
   ApacheKafkaProducerAdapter(ApacheKafkaProducerConfig cfg, KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer) {
-    LOGGER.info("Constructing KafkaProducer with the following properties: {}", cfg.getProducerProperties());
     this.producerConfig = cfg;
     this.producer = producer;
   }

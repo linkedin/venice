@@ -122,7 +122,8 @@ public abstract class AbstractPushMonitor
         (topic, details) -> handleErrorPush(getOfflinePush(topic), details),
         controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled(),
         controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds(),
-        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber());
+        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber(),
+        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled();
     pushStatusCollector.start();
   }

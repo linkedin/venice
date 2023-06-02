@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -50,6 +51,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -148,6 +150,33 @@ public class VenicePushJobTest {
     VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client);
     VenicePushJob.PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
     Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
+  }
+
+  @Test
+  public void testPushJobPollStatus() {
+    Properties vpjProps = new Properties();
+    vpjProps.setProperty(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
+    ControllerClient client = mock(ControllerClient.class);
+    JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
+    doReturn("UNKNOWN").when(response).getStatus();
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null));
+    VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client);
+    VenicePushJob.PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+    pushJobSetting.jobStatusInUnknownStateTimeoutMs = 10;
+    Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
+    VenicePushJob.TopicInfo topicInfo = new VenicePushJob.TopicInfo();
+    topicInfo.version = 1;
+    topicInfo.topic = "abc";
+    pushJob.storeSetting = new VenicePushJob.StoreSetting();
+    pushJob.storeSetting.storeResponse = new StoreResponse();
+    pushJob.storeSetting.storeResponse.setName("abc");
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setBootstrapToOnlineTimeoutInHours(0);
+    pushJob.storeSetting.storeResponse.setStore(storeInfo);
+    VeniceException exception = Assert.expectThrows(
+        VeniceException.class,
+        () -> pushJob.pollStatusUntilComplete(Optional.empty(), client, pushJobSetting, topicInfo));
+    Assert.assertEquals(exception.getMessage(), "Failing push-job for store abc which is still running after 0 hours.");
   }
 
   private Properties getRepushReadyProps() {

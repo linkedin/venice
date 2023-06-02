@@ -30,6 +30,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
@@ -298,6 +299,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean isChunked;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
+  private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -435,6 +437,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     for (int i = 0; i < this.msgForLagMeasurement.length; i++) {
       this.msgForLagMeasurement[i] = kafkaVersionTopic + "_" + i;
     }
+    this.runnableForKillIngestionTasksForNonCurrentVersions =
+        builder.getRunnableForKillIngestionTasksForNonCurrentVersions();
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -1071,19 +1075,61 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           */
         partitionIngestionExceptionList.set(exceptionPartition, null);
       } else {
-        if (!partitionConsumptionState.isCompletionReported()) {
-          reportError(partitionException.getMessage(), exceptionPartition, partitionException);
+        PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, exceptionPartition);
+        /**
+         * Special handling for current version when encountering {@link MemoryLimitExhaustedException}.
+         */
+        if (partitionException instanceof MemoryLimitExhaustedException
+            || partitionException.getCause() instanceof MemoryLimitExhaustedException
+                && isCurrentVersion.getAsBoolean()) {
+          LOGGER.warn(
+              "Encountered MemoryLimitExhaustedException, and ingestion task will try to reopen the database and"
+                  + " resume the consumption after killing ingestion tasks for non current versions");
+          /**
+           * Pause topic consumption to avoid more damage.
+           * We can't unsubscribe it since in some scenario, all the partitions can be unsubscribed, and the ingestion task
+           * will end. Even later on, there are avaiable memory space, we can't resume the ingestion task.
+           */
+          pauseConsumption(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
+          LOGGER.info(
+              "Pausing consumption of topic: {}, partition: {} because of hitting memory limit",
+              pubSubTopicPartition.getPubSubTopic().getName(),
+              pubSubTopicPartition.getPartitionNumber());
+          runnableForKillIngestionTasksForNonCurrentVersions.run();
+          if (storageEngine.hasMemorySpaceLeft()) {
+            unSubscribePartition(pubSubTopicPartition);
+            /**
+             * DaVinci ingestion hits memory limit and we would like to retry it in the following way:
+             * 1. Kill the ingestion tasks for non-current versions.
+             * 2. Reopen the database since the current database in a bad state, where it can't write or sync even
+             *    there are rooms (bug in SSTFileManager implementation in RocksDB). Reopen will drop the not-yet-synced
+             *    memtable unfortunately.
+             * 3. Resubscribe the affected partition.
+             */
+            LOGGER.info(
+                "Ingestion for topic: {}, partition: {} can resume since there are more space reclaimed",
+                kafkaVersionTopic,
+                exceptionPartition);
+            storageEngine.reopenStoragePartition(exceptionPartition);
+            // DaVinci is always a follower.
+            subscribePartition(pubSubTopicPartition, Optional.empty());
+          }
         } else {
-          LOGGER.error(
-              "Ignoring exception for partition {} for store version {} since this partition is already online. "
-                  + "Please engage Venice DEV team immediately.",
-              exceptionPartition,
-              kafkaVersionTopic,
-              partitionException);
-        }
-        // Unsubscribe the partition to avoid more damages.
-        if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
-          unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, exceptionPartition));
+          if (!partitionConsumptionState.isCompletionReported()) {
+            reportError(partitionException.getMessage(), exceptionPartition, partitionException);
+
+          } else {
+            LOGGER.error(
+                "Ignoring exception for partition {} for store version {} since this partition is already online. "
+                    + "Please engage Venice DEV team immediately.",
+                exceptionPartition,
+                kafkaVersionTopic,
+                partitionException);
+          }
+          // Unsubscribe the partition to avoid more damages.
+          if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
+            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, exceptionPartition));
+          }
         }
       }
     });
@@ -2118,7 +2164,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     // Flush data partition
-    Map<String, String> dbCheckpointingInfo = storageEngineReloadedFromRepo.sync(partition);
+    final AtomicReference<Map<String, String>> dbCheckpointingInfoReference = new AtomicReference<>();
+    executeStorageEngineRunnable(partition, () -> {
+      Map<String, String> dbCheckpointingInfoFinal = storageEngineReloadedFromRepo.sync(partition);
+      dbCheckpointingInfoReference.set(dbCheckpointingInfoFinal);
+    });
+    if (dbCheckpointingInfoReference.get() == null) {
+      throw new VeniceException("The ingestion task has already stopped");
+    }
     storageUtilizationManager.notifyFlushToDisk(pcs);
 
     // Update the partition key in metadata partition
@@ -2128,7 +2181,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     OffsetRecord offsetRecord = pcs.getOffsetRecord();
     // Check-pointing info required by the underlying storage engine
-    offsetRecord.setDatabaseInfo(dbCheckpointingInfo);
+    offsetRecord.setDatabaseInfo(dbCheckpointingInfoReference.get());
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
     String msg = "Offset synced for partition " + partition + " of topic " + topic + ": ";
@@ -2718,10 +2771,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int backupBytes = putValue.getInt();
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
       ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
-      writeToStorageEngine(partition, keyBytes, put, currentTimeMs);
-
-      /* We still want to recover the original position to make this function idempotent. */
-      putValue.putInt(backupBytes);
+      try {
+        writeToStorageEngine(partition, keyBytes, put, currentTimeMs);
+      } finally {
+        /* We still want to recover the original position to make this function idempotent. */
+        putValue.putInt(backupBytes);
+      }
     }
   }
 
@@ -2748,26 +2803,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  private void executeStorageEngineRunnable(int partition, Runnable storageEngineRunnable) {
+    try {
+      storageEngineRunnable.run();
+    } catch (VeniceException e) {
+      throwOrLogStorageFailureDependingIfStillSubscribed(partition, e);
+    }
+  }
+
   /**
    * Persist Put record to storage engine.
    */
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
-    try {
-      storageEngine.put(partition, keyBytes, put.putValue);
-    } catch (PersistenceFailureException e) {
-      throwOrLogStorageFailureDependingIfStillSubscribed(partition, e);
-    }
+    executeStorageEngineRunnable(partition, () -> storageEngine.put(partition, keyBytes, put.putValue));
   }
 
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
-    try {
-      storageEngine.delete(partition, keyBytes);
-    } catch (PersistenceFailureException e) {
-      throwOrLogStorageFailureDependingIfStillSubscribed(partition, e);
-    }
+    executeStorageEngineRunnable(partition, () -> storageEngine.delete(partition, keyBytes));
   }
 
-  protected void throwOrLogStorageFailureDependingIfStillSubscribed(int partition, PersistenceFailureException e) {
+  protected void throwOrLogStorageFailureDependingIfStillSubscribed(int partition, VeniceException e) {
     if (partitionConsumptionStateMap.containsKey(partition)) {
       throw new VeniceException(
           "Caught an exception while trying to interact with the storage engine for partition " + partition
@@ -3478,6 +3533,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected String getKafkaVersionTopic() {
     return kafkaVersionTopic;
+  }
+
+  public boolean isStuckByMemoryConstraint() {
+    for (PartitionExceptionInfo ex: partitionIngestionExceptionList) {
+      if (ex == null) {
+        continue;
+      }
+      Exception partitionIngestionException = ex.getException();
+      if (partitionIngestionException instanceof MemoryLimitExhaustedException
+          || partitionIngestionException.getCause() instanceof MemoryLimitExhaustedException) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

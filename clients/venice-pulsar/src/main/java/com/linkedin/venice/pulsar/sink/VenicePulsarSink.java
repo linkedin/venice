@@ -238,6 +238,7 @@ public class VenicePulsarSink implements Sink<GenericObject> {
     config.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.INCREMENTAL.toString());
     config.put(configPrefix + VENICE_STORE, veniceCfg.getStoreName());
     config.put(configPrefix + VENICE_AGGREGATE, "false");
+
     config.put("venice.discover.urls", veniceCfg.getVeniceDiscoveryUrl());
     config.put(VENICE_CONTROLLER_DISCOVERY_URL, veniceCfg.getVeniceDiscoveryUrl());
     config.put(VENICE_ROUTER_URL, veniceCfg.getVeniceRouterUrl());
@@ -248,6 +249,12 @@ public class VenicePulsarSink implements Sink<GenericObject> {
     }
     config.put("kafka.sasl.mechanism", veniceCfg.getKafkaSaslMechanism());
     config.put("kafka.security.protocol", veniceCfg.getKafkaSecurityProtocol());
+
+    if (veniceCfg.getWriterConfig() != null && !veniceCfg.getWriterConfig().isEmpty()) {
+      LOGGER.info("Additional WriterConfig: {}", veniceCfg.getWriterConfig());
+      config.putAll(veniceCfg.getWriterConfig());
+    }
+
     LOGGER.info("CONFIG: {}", config);
     return config;
   }

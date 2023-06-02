@@ -151,6 +151,7 @@ import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -667,6 +668,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     controllerConfig = new VeniceControllerConfig(new VeniceProperties(clonedProperties));
 
     Properties properties = new Properties();
+    ApacheKafkaProducerConfig.copyKafkaSASLProperties(originalPros, properties, false);
     if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
       Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
@@ -3332,12 +3334,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .updateTopicRetention(pubSubTopicRepository.getTopic(kafkaTopicName), deprecatedJobTopicRetentionMs)) {
         return true;
       }
-    } catch (TopicDoesNotExistException e) {
+    } catch (Exception e) {
       LOGGER.warn(
-          "Unable to update the retention for topic {} in Kafka cluster {} since the topic doesn't exist in "
-              + "Kafka anymore, will skip the truncation",
+          "Unable to update the retention for topic {} in Kafka cluster {}, will skip the truncation",
           kafkaTopicName,
-          topicManager.getKafkaBootstrapServers());
+          topicManager.getKafkaBootstrapServers(),
+          e);
     }
     return false;
   }
