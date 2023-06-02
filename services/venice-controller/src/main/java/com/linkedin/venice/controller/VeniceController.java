@@ -82,6 +82,10 @@ public class VeniceController {
    *        a {@link D2Client} used for interacting with child controllers.
    * @param routerClientConfig
    *        an optional {@link ClientConfig} used for reading schema from routers.
+   * @param icProvider
+   *        an optional invocation-context provider class for calls between various deployable services.
+   * @param externalSupersetSchemaGenerator
+   *        an optional {@link SupersetSchemaGenerator} used for generating superset schema.
    */
   @Deprecated
   public VeniceController(
@@ -91,7 +95,9 @@ public class VeniceController {
       Optional<DynamicAccessController> accessController,
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
-      Optional<ClientConfig> routerClientConfig) {
+      Optional<ClientConfig> routerClientConfig,
+      Optional<ICProvider> icProvider,
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
     this(
         new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
             .setMetricsRepository(metricsRepository)
@@ -100,6 +106,8 @@ public class VeniceController {
             .setAuthorizerService(authorizerService.orElse(null))
             .setD2Client(d2Client)
             .setRouterClientConfig(routerClientConfig.orElse(null))
+            .setIcProvider(icProvider.orElse(null))
+            .setExternalSupersetSchemaGenerator(externalSupersetSchemaGenerator.orElse(null))
             .setPubSubClientsFactory(
                 new PubSubClientsFactory(
                     new ApacheKafkaProducerAdapterFactory(),
