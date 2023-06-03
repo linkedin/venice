@@ -2444,7 +2444,14 @@ public class VenicePushJob implements AutoCloseable {
        *
        * TODO: maybe we should fail fast before creating a new version.
        */
-      StoreResponse storeResponse = retrieveStoreResponse(setting.storeName);
+      // We have to make a new request to the controller to get the store response with the new version.
+      StoreResponse storeResponse = ControllerClient
+          .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
+      if (storeResponse.isError()) {
+        throw new VeniceException(
+            "Failed to retrieve store response with urls: " + setting.veniceControllerUrl + ", error: "
+                + storeResponse.getError());
+      }
 
       int newVersionNum = kafkaTopicInfo.version;
       Optional<Version> newVersionOptional = storeResponse.getStore().getVersion(newVersionNum);
