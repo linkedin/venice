@@ -81,11 +81,6 @@ public class IsolatedIngestionServerTest {
     VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
     when(configLoader.getStoreConfig(anyString())).thenReturn(storeVersionConfig);
     when(isolatedIngestionServer.getConfigLoader()).thenReturn(configLoader);
-
-    /*
-    when(isolatedIngestionServer.submitStopConsumptionAndCloseStorageTask(anyString(), anyInt()))
-        .thenReturn(CompletableFuture.completedFuture(true));
-     */
     when(isolatedIngestionServer.submitStopConsumptionAndCloseStorageTask(anyString(), anyInt())).thenCallRealMethod();
     IsolatedIngestionRequestClient client = mock(IsolatedIngestionRequestClient.class);
     when(isolatedIngestionServer.getReportClient()).thenReturn(client);
