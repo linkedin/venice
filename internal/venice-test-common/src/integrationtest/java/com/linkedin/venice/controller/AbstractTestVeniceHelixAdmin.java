@@ -110,7 +110,8 @@ class AbstractTestVeniceHelixAdmin {
         multiClusterConfig,
         metricsRepository,
         D2TestUtils.getAndStartD2Client(zkAddress),
-        pubSubTopicRepository);
+        pubSubTopicRepository,
+        pubSubBrokerWrapper.getPubSubClientsFactory());
     veniceAdmin.initStorageCluster(clusterName);
     startParticipant();
     waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
