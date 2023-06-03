@@ -91,7 +91,7 @@ dependencies {
   implementation libraries.spark
   implementation libraries.testng
 
-  testImplementation (libraries.mapreduceClientJobClient) {
+  implementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'
     exclude group: 'javax.servlet'
   }
