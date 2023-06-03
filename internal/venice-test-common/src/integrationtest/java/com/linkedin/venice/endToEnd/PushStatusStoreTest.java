@@ -54,6 +54,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
@@ -74,7 +75,7 @@ public class PushStatusStoreTest {
   private D2Client d2Client;
   private PushStatusStoreReader reader;
   private String storeName;
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -176,7 +177,7 @@ public class PushStatusStoreTest {
     VeniceProperties backendConfig = getBackendConfigBuilder().build();
     Properties vpjProperties = getVPJProperties();
     runVPJ(vpjProperties, 1, cluster);
-    try (DaVinciClient daVinciClient =
+    try (DaVinciClient<Integer, Utf8> daVinciClient =
         ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, new DaVinciConfig(), backendConfig)) {
       daVinciClient.subscribeAll().get();
       vpjProperties = getVPJProperties();
@@ -190,7 +191,7 @@ public class PushStatusStoreTest {
   public void testIncrementalPushStatusStoredInPushStatusStore() throws Exception {
     Properties vpjProperties = getVPJProperties();
     runVPJ(vpjProperties, 1, cluster);
-    try (AvroGenericStoreClient storeClient = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient<Integer, Utf8> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
@@ -203,7 +204,7 @@ public class PushStatusStoreTest {
         job.run();
         cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
         LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
-        assertEquals(storeClient.get(1).get().toString(), "name 1");
+        validateThinClientGet(storeClient, 1, "name 1");
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
         for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
           Map<CharSequence, Integer> statuses = reader.getPartitionStatus(
@@ -227,7 +228,7 @@ public class PushStatusStoreTest {
   public void testIncrementalPushStatusReadingFromPushStatusStoreInController() throws Exception {
     Properties vpjProperties = getVPJProperties();
     runVPJ(vpjProperties, 1, cluster);
-    try (AvroGenericStoreClient storeClient = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient<Integer, Utf8> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
@@ -239,7 +240,7 @@ public class PushStatusStoreTest {
         job.run();
         cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
         LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
-        assertEquals(storeClient.get(1).get().toString(), "name 1");
+        validateThinClientGet(storeClient, 1, "name 1");
         Optional<String> incPushVersion = job.getIncrementalPushVersion();
         // verify partition replicas have reported their status to the push status store
         Map<Integer, Map<CharSequence, Integer>> pushStatusMap =
@@ -266,7 +267,7 @@ public class PushStatusStoreTest {
         PushStatusStoreRecordDeleter statusStoreDeleter = new PushStatusStoreRecordDeleter(
             cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory());
 
-        // after deleting the the inc push status belonging to just one partition we should expect
+        // After deleting the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status
         statusStoreDeleter.deletePartitionIncrementalPushStatus(storeName, 1, incPushVersion.get(), 1).get();
         TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
@@ -332,5 +333,13 @@ public class PushStatusStoreTest {
       cluster.waitVersion(storeName, expectedVersionNumber, controllerClient);
       LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
     }
+  }
+
+  private void validateThinClientGet(AvroGenericStoreClient<Integer, Utf8> storeClient, int key, String expectedValue) {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
+      Utf8 result = storeClient.get(key).get();
+      assertNotNull(result);
+      assertEquals(result.toString(), expectedValue);
+    });
   }
 }
