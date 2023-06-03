@@ -41,6 +41,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -207,6 +209,11 @@ public class DaVinciBackend implements Closeable {
 
       cacheBackend = cacheConfig
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
+
+      PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
+          new ApacheKafkaProducerAdapterFactory(),
+          new ApacheKafkaConsumerAdapterFactory(),
+          new ApacheKafkaAdminAdapterFactory());
       ingestionService = new KafkaStoreIngestionService(
           storageService.getStorageEngineRepository(),
           configLoader,
@@ -229,7 +236,7 @@ public class DaVinciBackend implements Closeable {
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
-          new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()));
+          pubSubClientsFactory);
 
       ingestionService.start();
       ingestionService.addIngestionNotifier(ingestionListener);

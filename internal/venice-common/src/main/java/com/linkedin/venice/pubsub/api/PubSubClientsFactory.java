@@ -7,13 +7,27 @@ package com.linkedin.venice.pubsub.api;
  */
 public class PubSubClientsFactory {
   private final PubSubProducerAdapterFactory producerAdapterFactory;
-  // todo: Add PubSubAdminAdapterFactory and PubSubConsumerAdapterFactory once it is available
+  private final PubSubConsumerAdapterFactory consumerAdapterFactory;
+  private final PubSubAdminAdapterFactory adminAdapterFactory;
 
-  public PubSubClientsFactory(PubSubProducerAdapterFactory producerAdapterFactory) {
+  public PubSubClientsFactory(
+      PubSubProducerAdapterFactory producerAdapterFactory,
+      PubSubConsumerAdapterFactory consumerAdapterFactory,
+      PubSubAdminAdapterFactory adminAdapterFactory) {
     this.producerAdapterFactory = producerAdapterFactory;
+    this.consumerAdapterFactory = consumerAdapterFactory;
+    this.adminAdapterFactory = adminAdapterFactory;
   }
 
   public PubSubProducerAdapterFactory getProducerAdapterFactory() {
     return producerAdapterFactory;
+  }
+
+  public PubSubConsumerAdapterFactory getConsumerAdapterFactory() {
+    return consumerAdapterFactory;
+  }
+
+  public PubSubAdminAdapterFactory getAdminAdapterFactory() {
+    return adminAdapterFactory;
   }
 }
