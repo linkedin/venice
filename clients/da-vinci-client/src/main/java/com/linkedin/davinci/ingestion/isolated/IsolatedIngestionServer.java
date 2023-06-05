@@ -72,10 +72,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -485,52 +485,76 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     int partitionId = report.partitionId;
     // Unsubscribe resource here so all incoming requests should be rejected and retried until handover is completed.
     setResourceToBeUnsubscribed(topicName, partitionId);
-    // Wait for all pending ingestion action on this partition to be completed in async fashion, which is expected to be
-    // fast.
-    getStoreIngestionService().waitIngestionTaskToCompleteAllPartitionPendingActions(topicName, partitionId, 100, 300);
-    if (getStoreIngestionService().isPartitionConsuming(topicName, partitionId)) {
-      Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
-      getStatusReportingExecutor().execute(() -> {
-        try {
-          executionFuture.get();
-        } catch (ExecutionException | InterruptedException e) {
-          LOGGER.warn(
-              "Encounter exception when trying to stop consumption and close storage for {} of topic: {}",
-              partitionId,
-              topicName);
+
+    CompletableFuture<Boolean> asyncShutdownResourceTaskFuture =
+        submitStopConsumptionAndCloseStorageTask(topicName, partitionId);
+    getStatusReportingExecutor().execute(() -> {
+      try {
+        if (!asyncShutdownResourceTaskFuture.get()) {
+          return;
         }
-        if (!getReportClient().reportIngestionStatus(report)) {
-          LOGGER.warn("Failed to deliver ingestion report to main process");
-        }
-      });
-    } else {
-      // If pending ingestion action stops consumption (unsubscribe), we will not handover ingestion and we should
-      // restore the subscribed state.
-      LOGGER.warn("Topic: {}, partition: {} is not consuming, will not handover ingestion.", topicName, partitionId);
-      setResourceToBeSubscribed(topicName, partitionId);
-    }
+      } catch (ExecutionException | InterruptedException e) {
+        LOGGER.warn(
+            "Encounter exception when waiting future execution of stop consumption and close storage for {} of topic: {}",
+            partitionId,
+            topicName);
+      }
+      /**
+       * Only when we actively stop partition consumption do we report the ingestion status here. Otherwise, we will not
+       * perform ingestion handover.
+       */
+      if (!getReportClient().reportIngestionStatus(report)) {
+        LOGGER.warn("Failed to deliver ingestion report to main process");
+      }
+    });
+
   }
 
   /**
    * Handle the logic of COMPLETED/ERROR here since we need to stop related ingestion task and close RocksDB partition.
    * Since the logic takes time to wait for completion, we need to execute it in async fashion to prevent blocking other operations.
    */
-  Future<?> submitStopConsumptionAndCloseStorageTask(IngestionTaskReport report) {
-    String topicName = report.topicName.toString();
-    int partitionId = report.partitionId;
-    return longRunningTaskExecutor.submit(() -> {
-      VeniceStoreVersionConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
-      // Make sure partition is not consuming so we can safely close the rocksdb partition
-      long startTimeInMs = System.currentTimeMillis();
-      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, stopConsumptionWaitRetriesNum);
-      // Close all RocksDB sub-Partitions in Ingestion Service.
-      getStorageService().closeStorePartition(storeConfig, partitionId);
-      LOGGER.info(
-          "Partition: {} of topic: {} closed in {} ms.",
-          partitionId,
-          topicName,
-          LatencyUtils.getElapsedTimeInMs(startTimeInMs));
-    });
+  CompletableFuture<Boolean> submitStopConsumptionAndCloseStorageTask(String topicName, int partitionId) {
+    return CompletableFuture.supplyAsync(() -> {
+      /**
+       * Wait for all pending ingestion action on this partition to be completed in async fashion, which is expected to
+       * be fast. This check must be executed in async fashion as startConsumption may report COMPLETED directly and the
+       * pending action counter will not be 0 if it is called in the same thread.
+       */
+      getStoreIngestionService()
+          .waitIngestionTaskToCompleteAllPartitionPendingActions(topicName, partitionId, 100, 300);
+      /**
+       * For Da Vinci Live Update suppression, it is actively stopping ingestion so isPartitionConsuming() is not working.
+       * Since Da Vinci does not have issue of receiving stopConsumption and handover at the same time, original race
+       * condition won't be an issue for DVC.
+       */
+      boolean shouldHandoverResource = getStoreIngestionService().isPartitionConsuming(topicName, partitionId)
+          || getStoreIngestionService().isLiveUpdateSuppressionEnabled();
+      if (shouldHandoverResource) {
+        VeniceStoreVersionConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
+        // Make sure partition is not consuming, so we can safely close the rocksdb partition
+        long startTimeInMs = System.currentTimeMillis();
+        getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, stopConsumptionWaitRetriesNum);
+        // Close all RocksDB sub-Partitions in Ingestion Service.
+        getStorageService().closeStorePartition(storeConfig, partitionId);
+        LOGGER.info(
+            "Partition: {} of topic: {} closed in {} ms.",
+            partitionId,
+            topicName,
+            LatencyUtils.getElapsedTimeInMs(startTimeInMs));
+        return true;
+      } else {
+        // If pending ingestion action stops consumption (unsubscribe), we will not handover ingestion and we should
+        // restore the subscribed state.
+        LOGGER.warn("Topic: {}, partition: {} is not consuming, will not handover ingestion.", topicName, partitionId);
+        setResourceToBeSubscribed(topicName, partitionId);
+        return false;
+      }
+    }, getLongRunningTaskExecutor());
+  }
+
+  ExecutorService getLongRunningTaskExecutor() {
+    return longRunningTaskExecutor;
   }
 
   private void checkHeartbeatTimeout() {
