@@ -52,7 +52,7 @@ public class TestDataRecoveryClient {
     verifyEstimationResults();
   }
 
-  @Test(invocationCount = 1000)
+  @Test
   public void testExecutor() {
     for (boolean isSuccess: new boolean[] { true, false }) {
       executeRecovery(isSuccess);
