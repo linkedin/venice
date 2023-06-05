@@ -64,7 +64,7 @@ public class StoreRepushCommand extends Command {
     cmd.add(this.params.command);
     cmd.add(this.params.extraCommandArgs);
     cmd.add(String.format("--store '%s'", this.params.store));
-    cmd.add(String.format("--fabric '%s'", this.params.destFabric));
+    cmd.add(String.format("--fabric '%s'", this.params.sourceFabric));
     return cmd;
   }
 

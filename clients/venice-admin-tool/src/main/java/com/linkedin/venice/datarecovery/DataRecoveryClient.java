@@ -12,7 +12,6 @@ import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
@@ -108,29 +107,28 @@ public class DataRecoveryClient {
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
     Map<String, Pair<Boolean, String>> pushMap = getRepushViability(storeNames, cmdParams);
-    Set<String> filteredStoreNames = new HashSet<>();
 
     for (Map.Entry<String, Pair<Boolean, String>> e: pushMap.entrySet()) {
-      if (e.getValue().getLeft() == true) {
-        filteredStoreNames.add(e.getKey());
+      if (e.getValue().getLeft()) {
+        this.getExecutor().getSkippedStores().add(e.getKey());
       }
     }
 
-    if (filteredStoreNames != null && !filteredStoreNames.isEmpty()) {
-      if (!drParams.isNonInteractive && !confirmStores(filteredStoreNames)) {
+    if (!getExecutor().getSkippedStores().isEmpty()) {
+      if (!drParams.isNonInteractive && !confirmStores(getExecutor().getSkippedStores())) {
         return;
       }
-      getExecutor().perform(filteredStoreNames, cmdParams);
+      getExecutor().perform(getExecutor().getSkippedStores(), cmdParams);
     } else {
       LOGGER.warn("store list is empty, exit.");
     }
 
     // check if we filtered stores based on push info, report them
-    if (storeNames.size() != filteredStoreNames.size()) {
+    if (storeNames.size() != getExecutor().getSkippedStores().size()) {
       LOGGER.info("================");
       LOGGER.info("STORES STORES WERE SKIPPED:");
       for (Map.Entry<String, Pair<Boolean, String>> e: pushMap.entrySet()) {
-        if (e.getValue().getLeft() == false) {
+        if (!e.getValue().getLeft()) {
           LOGGER.info(e.getKey() + " : " + e.getValue().getRight());
         }
       }
@@ -194,7 +192,7 @@ public class DataRecoveryClient {
     private Set<String> calculateRecoveryStoreNames(String multiStores) {
       Set<String> storeNames = null;
       if (multiStores != null && !multiStores.isEmpty()) {
-        storeNames = new HashSet<>(Utils.parseCommaSeparatedStringToSet(multiStores));
+        storeNames = Utils.parseCommaSeparatedStringToSet(multiStores);
       }
       return storeNames;
     }
