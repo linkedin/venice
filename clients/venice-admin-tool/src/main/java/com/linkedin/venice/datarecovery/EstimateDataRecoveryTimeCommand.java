@@ -59,7 +59,7 @@ public class EstimateDataRecoveryTimeCommand extends Command {
     String clusterName = getParams().getPCtrlCliWithoutCluster().discoverCluster(storeName).getCluster();
 
     try (ControllerClient parentCtrlCli =
-        buildControllerClient(clusterName, getParams().getParentUrl(), getParams().getSslFactory())) {
+        buildControllerClient(clusterName, getParams().getParentUrl(), getParams().getSSLFactory())) {
       StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(getParams().getStore(), true);
       Map<String, RegionPushDetails> pushDetails = storeHealthInfo.getRegionPushDetails();
 
@@ -88,7 +88,7 @@ public class EstimateDataRecoveryTimeCommand extends Command {
       setStore(p.getStore());
       setPCtrlCliWithoutCluster(p.getPCtrlCliWithoutCluster());
       setTargetRegion(p.getTargetRegion());
-      setSslFactory(p.getSslFactory());
+      setSSLFactory(p.getSSLFactory());
       setParentUrl((p.getParentUrl()));
     }
 
@@ -111,11 +111,11 @@ public class EstimateDataRecoveryTimeCommand extends Command {
       this.pCtrlCliWithoutCluster = pCtrlCliWithoutCluster;
     }
 
-    public Optional<SSLFactory> getSslFactory() {
+    public Optional<SSLFactory> getSSLFactory() {
       return sslFactory;
     }
 
-    public void setSslFactory(Optional<SSLFactory> sslFactory) {
+    public void setSSLFactory(Optional<SSLFactory> sslFactory) {
       this.sslFactory = sslFactory;
     }
 
