@@ -149,7 +149,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    validateMetrics(metricsRepository, useStreamingBatchGetAsDefault);
+    validateMetrics(metricsRepository, useStreamingBatchGetAsDefault, recordCnt + 1, recordCnt);
 
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
@@ -186,7 +186,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    validateMetrics(metricsRepository, useStreamingBatchGetAsDefault);
+    validateMetrics(metricsRepository, useStreamingBatchGetAsDefault, recordCnt, recordCnt);
 
     specificFastClient.close();
     printAllStats();
@@ -238,7 +238,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         1,
         "Incorrect non existing key size . Expected  1 got " + veniceResponseMap.getNonExistingKeys().size());
 
-    validateMetrics(metricsRepository, true);
+    validateMetrics(metricsRepository, true, recordCnt + 1, recordCnt);
   }
 
   @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
@@ -309,16 +309,12 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         results.containsKey("nonExisting"),
         " Results contained nonExisting key with value " + results.get("nonExisting"));
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
-    List<Double> metricValues = stats.getMetricValues("multiget_request_key_count", "Avg");
-    assertEquals(metricValues.get(0), 101.0);
-    metricValues = stats.getMetricValues("multiget_success_request_key_count", "Avg");
-    assertEquals(metricValues.get(0), 100.0);
 
     LOGGER.info(
         "STATS: latency -> {}",
         stats.buildSensorStatSummary("multiget_healthy_request_latency", "99thPercentile"));
 
-    validateMetrics(metricsRepository, true);
+    validateMetrics(metricsRepository, true, recordCnt + 1, recordCnt);
     printAllStats();
   }
 }

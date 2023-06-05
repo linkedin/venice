@@ -285,8 +285,11 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         };
       }
 
-      Consumer<MetricsRepository> fastClientStatsValidation =
-          metricsRepository -> validateMetrics(metricsRepository, useStreamingBatchGetAsDefault);
+      Consumer<MetricsRepository> fastClientStatsValidation = metricsRepository -> validateMetrics(
+          metricsRepository,
+          useStreamingBatchGetAsDefault,
+          batchGetKeySize,
+          batchGetKeySize);
 
       runTest(
           clientConfigBuilder,
