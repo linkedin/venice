@@ -48,11 +48,6 @@ dependencies {
   // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zkclient
 
-  runtimeOnly libraries.grpcNettyShaded
-  implementation libraries.grpcProtobuf
-  implementation libraries.grpcStub
-  compileOnly libraries.tomcatAnnotations
-
   testImplementation libraries.fastUtil
   testImplementation project(':internal:alpini:router:alpini-router-api')
   testImplementation project(':services:venice-router')
@@ -68,26 +63,6 @@ jar {
   }
 }
 
-def grpcVersion = '1.54.1'
-def protobufVersion = '3.21.7'
-
-protobuf {
-  protoc {
-    artifact = 'com.google.protobuf:protoc:' + protobufVersion
-  }
-  plugins {
-    grpc {
-      artifact = 'io.grpc:protoc-gen-grpc-java:' + grpcVersion
-    }
-  }
-  generateProtoTasks {
-    all()*.plugins {
-      grpc {}
-    }
-  }
-}
-
 ext {
   jacocoCoverageThreshold = 0.23
 }
-
