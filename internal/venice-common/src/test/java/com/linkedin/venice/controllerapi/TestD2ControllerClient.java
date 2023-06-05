@@ -49,6 +49,7 @@ public class TestD2ControllerClient {
   public void testConstructD2ControllerClient() {
     try (D2ControllerClient controllerClient =
         new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, TEST_ZK_ADDRESS, Optional.empty())) {
+      // Do nothing since we only want to test the constructor
     }
   }
 
@@ -79,8 +80,8 @@ public class TestD2ControllerClient {
 
     D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client);
 
-    D2ServiceDiscoveryResponse response =
-        D2ControllerClient.discoverCluster(TEST_ZK_ADDRESS, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1);
+    D2ServiceDiscoveryResponse response = D2ControllerClient
+        .discoverCluster(TEST_ZK_ADDRESS, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1, Optional.empty());
     Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
 
     try (D2ControllerClient controllerClient =
@@ -117,7 +118,8 @@ public class TestD2ControllerClient {
 
     D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client);
     Assert.assertTrue(
-        D2ControllerClient.discoverCluster(TEST_ZK_ADDRESS, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1).isError());
+        D2ControllerClient.discoverCluster(TEST_ZK_ADDRESS, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1, Optional.empty())
+            .isError());
 
     Assert.assertTrue(
         D2ControllerClient.discoverCluster(mockD2Client, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1).isError());
