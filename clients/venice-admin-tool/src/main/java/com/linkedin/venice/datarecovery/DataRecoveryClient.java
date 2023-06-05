@@ -110,21 +110,21 @@ public class DataRecoveryClient {
 
     for (Map.Entry<String, Pair<Boolean, String>> e: pushMap.entrySet()) {
       if (e.getValue().getLeft()) {
-        this.getExecutor().getSkippedStores().add(e.getKey());
+        this.getExecutor().getFilteredStoreNames().add(e.getKey());
       }
     }
 
-    if (!getExecutor().getSkippedStores().isEmpty()) {
-      if (!drParams.isNonInteractive && !confirmStores(getExecutor().getSkippedStores())) {
+    if (!getExecutor().getFilteredStoreNames().isEmpty()) {
+      if (!drParams.isNonInteractive && !confirmStores(getExecutor().getFilteredStoreNames())) {
         return;
       }
-      getExecutor().perform(getExecutor().getSkippedStores(), cmdParams);
+      getExecutor().perform(getExecutor().getFilteredStoreNames(), cmdParams);
     } else {
       LOGGER.warn("store list is empty, exit.");
     }
 
     // check if we filtered stores based on push info, report them
-    if (storeNames.size() != getExecutor().getSkippedStores().size()) {
+    if (storeNames.size() != getExecutor().getFilteredStoreNames().size()) {
       LOGGER.info("================");
       LOGGER.info("STORES STORES WERE SKIPPED:");
       for (Map.Entry<String, Pair<Boolean, String>> e: pushMap.entrySet()) {

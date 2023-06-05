@@ -209,7 +209,7 @@ public class TestDataRecoveryClient {
         storeHealthInfoMock.getRegionPushDetails().get("ei-ltx1").getPushStartTimestamp(),
         "2999-12-31T23:59:59.171961");
     dataRecoveryClient.execute(drParams, cmdParams);
-    Assert.assertEquals(dataRecoveryClient.getExecutor().getSkippedStores().contains("store3"), true);
+    Assert.assertEquals(dataRecoveryClient.getExecutor().getFilteredStoreNames().contains("store3"), true);
   }
 
   private List<DataRecoveryTask> buildTasks(Set<String> storeNames, Command cmd, Command.Params params) {

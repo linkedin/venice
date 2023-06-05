@@ -13,11 +13,11 @@ import org.apache.logging.log4j.Logger;
  */
 public class DataRecoveryExecutor extends DataRecoveryWorker {
   private final Logger LOGGER = LogManager.getLogger(DataRecoveryExecutor.class);
-  private Set<String> skippedStores;
+  private Set<String> filteredStoreNames;
 
   public DataRecoveryExecutor() {
     super();
-    this.skippedStores = new HashSet<>();
+    this.filteredStoreNames = new HashSet<>();
   }
 
   @Override
@@ -35,8 +35,8 @@ public class DataRecoveryExecutor extends DataRecoveryWorker {
 
   // for testing
 
-  public Set<String> getSkippedStores() {
-    return skippedStores;
+  public Set<String> getFilteredStoreNames() {
+    return filteredStoreNames;
   }
 
   @Override
