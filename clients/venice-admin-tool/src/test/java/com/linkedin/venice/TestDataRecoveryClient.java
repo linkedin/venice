@@ -52,11 +52,10 @@ public class TestDataRecoveryClient {
     verifyEstimationResults();
   }
 
-  @Test
+  @Test(invocationCount = 1000)
   public void testExecutor() {
     for (boolean isSuccess: new boolean[] { true, false }) {
       executeRecovery(isSuccess);
-      verifyExecuteRecoveryResults(isSuccess);
     }
   }
 
@@ -185,7 +184,6 @@ public class TestDataRecoveryClient {
 
     MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
     Map<String, String> storeStatusMap = new HashMap<>();
-    storeStatusMap.put("ei-ltx1", "7");
     doReturn(storeStatusMap).when(storeStatusResponse).getStoreStatusMap();
     doReturn(storeStatusResponse).when(controllerClient).getFutureVersions(anyString(), anyString());
 
@@ -201,15 +199,18 @@ public class TestDataRecoveryClient {
     drParams.setNonInteractive(true);
     dataRecoveryClient.execute(drParams, cmdParams);
 
+    verifyExecuteRecoveryResults(isSuccess);
+
     // testing repush with invalid timestamps
 
+    storeStatusMap.put("ei-ltx1", "7");
     cmdParams.setTimestamp("1999-12-31T00:00:00");
     doReturn("2999-12-31T23:59:59.171961").when(regionPushDetailsMock).getPushStartTimestamp();
     Assert.assertEquals(
         storeHealthInfoMock.getRegionPushDetails().get("ei-ltx1").getPushStartTimestamp(),
         "2999-12-31T23:59:59.171961");
     dataRecoveryClient.execute(drParams, cmdParams);
-    Assert.assertEquals(dataRecoveryClient.getExecutor().getFilteredStoreNames().contains("store3"), true);
+    Assert.assertEquals(dataRecoveryClient.getExecutor().getSkippedStores().contains("store3"), true);
   }
 
   private List<DataRecoveryTask> buildTasks(Set<String> storeNames, Command cmd, Command.Params params) {

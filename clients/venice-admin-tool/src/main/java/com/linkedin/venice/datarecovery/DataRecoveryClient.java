@@ -12,6 +12,7 @@ import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
@@ -107,30 +108,31 @@ public class DataRecoveryClient {
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
     Map<String, Pair<Boolean, String>> pushMap = getRepushViability(storeNames, cmdParams);
+    Set<String> filteredStoreNames = new HashSet<>();
 
     for (Map.Entry<String, Pair<Boolean, String>> e: pushMap.entrySet()) {
       if (e.getValue().getLeft()) {
-        this.getExecutor().getFilteredStoreNames().add(e.getKey());
+        filteredStoreNames.add(e.getKey());
+      } else {
+        this.getExecutor().getSkippedStores().add(e.getKey());
       }
     }
 
-    if (!getExecutor().getFilteredStoreNames().isEmpty()) {
-      if (!drParams.isNonInteractive && !confirmStores(getExecutor().getFilteredStoreNames())) {
+    if (!filteredStoreNames.isEmpty()) {
+      if (!drParams.isNonInteractive && !confirmStores(filteredStoreNames)) {
         return;
       }
-      getExecutor().perform(getExecutor().getFilteredStoreNames(), cmdParams);
+      getExecutor().perform(filteredStoreNames, cmdParams);
     } else {
       LOGGER.warn("store list is empty, exit.");
     }
 
     // check if we filtered stores based on push info, report them
-    if (storeNames.size() != getExecutor().getFilteredStoreNames().size()) {
+    if (getExecutor().getSkippedStores().size() > 0) {
       LOGGER.info("================");
       LOGGER.info("STORES STORES WERE SKIPPED:");
-      for (Map.Entry<String, Pair<Boolean, String>> e: pushMap.entrySet()) {
-        if (!e.getValue().getLeft()) {
-          LOGGER.info(e.getKey() + " : " + e.getValue().getRight());
-        }
+      for (String store: getExecutor().getSkippedStores()) {
+        LOGGER.info(store + " : " + pushMap.get(store).getRight());
       }
       LOGGER.info("================");
     }
