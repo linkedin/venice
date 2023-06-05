@@ -628,8 +628,11 @@ public class AdminTool {
 
   private static void executeDataRecovery(CommandLine cmd) {
     String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
+    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
     String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
     String stores = getRequiredArgument(cmd, Arg.STORES);
+    String timestamp = getRequiredArgument(cmd, Arg.DATETIME);
+    String url = getRequiredArgument(cmd, Arg.URL);
 
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
@@ -637,7 +640,11 @@ public class AdminTool {
 
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
     cmdParams.setCommand(recoveryCommand);
+    cmdParams.setDestFabric(destFabric);
     cmdParams.setSourceFabric(sourceFabric);
+    cmdParams.setTimestamp(timestamp);
+    cmdParams.setSSLFactory(sslFactory);
+    cmdParams.setUrl(url);
     if (extraCommandArgs != null) {
       cmdParams.setExtraCommandArgs(extraCommandArgs);
     }
@@ -646,7 +653,11 @@ public class AdminTool {
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
     params.setNonInteractive(isNonInteractive);
-    dataRecoveryClient.execute(params, cmdParams);
+
+    try (ControllerClient cli = new ControllerClient("*", url, sslFactory)) {
+      cmdParams.setPCtrlCliWithoutCluster(cli);
+      dataRecoveryClient.execute(params, cmdParams);
+    }
   }
 
   private static void estimateDataRecoveryTime(CommandLine cmd) {
@@ -661,7 +672,7 @@ public class AdminTool {
     EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
     cmdParams.setTargetRegion(destFabric);
     cmdParams.setParentUrl(parentUrl);
-    cmdParams.setSslFactory(sslFactory);
+    cmdParams.setSSLFactory(sslFactory);
     Long total;
 
     try (ControllerClient cli = new ControllerClient("*", parentUrl, sslFactory)) {
@@ -691,7 +702,7 @@ public class AdminTool {
     MonitorCommand.Params monitorParams = new MonitorCommand.Params();
     monitorParams.setTargetRegion(destFabric);
     monitorParams.setParentUrl(parentUrl);
-    monitorParams.setSslFactory(sslFactory);
+    monitorParams.setSSLFactory(sslFactory);
 
     try {
       monitorParams.setDateTime(LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));

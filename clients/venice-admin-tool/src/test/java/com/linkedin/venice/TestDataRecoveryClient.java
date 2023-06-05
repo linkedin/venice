@@ -34,6 +34,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -54,7 +56,6 @@ public class TestDataRecoveryClient {
   public void testExecutor() {
     for (boolean isSuccess: new boolean[] { true, false }) {
       executeRecovery(isSuccess);
-      verifyExecuteRecoveryResults(isSuccess);
     }
   }
 
@@ -105,7 +106,7 @@ public class TestDataRecoveryClient {
     D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
     r.setCluster("test");
     doReturn(r).when(controllerClient).discoverCluster(anyString());
-    doReturn(controllerClient).when(mockCmd).buildControllerClient(any(), any(), any());
+    doReturn(controllerClient).when(mockCmd).buildControllerClient(anyString(), anyString(), any());
 
     doReturn(tasks).when(estimator).buildTasks(any(), any());
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
@@ -135,9 +136,20 @@ public class TestDataRecoveryClient {
   }
 
   private void executeRecovery(boolean isSuccess) {
+    ControllerClient controllerClient = mock(ControllerClient.class);
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
     cmdParams.setCommand("cmd");
     cmdParams.setExtraCommandArgs("args");
+    cmdParams.setPCtrlCliWithoutCluster(controllerClient);
+    cmdParams.setUrl("https://localhost:7036");
+    cmdParams.setTimestamp("2999-12-31T00:00:00");
+    cmdParams.setSSLFactory(Optional.empty());
+    cmdParams.setDestFabric("ei-ltx1");
+    cmdParams.setSourceFabric("ei-ltx1");
+
+    D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
+    r.setCluster("test");
+    doReturn(r).when(controllerClient).discoverCluster(anyString());
 
     // Partial mock of Module class to take password from console input.
     executor = spy(DataRecoveryExecutor.class);
@@ -161,15 +173,44 @@ public class TestDataRecoveryClient {
     List<DataRecoveryTask> tasks = buildTasks(storeName, mockStoreRepushCmd, cmdParams);
     doReturn(tasks).when(executor).buildTasks(any(), any());
 
+    // Store filtering mocks
+    StoreHealthAuditResponse storeHealthInfoMock = mock(StoreHealthAuditResponse.class);
+    Map<String, RegionPushDetails> regionPushDetailsMapMock = new HashMap<>();
+    RegionPushDetails regionPushDetailsMock = mock(RegionPushDetails.class);
+    doReturn("1970-12-31T23:59:59.171961").when(regionPushDetailsMock).getPushStartTimestamp();
+    regionPushDetailsMapMock.put("ei-ltx1", regionPushDetailsMock);
+    doReturn(regionPushDetailsMapMock).when(storeHealthInfoMock).getRegionPushDetails();
+    doReturn(storeHealthInfoMock).when(controllerClient).listStorePushInfo(anyString(), anyBoolean());
+
+    MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
+    Map<String, String> storeStatusMap = new HashMap<>();
+    doReturn(storeStatusMap).when(storeStatusResponse).getStoreStatusMap();
+    doReturn(storeStatusResponse).when(controllerClient).getFutureVersions(anyString(), anyString());
+
     // Partial mock of Client class to confirm to-be-repushed stores from standard input.
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
     doReturn(executor).when(dataRecoveryClient).getExecutor();
     doCallRealMethod().when(dataRecoveryClient).execute(any(), any());
     doReturn(true).when(dataRecoveryClient).confirmStores(any());
+    doCallRealMethod().when(dataRecoveryClient).getRepushViability(any(), any());
+    doReturn(controllerClient).when(dataRecoveryClient).buildControllerClient(anyString(), anyString(), any());
     // client executes three store recovery.
     DataRecoveryClient.DataRecoveryParams drParams = new DataRecoveryClient.DataRecoveryParams("store1,store2,store3");
     drParams.setNonInteractive(true);
     dataRecoveryClient.execute(drParams, cmdParams);
+
+    verifyExecuteRecoveryResults(isSuccess);
+
+    // testing repush with invalid timestamps
+
+    storeStatusMap.put("ei-ltx1", "7");
+    cmdParams.setTimestamp("1999-12-31T00:00:00");
+    doReturn("2999-12-31T23:59:59.171961").when(regionPushDetailsMock).getPushStartTimestamp();
+    Assert.assertEquals(
+        storeHealthInfoMock.getRegionPushDetails().get("ei-ltx1").getPushStartTimestamp(),
+        "2999-12-31T23:59:59.171961");
+    dataRecoveryClient.execute(drParams, cmdParams);
+    Assert.assertEquals(dataRecoveryClient.getExecutor().getSkippedStores().contains("store3"), true);
   }
 
   private List<DataRecoveryTask> buildTasks(Set<String> storeNames, Command cmd, Command.Params params) {

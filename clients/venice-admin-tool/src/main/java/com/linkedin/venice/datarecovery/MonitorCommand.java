@@ -184,7 +184,7 @@ public class MonitorCommand extends Command {
       this.pCtrlCliWithoutCluster = parentCtrlCli;
     }
 
-    public void setSslFactory(Optional<SSLFactory> sslFactory) {
+    public void setSSLFactory(Optional<SSLFactory> sslFactory) {
       this.sslFactory = sslFactory;
     }
 

@@ -1,10 +1,15 @@
 package com.linkedin.venice.datarecovery;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.security.SSLFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
@@ -136,12 +141,48 @@ public class StoreRepushCommand extends Command {
   public static class Params extends Command.Params {
     // command name.
     private String command;
+    // dest fabric
+    private String destFabric;
     // source fabric.
     private String sourceFabric;
     // extra arguments to command.
     private String extraCommandArgs;
+    // expected completion timestamp
+    private LocalDateTime timestamp;
     // Debug run.
     private boolean debug = false;
+
+    private ControllerClient pCtrlCliWithoutCluster;
+    private String url;
+    private Optional<SSLFactory> sslFactory;
+
+    public String getUrl() {
+      return url;
+    }
+
+    public void setUrl(String url) {
+      this.url = url;
+    }
+
+    public void setSSLFactory(Optional<SSLFactory> sslFactory) {
+      this.sslFactory = sslFactory;
+    }
+
+    public void setPCtrlCliWithoutCluster(ControllerClient cli) {
+      this.pCtrlCliWithoutCluster = cli;
+    }
+
+    public ControllerClient getPCtrlCliWithoutCluster() {
+      return this.pCtrlCliWithoutCluster;
+    }
+
+    public LocalDateTime getTimestamp() {
+      return this.timestamp;
+    }
+
+    public String getDestFabric() {
+      return this.destFabric;
+    }
 
     public void setDebug(boolean debug) {
       this.debug = debug;
@@ -155,9 +196,30 @@ public class StoreRepushCommand extends Command {
       this.extraCommandArgs = args;
     }
 
-    public void setSourceFabric(String fabric) {
-      this.sourceFabric = fabric;
+    public void setDestFabric(String fabric) {
+      this.destFabric = fabric;
     }
+
+    public void setTimestamp(String timestamp) {
+      this.timestamp = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+
+    public Optional<SSLFactory> getSSLFactory() {
+      return sslFactory;
+    }
+
+    public void setTimestamp(LocalDateTime time) {
+      this.timestamp = time;
+    }
+
+    public String getSourceFabric() {
+      return sourceFabric;
+    }
+
+    public void setSourceFabric(String sourceFabric) {
+      this.sourceFabric = sourceFabric;
+    }
+
   }
 
   public static class Result extends Command.Result {
