@@ -1,7 +1,7 @@
 package com.linkedin.venice.fastclient;
 
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
-import static org.testng.AssertJUnit.assertEquals;
 
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -23,7 +23,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -270,7 +269,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           TestUtils.waitForNonDeterministicAssertion(
               10,
               TimeUnit.SECONDS,
-              () -> Assert.assertTrue(
+              () -> assertTrue(
                   metricsRepository.metrics()
                       .get("." + storeName + (batchGet ? "--multiget_streaming_" : "--") + "request_key_count.Rate")
                       .value() > 0,
@@ -282,33 +281,12 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
               .forEach(
                   (mName, metric) -> assertTrue(
                       metric.value() == 0,
-                      "Dual read metrics should not be incremented when dual read is enabled"));
+                      "Thin client metrics should not be incremented when dual read is disabled"));
         };
       }
 
-      Consumer<MetricsRepository> fastClientStatsValidation = metricsRepository -> {
-        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-          assertTrue(
-              metricsRepository.metrics()
-                  .get(
-                      "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--")
-                          + "request_key_count.Rate")
-                  .value() > 0,
-              "Respective request_key_count should have been incremented");
-          Assert.assertFalse(
-              metricsRepository.metrics()
-                  .get(
-                      "." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_")
-                          + "request_key_count.Rate")
-                  .value() > 0,
-              "Incorrect request_key_count should not be incremented");
-          metricsRepository.metrics().forEach((mName, metric) -> {
-            if (mName.contains("long_tail_retry_request")) {
-              assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
-            }
-          });
-        });
-      };
+      Consumer<MetricsRepository> fastClientStatsValidation =
+          metricsRepository -> validateMetrics(metricsRepository, useStreamingBatchGetAsDefault);
 
       runTest(
           clientConfigBuilder,
@@ -452,7 +430,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
     }
     fastClientStatsValidation = metricsRepository -> {
-      Assert.assertTrue(
+      assertTrue(
           metricsRepository.metrics()
               .get("." + storeName + metricPrefix + "long_tail_retry_request.OccurrenceRate")
               .value() > 0,

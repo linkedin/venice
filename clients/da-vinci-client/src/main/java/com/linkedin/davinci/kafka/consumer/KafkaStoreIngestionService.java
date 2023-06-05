@@ -69,7 +69,6 @@ import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
@@ -329,7 +328,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
         .setPubSubProperties(this::getPubSubSSLPropertiesFromServerConfig)
-        .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
+        .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
         .build();
 
     VeniceNotifier notifier = new LogNotifier();
@@ -739,6 +738,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partition,
       long retryIntervalInMs,
       int numRetries) {
+    LOGGER.info("Waiting all ingestion action to complete for topic: {}, partition: {}", topicName, partition);
     if (!topicPartitionHasAnyPendingActions(topicName, partition)) {
       LOGGER.info("Topic: {}, partition: {} has no pending ingestion action.", topicName, partition);
       return;
@@ -753,7 +753,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               partition,
               topicName,
               LatencyUtils.getElapsedTimeInMs(startTimeInMs));
-          break;
+          return;
         }
         sleep(retryIntervalInMs);
       }
@@ -774,6 +774,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       return ingestionTask != null && ingestionTask.isRunning()
           && ingestionTask.hasPendingPartitionIngestionAction(partition);
     }
+  }
+
+  public boolean isLiveUpdateSuppressionEnabled() {
+    return veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
   }
 
   @Override

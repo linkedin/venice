@@ -3,6 +3,8 @@ package com.linkedin.venice.integration.utils;
 import static com.linkedin.venice.integration.utils.ProcessWrapper.DEFAULT_HOST_NAME;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -32,8 +34,10 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
   private static final short OFFSET_TOPIC_REPLICATION_FACTOR = 1;
   private static final boolean LOG_CLEANER_ENABLE = false;
   // anchor for creating clients for this broker
-  private static final PubSubClientsFactory KAFKA_CLIENTS_FACTORY =
-      new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory());
+  private static final PubSubClientsFactory KAFKA_CLIENTS_FACTORY = new PubSubClientsFactory(
+      new ApacheKafkaProducerAdapterFactory(),
+      new ApacheKafkaConsumerAdapterFactory(),
+      new ApacheKafkaAdminAdapterFactory());
 
   /**
    * @return a function which yields a {@link KafkaBrokerWrapper} instance
@@ -139,7 +143,10 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
       this.sslPort = sslPort;
       this.zkServerWrapper = zkServerWrapper;
       this.shouldCloseZkServer = shouldCloseZkServer;
-      pubSubClientsFactory = new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory());
+      pubSubClientsFactory = new PubSubClientsFactory(
+          new ApacheKafkaProducerAdapterFactory(),
+          new ApacheKafkaConsumerAdapterFactory(),
+          new ApacheKafkaAdminAdapterFactory());
     }
 
     @Override

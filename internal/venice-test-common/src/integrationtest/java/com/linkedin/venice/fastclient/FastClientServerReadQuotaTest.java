@@ -1,6 +1,9 @@
 package com.linkedin.venice.fastclient;
 
-import static org.testng.AssertJUnit.assertEquals;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -10,7 +13,6 @@ import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericRecord;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -42,15 +44,15 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
     String readQuotaRejectedString = "." + storeName + "--quota_rcu_rejected.Count";
     String readQuotaUsageRatio = "." + storeName + "--read_quota_usage_ratio.Gauge";
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      Assert.assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
-      Assert.assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
-      Assert.assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
+      assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
+      assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
+      assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
     });
-    Assert.assertTrue(
+    assertTrue(
         serverMetric.getMetric(readQuotaRequestedString).value() >= 250,
         "Metric value: " + serverMetric.getMetric(readQuotaRequestedString).value());
-    Assert.assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
-    Assert.assertTrue(serverMetric.getMetric(readQuotaUsageRatio).value() > 0);
+    assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
+    assertTrue(serverMetric.getMetric(readQuotaUsageRatio).value() > 0);
 
     // Update the read quota to 100 and make 500 requests again.
     veniceCluster.useControllerClient(controllerClient -> {
@@ -67,10 +69,10 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
           assertEquals((int) value.get(VALUE_FIELD_NAME), i);
         }
       }
-      Assert.fail("Exception should be thrown due to read quota violation");
+      fail("Exception should be thrown due to read quota violation");
     } catch (Exception clientException) {
-      Assert.assertTrue(clientException.getMessage().contains("VeniceClientRateExceededException"));
+      assertTrue(clientException.getMessage().contains("VeniceClientRateExceededException"));
     }
-    Assert.assertTrue(serverMetric.getMetric(readQuotaRejectedString).value() > 0);
+    assertTrue(serverMetric.getMetric(readQuotaRejectedString).value() > 0);
   }
 }
