@@ -829,10 +829,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                   + " because it does not contain a storeName field");
         }
     }
-    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    if (systemStoreType != null) {
-      storeName = systemStoreType.extractRegularStoreName(storeName);
-    }
+    storeName = VeniceSystemStoreType.extractUserStoreName(storeName);
     return storeName;
   }
 
