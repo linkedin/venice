@@ -40,14 +40,14 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 
 def avroVersion = '1.9.2'
 def avroUtilVersion = '0.2.150'
+def grpcVersion = '1.54.1'
 def kafkaGroup = 'com.linkedin.kafka'
 def kafkaVersion = '2.4.1.65'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
+def protobufVersion = '3.21.7'
 def jacksonVersion = '2.13.3'
 
-def grpcVersion = '1.54.1'
-def protobufVersion = '3.21.7'
 
 ext.libraries = [
     avro: 'org.apache.avro:avro:' + avroVersion,
@@ -119,12 +119,10 @@ ext.libraries = [
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.5.9',
     zstd: 'com.github.luben:zstd-jni:1.5.2-3',
-
     grpcNettyShaded: 'io.grpc:grpc-netty-shaded:' + grpcVersion,
     grpcProtobuf: 'io.grpc:grpc-protobuf:' + grpcVersion,
     grpcStub: 'io.grpc:grpc-stub:' + grpcVersion,
     tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
-    guava: 'com.google.guava:guava:30.1-jre'
 ]
 
 group = 'com.linkedin.venice'
@@ -228,7 +226,7 @@ subprojects {
     }
     compileOnly {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
-//      exclude group: 'com.google.guava'
+      exclude group: 'com.google.guava'
       exclude group: 'com.typesafe.scala-logging'
       exclude group: 'log4j'
       exclude group: 'org.slf4j'
