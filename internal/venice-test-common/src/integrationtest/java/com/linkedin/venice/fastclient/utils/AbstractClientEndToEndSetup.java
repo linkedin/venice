@@ -13,6 +13,7 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTE
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -476,22 +477,39 @@ public abstract class AbstractClientEndToEndSetup {
             .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
   }
 
-  protected void validateMetrics(MetricsRepository metricsRepository, boolean useStreamingBatchGetAsDefault) {
+  protected void validateMetrics(
+      MetricsRepository metricsRepository,
+      boolean useStreamingBatchGetAsDefault,
+      int expectedBatchGetKeySizeMetricsCount,
+      int expectedBatchGetKeySizeSuccessMetricsCount) {
     String metricPrefix = useStreamingBatchGetAsDefault ? "--multiget_" : "--";
+    double keyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeMetricsCount : 1;
+    double successKeyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeSuccessMetricsCount : 1;
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
-    assertTrue(
-        metrics.get("." + storeName + metricPrefix + "request_key_count.Rate").value() > 0,
-        "Respective request_key_count should have been incremented");
-    assertTrue(
-        metrics.get("." + storeName + metricPrefix + "success_request_key_count.Rate").value() > 0,
-        "Respective success_request_key_count should have been incremented");
+    // counters are incremented in an async manner, so adding non-deterministic wait
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      assertTrue(
+          metrics.get("." + storeName + metricPrefix + "request_key_count.Rate").value() > 0,
+          "Respective request_key_count should have been incremented");
+      assertEquals(
+          metrics.get("." + storeName + metricPrefix + "request_key_count.Max").value(),
+          keyCount,
+          "Respective request_key_count should have been incremented");
+      assertTrue(
+          metrics.get("." + storeName + metricPrefix + "success_request_key_count.Rate").value() > 0,
+          "Respective success_request_key_count should have been incremented");
+      assertEquals(
+          metrics.get("." + storeName + metricPrefix + "success_request_key_count.Max").value(),
+          successKeyCount,
+          "Respective success_request_key_count should have been incremented");
+    });
     // incorrect metric should not be incremented
     assertFalse(
         metrics.get("." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
             .value() > 0,
         "Incorrect request_key_count should not be incremented");
 
-    // no retry should be triggered
+    // no retry should be triggered as it's not expected to be configured when calling this function
     metrics.forEach((mName, metric) -> {
       if (mName.contains("long_tail_retry_request")) {
         assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
