@@ -29,8 +29,8 @@ of the dataset. This leverages the same mechanism as Streaming Writes, and requi
 Hybrid.
 
 ### Targeted Region Push
-Technically, targeted region push is a type of full push, but it allows writing data into a subset of global regions, 
-whereas full push writes globally at once. 
+Technically, targeted region push is a type of full push, but it allows writing data into a subset of global regions/data
+centers, whereas full push writes globally at once. 
 
 Please note that this feature is still under active development. It doesn't push data to the rest of unspecified regions
 automatically yet. Users may perform validations and chain it with another full push/targeted region push to achieve the
