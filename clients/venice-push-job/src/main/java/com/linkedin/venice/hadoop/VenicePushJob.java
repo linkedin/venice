@@ -403,7 +403,7 @@ public class VenicePushJob implements AutoCloseable {
    * This is experimental config to specify a list of regions used for targeted region push in VPJ.
    * {@link #TARGETED_REGION_PUSH_ENABLED} has to be enabled to use this config.
    * In this mode, the VPJ will only push data to the provided regions.
-   * The input should be split by comma, e.g. "dc-0,dc-1,dc-2".
+   * The input should be split by comma, e.g. "dc-0, dc-1, dc-2".
    * For single targeted region push, see {@link #TARGETED_REGION_PUSH_ENABLED}.
    */
   public static final String TARGETED_REGION_PUSH_LIST = "targeted.region.push.list";
