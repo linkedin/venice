@@ -1,0 +1,17 @@
+syntax = 'proto3';
+package com.linkedin.venice.protocols;
+
+option java_multiple_files = true;
+
+service VeniceReadService {
+  rpc get (VeniceClientRequest) returns (VeniceServerResponse) {}
+}
+
+message VeniceClientRequest {
+  string key = 1;
+}
+
+message VeniceServerResponse {
+  string key = 1;
+  string value = 2;
+}
