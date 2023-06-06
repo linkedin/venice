@@ -135,12 +135,18 @@ public class RouterBackedSchemaReader implements SchemaReader {
     readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
     this.icProvider = icProvider;
 
-    this.refreshSchemaExecutor = Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("schema-refresh"));
-    schemaRefreshFuture = refreshSchemaExecutor.scheduleAtFixedRate(
-        () -> this.ensureSchemasAreRefreshed(loadUpdateSchemas.get(), true),
-        valueSchemaRefreshPeriod.getSeconds(),
-        valueSchemaRefreshPeriod.getSeconds(),
-        TimeUnit.SECONDS);
+    if (valueSchemaRefreshPeriod.toMillis() > 0) {
+      this.refreshSchemaExecutor =
+          Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("schema-refresh"));
+      this.schemaRefreshFuture = refreshSchemaExecutor.scheduleAtFixedRate(
+          () -> this.ensureSchemasAreRefreshed(loadUpdateSchemas.get(), true),
+          valueSchemaRefreshPeriod.getSeconds(),
+          valueSchemaRefreshPeriod.getSeconds(),
+          TimeUnit.SECONDS);
+    } else {
+      this.refreshSchemaExecutor = null;
+      this.schemaRefreshFuture = null;
+    }
   }
 
   @Override
@@ -237,12 +243,16 @@ public class RouterBackedSchemaReader implements SchemaReader {
 
   @Override
   public void close() throws IOException {
-    schemaRefreshFuture.cancel(true);
-    refreshSchemaExecutor.shutdownNow();
-    try {
-      refreshSchemaExecutor.awaitTermination(60, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
+    if (schemaRefreshFuture != null) {
+      schemaRefreshFuture.cancel(true);
+    }
+    if (refreshSchemaExecutor != null) {
+      refreshSchemaExecutor.shutdownNow();
+      try {
+        refreshSchemaExecutor.awaitTermination(60, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
+      }
     }
     if (!externalClient) {
       IOUtils.closeQuietly(storeClient, LOGGER::error);
