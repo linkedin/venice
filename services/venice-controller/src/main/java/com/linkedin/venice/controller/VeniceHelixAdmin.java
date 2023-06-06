@@ -254,6 +254,7 @@ import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
+import org.apache.helix.model.MaintenanceSignal;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
@@ -872,22 +873,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public boolean isClusterValid(String clusterName) {
     return admin.getClusters().contains(clusterName);
-  }
-
-  /**
-   * This function is used to determine whether the requested cluster is in maintenance mode or not.
-   * Right now, this class is using {@link #zkClient} to access the zookeeper node of controller
-   * maintenance since this info couldn't be retrieved through {@link HelixAdmin}.
-   * TODO: Once Helix provides the right API, we should switch to the formal way since we shouldn't
-   * touch the implementation details of Helix.
-   *
-   * @param clusterName
-   * @return
-   */
-  private boolean isClusterInMaintenanceMode(String clusterName) {
-    // Construct the path to maintenance mode ZNode
-    String maintenanceZNodePath = "/" + clusterName + "/CONTROLLER/MAINTENANCE";
-    return zkClient.exists(maintenanceZNodePath);
   }
 
   protected HelixAdmin getHelixAdmin() {
@@ -2321,11 +2306,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions) {
-    if (isClusterInMaintenanceMode(clusterName)) {
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    MaintenanceSignal maintenanceSignal =
+        HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
+
+    if (maintenanceSignal != null) {
       throw new HelixClusterMaintenanceModeException(clusterName);
     }
+
     checkControllerLeadershipFor(clusterName);
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Version version = null;
     OfflinePushStrategy strategy;
@@ -5415,6 +5404,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Store store,
       int versionNumber) {
     Pair<ExecutionStatus, String> statusAndDetails;
+
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    MaintenanceSignal maintenanceSignal =
+        HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
+
+    // Check if cluster is in maintenance mode due to too many offline instances
+    if (maintenanceSignal != null && maintenanceSignal
+        .getAutoTriggerReason() == MaintenanceSignal.AutoTriggerReason.MAX_OFFLINE_INSTANCES_EXCEEDED) {
+      String msg = "Push errored out for " + kafkaTopic + "due to too many offline instances. Reason: "
+          + maintenanceSignal.getReason();
+      LOGGER.error(msg);
+      return new OfflinePushStatusInfo(ExecutionStatus.ERROR, msg);
+    }
+
     if (incrementalPushVersion.isPresent()) {
       statusAndDetails = getIncrementalPushStatus(clusterName, kafkaTopic, incrementalPushVersion.get(), monitor);
     } else {
@@ -5424,8 +5427,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String details = statusAndDetails.getSecond();
     if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
       StringBuilder moreDetailsBuilder = new StringBuilder(details == null ? "" : details + " and ");
-      // Check whether cluster is in maintenance mode or not
-      if (isClusterInMaintenanceMode(clusterName)) {
+
+      // Check whether cluster is in manually triggered maintenance mode or not
+      if (maintenanceSignal != null
+          && maintenanceSignal.getTriggeringEntity() != MaintenanceSignal.TriggeringEntity.CONTROLLER) {
         moreDetailsBuilder.append("Cluster: ").append(clusterName).append(" is in maintenance mode");
       } else {
         moreDetailsBuilder.append("Version creation for topic: ").append(kafkaTopic).append(" got delayed");
