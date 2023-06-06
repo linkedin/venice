@@ -25,7 +25,7 @@ public class ClientConfig<T extends SpecificRecord> {
   public static final int DEFAULT_ZK_TIMEOUT_MS = 5000;
   public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
   public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
-  public static final Duration DEFAULT_SCHEMA_REFRESH_PERIOD = Duration.ofSeconds(Long.MAX_VALUE);
+  public static final Duration DEFAULT_SCHEMA_REFRESH_PERIOD = Duration.ofMillis(0);
 
   // Basic settings
   private String storeName;
