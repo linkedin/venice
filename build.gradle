@@ -17,6 +17,7 @@ plugins {
   id 'com.form.diff-coverage' version '0.9.5' apply false
   id 'me.champeau.jmh' version '0.6.7' apply false
   id 'io.github.lhotari.gradle-nar-plugin' version '0.5.1' apply false
+  id 'com.google.protobuf' version '0.9.3'
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -39,11 +40,14 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 
 def avroVersion = '1.9.2'
 def avroUtilVersion = '0.2.150'
+def grpcVersion = '1.54.1'
 def kafkaGroup = 'com.linkedin.kafka'
 def kafkaVersion = '2.4.1.65'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
+def protobufVersion = '3.21.7'
 def jacksonVersion = '2.13.3'
+
 
 ext.libraries = [
     avro: 'org.apache.avro:avro:' + avroVersion,
@@ -114,7 +118,11 @@ ext.libraries = [
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.5.9',
-    zstd: 'com.github.luben:zstd-jni:1.5.2-3'
+    zstd: 'com.github.luben:zstd-jni:1.5.2-3',
+    grpcNettyShaded: 'io.grpc:grpc-netty-shaded:' + grpcVersion,
+    grpcProtobuf: 'io.grpc:grpc-protobuf:' + grpcVersion,
+    grpcStub: 'io.grpc:grpc-stub:' + grpcVersion,
+    tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
 ]
 
 group = 'com.linkedin.venice'
@@ -151,6 +159,7 @@ subprojects {
     plugin 'java-library'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
+    plugin 'com.google.protobuf'
   }
 
   if (isLeafSubModule) {
@@ -170,6 +179,22 @@ subprojects {
     withSourcesJar()
     // TODO: Enable after we have valid javadocs
     //withJavadocJar()
+  }
+
+  protobuf {
+    protoc {
+      artifact = 'com.google.protobuf:protoc:' + protobufVersion
+    }
+    plugins {
+      grpc {
+        artifact = 'io.grpc:protoc-gen-grpc-java:' + grpcVersion
+      }
+    }
+    generateProtoTasks {
+      all()*.plugins {
+        grpc {}
+      }
+    }
   }
 
   configurations {
@@ -226,6 +251,10 @@ subprojects {
     avroCompiler libraries.avroCompiler
     avroCompiler libraries.avroUtilBuilder
     avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
+    runtimeOnly libraries.grpcNettyShaded
+    implementation libraries.grpcProtobuf
+    implementation libraries.grpcStub
+    compileOnly libraries.tomcatAnnotations
   }
 
   idea {
