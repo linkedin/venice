@@ -103,7 +103,7 @@ public class ClientFactory {
     String d2ServiceName = clientConfig.getD2ServiceName();
 
     if (clientConfig.getD2Client() != null) {
-      return new D2TransportClient(d2ServiceName, clientConfig.getD2Client());
+      return new D2TransportClient(d2ServiceName, clientConfig.getD2Client(), clientConfig.getAuthenticationProvider());
     }
 
     return new D2TransportClient(d2ServiceName, clientConfig);
@@ -122,9 +122,12 @@ public class ClientFactory {
         throw new VeniceClientException("Must use SSL factory method for client to communicate with https");
       }
 
-      return new HttpsTransportClient(bootstrapUrl, clientConfig.getSslFactory());
+      return new HttpsTransportClient(
+          bootstrapUrl,
+          clientConfig.getSslFactory(),
+          clientConfig.getAuthenticationProvider());
     } else {
-      return new HttpTransportClient(bootstrapUrl);
+      return new HttpTransportClient(bootstrapUrl, clientConfig.getAuthenticationProvider());
     }
   }
 }

@@ -14,6 +14,7 @@ import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME
 import static com.linkedin.venice.VeniceConstants.NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
 import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
+import com.linkedin.venice.authentication.ClientAuthenticationProviderFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
@@ -374,6 +375,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
           SystemTime.INSTANCE);
       p.setRouterUrl(routerUrl);
       p.applyAdditionalWriterConfigs(config);
+      p.setAuthenticationProvider(ClientAuthenticationProviderFactory.build(config));
       return p;
     }
 
@@ -445,6 +447,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         sslFactory,
         partitioners);
     systemProducer.applyAdditionalWriterConfigs(config);
+    systemProducer.setAuthenticationProvider(ClientAuthenticationProviderFactory.build(config));
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
   }

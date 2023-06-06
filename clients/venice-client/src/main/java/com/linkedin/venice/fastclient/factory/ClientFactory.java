@@ -58,7 +58,10 @@ public class ClientFactory {
         Objects.requireNonNull(clientConfig.getD2Client());
         return new RequestBasedMetadata(
             clientConfig,
-            new D2TransportClient(clientConfig.getClusterDiscoveryD2Service(), clientConfig.getD2Client()));
+            new D2TransportClient(
+                clientConfig.getClusterDiscoveryD2Service(),
+                clientConfig.getD2Client(),
+                clientConfig.getAuthenticationProvider()));
       case DA_VINCI_CLIENT_BASED_METADATA:
         Objects.requireNonNull(clientConfig.getDaVinciClientForMetaStore());
         return new DaVinciClientBasedMetadata(clientConfig, clientConfig.getDaVinciClientForMetaStore());

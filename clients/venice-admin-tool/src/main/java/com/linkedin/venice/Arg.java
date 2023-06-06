@@ -11,6 +11,7 @@ public enum Arg {
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
   VENICE_ZOOKEEPER_URL("venice-zookeeper-url", "vzu", true, "Venice Zookeeper url, eg. localhost:2622"),
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
+  TOKEN("token", "t", true, "Authentication Token for JWT authentication"),
   CLUSTER_SRC("cluster-src", "cs", true, "Store migration original Venice cluster name"),
   CLUSTER_DEST("cluster-dest", "cd", true, "Store migration destination Venice cluster name"),
   STORE("store", "s", true, "Name of Venice store"), STORES("stores", "sts", true, "Name of a group of Venice stores"),

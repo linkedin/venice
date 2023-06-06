@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializer;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.security.SSLFactory;
@@ -63,6 +64,8 @@ public class ClientConfig<T extends SpecificRecord> {
   // Test settings
   private Time time = new SystemTime();
 
+  private ClientAuthenticationProvider authenticationProvider;
+
   public static ClientConfig defaultGenericClientConfig(String storeName) {
     return new ClientConfig(storeName);
   }
@@ -107,6 +110,7 @@ public class ClientConfig<T extends SpecificRecord> {
         // Security settings
         .setHttps(config.isHttps())
         .setSslFactory(config.getSslFactory())
+        .setAuthenticationProvider(config.getAuthenticationProvider())
 
         .setForceClusterDiscoveryAtStartTime(config.isForceClusterDiscoveryAtStartTime())
         .setProjectionFieldValidationEnabled(config.isProjectionFieldValidationEnabled())
@@ -253,6 +257,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setSslFactory(SSLFactory sslEngineComponentFactory) {
     this.sslFactory = sslEngineComponentFactory;
+    return this;
+  }
+
+  public ClientAuthenticationProvider getAuthenticationProvider() {
+    return authenticationProvider;
+  }
+
+  public ClientConfig<T> setAuthenticationProvider(ClientAuthenticationProvider authenticationProvider) {
+    this.authenticationProvider = authenticationProvider;
     return this;
   }
 

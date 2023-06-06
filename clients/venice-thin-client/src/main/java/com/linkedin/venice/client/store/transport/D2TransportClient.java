@@ -24,6 +24,7 @@ import com.linkedin.r2.message.stream.entitystream.ReadHandle;
 import com.linkedin.r2.message.stream.entitystream.Reader;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -31,6 +32,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.security.SSLFactory;
 import java.net.URI;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -54,6 +56,7 @@ public class D2TransportClient extends TransportClient {
   // start/shutdown a d2 client if is is private.
   private final boolean privateD2Client;
   private String d2ServiceName;
+  private ClientAuthenticationProvider authenticationProvider;
 
   /**
    * Construct by an existing D2Client (such as from the pegasus-d2-client-default-cmpt).
@@ -61,10 +64,14 @@ public class D2TransportClient extends TransportClient {
    * @param d2ServiceName
    * @param d2Client
    */
-  public D2TransportClient(String d2ServiceName, D2Client d2Client) {
+  public D2TransportClient(
+      String d2ServiceName,
+      D2Client d2Client,
+      ClientAuthenticationProvider authenticationProvider) {
     this.d2ServiceName = d2ServiceName;
     this.d2Client = d2Client;
     this.privateD2Client = false;
+    this.authenticationProvider = authenticationProvider;
   }
 
   /**
@@ -89,6 +96,7 @@ public class D2TransportClient extends TransportClient {
     this.d2ServiceName = d2ServiceName;
     this.d2Client = builder.build();
     this.privateD2Client = true;
+    this.authenticationProvider = clientConfig.getAuthenticationProvider();
 
     D2ClientUtils.startClient(d2Client);
   }
@@ -250,11 +258,26 @@ public class D2TransportClient extends TransportClient {
 
   private RestRequest getRestGetRequest(String requestPath, Map<String, String> headers) {
     String requestUrl = getD2RequestUrl(requestPath);
+    headers = injectSecurityHeaders(headers);
     return D2ClientUtils.createD2GetRequest(requestUrl, headers);
+  }
+
+  private Map<String, String> injectSecurityHeaders(Map<String, String> headers) {
+    if (authenticationProvider != null) {
+      if (headers == null) {
+        return authenticationProvider.getHTTPAuthenticationHeaders();
+      } else {
+        Map<String, String> copy = new HashMap<>(headers);
+        copy.putAll(authenticationProvider.getHTTPAuthenticationHeaders());
+        return copy;
+      }
+    }
+    return headers;
   }
 
   private RestRequest getRestPostRequest(String requestPath, Map<String, String> headers, byte[] body) {
     String requestUrl = getD2RequestUrl(requestPath);
+    headers = injectSecurityHeaders(headers);
     return D2ClientUtils.createD2PostRequest(requestUrl, headers, body);
   }
 

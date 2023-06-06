@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
@@ -65,6 +66,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   // Key serializer
   private RecordSerializer<K> keySerializer;
   private RecordSerializer<MultiGetRouterRequestKeyV1> multiGetSerializer;
+  private final ClientAuthenticationProvider authenticationProvider;
 
   public DispatchingAvroGenericStoreClient(StoreMetadata metadata, ClientConfig config) {
     this(metadata, config, new R2TransportClient(config.getR2Client()));
@@ -77,6 +79,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       TransportClient transportClient) {
     this.metadata = metadata;
     this.config = config;
+    this.authenticationProvider = config.getAuthenticationProvider();
     this.transportClient = transportClient;
 
     if (config.isSpeculativeQueryEnabled()) {
@@ -201,7 +204,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.routeRequestMap.put(route, routeRequestFuture);
       try {
         String url = route + uri;
-        CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(url);
+        Map<String, String> headers;
+        if (authenticationProvider != null) {
+          headers = authenticationProvider.getHTTPAuthenticationHeaders();
+        } else {
+          headers = Collections.emptyMap();
+        }
+        CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(url, headers);
         transportFutures.add(transportFuture);
         transportFuture.whenCompleteAsync((response, throwable) -> {
           if (throwable != null) {
@@ -442,6 +451,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       headers.put(
           HttpConstants.VENICE_API_VERSION,
           Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
+      if (authenticationProvider != null) {
+        headers.putAll(authenticationProvider.getHTTPAuthenticationHeaders());
+      }
       long tsBeforeSerialization = System.nanoTime();
       byte[] serializedKeys = serializeMultiGetRequest(requestContext.keysForRoutes(route));
       requestContext.recordRequestSerializationTime(route, getLatencyInNS(tsBeforeSerialization));

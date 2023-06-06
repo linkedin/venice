@@ -12,6 +12,8 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
+import com.linkedin.venice.authentication.jwt.ClientAuthenticationProviderToken;
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -147,7 +149,6 @@ public class AdminTool {
   private static final String SUCCESS = "success";
 
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
-
   private static ControllerClient controllerClient;
   private static Optional<SSLFactory> sslFactory = Optional.empty();
   private static final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap = new HashMap<>();
@@ -183,6 +184,8 @@ public class AdminTool {
         LogConfigurator.disableLog();
       }
 
+      ClientAuthenticationProvider authenticationProvider = buildAuthenticationProvider(cmd);
+
       if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL)
           && Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER)) {
         veniceUrl = getRequiredArgument(cmd, Arg.URL);
@@ -192,7 +195,8 @@ public class AdminTool {
          * SSL config file is not mandatory now; build the controller with SSL config if provided.
          */
         buildSslFactory(cmd);
-        controllerClient = ControllerClient.constructClusterControllerClient(clusterName, veniceUrl, sslFactory);
+        controllerClient = ControllerClient
+            .constructClusterControllerClient(clusterName, veniceUrl, sslFactory, authenticationProvider);
       }
 
       if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER_SRC)) {
@@ -531,6 +535,15 @@ public class AdminTool {
     }
   }
 
+  private static ClientAuthenticationProvider buildAuthenticationProvider(CommandLine cmd) {
+    ClientAuthenticationProvider authenticationProvider = ClientAuthenticationProvider.DISABLED;
+    String token = getOptionalArgument(cmd, Arg.TOKEN, "");
+    if (!token.isEmpty()) {
+      authenticationProvider = ClientAuthenticationProviderToken.TOKEN(token);
+    }
+    return authenticationProvider;
+  }
+
   static CommandLine getCommandLine(String[] args) throws ParseException, IOException {
     /**
      * Command Options are split up for help text formatting, see printUsageAndExit()
@@ -611,11 +624,13 @@ public class AdminTool {
   private static void queryStoreForKey(CommandLine cmd, String veniceUrl) throws Exception {
     String store = getRequiredArgument(cmd, Arg.STORE);
     String keyString = getRequiredArgument(cmd, Arg.KEY);
+    ClientAuthenticationProvider authenticationProvider = buildAuthenticationProvider(cmd);
     String sslConfigFileStr = getOptionalArgument(cmd, Arg.VENICE_CLIENT_SSL_CONFIG_FILE);
     boolean isVsonStore = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.VSON_STORE, "false"));
     Optional<String> sslConfigFile =
         StringUtils.isEmpty(sslConfigFileStr) ? Optional.empty() : Optional.of(sslConfigFileStr);
-    printObject(QueryTool.queryStoreForKey(store, keyString, veniceUrl, isVsonStore, sslConfigFile));
+    printObject(
+        QueryTool.queryStoreForKey(store, keyString, veniceUrl, isVsonStore, sslConfigFile, authenticationProvider));
   }
 
   private static void showSchemas(CommandLine cmd) {
@@ -2439,8 +2454,9 @@ public class AdminTool {
     if (storeName.isEmpty()) {
       throw new VeniceException("Please either provide a valid topic name.");
     }
+    ClientAuthenticationProvider authenticationProvider = buildAuthenticationProvider(cmd);
     D2ServiceDiscoveryResponse clusterDiscovery =
-        ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+        ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3, authenticationProvider);
     String clusterName = clusterDiscovery.getCluster();
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
       PubSubTopicConfigResponse response = tmpControllerClient.getKafkaTopicConfigs(kafkaTopicName);
@@ -2487,8 +2503,9 @@ public class AdminTool {
       if (storeName.isEmpty()) {
         throw new VeniceException("Please either provide a valid topic name or a cluster name.");
       }
+      ClientAuthenticationProvider authenticationProvider = buildAuthenticationProvider(cmd);
       D2ServiceDiscoveryResponse clusterDiscovery =
-          ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+          ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3, authenticationProvider);
       clusterName = clusterDiscovery.getCluster();
     }
 

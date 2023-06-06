@@ -1,5 +1,6 @@
 package com.linkedin.venice.pulsar.sink;
 
+import static com.linkedin.venice.CommonConfigKeys.AUTHENTICATION_TOKEN;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
@@ -246,6 +247,9 @@ public class VenicePulsarSink implements Sink<GenericObject> {
     config.put(SSL_ENABLED, "false");
     if (veniceCfg.getKafkaSaslConfig() != null && !veniceCfg.getKafkaSaslConfig().isEmpty()) {
       config.put("kafka.sasl.jaas.config", veniceCfg.getKafkaSaslConfig());
+    }
+    if (veniceCfg.getVeniceToken() != null && !veniceCfg.getVeniceToken().isEmpty()) {
+      config.put(AUTHENTICATION_TOKEN, veniceCfg.getVeniceToken());
     }
     config.put("kafka.sasl.mechanism", veniceCfg.getKafkaSaslMechanism());
     config.put("kafka.security.protocol", veniceCfg.getKafkaSecurityProtocol());
