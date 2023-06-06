@@ -62,7 +62,8 @@ The user may choose to specify the following configs:
   the `STRICT` mode in avro-util's [SchemaParseConfiguration](https://github.com/linkedin/avro-util/blob/master/helper/helper-common/src/main/java/com/linkedin/avroutil1/compatibility/SchemaParseConfiguration.java)). 
   If set to `false`, it becomes equivalent to avro-util's `LOOSE` mode. Default: `true`
 - `targeted.region.push.enabled`: Whether to perform targeted region push. Default: `false`
-- `targeted.region.push.list`: Optionally specify a list of target region(s) to push data into. See full details at 
+- `targeted.region.push.list`: This config takes effect only when targeted region push flag is enabled. 
+  Optionally specify a list of target region(s) to push data into. See full details at 
   [TARGETED_REGION_PUSH_LIST](https://venicedb.org/javadoc/com/linkedin/venice/hadoop/VenicePushJob.html#TARGETED_REGION_PUSH_LIST).
 
 The push job also supports using D2 URLs for automated controller service discovery. To use this, the user or operator
