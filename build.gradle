@@ -119,6 +119,9 @@ ext.libraries = [
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.5.9',
     zstd: 'com.github.luben:zstd-jni:1.5.2-3',
+    jjwtapi: 'io.jsonwebtoken:jjwt-api:0.11.2',
+    jjwtimpl: 'io.jsonwebtoken:jjwt-impl:0.11.2',
+    jjwtjackson: 'io.jsonwebtoken:jjwt-jackson:0.11.2',
     grpcNettyShaded: 'io.grpc:grpc-netty-shaded:' + grpcVersion,
     grpcProtobuf: 'io.grpc:grpc-protobuf:' + grpcVersion,
     grpcStub: 'io.grpc:grpc-stub:' + grpcVersion,

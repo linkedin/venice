@@ -1,5 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -40,20 +41,25 @@ public class ControllerClientFactory {
   public static ControllerClient getControllerClient(
       String clusterName,
       String discoveryUrls,
-      Optional<SSLFactory> sslFactory) {
+      Optional<SSLFactory> sslFactory,
+      ClientAuthenticationProvider authenticationProvider) {
     final String clientIdentifier = clusterName + discoveryUrls;
-    return createIfAbsent(clientIdentifier, () -> new ControllerClient(clusterName, discoveryUrls, sslFactory));
+    return createIfAbsent(
+        clientIdentifier,
+        () -> new ControllerClient(clusterName, discoveryUrls, sslFactory, authenticationProvider));
   }
 
   public static ControllerClient discoverAndConstructControllerClient(
       String storeName,
       String discoveryUrls,
       Optional<SSLFactory> sslFactory,
-      int retryAttempts) {
+      int retryAttempts,
+      ClientAuthenticationProvider authenticationProvider) {
+
     D2ServiceDiscoveryResponse discoveryResponse =
-        ControllerClient.discoverCluster(discoveryUrls, storeName, sslFactory, retryAttempts);
+        ControllerClient.discoverCluster(discoveryUrls, storeName, sslFactory, retryAttempts, authenticationProvider);
     checkDiscoveryResponse(storeName, discoveryResponse);
-    return getControllerClient(discoveryResponse.getCluster(), discoveryUrls, sslFactory);
+    return getControllerClient(discoveryResponse.getCluster(), discoveryUrls, sslFactory, authenticationProvider);
   }
 
   public static boolean release(ControllerClient client) {
