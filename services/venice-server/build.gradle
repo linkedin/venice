@@ -66,4 +66,3 @@ jar {
 ext {
   jacocoCoverageThreshold = 0.23
 }
-
