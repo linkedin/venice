@@ -13,6 +13,7 @@ import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.r2.message.rest.RestResponseBuilder;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import org.apache.http.HttpHeaders;
@@ -43,10 +44,10 @@ public class TestTransportClient {
   @BeforeMethod
   public void setUpTransportClient() {
     mockD2Client = mock(D2Client.class);
-    d2TransportClient = new D2TransportClient(SERVICE_NAME, mockD2Client);
+    d2TransportClient = new D2TransportClient(SERVICE_NAME, mockD2Client, ClientAuthenticationProvider.DISABLED);
 
     mockHttpClient = mock(CloseableHttpAsyncClient.class);
-    httpTransportClient = new HttpTransportClient(HTTP_PREFIX + SERVICE_NAME, mockHttpClient);
+    httpTransportClient = new HttpTransportClient(HTTP_PREFIX + SERVICE_NAME, mockHttpClient, null);
   }
 
   @AfterMethod

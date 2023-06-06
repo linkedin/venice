@@ -1,8 +1,10 @@
 package com.linkedin.venice.fastclient;
 
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.r2.transport.common.Client;
+import com.linkedin.venice.authentication.jwt.ClientAuthenticationProviderToken;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import org.testng.annotations.Test;
@@ -88,6 +90,15 @@ public class ClientConfigTest {
         .build();
   }
 
+  @Test
+  public void testClientWithToken() {
+    ClientAuthenticationProviderToken testToken = ClientAuthenticationProviderToken.TOKEN("test_token");
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        getClientConfigWithMinimumRequiredInputs().setAuthenticationProvider(testToken);
+
+    assertEquals(testToken, clientConfigBuilder.build().getAuthenticationProvider());
+  }
+
   /** Setting useStreamingBatchGetAsDefault, no exceptions thrown */
   @Test
   public void testUseStreamingBatchGetAsDefault() {
@@ -102,4 +113,5 @@ public class ClientConfigTest {
     clientConfigBuilder.setUseStreamingBatchGetAsDefault(true);
     clientConfigBuilder.build();
   }
+
 }

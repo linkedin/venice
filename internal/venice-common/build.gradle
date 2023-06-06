@@ -1,5 +1,6 @@
 dependencies {
   api project(':internal:venice-client-common')
+  api libraries.jjwtapi
 
   implementation (libraries.avro) {
     exclude group: 'org.jboss.netty' // older version of netty3 causes transitive conflicts with the router
@@ -40,6 +41,10 @@ dependencies {
   implementation libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
   implementation libraries.oss
   implementation libraries.tehuti
+
+  implementation libraries.jjwtimpl // JWT authentication service
+  implementation libraries.jjwtjackson // JWT authentication service
+
   // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zkclient
   implementation libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
