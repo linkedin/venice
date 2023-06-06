@@ -33,7 +33,7 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
     this.instance = instance;
   }
 
-  private void report(String kafkaTopic, int partitionId, ExecutionStatus status) {
+  void report(String kafkaTopic, int partitionId, ExecutionStatus status) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
@@ -42,7 +42,7 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
     }
     Store store;
     try {
-      store = storeRepository.getStoreOrThrow(storeName);
+      store = getStoreRepository().getStoreOrThrow(storeName);
     } catch (VeniceNoStoreException e) {
       /**
        * For store deletion, store removal in store repo might happen faster then {@link ExecutionStatus.DROPPED} action.
@@ -50,7 +50,12 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
        * is not expected, so we should throw exception.
        */
       if (status.equals(ExecutionStatus.DROPPED)) {
-        LOGGER.warn("Store {} does not exist in store repository. Skip reporting status: {}", storeName, status);
+        LOGGER.info(
+            "Store {} does not exist in store repository. Skip reporting status: {} for topic: {}, partition: {}",
+            storeName,
+            status,
+            kafkaTopic,
+            partitionId);
         return;
       }
       throw e;
@@ -64,7 +69,7 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     if (status.equals(ExecutionStatus.DROPPED)) {
       try {
-        metaStoreWriter.deleteStoreReplicaStatus(clusterName, storeName, version, partitionId, instance);
+        getMetaStoreWriter().deleteStoreReplicaStatus(clusterName, storeName, version, partitionId, instance);
       } catch (Exception e) {
         /**
          * This could potentially happen during store deletion.
@@ -78,7 +83,7 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
             e);
       }
     } else {
-      metaStoreWriter.writeStoreReplicaStatus(clusterName, storeName, version, partitionId, instance, status);
+      getMetaStoreWriter().writeStoreReplicaStatus(clusterName, storeName, version, partitionId, instance, status);
     }
   }
 
@@ -109,5 +114,13 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
 
   public void drop(String kafkaTopic, int partitionId) {
     report(kafkaTopic, partitionId, ExecutionStatus.DROPPED);
+  }
+
+  MetaStoreWriter getMetaStoreWriter() {
+    return metaStoreWriter;
+  }
+
+  ReadOnlyStoreRepository getStoreRepository() {
+    return storeRepository;
   }
 }
