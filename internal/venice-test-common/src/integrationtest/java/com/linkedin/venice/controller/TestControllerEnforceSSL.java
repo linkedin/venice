@@ -54,7 +54,8 @@ public class TestControllerEnforceSSL {
         ControllerClient secureControllerClient = ControllerClient.constructClusterControllerClient(
             CLUSTER_NAME,
             controllerWrapper.getSecureControllerUrl(),
-            Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
+            Optional.of(SslUtils.getVeniceLocalSslFactory()),
+            null)) {
       TestUtils.waitForNonDeterministicCompletion(
           5,
           TimeUnit.SECONDS,

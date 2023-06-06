@@ -6,6 +6,7 @@ import static org.testng.Assert.*;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -79,7 +80,10 @@ public class RequestBasedMetadataIntegrationTest {
 
     requestBasedMetadata = new RequestBasedMetadata(
         clientConfig,
-        new D2TransportClient(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, d2Client));
+        new D2TransportClient(
+            VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+            d2Client,
+            ClientAuthenticationProvider.DISABLED));
     requestBasedMetadata.start();
   }
 
@@ -139,7 +143,10 @@ public class RequestBasedMetadataIntegrationTest {
 
     RequestBasedMetadata zstdRequestBasedMetadata = new RequestBasedMetadata(
         zstdClientConfig,
-        new D2TransportClient(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, d2Client));
+        new D2TransportClient(
+            VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+            d2Client,
+            ClientAuthenticationProvider.DISABLED));
     zstdRequestBasedMetadata.start();
 
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();

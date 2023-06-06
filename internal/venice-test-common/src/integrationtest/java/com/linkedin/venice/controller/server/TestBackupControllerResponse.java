@@ -29,7 +29,7 @@ public class TestBackupControllerResponse {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         PubSubBrokerWrapper kafka =
             ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
-        ControllerTransport transport = new ControllerTransport(Optional.empty());
+        ControllerTransport transport = new ControllerTransport(Optional.empty(), null);
         VeniceControllerWrapper controller1 = ServiceFactory
             .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build());
         VeniceControllerWrapper controller2 = ServiceFactory
