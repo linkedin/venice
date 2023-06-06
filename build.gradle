@@ -236,7 +236,7 @@ subprojects {
     }
     compileOnly {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
-      exclude group: 'com.google.guava'
+//      exclude group: 'com.google.guava'
       exclude group: 'com.typesafe.scala-logging'
       exclude group: 'log4j'
       exclude group: 'org.slf4j'
