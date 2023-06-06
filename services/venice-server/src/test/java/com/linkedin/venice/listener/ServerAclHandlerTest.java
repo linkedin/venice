@@ -22,6 +22,7 @@ import io.netty.util.Attribute;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
+import java.util.Optional;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSession;
 import org.mockito.ArgumentMatcher;
@@ -42,7 +43,7 @@ public class ServerAclHandlerTest {
     req = mock(HttpRequest.class);
 
     accessController = mock(StaticAccessController.class);
-    aclHandler = spy(new ServerAclHandler(accessController));
+    aclHandler = spy(new ServerAclHandler(Optional.of(accessController), Optional.empty(), Optional.empty()));
 
     // Certificate
     ChannelPipeline pipe = mock(ChannelPipeline.class);
@@ -88,7 +89,7 @@ public class ServerAclHandlerTest {
   @Test
   public void testDenyWithDisabledFailOnAccessRejection() throws Exception {
     when(accessController.hasAccess(any(), any(), any())).thenReturn(false);
-    aclHandler = spy(new ServerAclHandler(accessController, false));
+    aclHandler = spy(new ServerAclHandler(Optional.of(accessController), Optional.empty(), Optional.empty(), false));
     aclHandler.channelRead0(ctx, req);
     verify(ctx).fireChannelRead(req);
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));

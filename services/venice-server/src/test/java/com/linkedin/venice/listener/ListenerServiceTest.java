@@ -78,6 +78,8 @@ public class ListenerServiceTest {
         sslFactory,
         routerAccessController,
         storeAccessController,
+        Optional.empty(),
+        Optional.empty(),
         diskHealthService,
         compressorFactory,
         resourceReadUsageTracker);

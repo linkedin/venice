@@ -62,6 +62,8 @@ public class HttpChannelInitializerTest {
         serverConfig,
         accessController,
         storeAccessController,
+        Optional.empty(),
+        Optional.empty(),
         requestHandler);
     Assert.assertNotNull(initializer.getQuotaEnforcer());
   }
@@ -79,6 +81,8 @@ public class HttpChannelInitializerTest {
         serverConfig,
         accessController,
         storeAccessController,
+        Optional.empty(),
+        Optional.empty(),
         requestHandler);
     Assert.assertNull(initializer.getQuotaEnforcer());
   }
@@ -100,6 +104,8 @@ public class HttpChannelInitializerTest {
         serverConfig,
         accessController,
         storeAccessController,
+        Optional.empty(),
+        Optional.empty(),
         requestHandler);
     initializer.initChannel(ch);
   }
