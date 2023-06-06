@@ -90,7 +90,7 @@ public class DispatchingAvroGenericStoreClientTest {
     // Initialize metadata
     dispatchingAvroGenericStoreClient.verifyMetadataInitialized();
     // mock get()
-    doReturn(valueFuture).when(mockTransportClient).get(any());
+    doReturn(valueFuture).when(mockTransportClient).get(any(), any());
     if (!transportClientThrowsException) {
       TransportClientResponse singleGetResponse = new TransportClientResponse(
           1,

@@ -24,6 +24,7 @@ import io.netty.handler.ssl.SslHandler;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
+import java.util.Optional;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSession;
 import org.mockito.ArgumentMatcher;
@@ -205,7 +206,8 @@ public class StoreAclHandlerTest {
       }
       // New metadataRepo mock and aclHandler every update since thenThrow cannot be re-mocked.
       metadataRepo = mock(HelixReadOnlyStoreRepository.class);
-      aclHandler = spy(new StoreAclHandler(accessController, metadataRepo));
+      aclHandler =
+          spy(new StoreAclHandler(Optional.of(accessController), Optional.empty(), Optional.empty(), metadataRepo));
       update();
       aclHandler.channelRead0(ctx, req);
     }

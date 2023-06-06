@@ -38,4 +38,9 @@ public class CommonConfigKeys {
    *    (Container 25.2.15)
    */
   public static final String SSL_FACTORY_CLASS_NAME = "ssl.factory.class.name";
+
+  /**
+   * This configuration is the JWT token to use to connect to the backend.
+   */
+  public static final String AUTHENTICATION_TOKEN = "authentication.token";
 }

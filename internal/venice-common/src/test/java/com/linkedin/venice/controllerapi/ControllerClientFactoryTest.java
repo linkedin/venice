@@ -1,5 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -37,8 +38,12 @@ public class ControllerClientFactoryTest {
     Mockito.doReturn(discoveryResponse).when(mockControllerClient).discoverCluster(STORE_NAME);
 
     ControllerClientFactory.setControllerClient(DISCOVERY_CLUSTER_NAME, DISCOVERY_URL, mockControllerClient);
-    try (ControllerClient client =
-        ControllerClientFactory.discoverAndConstructControllerClient(STORE_NAME, DISCOVERY_URL, Optional.empty(), 1)) {
+    try (ControllerClient client = ControllerClientFactory.discoverAndConstructControllerClient(
+        STORE_NAME,
+        DISCOVERY_URL,
+        Optional.empty(),
+        1,
+        ClientAuthenticationProvider.DISABLED)) {
       Assert.assertEquals(client.getClusterName(), CLUSTER_NAME);
     }
 
@@ -50,8 +55,12 @@ public class ControllerClientFactoryTest {
 
     Assert.assertThrows(
         VeniceNoStoreException.class,
-        () -> ControllerClientFactory
-            .discoverAndConstructControllerClient(NON_EXISTENT_STORE_NAME, DISCOVERY_URL, Optional.empty(), 1));
+        () -> ControllerClientFactory.discoverAndConstructControllerClient(
+            NON_EXISTENT_STORE_NAME,
+            DISCOVERY_URL,
+            Optional.empty(),
+            1,
+            ClientAuthenticationProvider.DISABLED));
 
     D2ServiceDiscoveryResponse nonExistentDiscoveryResponseLegacy = new D2ServiceDiscoveryResponse();
     nonExistentDiscoveryResponseLegacy.setError("Store " + NON_EXISTENT_STORE_NAME + " not found");
@@ -62,8 +71,12 @@ public class ControllerClientFactoryTest {
 
     Assert.assertThrows(
         VeniceException.class,
-        () -> ControllerClientFactory
-            .discoverAndConstructControllerClient(NON_EXISTENT_STORE_NAME, DISCOVERY_URL, Optional.empty(), 1));
+        () -> ControllerClientFactory.discoverAndConstructControllerClient(
+            NON_EXISTENT_STORE_NAME,
+            DISCOVERY_URL,
+            Optional.empty(),
+            1,
+            ClientAuthenticationProvider.DISABLED));
 
     ControllerClientFactory.release(mockControllerClient);
   }
