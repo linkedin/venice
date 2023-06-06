@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.httpclient;
 
 import com.linkedin.alpini.router.api.RouterException;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.httpclient5.HttpClient5Utils;
 import com.linkedin.venice.meta.Instance;
@@ -38,6 +39,8 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
   private final Random random = new Random();
   private final List<CloseableHttpAsyncClient> clientList = new ArrayList<>();
 
+  private ClientAuthenticationProvider authenticationProvider;
+
   public HttpClient5StorageNodeClient(Optional<SSLFactory> sslFactory, VeniceRouterConfig routerConfig) {
     sslFactory.orElseThrow(
         () -> new VeniceException("Param 'sslFactory' must be present while using " + this.getClass().getSimpleName()));
@@ -64,6 +67,7 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
         "Constructing HttpClient5StorageNodeClient with pool size: {}, total io thread count: {}",
         poolSize,
         totalIOThreadCount);
+    authenticationProvider = routerConfig.getAuthenticationProvider();
   }
 
   @Override
@@ -92,6 +96,9 @@ public class HttpClient5StorageNodeClient implements StorageNodeClient {
     byte[] body = path.getBody();
     if (body != null) {
       simpleRequestBuilder.setBody(body, ContentType.DEFAULT_BINARY);
+    }
+    if (authenticationProvider != null) {
+      authenticationProvider.getHTTPAuthenticationHeaders().forEach(simpleRequestBuilder::addHeader);
     }
 
     getRandomClient().execute(simpleRequestBuilder.build(), new FutureCallback<SimpleHttpResponse>() {

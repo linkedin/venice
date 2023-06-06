@@ -98,6 +98,8 @@ import static com.linkedin.venice.helix.HelixInstanceConfigRepository.ZONE_FIELD
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
 import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.LEAST_LOADED;
 
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
+import com.linkedin.venice.authentication.ClientAuthenticationProviderFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
@@ -213,6 +215,11 @@ public class VeniceRouterConfig {
   private boolean perRouterStorageNodeThrottlerEnabled;
   private double perStoreRouterQuotaBuffer;
   private boolean httpClientOpensslEnabled;
+
+  /**
+   * Authentication token for connections to other Venice components
+   */
+  private ClientAuthenticationProvider authenticationProvider;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -392,6 +399,7 @@ public class VeniceRouterConfig {
     perRouterStorageNodeThrottlerEnabled = props.getBoolean(ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED, true);
     perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 1.5);
     httpClientOpensslEnabled = props.getBoolean(ROUTER_HTTP_CLIENT_OPENSSL_ENABLED, true);
+    authenticationProvider = ClientAuthenticationProviderFactory.build(props);
   }
 
   public double getPerStoreRouterQuotaBuffer() {
@@ -841,5 +849,9 @@ public class VeniceRouterConfig {
 
   public boolean isHttpClientOpensslEnabled() {
     return httpClientOpensslEnabled;
+  }
+
+  public ClientAuthenticationProvider getAuthenticationProvider() {
+    return authenticationProvider;
   }
 }

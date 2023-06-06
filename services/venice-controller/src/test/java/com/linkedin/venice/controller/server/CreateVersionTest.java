@@ -108,7 +108,8 @@ public class CreateVersionTest {
     /**
      * Build a CreateVersion route.
      */
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), checkReadMethod, false);
+    CreateVersion createVersion =
+        new CreateVersion(true, Optional.of(accessClient), checkReadMethod, false, Optional.empty());
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     // Not an allowlist user.
@@ -170,7 +171,7 @@ public class CreateVersionTest {
     assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false, Optional.empty());
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Object result = createVersionRoute.handle(request, response);
@@ -223,7 +224,7 @@ public class CreateVersionTest {
     assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false, Optional.empty());
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Object result = createVersionRoute.handle(request, response);
@@ -276,7 +277,7 @@ public class CreateVersionTest {
     assertTrue(admin.isParent());
 
     // Build a CreateVersion route.
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false, Optional.empty());
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
     Object result = createVersionRoute.handle(request, response);
     assertNotNull(result);

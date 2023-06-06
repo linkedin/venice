@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.httpclient;
 
 import com.linkedin.alpini.router.api.RouterException;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.httpclient.CachedDnsResolver;
 import com.linkedin.venice.httpclient.HttpClientUtils;
@@ -80,6 +81,8 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
   private Optional<CachedDnsResolver> dnsResolver = Optional.empty();
   private ClientConnectionWarmingService clientConnectionWarmingService = null;
 
+  private ClientAuthenticationProvider authenticationProvider;
+
   public ApacheHttpAsyncStorageNodeClient(
       VeniceRouterConfig config,
       Optional<SSLFactory> sslFactory,
@@ -132,6 +135,8 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
         clientPool.add(createAndStartNewClient().getClient());
       }
     }
+
+    authenticationProvider = config.getAuthenticationProvider();
   }
 
   public CloseableHttpAsyncClient getHttpClientForHost(String host) {
@@ -549,6 +554,9 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
       return;
     }
     HttpGet httpGet = new HttpGet(request.getUrl() + request.getQuery());
+    if (authenticationProvider != null) {
+      authenticationProvider.getHTTPAuthenticationHeaders().forEach(httpGet::addHeader);
+    }
 
     if (request.hasTimeout()) {
       RequestConfig requestConfig = RequestConfig.custom()
@@ -584,6 +592,9 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
     final HttpUriRequest routerRequest = path.composeRouterRequest(address);
     // set up header to pass map required by the Venice server
     path.setupVeniceHeaders((k, v) -> routerRequest.addHeader(k, v));
+    if (authenticationProvider != null) {
+      authenticationProvider.getHTTPAuthenticationHeaders().forEach(routerRequest::addHeader);
+    }
     CloseableHttpAsyncClient selectedClient;
     if (perNodeClientEnabled) {
       // If all the pool are used up by the set of live instances, spawn new client
