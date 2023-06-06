@@ -2,6 +2,12 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.acl.handler.StoreAclHandler;
+import com.linkedin.venice.authentication.AuthenticationService;
+import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.authorization.Method;
+import com.linkedin.venice.authorization.Principal;
+import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.NettyUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -14,6 +20,7 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
+import java.util.Optional;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -34,16 +41,27 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public static final AttributeKey<Boolean> SERVER_ACL_APPROVED_ATTRIBUTE_KEY =
       AttributeKey.valueOf("SERVER_ACL_APPROVED_ATTRIBUTE_KEY");
 
-  private final StaticAccessController accessController;
+  private final Optional<StaticAccessController> accessController;
+  private final Optional<AuthenticationService> authenticationService;
+  private final Optional<AuthorizerService> authorizerService;
   private final boolean failOnAccessRejection;
 
-  public ServerAclHandler(StaticAccessController accessController) {
-    this(accessController, true);
+  public ServerAclHandler(
+      Optional<StaticAccessController> accessController,
+      Optional<AuthenticationService> authenticationService,
+      Optional<AuthorizerService> authorizerService) {
+    this(accessController, authenticationService, authorizerService, true);
   }
 
-  public ServerAclHandler(StaticAccessController accessController, boolean failOnAccessRejection) {
+  public ServerAclHandler(
+      Optional<StaticAccessController> accessController,
+      Optional<AuthenticationService> authenticationService,
+      Optional<AuthorizerService> authorizerService,
+      boolean failOnAccessRejection) {
     this.accessController = accessController;
     this.failOnAccessRejection = failOnAccessRejection;
+    this.authenticationService = authenticationService;
+    this.authorizerService = authorizerService;
   }
 
   /**
@@ -55,15 +73,29 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
-    SslHandler sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
-    if (sslHandler == null) {
+    Optional<SslHandler> sslHandler = Optional.ofNullable(ServerHandlerUtils.extractSslHandler(ctx));
+    if (!sslHandler.isPresent() && accessController.isPresent()) {
       throw new VeniceException("Failed to extract ssl handler from the incoming request");
     }
 
-    X509Certificate clientCert = SslUtils.getX509Certificate(sslHandler.engine().getSession().getPeerCertificates()[0]);
+    X509Certificate clientCert = null;
+    if (sslHandler.isPresent()) {
+      clientCert = SslUtils.getX509Certificate(sslHandler.get().engine().getSession().getPeerCertificates()[0]);
+    }
     String method = req.method().name();
 
-    boolean accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
+    boolean accessApproved = false;
+    if (accessController.isPresent()) {
+      accessApproved = accessController.get().hasAccess(clientCert, VeniceComponent.SERVER, method);
+    }
+    if (authenticationService.isPresent()) {
+      Principal principal = StoreAclHandler.getPrincipal(ctx, req, clientCert, authenticationService);
+      if (authorizerService.isPresent()) {
+        accessApproved = authorizerService.get().canAccess(Method.valueOf(method), new Resource("*"), principal);
+      }
+      LOGGER.info("Authenticate {} accessApproved: {}", principal, accessApproved);
+    }
+
     ctx.channel().attr(SERVER_ACL_APPROVED_ATTRIBUTE_KEY).set(accessApproved);
     if (accessApproved || !failOnAccessRejection) {
       ReferenceCountUtil.retain(req);

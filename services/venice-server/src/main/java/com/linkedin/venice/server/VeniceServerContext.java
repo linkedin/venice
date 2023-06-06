@@ -5,6 +5,8 @@ import static com.linkedin.venice.server.VeniceServer.SERVER_SERVICE_NAME;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.authentication.AuthenticationService;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.security.SSLFactory;
@@ -25,6 +27,9 @@ public class VeniceServerContext {
   private final SSLFactory sslFactory;
   private final StaticAccessController routerAccessController;
   private final DynamicAccessController storeAccessController;
+
+  private final AuthenticationService authenticationService;
+  private final AuthorizerService authorizerService;
   private final ClientConfig clientConfigForConsumer;
   private final ICProvider icProvider;
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
@@ -50,6 +55,14 @@ public class VeniceServerContext {
     return storeAccessController;
   }
 
+  public AuthenticationService getAuthenticationService() {
+    return authenticationService;
+  }
+
+  public AuthorizerService getAuthorizerService() {
+    return authorizerService;
+  }
+
   public ClientConfig getClientConfigForConsumer() {
     return clientConfigForConsumer;
   }
@@ -73,6 +86,8 @@ public class VeniceServerContext {
     this.routerAccessController = builder.routerAccessController;
     this.storeAccessController = builder.storeAccessController;
     this.clientConfigForConsumer = builder.clientConfigForConsumer;
+    this.authenticationService = builder.authenticationService;
+    this.authorizerService = builder.authorizerService;
     this.icProvider = builder.icProvider;
     this.serviceDiscoveryAnnouncers = builder.serviceDiscoveryAnnouncers;
     this.pubSubClientsFactory = builder.pubSubClientsFactory;
@@ -85,6 +100,8 @@ public class VeniceServerContext {
     private SSLFactory sslFactory;
     private StaticAccessController routerAccessController;
     private DynamicAccessController storeAccessController;
+    private AuthenticationService authenticationService;
+    private AuthorizerService authorizerService;
     private ClientConfig clientConfigForConsumer;
     private ICProvider icProvider;
     private List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
@@ -114,6 +131,16 @@ public class VeniceServerContext {
 
     public Builder setStoreAccessController(DynamicAccessController storeAccessController) {
       this.storeAccessController = storeAccessController;
+      return this;
+    }
+
+    public Builder setAuthenticationService(AuthenticationService authenticationService) {
+      this.authenticationService = authenticationService;
+      return this;
+    }
+
+    public Builder setAuthorizerService(AuthorizerService authorizerService) {
+      this.authorizerService = authorizerService;
       return this;
     }
 

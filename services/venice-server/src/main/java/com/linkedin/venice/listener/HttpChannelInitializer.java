@@ -6,6 +6,8 @@ import com.linkedin.alpini.netty4.ssl.SslInitializer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.authentication.AuthenticationService;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -59,6 +61,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       VeniceServerConfig serverConfig,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
+      Optional<AuthenticationService> authenticationService,
+      Optional<AuthorizerService> authorizerService,
       StorageReadRequestsHandler requestHandler) {
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
@@ -91,15 +95,25 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     this.sslFactory = sslFactory;
     this.sslHandshakeExecutor = sslHandshakeExecutor;
-    this.storeAclHandler = storeAccessController.isPresent()
-        ? Optional.of(new ServerStoreAclHandler(storeAccessController.get(), storeMetadataRepository))
+    this.storeAclHandler = storeAccessController.isPresent() || authenticationService.isPresent()
+        ? Optional.of(
+            new ServerStoreAclHandler(
+                storeAccessController,
+                authenticationService,
+                authorizerService,
+                storeMetadataRepository))
         : Optional.empty();
     /**
      * If the store-level access handler is present, we don't want to fail fast if the access gets denied by {@link ServerAclHandler}.
      */
     boolean aclHandlerFailOnAccessRejection = !this.storeAclHandler.isPresent();
-    this.aclHandler = routerAccessController.isPresent()
-        ? Optional.of(new ServerAclHandler(routerAccessController.get(), aclHandlerFailOnAccessRejection))
+    this.aclHandler = routerAccessController.isPresent() || authenticationService.isPresent()
+        ? Optional.of(
+            new ServerAclHandler(
+                routerAccessController,
+                authenticationService,
+                authorizerService,
+                aclHandlerFailOnAccessRejection))
         : Optional.empty();
 
     if (serverConfig.isQuotaEnforcementEnabled()) {
@@ -183,16 +197,17 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           .addLast(new IdleStateHandler(0, 0, serverConfig.getNettyIdleTimeInSeconds()));
       if (sslFactory.isPresent()) {
         pipeline.addLast(verifySsl);
-        if (aclHandler.isPresent()) {
-          pipeline.addLast(aclHandler.get());
-        }
-        /**
-         * {@link #storeAclHandler} if present must come after {@link #aclHandler}
-         */
-        if (storeAclHandler.isPresent()) {
-          pipeline.addLast(storeAclHandler.get());
-        }
       }
+      if (aclHandler.isPresent()) {
+        pipeline.addLast(aclHandler.get());
+      }
+      /**
+       * {@link #storeAclHandler} if present must come after {@link #aclHandler}
+       */
+      if (storeAclHandler.isPresent()) {
+        pipeline.addLast(storeAclHandler.get());
+      }
+
       pipeline.addLast(
           new RouterRequestHttpHandler(
               statsHandler,

@@ -22,6 +22,10 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.authentication.AuthenticationService;
+import com.linkedin.venice.authentication.AuthenticationServiceUtils;
+import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.authorization.AuthorizerServiceUtils;
 import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
@@ -93,6 +97,8 @@ public class VeniceServer {
   private final Optional<SSLFactory> sslFactory;
   private final Optional<StaticAccessController> routerAccessController;
   private final Optional<DynamicAccessController> storeAccessController;
+  private final Optional<AuthenticationService> authenticationService;
+  private final Optional<AuthorizerService> authorizerService;
   private final Optional<ClientConfig> clientConfigForConsumer;
   private final AtomicBoolean isStarted;
   private final Lazy<List<AbstractVeniceService>> services;
@@ -185,6 +191,8 @@ public class VeniceServer {
     this.routerAccessController = Optional.ofNullable(ctx.getRouterAccessController());
     this.storeAccessController = Optional.ofNullable(ctx.getStoreAccessController());
     this.clientConfigForConsumer = Optional.ofNullable(ctx.getClientConfigForConsumer());
+    this.authenticationService = Optional.ofNullable(ctx.getAuthenticationService());
+    this.authorizerService = Optional.ofNullable(ctx.getAuthorizerService());
   }
 
   /**
@@ -420,6 +428,8 @@ public class VeniceServer {
         sslFactory,
         routerAccessController,
         storeAccessController,
+        authenticationService,
+        authorizerService,
         diskHealthCheckService,
         compressorFactory,
         resourceReadUsageTracker);
@@ -612,7 +622,26 @@ public class VeniceServer {
         LOGGER.error("Exception while closing: {}", zkClient.getClass().getSimpleName(), e);
       }
 
+      try {
+        if (authorizerService.isPresent()) {
+          authorizerService.get().close();
+        }
+      } catch (Exception e) {
+        exceptions.add(e);
+        LOGGER.error("Exception while closing: {}", authorizerService, e);
+      }
+
+      try {
+        if (authenticationService.isPresent()) {
+          authenticationService.get().close();
+        }
+      } catch (Exception e) {
+        exceptions.add(e);
+        LOGGER.error("Exception while closing: {}", authenticationService, e);
+      }
+
       LOGGER.info("Shutdown completed in {} ms", LatencyUtils.getLatencyInMS(startTimeMS));
+
       if (exceptions.size() > 0) {
         throw new VeniceException(exceptions.get(0));
       }
@@ -669,6 +698,8 @@ public class VeniceServer {
       Optional<SSLFactory> sslFactory,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
+      Optional<AuthenticationService> authenticationService,
+      Optional<AuthorizerService> authorizerService,
       DiskHealthCheckService diskHealthService,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
@@ -683,6 +714,8 @@ public class VeniceServer {
         sslFactory,
         routerAccessController,
         storeAccessController,
+        authenticationService,
+        authorizerService,
         diskHealthService,
         compressorFactory,
         resourceReadUsageTracker);
@@ -712,12 +745,18 @@ public class VeniceServer {
   }
 
   public static void run(VeniceConfigLoader veniceConfigService, boolean joinThread) throws Exception {
+    Optional<AuthenticationService> authenticationService = AuthenticationServiceUtils
+        .buildAuthenticationService(veniceConfigService.getVeniceServerConfig().getClusterProperties());
+    Optional<AuthorizerService> authorizerService = AuthorizerServiceUtils
+        .buildAuthorizerService(veniceConfigService.getVeniceServerConfig().getClusterProperties());
     PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
         new ApacheKafkaProducerAdapterFactory(),
         new ApacheKafkaConsumerAdapterFactory(),
         new ApacheKafkaAdminAdapterFactory());
     VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService)
         .setPubSubClientsFactory(pubSubClientsFactory)
+        .setAuthenticationService(authenticationService.orElse(null))
+        .setAuthorizerService(authorizerService.orElse(null))
         .build();
     final VeniceServer server = new VeniceServer(serverContext);
     if (!server.isStarted()) {

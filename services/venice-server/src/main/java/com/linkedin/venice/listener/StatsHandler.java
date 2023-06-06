@@ -267,7 +267,7 @@ public class StatsHandler extends ChannelDuplexHandler {
        * TODO: Need to do more investigation to figure out why this callback could be triggered
        * multiple times for a single request
        */
-      if (!statCallbackExecuted) {
+      if (!statCallbackExecuted && storeName != null) {
         ServerHttpRequestStats serverHttpRequestStats = currentStats.getStoreStats(storeName);
         recordBasicMetrics(serverHttpRequestStats);
 

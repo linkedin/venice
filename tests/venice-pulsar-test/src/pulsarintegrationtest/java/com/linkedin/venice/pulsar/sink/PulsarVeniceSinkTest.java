@@ -162,8 +162,6 @@ public class PulsarVeniceSinkTest {
     createTopics();
 
     LOGGER.info("Starting up Pulsar Venice Sink");
-    String token =
-        "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzdXBlcnVzZXIifQ.JQpDWJ9oHD743ZyuIw55Qp0bb8xzP6gK0KIWRniF2WnJB1m3v5MsrpfMlmRIlFc3-htWRAFHCc4E0ipj7JU8HjBqLIvVErRseRG-UTM1EprVkj0mk37jXV3ef7gER0KHn9CUKEQPfmTACeKlQ2oV4_qPAZ6HiEt51vzANfZH24vLCIjiOG77Z4s_w2sfgpiodRmhBLFOg_qnQTfGs7TBDWgu4DRoJ6CYZSEcp8q7j8xp_zNVIFGTRjWskocUvedHS9ZsCGZjzuPvRPp19B0VvAjEjtwpa6j7Khvjf4imjp2QHDnZwpCIEp4DSicwM48F5q4k722IdiyTTsVBWy8Cyg";
 
     String sinkConfig = "{\"veniceDiscoveryUrl\":\"" + veniceControllerUrl + "\"," + "\"veniceRouterUrl\":\""
         + veniceRouterUrl + "\"," + "\"storeName\":\"t1_n1_s1\"}";
