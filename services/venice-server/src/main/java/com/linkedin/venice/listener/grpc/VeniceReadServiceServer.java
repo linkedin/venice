@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener.grpc;
 
+import com.linkedin.venice.listener.grpc.interceptors.AuthorizationInterceptor;
 import io.grpc.*;
 
 
@@ -8,9 +9,11 @@ public class VeniceReadServiceServer {
 
     int port = 8080;
 
-    Server server = ServerBuilder.forPort(port).addService(new VeniceReadServiceImpl()).build();
+    Server server = Grpc.newServerBuilderForPort(8080, InsecureServerCredentials.create())
+        .addService(ServerInterceptors.intercept(new VeniceReadServiceImpl(), new AuthorizationInterceptor()))
+        .build()
+        .start();
 
-    server.start();
     System.out.println("[server] Server started");
     server.awaitTermination();
   }
