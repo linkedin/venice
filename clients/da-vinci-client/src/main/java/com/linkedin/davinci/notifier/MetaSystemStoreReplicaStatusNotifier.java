@@ -1,6 +1,7 @@
 package com.linkedin.davinci.notifier;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -39,7 +40,21 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
       // No replica status reporting for meta system stores
       return;
     }
-    Store store = storeRepository.getStoreOrThrow(storeName);
+    Store store;
+    try {
+      store = storeRepository.getStoreOrThrow(storeName);
+    } catch (VeniceNoStoreException e) {
+      /**
+       * For store deletion, store removal in store repo might happen faster then {@link ExecutionStatus.DROPPED} action.
+       * This is to make sure the meta store notifier does not throw exception when this happens. For other status, this
+       * is not expected, so we should throw exception.
+       */
+      if (status.equals(ExecutionStatus.DROPPED)) {
+        LOGGER.warn("Store {} does not exist in store repository. Skip reporting status: {}", storeName, status);
+        return;
+      }
+      throw e;
+    }
     if (!store.isStoreMetaSystemStoreEnabled()) {
       // Meta system store is not enabled yet.
       LOGGER.info("Meta system store for topic: {} is not enabled yet", kafkaTopic);
