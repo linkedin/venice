@@ -393,7 +393,7 @@ public class VenicePushJob implements AutoCloseable {
 
   /**
    * Config to enable single targeted region push mode in VPJ.
-   * In this mode, the VPJ will only push data to a single colo/region.
+   * In this mode, the VPJ will only push data to a single region.
    * The single region is decided by the store config in {@link StoreInfo#getNativeReplicationSourceFabric()}}.
    * For multiple targeted regions push, may use the advanced mode. See {@link #TARGETED_REGION_PUSH_LIST}.
    */
