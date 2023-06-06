@@ -9,10 +9,11 @@ permalink: /docs/user_guide/write_api/push_job
 The Push Job takes data from a Hadoop grid and writes it to Venice. 
 
 ## Use Cases
-There are two modes the Push Job can run in:
+There are three modes the Push Job can run in:
 
 - Full Push (default)
 - Incremental Push
+- Targeted Region Push
 
 ### Full Push
 When performing a Full Push, the user takes advantage of the fact that Venice's datasets are versioned. A Full Push
@@ -26,6 +27,14 @@ When a dataset version becomes current, online read traffic gets routed to it.
 When performing an Incremental Push, no new dataset versions are created, and data gets added into all existing versions 
 of the dataset. This leverages the same mechanism as Streaming Writes, and requires that the store be configured as 
 Hybrid.
+
+### Targeted Region Push
+Technically, targeted region push is a type of full push, but it allows writing data into a subset of global regions, 
+whereas full push writes globally at once. 
+
+Please note that this feature is still under active development. It doesn't push data to the rest of unspecified regions
+automatically yet. Users may perform validations and chain it with another full push/targeted region push to achieve the
+same effect as full push.
 
 ## Usage
 The Push Job is designed to require as few configs as possible. The following mandatory configs should be unique to each
@@ -53,6 +62,9 @@ The user may choose to specify the following configs:
 - `extended.schema.validity.check.enabled`: Whether to perform extended schema validation on the input (equivalent to
   the `STRICT` mode in avro-util's [SchemaParseConfiguration](https://github.com/linkedin/avro-util/blob/master/helper/helper-common/src/main/java/com/linkedin/avroutil1/compatibility/SchemaParseConfiguration.java)). 
   If set to `false`, it becomes equivalent to avro-util's `LOOSE` mode. Default: `true`
+- `targeted.region.push.enabled`: Whether to perform targeted region push. Default: `false`
+- `targeted.region.push.list`: Optionally specify a list of target region(s) to push data into. See full details at 
+  [TARGETED_REGION_PUSH_LIST](https://venicedb.org/javadoc/com/linkedin/venice/hadoop/VenicePushJob.html#TARGETED_REGION_PUSH_LIST).
 
 The push job also supports using D2 URLs for automated controller service discovery. To use this, the user or operator
 must specify the following configs:
