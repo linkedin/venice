@@ -323,6 +323,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           .setMetricsRepository(metricsRepository)
           .setServiceDiscoveryAnnouncers(d2ServerList)
           .setAuthorizerService(options.getAuthorizerService())
+          .setAuthenticationService(options.getAuthenticationService())
           .setD2Client(d2Client)
           .setRouterClientConfig(consumerClientConfig.orElse(null))
           .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))

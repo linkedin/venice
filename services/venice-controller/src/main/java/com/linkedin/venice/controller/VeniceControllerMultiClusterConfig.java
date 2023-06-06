@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -99,6 +100,10 @@ public class VeniceControllerMultiClusterConfig {
 
   public String getSslFactoryClassName() {
     return getCommonConfig().getSslFactoryClassName();
+  }
+
+  public ClientAuthenticationProvider getAuthenticationProvider() {
+    return getCommonConfig().getAuthenticationProvider();
   }
 
   public boolean isDisableParentRequestTopicForStreamPushes() {

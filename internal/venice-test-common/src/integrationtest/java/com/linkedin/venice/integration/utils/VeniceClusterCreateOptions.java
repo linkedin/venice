@@ -11,6 +11,8 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 
+import com.linkedin.venice.authentication.AuthenticationService;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.Map;
@@ -37,6 +39,8 @@ public class VeniceClusterCreateOptions {
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
   private final boolean forkServer;
+  private final AuthenticationService authenticationService;
+  private final AuthorizerService authorizerService;
   private final Properties extraProperties;
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
@@ -66,6 +70,8 @@ public class VeniceClusterCreateOptions {
     this.kafkaClusterMap = builder.kafkaClusterMap;
     this.zkServerWrapper = builder.zkServerWrapper;
     this.pubSubBrokerWrapper = builder.pubSubBrokerWrapper;
+    this.authenticationService = builder.authenticationService;
+    this.authorizerService = builder.authorizerService;
   }
 
   public String getClusterName() {
@@ -158,6 +164,14 @@ public class VeniceClusterCreateOptions {
 
   public PubSubBrokerWrapper getKafkaBrokerWrapper() {
     return pubSubBrokerWrapper;
+  }
+
+  public AuthenticationService getAuthenticationService() {
+    return authenticationService;
+  }
+
+  public AuthorizerService getAuthorizerService() {
+    return authorizerService;
   }
 
   @Override
@@ -259,6 +273,8 @@ public class VeniceClusterCreateOptions {
     private Map<String, Map<String, String>> kafkaClusterMap;
     private ZkServerWrapper zkServerWrapper;
     private PubSubBrokerWrapper pubSubBrokerWrapper;
+    private AuthenticationService authenticationService;
+    private AuthorizerService authorizerService;
 
     public Builder clusterName(String clusterName) {
       this.clusterName = clusterName;
@@ -358,6 +374,16 @@ public class VeniceClusterCreateOptions {
 
     public Builder extraProperties(Properties extraProperties) {
       this.extraProperties = extraProperties;
+      return this;
+    }
+
+    public Builder authenticationService(AuthenticationService authenticationService) {
+      this.authenticationService = authenticationService;
+      return this;
+    }
+
+    public Builder authorizerService(AuthorizerService authorizerService) {
+      this.authorizerService = authorizerService;
       return this;
     }
 

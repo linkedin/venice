@@ -20,6 +20,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.NodeRemovableResult;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -55,8 +56,11 @@ public class NodesAndReplicas extends AbstractRoute {
   /**
    * TODO: Make sure services "venice-hooks-deployable" is also in allowlist
    */
-  public NodesAndReplicas(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public NodesAndReplicas(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService) {
+    super(sslEnabled, accessController, authorizerService);
   }
 
   /**

@@ -206,6 +206,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                 .clusterToD2(clusterToD2)
                 .clusterToServerD2(clusterToServerD2)
                 .sslToKafka(options.isSslToKafka())
+                .authenticationService(options.getAuthenticationService())
+                .authorizerService(options.getAuthorizerService())
                 .d2Enabled(true)
                 .regionName(options.getRegionName())
                 .extraProperties(options.getExtraProperties())

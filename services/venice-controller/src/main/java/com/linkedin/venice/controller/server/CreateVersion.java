@@ -28,6 +28,7 @@ import static com.linkedin.venice.meta.Version.REPLICATION_METADATA_VERSION_ID_U
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -64,8 +65,9 @@ public class CreateVersion extends AbstractRoute {
       boolean sslEnabled,
       Optional<DynamicAccessController> accessController,
       boolean checkReadMethodForKafka,
-      boolean disableParentRequestTopicForStreamPushes) {
-    super(sslEnabled, accessController);
+      boolean disableParentRequestTopicForStreamPushes,
+      Optional<AuthorizerService> authorizerService) {
+    super(sslEnabled, accessController, authorizerService);
     this.checkReadMethodForKafka = checkReadMethodForKafka;
     this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
   }

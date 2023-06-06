@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORAGE_PERS
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_PERSONA;
 
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoragePersonaResponse;
@@ -27,8 +28,11 @@ import spark.Route;
 
 
 public class StoragePersonaRoutes extends AbstractRoute {
-  public StoragePersonaRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public StoragePersonaRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService) {
+    super(sslEnabled, accessController, authorizerService);
   }
 
   /**

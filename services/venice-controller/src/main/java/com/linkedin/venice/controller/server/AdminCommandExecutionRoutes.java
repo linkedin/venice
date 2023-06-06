@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LAST_SUCCEED_EXE
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
@@ -17,8 +18,11 @@ import spark.Route;
 
 
 public class AdminCommandExecutionRoutes extends AbstractRoute {
-  public AdminCommandExecutionRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public AdminCommandExecutionRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService) {
+    super(sslEnabled, accessController, authorizerService);
   }
 
   /**

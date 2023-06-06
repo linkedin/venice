@@ -104,6 +104,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authentication.AuthenticationService;
+import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.authorization.Principal;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AuditInfo;
 import com.linkedin.venice.controller.spark.VeniceSparkServerFactory;
@@ -128,6 +131,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import spark.Filter;
 import spark.Request;
 import spark.Response;
 import spark.Service;
@@ -142,6 +146,8 @@ import spark.embeddedserver.EmbeddedServers;
 public class AdminSparkServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(AdminSparkServer.class);
 
+  public static final String REQUEST_PRINCIPAL_ATTRIBUTE_NAME = "venice_principal";
+
   private final int port;
   private final Admin admin;
   private final boolean enforceSSL;
@@ -149,6 +155,8 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final boolean checkReadMethodForKafka;
   private final Optional<SSLConfig> sslConfig;
   private final Optional<DynamicAccessController> accessController;
+  private final Optional<AuthenticationService> authenticationService;
+  private final Optional<AuthorizerService> authorizerService;
 
   protected static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   final private Map<String, SparkServerStats> statsMap;
@@ -175,6 +183,8 @@ public class AdminSparkServer extends AbstractVeniceService {
       Optional<SSLConfig> sslConfig,
       boolean checkReadMethodForKafka,
       Optional<DynamicAccessController> accessController,
+      Optional<AuthenticationService> authenticationService,
+      Optional<AuthorizerService> authorizerService,
       List<ControllerRoute> disabledRoutes,
       VeniceProperties jettyConfigOverrides,
       boolean disableParentRequestTopicForStreamPushes,
@@ -185,6 +195,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     this.sslConfig = sslConfig;
     this.checkReadMethodForKafka = checkReadMethodForKafka;
     this.accessController = accessController;
+    this.authenticationService = authenticationService;
+    this.authorizerService = authorizerService;
     // Note: admin is passed in as a reference. The expectation is the source of the admin will
     // close it so we don't close it in stopInner()
     this.admin = admin;
@@ -274,30 +286,50 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     // Build all different routes
-    ControllerRoutes controllerRoutes = new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository);
-    StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
-    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
-    SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
+    ControllerRoutes controllerRoutes =
+        new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository, authorizerService);
+    StoresRoutes storesRoutes =
+        new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository, authorizerService);
+    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController, authorizerService);
+    SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController, authorizerService);
+
     CreateVersion createVersion = new CreateVersion(
         sslEnabled,
         accessController,
         this.checkReadMethodForKafka,
-        disableParentRequestTopicForStreamPushes);
-    CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);
-    NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController);
-    SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController);
+        disableParentRequestTopicForStreamPushes,
+        authorizerService);
+    CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController, authorizerService);
+    NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController, authorizerService);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController, authorizerService);
     AdminCommandExecutionRoutes adminCommandExecutionRoutes =
-        new AdminCommandExecutionRoutes(sslEnabled, accessController);
+        new AdminCommandExecutionRoutes(sslEnabled, accessController, authorizerService);
     RoutersClusterConfigRoutes routersClusterConfigRoutes =
-        new RoutersClusterConfigRoutes(sslEnabled, accessController);
-    MigrationRoutes migrationRoutes = new MigrationRoutes(sslEnabled, accessController);
-    VersionRoute versionRoute = new VersionRoute(sslEnabled, accessController);
-    ClusterRoutes clusterRoutes = new ClusterRoutes(sslEnabled, accessController);
-    NewClusterBuildOutRoutes newClusterBuildOutRoutes = new NewClusterBuildOutRoutes(sslEnabled, accessController);
-    DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(sslEnabled, accessController);
-    AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(sslEnabled, accessController);
-    StoragePersonaRoutes storagePersonaRoutes = new StoragePersonaRoutes(sslEnabled, accessController);
+        new RoutersClusterConfigRoutes(sslEnabled, accessController, authorizerService);
+    MigrationRoutes migrationRoutes = new MigrationRoutes(sslEnabled, accessController, authorizerService);
+    VersionRoute versionRoute = new VersionRoute(sslEnabled, accessController, authorizerService);
+    ClusterRoutes clusterRoutes = new ClusterRoutes(sslEnabled, accessController, authorizerService);
+    NewClusterBuildOutRoutes newClusterBuildOutRoutes =
+        new NewClusterBuildOutRoutes(sslEnabled, accessController, authorizerService);
+    DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(sslEnabled, accessController, authorizerService);
+    AdminTopicMetadataRoutes adminTopicMetadataRoutes =
+        new AdminTopicMetadataRoutes(sslEnabled, accessController, authorizerService);
+    StoragePersonaRoutes storagePersonaRoutes =
+        new StoragePersonaRoutes(sslEnabled, accessController, authorizerService);
 
+    if (authenticationService.isPresent()) {
+      httpService.before(new Filter() {
+        @Override
+        public void handle(Request request, Response response) throws Exception {
+          Principal principal =
+              authenticationService.get().getPrincipalFromHttpRequest(new HttpRequestAccessor(request));
+          request.attribute(REQUEST_PRINCIPAL_ATTRIBUTE_NAME, principal);
+          if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Handle {} {} ({})", request.requestMethod(), request.uri(), principal);
+          }
+        }
+      });
+    }
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
       return writeMenu("Set Active Version", SET_VERSION.getPath(), SET_VERSION.getParams());

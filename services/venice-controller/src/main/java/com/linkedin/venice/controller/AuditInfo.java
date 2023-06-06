@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.controller.server.AdminSparkServer.REQUEST_PRINCIPAL_ATTRIBUTE_NAME;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.StringJoiner;
@@ -10,6 +12,7 @@ public class AuditInfo {
   private String url;
   private Map<String, String> params;
   private String method;
+  private Object principal;
 
   public AuditInfo(Request request) {
     this.url = request.url();
@@ -18,6 +21,7 @@ public class AuditInfo {
       this.params.put(param, request.queryParams(param));
     }
     this.method = request.requestMethod();
+    this.principal = request.attribute(REQUEST_PRINCIPAL_ATTRIBUTE_NAME);
   }
 
   /**
@@ -27,6 +31,9 @@ public class AuditInfo {
   public String toString() {
     StringJoiner joiner = new StringJoiner(" ");
     joiner.add("[AUDIT]");
+    if (principal != null) {
+      joiner.add(principal.toString());
+    }
     joiner.add(method);
     joiner.add(url);
     joiner.add(params.toString());
@@ -50,6 +57,9 @@ public class AuditInfo {
   private String toString(boolean success, String errMsg) {
     StringJoiner joiner = new StringJoiner(" ");
     joiner.add("[AUDIT]");
+    if (principal != null) {
+      joiner.add(principal.toString());
+    }
     if (success) {
       joiner.add("SUCCESS");
     } else {

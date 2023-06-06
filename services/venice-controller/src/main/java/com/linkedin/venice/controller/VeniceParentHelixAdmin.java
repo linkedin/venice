@@ -61,6 +61,7 @@ import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.authorization.AceEntry;
 import com.linkedin.venice.authorization.AclBinding;
 import com.linkedin.venice.authorization.AuthorizerService;
@@ -297,6 +298,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private Time timer = new SystemTime();
   private Optional<SSLFactory> sslFactory = Optional.empty();
 
+  private ClientAuthenticationProvider authenticationProvider;
+
   private final MigrationPushStrategyZKAccessor pushStrategyZKAccessor;
 
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -421,6 +424,7 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException(e);
       }
     }
+    this.authenticationProvider = this.multiClusterConfigs.getAuthenticationProvider();
     for (String cluster: this.multiClusterConfigs.getClusters()) {
       VeniceControllerConfig config = this.multiClusterConfigs.getControllerConfig(cluster);
       adminCommandExecutionTrackers.put(
@@ -700,8 +704,11 @@ public class VeniceParentHelixAdmin implements Admin {
     } else {
       // Verify that the store is indeed created by another controller. This is to prevent if the initial leader fails
       // or when the cluster happens to be leaderless for a bit.
-      try (ControllerClient controllerClient = ControllerClient
-          .constructClusterControllerClient(clusterName, getLeaderController(clusterName).getUrl(false), sslFactory)) {
+      try (ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(
+          clusterName,
+          getLeaderController(clusterName).getUrl(false),
+          sslFactory,
+          authenticationProvider)) {
         StoreResponse storeResponse = controllerClient.getStore(storeName);
         if (storeResponse.isError()) {
           LOGGER.warn(
@@ -5058,7 +5065,8 @@ public class VeniceParentHelixAdmin implements Admin {
               }
               String url = controllerConfig.getChildControllerUrl(fabric);
               if (StringUtils.isNotBlank(url)) {
-                return ControllerClient.constructClusterControllerClient(clusterName, url, sslFactory);
+                return ControllerClient
+                    .constructClusterControllerClient(clusterName, url, sslFactory, authenticationProvider);
               }
               return null;
             });

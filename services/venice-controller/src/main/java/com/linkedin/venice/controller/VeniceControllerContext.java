@@ -4,6 +4,7 @@ import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authentication.AuthenticationService;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
@@ -25,6 +26,8 @@ public class VeniceControllerContext {
   private MetricsRepository metricsRepository;
   private List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
   private DynamicAccessController accessController;
+
+  private AuthenticationService authenticationService;
   private AuthorizerService authorizerService;
   private D2Client d2Client;
   private ClientConfig routerClientConfig;
@@ -50,6 +53,10 @@ public class VeniceControllerContext {
 
   public AuthorizerService getAuthorizerService() {
     return authorizerService;
+  }
+
+  public AuthenticationService getAuthenticationService() {
+    return authenticationService;
   }
 
   public D2Client getD2Client() {
@@ -78,6 +85,7 @@ public class VeniceControllerContext {
     this.serviceDiscoveryAnnouncers = builder.serviceDiscoveryAnnouncers;
     this.accessController = builder.accessController;
     this.authorizerService = builder.authorizerService;
+    this.authenticationService = builder.authenticationService;
     this.d2Client = builder.d2Client;
     this.routerClientConfig = builder.routerClientConfig;
     this.icProvider = builder.icProvider;
@@ -90,6 +98,7 @@ public class VeniceControllerContext {
     private MetricsRepository metricsRepository;
     private List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
     private DynamicAccessController accessController;
+    private AuthenticationService authenticationService;
     private AuthorizerService authorizerService;
     private D2Client d2Client;
     private ClientConfig routerClientConfig;
@@ -124,6 +133,11 @@ public class VeniceControllerContext {
 
     public Builder setAuthorizerService(AuthorizerService authorizerService) {
       this.authorizerService = authorizerService;
+      return this;
+    }
+
+    public Builder setAuthenticationService(AuthenticationService authenticationService) {
+      this.authenticationService = authenticationService;
       return this;
     }
 

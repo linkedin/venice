@@ -74,6 +74,8 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPA
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_REPLICATION_FACTOR;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
+import com.linkedin.venice.authentication.ClientAuthenticationProviderFactory;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -129,6 +131,7 @@ public class VeniceControllerClusterConfig {
   // SSL related config
   Optional<SSLConfig> sslConfig;
   private String sslFactoryClassName;
+  private ClientAuthenticationProvider authenticationProvider;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
   private boolean enableOfflinePushSSLAllowlist;
@@ -364,6 +367,7 @@ public class VeniceControllerClusterConfig {
       // In that case , ssl kafka broker list is an mandatory field
       sslKafkaBootStrapServers = props.getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
     }
+
     helixSendMessageTimeoutMilliseconds = props.getInt(HELIX_SEND_MESSAGE_TIMEOUT_MS, 10000);
 
     kafkaSecurityProtocol = props.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
@@ -376,6 +380,7 @@ public class VeniceControllerClusterConfig {
       sslConfig = Optional.empty();
     }
     sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+    authenticationProvider = ClientAuthenticationProviderFactory.build(props);
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
@@ -549,6 +554,10 @@ public class VeniceControllerClusterConfig {
 
   public String getSslFactoryClassName() {
     return sslFactoryClassName;
+  }
+
+  public ClientAuthenticationProvider getAuthenticationProvider() {
+    return authenticationProvider;
   }
 
   public int getRefreshAttemptsForZkReconnect() {

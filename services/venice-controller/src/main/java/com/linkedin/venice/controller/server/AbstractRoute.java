@@ -2,10 +2,15 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.HttpConstants.HTTP_GET;
 import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
+import static com.linkedin.venice.controller.server.AdminSparkServer.REQUEST_PRINCIPAL_ATTRIBUTE_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.AuthorizerService;
+import com.linkedin.venice.authorization.Method;
+import com.linkedin.venice.authorization.Principal;
+import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.security.cert.X509Certificate;
 import java.util.Optional;
@@ -31,35 +36,66 @@ public class AbstractRoute {
   private static final ResourceAclCheck READ_ACCESS_TO_TOPIC =
       (cert, resourceName, aclClient) -> aclClient.hasAccessToTopic(cert, resourceName, "Read");
 
+  private static final PermissionAssertion ASSERT_ACCESS_TO_STORE =
+      (principal, resource, auth) -> auth.canAccess(Method.GET, resource, principal);
+  // A singleton of acl check function against topic resource
+  private static final PermissionAssertion ASSERT_WRITE_ACCESS_TO_TOPIC =
+      (principal, resource, auth) -> auth.canAccess(Method.Write, resource, principal);
+
+  private static final PermissionAssertion ASSERT_READ_ACCESS_TO_TOPIC =
+      (principal, resource, auth) -> auth.canAccess(Method.Read, resource, principal);
+
   private final boolean sslEnabled;
   private final Optional<DynamicAccessController> accessController;
+  private final Optional<AuthorizerService> authorizerService;
 
   /**
    * Default constructor for different controller request routes.
-   *
+   * <p>
    * TODO: once Venice Admin allowlist proposal is approved, we can transfer the allowlist to all routes
    * through this constructor; make sure Nuage is also in the allowlist so that they can create stores
+   *
    * @param accessController the access client that check whether a certificate can access a resource
    */
-  public AbstractRoute(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  public AbstractRoute(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService) {
     this.sslEnabled = sslEnabled;
     this.accessController = accessController;
+    this.authorizerService = authorizerService;
   }
 
   /**
    * Check whether the user certificate in request has access to the store specified in
    * the request.
    */
-  private boolean hasAccess(Request request, ResourceAclCheck aclCheckFunction) {
+  private boolean hasAccess(Request request, ResourceAclCheck aclCheckFunction, PermissionAssertion assertion) {
+    Principal principal = getPrincipal(request);
+
+    String storeName = request.queryParams(NAME);
+
+    if (authorizerService.isPresent()) {
+      boolean allowed = assertion.apply(principal, new Resource(storeName), authorizerService.get());
+      if (!allowed) {
+        LOGGER.warn(
+            "Client {} [host:{} IP:{}] doesn't have access to store {}",
+            principal,
+            request.host(),
+            request.ip(),
+            storeName);
+        return false;
+      }
+    }
+
     if (!isAclEnabled()) {
       /**
        * Grant access if it's not required to check ACL.
        */
       return true;
     }
-    X509Certificate certificate = getCertificate(request);
 
-    String storeName = request.queryParams(NAME);
+    X509Certificate certificate = getCertificate(request);
     /**
      * Currently Nuage only supports adding GET/POST methods for a store resource
      * TODO: Feature request for Nuage to support other method like PUT or customized methods
@@ -92,20 +128,31 @@ public class AbstractRoute {
    * Check whether the user has "Write" method access to the related version topics.
    */
   protected boolean hasWriteAccessToTopic(Request request) {
-    return hasAccess(request, WRITE_ACCESS_TO_TOPIC);
+    return hasAccess(request, WRITE_ACCESS_TO_TOPIC, ASSERT_WRITE_ACCESS_TO_TOPIC);
   }
 
   /**
    * Check whether the user has "Read" method access to the related version topics.
    */
   protected boolean hasReadAccessToTopic(Request request) {
-    return hasAccess(request, READ_ACCESS_TO_TOPIC);
+    return hasAccess(request, READ_ACCESS_TO_TOPIC, ASSERT_READ_ACCESS_TO_TOPIC);
+  }
+
+  protected Principal getPrincipal(Request request) {
+    return (Principal) request.attribute(REQUEST_PRINCIPAL_ATTRIBUTE_NAME);
   }
 
   /**
    * Get principal Id from request.
    */
   protected String getPrincipalId(Request request) {
+
+    Principal principal = getPrincipal(request);
+    if (principal != null) {
+      return principal.getName();
+    }
+    // fallback to legacy implementation
+
     if (!isSslEnabled()) {
       LOGGER.warn("SSL is not enabled. No certificate could be extracted from request.");
       return USER_UNKNOWN;
@@ -130,13 +177,22 @@ public class AbstractRoute {
    * ACL is not checked for requests that want to get metadata of a store/job.
    */
   protected boolean hasAccessToStore(Request request) {
-    return hasAccess(request, GET_ACCESS_TO_STORE);
+    return hasAccess(request, GET_ACCESS_TO_STORE, ASSERT_ACCESS_TO_STORE);
   }
 
   /**
    * Check whether the user is within the admin users allowlist.
    */
   protected boolean isAllowListUser(Request request) {
+    String storeName = request.queryParamOrDefault(NAME, STORE_UNKNOWN);
+    if (authorizerService.isPresent()) {
+      Principal principal = getPrincipal(request);
+      boolean authorizerResponse = authorizerService.get().isSuperUser(principal, storeName);
+      if (!authorizerResponse) {
+        return false;
+      }
+      // if the authorizer allows the request, then fallback to the ACL control
+    }
     if (!isAclEnabled()) {
       /**
        * Grant access if it's not required to check ACL.
@@ -145,8 +201,6 @@ public class AbstractRoute {
       return true;
     }
     X509Certificate certificate = getCertificate(request);
-
-    String storeName = request.queryParamOrDefault(NAME, STORE_UNKNOWN);
     return accessController.get().isAllowlistUsers(certificate, storeName, HTTP_GET);
   }
 
@@ -170,11 +224,16 @@ public class AbstractRoute {
   /**
    * Helper function to get certificate out of Spark request
    */
-  protected static X509Certificate getCertificate(Request request) {
+  protected X509Certificate getCertificate(Request request) {
     HttpServletRequest rawRequest = request.raw();
     Object certificateObject = rawRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
     if (certificateObject == null) {
-      throw new VeniceException("Client request doesn't contain certificate for store: " + request.queryParams(NAME));
+      if (accessController.isPresent()) {
+        throw new VeniceException("Client request doesn't contain certificate for store: " + request.queryParams(NAME));
+      } else {
+        // it is okay to not have certificate if legacy accessController is not configured
+        return null;
+      }
     }
     return ((X509Certificate[]) certificateObject)[0];
   }
@@ -187,4 +246,10 @@ public class AbstractRoute {
     boolean apply(X509Certificate clientCert, String resource, DynamicAccessController accessController)
         throws AclException;
   }
+
+  @FunctionalInterface
+  interface PermissionAssertion {
+    boolean apply(Principal principal, Resource resource, AuthorizerService authorizerService);
+  }
+
 }

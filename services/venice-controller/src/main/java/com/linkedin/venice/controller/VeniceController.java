@@ -1,12 +1,15 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.authentication.AuthenticationServiceUtils.buildAuthenticationService;
+import static com.linkedin.venice.authorization.AuthorizerServiceUtils.buildAuthorizerService;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authentication.AuthenticationService;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.init.ControllerClientBackedSystemSchemaInitializer;
@@ -24,6 +27,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -56,12 +60,58 @@ public class VeniceController {
   private final MetricsRepository metricsRepository;
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
   private final Optional<DynamicAccessController> accessController;
+  private final Optional<AuthenticationService> authenticationService;
   private final Optional<AuthorizerService> authorizerService;
   private final D2Client d2Client;
   private final Optional<ClientConfig> routerClientConfig;
   private final Optional<ICProvider> icProvider;
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
+  /**
+   * This constructor is being used in integration test.
+   *
+   * @see #VeniceController(List, MetricsRepository, List, Optional, Optional, D2Client, Optional, Optional, Optional, Optional)
+   */
+  public VeniceController(
+      List<VeniceProperties> propertiesList,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
+      Optional<AuthenticationService> authenticationService,
+      Optional<AuthorizerService> authorizerService,
+      D2Client d2Client) {
+    this(
+        propertiesList,
+        TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME),
+        serviceDiscoveryAnnouncers,
+        Optional.empty(),
+        authenticationService,
+        authorizerService,
+        d2Client,
+        Optional.empty());
+  }
+
+  public VeniceController(
+      List<VeniceProperties> propertiesList,
+      MetricsRepository metricsRepository,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthenticationService> authenticationService,
+      Optional<AuthorizerService> authorizerService,
+      D2Client d2Client,
+      Optional<ClientConfig> routerClientConfig) {
+    this(
+        propertiesList,
+        metricsRepository,
+        serviceDiscoveryAnnouncers,
+        accessController,
+        authenticationService,
+        authorizerService,
+        d2Client,
+        routerClientConfig,
+        Optional.empty(),
+        Optional.empty());
+  }
+
   private final PubSubClientsFactory pubSubClientsFactory;
   static final String CONTROLLER_SERVICE_NAME = "venice-controller";
 
@@ -93,6 +143,7 @@ public class VeniceController {
       MetricsRepository metricsRepository,
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
+      Optional<AuthenticationService> authenticationService,
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
       Optional<ClientConfig> routerClientConfig,
@@ -124,11 +175,13 @@ public class VeniceController {
     this.sslEnabled = sslConfig.isPresent() && sslConfig.get().isControllerSSLEnabled();
     this.accessController = Optional.ofNullable(ctx.getAccessController());
     this.authorizerService = Optional.ofNullable(ctx.getAuthorizerService());
+    this.authenticationService = Optional.ofNullable(ctx.getAuthenticationService());
     this.d2Client = ctx.getD2Client();
     this.routerClientConfig = Optional.ofNullable(ctx.getRouterClientConfig());
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
     this.pubSubClientsFactory = Objects.requireNonNull(ctx.getPubSubClientsFactory(), "PubSubClientsFactory is null");
+
     createServices();
   }
 
@@ -157,6 +210,8 @@ public class VeniceController {
         Optional.empty(),
         false,
         Optional.empty(),
+        authenticationService,
+        authorizerService,
         multiClusterConfigs.getDisabledRoutes(),
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
         // TODO: Builder pattern or just pass the config object here?
@@ -175,6 +230,8 @@ public class VeniceController {
           multiClusterConfigs.getSslConfig(),
           multiClusterConfigs.adminCheckReadMethodForKafka(),
           accessController,
+          authenticationService,
+          authorizerService,
           multiClusterConfigs.getDisabledRoutes(),
           multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
           multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
@@ -265,6 +322,8 @@ public class VeniceController {
     Utils.closeQuietlyWithErrorLogged(adminServer);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);
     Utils.closeQuietlyWithErrorLogged(controllerService);
+    authenticationService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    authorizerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
   }
 
   /**
@@ -298,6 +357,9 @@ public class VeniceController {
 
     D2Client d2Client =
         new D2ClientBuilder().setZkHosts(controllerProps.getString(ZOOKEEPER_ADDRESS)).setIsSSLEnabled(false).build();
+
+    Optional<AuthenticationService> authenticationService = buildAuthenticationService(controllerProps);
+    Optional<AuthorizerService> authorizerService = buildAuthorizerService(controllerProps);
     D2ClientUtils.startClient(d2Client);
     PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
         new ApacheKafkaProducerAdapterFactory(),
@@ -308,8 +370,11 @@ public class VeniceController {
             .setPropertiesList(Arrays.asList(new VeniceProperties[] { controllerProps }))
             .setServiceDiscoveryAnnouncers(new ArrayList<>())
             .setD2Client(d2Client)
+            .setAuthenticationService(authenticationService.orElse(null))
+            .setAuthorizerService(authorizerService.orElse(null))
             .setPubSubClientsFactory(pubSubClientsFactory)
             .build());
+
     controller.start();
     addShutdownHook(controller, d2Client);
     if (joinThread) {

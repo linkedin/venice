@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FA
 import static com.linkedin.venice.controllerapi.ControllerRoute.REPLICATE_META_DATA;
 
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.meta.StoreInfo;
@@ -16,8 +17,11 @@ import spark.Route;
 
 
 public class NewClusterBuildOutRoutes extends AbstractRoute {
-  public NewClusterBuildOutRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public NewClusterBuildOutRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService) {
+    super(sslEnabled, accessController, authorizerService);
   }
 
   /**

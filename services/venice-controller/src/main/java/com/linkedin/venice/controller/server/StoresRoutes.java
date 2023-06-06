@@ -53,6 +53,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
@@ -112,8 +113,9 @@ public class StoresRoutes extends AbstractRoute {
   public StoresRoutes(
       boolean sslEnabled,
       Optional<DynamicAccessController> accessController,
-      PubSubTopicRepository pubSubTopicRepository) {
-    super(sslEnabled, accessController);
+      PubSubTopicRepository pubSubTopicRepository,
+      Optional<AuthorizerService> authorizerService) {
+    super(sslEnabled, accessController, authorizerService);
     this.pubSubTopicRepository = pubSubTopicRepository;
   }
 

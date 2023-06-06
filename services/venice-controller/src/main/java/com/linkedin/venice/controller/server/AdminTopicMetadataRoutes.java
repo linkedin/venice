@@ -10,6 +10,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_TOP
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
@@ -24,8 +25,11 @@ import spark.Route;
 
 
 public class AdminTopicMetadataRoutes extends AbstractRoute {
-  public AdminTopicMetadataRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public AdminTopicMetadataRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService) {
+    super(sslEnabled, accessController, authorizerService);
   }
 
   /**

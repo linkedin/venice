@@ -21,6 +21,8 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 
+import com.linkedin.venice.authentication.AuthenticationService;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
@@ -154,6 +156,8 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           routerProperties,
           d2Servers,
           Optional.empty(),
+          Optional.ofNullable((AuthenticationService) properties.get("AuthenticationService")),
+          Optional.ofNullable((AuthorizerService) properties.get("AuthorizerService")),
           Optional.of(SslUtils.getVeniceLocalSslFactory()));
       return new VeniceRouterWrapper(
           regionName,
@@ -209,8 +213,13 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
     d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
-    service =
-        new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getVeniceLocalSslFactory()));
+    service = new RouterServer(
+        properties,
+        d2Servers,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of(SslUtils.getVeniceLocalSslFactory()));
   }
 
   @Override

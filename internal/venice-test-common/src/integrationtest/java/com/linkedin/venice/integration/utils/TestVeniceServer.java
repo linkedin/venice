@@ -7,6 +7,8 @@ import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.authentication.AuthenticationService;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.ListenerService;
@@ -47,6 +49,8 @@ public class TestVeniceServer extends VeniceServer {
       Optional<SSLFactory> sslFactory,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
+      Optional<AuthenticationService> authenticationService,
+      Optional<AuthorizerService> authorizerService,
       DiskHealthCheckService diskHealthService,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
@@ -62,6 +66,8 @@ public class TestVeniceServer extends VeniceServer {
         sslFactory,
         routerAccessController,
         storeAccessController,
+        authenticationService,
+        authorizerService,
         diskHealthService,
         compressorFactory,
         resourceReadUsageTracker) {

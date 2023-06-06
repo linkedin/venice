@@ -164,6 +164,8 @@ public class ServiceFactory {
           Optional.empty(),
           false,
           Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
           bannedRoutes,
           null,
           false,

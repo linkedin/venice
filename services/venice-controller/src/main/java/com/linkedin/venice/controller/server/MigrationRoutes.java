@@ -6,6 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.SET_MIGRATION_PU
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
@@ -16,8 +17,11 @@ import spark.Route;
 
 
 public class MigrationRoutes extends AbstractRoute {
-  public MigrationRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public MigrationRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService) {
+    super(sslEnabled, accessController, authorizerService);
   }
 
   /**

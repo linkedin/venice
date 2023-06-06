@@ -48,4 +48,9 @@ public class MockVeniceAuthorizer implements AuthorizerService {
 
   public void removeAce(Resource resource, AceEntry aceEntry) {
   }
+
+  @Override
+  public boolean isSuperUser(Principal principal, String storeName) {
+    return true;
+  }
 }

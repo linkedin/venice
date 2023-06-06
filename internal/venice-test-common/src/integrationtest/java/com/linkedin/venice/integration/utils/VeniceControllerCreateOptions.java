@@ -10,6 +10,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 
+import com.linkedin.venice.authentication.AuthenticationService;
 import com.linkedin.venice.authorization.AuthorizerService;
 import java.util.Arrays;
 import java.util.Map;
@@ -36,6 +37,7 @@ public class VeniceControllerCreateOptions {
   private final PubSubBrokerWrapper kafkaBroker;
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
+  private final AuthenticationService authenticationService;
   private final String regionName;
 
   private VeniceControllerCreateOptions(Builder builder) {
@@ -54,6 +56,7 @@ public class VeniceControllerCreateOptions {
     zkServer = builder.zkServer;
     kafkaBroker = builder.kafkaBroker;
     extraProperties = builder.extraProperties;
+    authenticationService = builder.authenticationService;
     authorizerService = builder.authorizerService;
     isParent = builder.childControllers != null && builder.childControllers.length != 0;
     regionName = builder.regionName;
@@ -192,6 +195,10 @@ public class VeniceControllerCreateOptions {
     return authorizerService;
   }
 
+  public AuthenticationService getAuthenticationService() {
+    return authenticationService;
+  }
+
   public String getRegionName() {
     return regionName;
   }
@@ -214,6 +221,7 @@ public class VeniceControllerCreateOptions {
     private VeniceControllerWrapper[] childControllers = null;
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
+    private AuthenticationService authenticationService;
     private String regionName = "";
 
     public Builder(String[] clusterNames, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
@@ -290,6 +298,11 @@ public class VeniceControllerCreateOptions {
 
     public Builder authorizerService(AuthorizerService authorizerService) {
       this.authorizerService = authorizerService;
+      return this;
+    }
+
+    public Builder authenticationService(AuthenticationService authenticationService) {
+      this.authenticationService = authenticationService;
       return this;
     }
 
