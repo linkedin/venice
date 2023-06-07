@@ -5431,7 +5431,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             pushStatusStoreReader.orElse(null),
             version.kafkaTopicName(),
             version.getPartitionCount(),
-            incrementalPushVersion);
+            incrementalPushVersion,
+            multiClusterConfigs.getControllerConfig(clusterName).getDaVinciPushStatusScanMaxOfflineInstance());
         ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getStatus();
         String daVinciDetails = daVinciStatusAndDetails.getDetails();
         executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);

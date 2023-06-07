@@ -48,6 +48,11 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NA
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
@@ -62,10 +67,6 @@ import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_T
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
-import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED;
-import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_NO_DAVINCI_STATUS_REPORT_RETRY_MAX_ATTEMPTS;
-import static com.linkedin.venice.ConfigKeys.OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
@@ -192,12 +193,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    */
   private final boolean isDaVinciPushStatusStoreEnabled;
 
-  private final boolean offlinePushMonitorDaVinciPushStatusEnabled;
-  private final int offlinePushMonitorDaVinciPushStatusScanIntervalInSeconds;
+  private final boolean daVinciPushStatusScanEnabled;
+  private final int daVinciPushStatusScanIntervalInSeconds;
 
-  private final int offlinePushMonitorDaVinciPushStatusScanThreadNumber;
+  private final int daVinciPushStatusScanThreadNumber;
 
-  private final int offlinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt;
+  private final int daVinciPushStatusScanNoReportRetryMaxAttempt;
+
+  private final int daVinciPushStatusScanMaxOfflineInstance;
 
   private final boolean zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled;
 
@@ -426,14 +429,13 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.pushStatusStoreHeartbeatExpirationTimeInSeconds =
         props.getLong(PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS, TimeUnit.MINUTES.toSeconds(10));
     this.isDaVinciPushStatusStoreEnabled = props.getBoolean(PUSH_STATUS_STORE_ENABLED, false);
-    this.offlinePushMonitorDaVinciPushStatusEnabled =
-        props.getBoolean(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
-    this.offlinePushMonitorDaVinciPushStatusScanIntervalInSeconds =
-        props.getInt(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 30);
-    this.offlinePushMonitorDaVinciPushStatusScanThreadNumber =
-        props.getInt(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER, 4);
-    this.offlinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt =
-        props.getInt(OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_NO_DAVINCI_STATUS_REPORT_RETRY_MAX_ATTEMPTS, 0);
+    this.daVinciPushStatusScanEnabled =
+        props.getBoolean(DAVINCI_PUSH_STATUS_SCAN_ENABLED, true) && isDaVinciPushStatusStoreEnabled;
+    this.daVinciPushStatusScanIntervalInSeconds = props.getInt(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 30);
+    this.daVinciPushStatusScanThreadNumber = props.getInt(DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER, 4);
+    this.daVinciPushStatusScanNoReportRetryMaxAttempt =
+        props.getInt(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 0);
+    this.daVinciPushStatusScanMaxOfflineInstance = props.getInt(DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE, 10);
 
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled =
         props.getBoolean(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, false);
@@ -544,6 +546,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getTopicCleanupSleepIntervalBetweenTopicListFetchMs() {
     return topicCleanupSleepIntervalBetweenTopicListFetchMs;
+  }
+
+  public int getDaVinciPushStatusScanMaxOfflineInstance() {
+    return daVinciPushStatusScanMaxOfflineInstance;
   }
 
   public int getTopicCleanupDelayFactor() {
@@ -744,20 +750,20 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return isDaVinciPushStatusStoreEnabled;
   }
 
-  public int getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds() {
-    return offlinePushMonitorDaVinciPushStatusScanIntervalInSeconds;
+  public int getDaVinciPushStatusScanIntervalInSeconds() {
+    return daVinciPushStatusScanIntervalInSeconds;
   }
 
-  public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
-    return offlinePushMonitorDaVinciPushStatusEnabled;
+  public boolean isDaVinciPushStatusScanEnabled() {
+    return daVinciPushStatusScanEnabled;
   }
 
-  public int getOfflinePushMonitorDaVinciPushStatusScanThreadNumber() {
-    return offlinePushMonitorDaVinciPushStatusScanThreadNumber;
+  public int getDaVinciPushStatusScanThreadNumber() {
+    return daVinciPushStatusScanThreadNumber;
   }
 
-  public int getOfflinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt() {
-    return offlinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt;
+  public int getDaVinciPushStatusScanNoReportRetryMaxAttempt() {
+    return daVinciPushStatusScanNoReportRetryMaxAttempt;
   }
 
   public boolean isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled() {
