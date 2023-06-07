@@ -1203,7 +1203,7 @@ public class ConfigKeys {
    * A list of fabrics that are source(s) of the active active real time replication. When active-active replication
    * is enabled on the controller {@link #ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER} is true, this list should contain fabrics
    * where the Venice server should consume from when it accepts the TS (TopicSwitch) message.
-   * Example value of this config: "dc-0,dc-1,dc-2".
+   * Example value of this config: "dc-0, dc-1, dc-2".
    */
   public static final String ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST = "active.active.real.time.source.fabric.list";
 
