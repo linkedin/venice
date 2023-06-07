@@ -1,11 +1,8 @@
 package com.linkedin.venice.meta;
 
-import static com.linkedin.venice.helix.HelixState.BOOTSTRAP;
 import static com.linkedin.venice.helix.HelixState.LEADER;
-import static com.linkedin.venice.helix.HelixState.ONLINE;
 import static com.linkedin.venice.helix.HelixState.STANDBY;
 
-import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.ArrayList;
@@ -33,7 +30,7 @@ import org.apache.logging.log4j.Logger;
 public class Partition {
   private static final Logger LOGGER = LogManager.getLogger(Partition.class);
   /**
-   * ID of partition. One of the number between [0, total number of partition[
+   * ID of partition. One of the number between [0, total number of partition - 1]
    */
   private final int id;
 
@@ -41,7 +38,6 @@ public class Partition {
   private final EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMap;
 
   // Lazy state
-  private List<Instance> readyInstances = null;
   private List<Instance> workingInstances = null;
   private Set<Instance> allInstances = null;
   private int hashCode = -1;
@@ -53,60 +49,12 @@ public class Partition {
     this.id = id;
     this.helixStateToInstancesMap = helixStateToInstancesMap;
     this.executionStatusToInstancesMap = executionStatusToInstancesMap;
-    populateEmptyKeysOfEnumMaps();
-  }
-
-  /** Legacy constructor, used only by tests... TODO: Move everything over to the new constructor */
-  @Deprecated
-  public Partition(int id, Map<String, List<Instance>> stateToInstancesMap) {
-    this.id = id;
-
-    // Populate enum maps which are more efficient than the string-based map
-    this.helixStateToInstancesMap = new EnumMap<>(HelixState.class);
-    this.executionStatusToInstancesMap = new EnumMap<>(ExecutionStatus.class);
-    for (Map.Entry<String, List<Instance>> entry: stateToInstancesMap.entrySet()) {
-      /**
-       * N.B. The design of this class is that the {@param stateToInstancesMap} is keyed by strings which could
-       *      correspond to values of either {@link HelixState} of {@link ExecutionStatus}. That is why in the
-       *      code below we catch {@link IllegalArgumentException} since they would be thrown whenever the map
-       *      contains a key which is absent from either enum. This is not an ideal design, but refactoring it
-       *      would be a big undertaking. TODO: refactor it anyway
-       */
-      try {
-        HelixState helixState = HelixState.valueOf(entry.getKey());
-        this.helixStateToInstancesMap.put(helixState, Collections.unmodifiableList(entry.getValue()));
-      } catch (IllegalArgumentException e) {
-        // carry on
-      }
-      try {
-        ExecutionStatus executionStatus = ExecutionStatus.valueOf(entry.getKey());
-        this.executionStatusToInstancesMap.put(executionStatus, Collections.unmodifiableList(entry.getValue()));
-      } catch (IllegalArgumentException e) {
-        // carry on
-      }
-    }
-    populateEmptyKeysOfEnumMaps();
-  }
-
-  private void populateEmptyKeysOfEnumMaps() {
     for (HelixState helixState: HelixState.values()) {
       this.helixStateToInstancesMap.putIfAbsent(helixState, Collections.emptyList());
     }
     for (ExecutionStatus executionStatus: ExecutionStatus.values()) {
       this.executionStatusToInstancesMap.putIfAbsent(executionStatus, Collections.emptyList());
     }
-  }
-
-  private List<Instance> generateInstancesList(HelixState... states) {
-    int count = 0;
-    for (HelixState state: states) {
-      count += this.helixStateToInstancesMap.get(state).size();
-    }
-    List<Instance> instances = new ArrayList<>(count);
-    for (HelixState state: states) {
-      instances.addAll(this.helixStateToInstancesMap.get(state));
-    }
-    return Collections.unmodifiableList(instances);
   }
 
   public List<Instance> getInstancesInState(ExecutionStatus state) {
@@ -117,40 +65,24 @@ public class Partition {
     return this.helixStateToInstancesMap.get(state);
   }
 
-  /**
-   * Checking if a instance ready to serve via its Helix state is unsafe after L/F model is introduced.
-   *
-   * Avoid using this API outside of {@link com.linkedin.venice.pushmonitor.PushStatusDecider#checkPushStatusAndDetails}
-   * and {@link HelixExternalViewRepository#getReadyToServeInstances(String, int)}
-   *
-   * TODO: remove this API once we've fully migrate to L/F model.
-   */
   public List<Instance> getReadyToServeInstances() {
-    List<Instance> completed = this.executionStatusToInstancesMap.get(ExecutionStatus.COMPLETED);
-    List<Instance> online = this.helixStateToInstancesMap.get(HelixState.ONLINE);
-    return completed.size() > online.size() ? completed : getReadyInstances();
+    return this.executionStatusToInstancesMap.get(ExecutionStatus.COMPLETED);
   }
 
   public List<Instance> getWorkingInstances() {
     if (this.workingInstances == null) {
-      this.workingInstances = generateInstancesList(ONLINE, BOOTSTRAP, STANDBY, LEADER);
+      List<Instance> standbyInstances = this.helixStateToInstancesMap.get(STANDBY);
+      List<Instance> leaderInstances = this.helixStateToInstancesMap.get(LEADER);
+      List<Instance> instances = new ArrayList<>(standbyInstances.size() + leaderInstances.size());
+      instances.addAll(standbyInstances);
+      instances.addAll(leaderInstances);
+      this.workingInstances = Collections.unmodifiableList(instances);
     }
     return this.workingInstances;
   }
 
-  private List<Instance> getReadyInstances() {
-    if (this.readyInstances == null) {
-      this.readyInstances = generateInstancesList(ONLINE, STANDBY, LEADER);
-    }
-    return this.readyInstances;
-  }
-
   public List<Instance> getErrorInstances() {
     return this.helixStateToInstancesMap.get(HelixState.ERROR);
-  }
-
-  public List<Instance> getBootstrapInstances() {
-    return this.helixStateToInstancesMap.get(HelixState.BOOTSTRAP);
   }
 
   public Instance getLeaderInstance() {
@@ -288,8 +220,7 @@ public class Partition {
   @Override
   public int hashCode() {
     if (this.hashCode == -1) {
-      int result = 1;
-      result = 31 * id;
+      int result = 31 * id;
       result = 31 * result + this.helixStateToInstancesMap.hashCode();
       result = 31 * result + this.executionStatusToInstancesMap.hashCode();
       this.hashCode = result;

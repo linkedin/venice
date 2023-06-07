@@ -63,7 +63,6 @@ public class HelixCustomizedViewOfflinePushRepository extends HelixBaseRoutingRe
     this.enableReplicaStatusHistory = enableReplicaStatusHistory;
   }
 
-  @Override
   public List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId) {
     Partition partition;
     try (AutoCloseableLock ignored = AutoCloseableLock.of(resourceAssignmentRWLock.readLock())) {

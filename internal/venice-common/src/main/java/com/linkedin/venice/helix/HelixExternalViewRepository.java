@@ -7,7 +7,6 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.ArrayList;
@@ -46,10 +45,6 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository impl
   public HelixExternalViewRepository(SafeHelixManager manager) {
     super(manager);
     dataSource.put(PropertyType.EXTERNALVIEW, Collections.emptyList());
-  }
-
-  public List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId) {
-    throw new VeniceException("The getReplicaStates function should not be used anymore.");
   }
 
   @Override

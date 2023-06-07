@@ -14,7 +14,6 @@ import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -33,6 +32,7 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
+import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
@@ -75,13 +75,13 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     Map<String, String> helixClusterProperties = new HashMap<>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(clusterName, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
+    admin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
     admin.addResource(
         clusterName,
         resourceName,
         3,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        LeaderStandbySMD.name,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(clusterName, resourceName, 2);
 
@@ -107,7 +107,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
         Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort0),
         zkAddress,
         httpPort0,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     manager0.connect();
     Thread.sleep(WAIT_TIME);
     accessor0 = new HelixPartitionStatusAccessor(manager0.getOriginalManager(), manager0.getInstanceName(), false);
@@ -117,7 +117,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
         Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort1),
         zkAddress,
         httpPort1,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     manager1.connect();
 
     Thread.sleep(WAIT_TIME);
@@ -254,7 +254,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
         Utils.getHelixNodeIdentifier(Utils.getHostName(), newHttpPort),
         zkAddress,
         newHttpPort,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     newManager.connect();
     HelixPartitionStatusAccessor newAccessor =
         new HelixPartitionStatusAccessor(newManager.getOriginalManager(), newManager.getInstanceName(), true);

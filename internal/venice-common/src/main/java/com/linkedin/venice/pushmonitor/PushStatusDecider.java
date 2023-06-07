@@ -44,65 +44,6 @@ public abstract class PushStatusDecider {
   }
 
   /**
-   * Check the push status based on the current routing data which includes all of replicas statuses.
-   */
-  public ExecutionStatus checkPushStatus(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
-    return checkPushStatusAndDetails(pushStatus, partitionAssignment).getFirst();
-  }
-
-  public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetails(
-      OfflinePushStatus pushStatus,
-      PartitionAssignment partitionAssignment) {
-    boolean isAllPartitionCompleted = true;
-    // If there are not enough partitions assigned, push could not be completed.
-    // Continue to decide whether push is failed or not.
-    if (partitionAssignment.isMissingAssignedPartitions()) {
-      logger.warn("There are no enough partitions assigned to resource: {}", pushStatus.getKafkaTopic());
-      isAllPartitionCompleted = false;
-    }
-    for (Partition partition: partitionAssignment.getAllPartitions()) {
-      int replicationFactor = pushStatus.getReplicationFactor();
-      int errorReplicasCount = partition.getErrorInstances().size();
-      int completedReplicasCount = partition.getReadyToServeInstances().size();
-      if (logger.isDebugEnabled()) {
-        int assignedReplicasCount = partition.getNumOfTotalInstances();
-        logger.debug(
-            "Checking Push status for offline push for topic: {} Partition: {} has {} assigned replicas including {} error replicas, {} completed replicas.",
-            pushStatus.getKafkaTopic(),
-            partition.getId(),
-            assignedReplicasCount,
-            errorReplicasCount,
-            completedReplicasCount);
-      }
-
-      // Is push failed due to there is enough number of error replicas.
-      if (!hasEnoughReplicasForOnePartition(replicationFactor - errorReplicasCount, replicationFactor)) {
-        String statusDetails = "Too many ERROR replicas " + errorReplicasCount + "/" + replicationFactor
-            + " in partition " + partition.getId() + " under strategy:" + getStrategy();
-        logger.warn("Push for topic: {} should fail because of {}", pushStatus.getKafkaTopic(), statusDetails);
-        return new Pair<>(ERROR, Optional.of(statusDetails));
-      }
-
-      // Is the partition has enough number of completed replicas.
-      if (!hasEnoughReplicasForOnePartition(completedReplicasCount, replicationFactor)) {
-        logger.debug(
-            "Push for topic: {} can not terminated because partition: {} does not have enough COMPLETED replicas. Completed replicas: {} replicationFactor: {} under strategy: {}.",
-            pushStatus.getKafkaTopic(),
-            partition.getId(),
-            completedReplicasCount,
-            replicationFactor,
-            getStrategy());
-        isAllPartitionCompleted = false;
-      }
-    }
-    if (isAllPartitionCompleted) {
-      return new Pair<>(COMPLETED, Optional.empty());
-    } else {
-      return new Pair<>(STARTED, Optional.empty());
-    }
-  }
-
-  /**
    * Check the current status based on {@link PartitionStatus}
    */
   public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetailsByPartitionsStatus(

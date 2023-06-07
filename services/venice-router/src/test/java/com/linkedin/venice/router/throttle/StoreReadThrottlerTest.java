@@ -6,12 +6,12 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -31,14 +31,22 @@ public class StoreReadThrottlerTest {
     PartitionAssignment assignment =
         new PartitionAssignment(Version.composeKafkaTopic(storeName, versionNumber), partitionCount);
 
-    Map<String, List<Instance>> p0StateToInstance = new HashMap<>();
-    p0StateToInstance.put(HelixState.ONLINE_STATE, Arrays.asList(new Instance[] { instance1, instance2 }));
-    assignment.addPartition(new Partition(0, p0StateToInstance));
+    // Partition 0 have 2 online replicas
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMapForP0 = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMapForP0.put(HelixState.LEADER, Arrays.asList(instance1));
+    helixStateToInstancesMapForP0.put(HelixState.STANDBY, Arrays.asList(instance2));
+    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMapForP0 = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMapForP0.put(ExecutionStatus.COMPLETED, Arrays.asList(instance1, instance2));
+    assignment.addPartition(new Partition(0, helixStateToInstancesMapForP0, executionStatusToInstancesMapForP0));
 
-    Map<String, List<Instance>> p1StateToInstance = new HashMap<>();
-    p1StateToInstance.put(HelixState.ONLINE_STATE, Arrays.asList(new Instance[] { instance1 }));
-    p1StateToInstance.put(HelixState.BOOTSTRAP_STATE, Arrays.asList(new Instance[] { instance2 }));
-    assignment.addPartition(new Partition(1, p1StateToInstance));
+    // Partition 1 only have 1 bootstrap replica but no online replica.
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMapForP1 = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMapForP1.put(HelixState.LEADER, Arrays.asList(instance1));
+    helixStateToInstancesMapForP1.put(HelixState.STANDBY, Arrays.asList(instance2));
+    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMapForP1 = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMapForP1.put(ExecutionStatus.COMPLETED, Arrays.asList(instance1));
+    executionStatusToInstancesMapForP1.put(ExecutionStatus.STARTED, Arrays.asList(instance2));
+    assignment.addPartition(new Partition(1, helixStateToInstancesMapForP1, executionStatusToInstancesMapForP1));
 
     StoreReadThrottler throttler = new StoreReadThrottler(
         storeName,
@@ -63,9 +71,9 @@ public class StoreReadThrottlerTest {
         (long) (quota / (double) partitionCount * 0.5 * (1 + perStorageNodeReadQuotaBuffer)));
 
     // Bootstrap replica in partition2 and instance2 become online.
-    p1StateToInstance = new HashMap<>();
-    p1StateToInstance.put(HelixState.ONLINE_STATE, Arrays.asList(new Instance[] { instance1, instance2 }));
-    assignment.addPartition(new Partition(1, p1StateToInstance));
+    executionStatusToInstancesMapForP1 = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMapForP1.put(ExecutionStatus.COMPLETED, Arrays.asList(instance1, instance2));
+    assignment.addPartition(new Partition(1, helixStateToInstancesMapForP1, executionStatusToInstancesMapForP1));
     throttler.updateStorageNodesThrottlers(assignment);
     // Instance1 holds 1 of 2 online replicas for partition 0 and 1 of 2 online replicas for partition 1.
     Assert.assertEquals(
@@ -77,8 +85,11 @@ public class StoreReadThrottlerTest {
         (long) (quota / (double) partitionCount * (1 + perStorageNodeReadQuotaBuffer)));
 
     // All replicas in Partition 1 failed.
-    p1StateToInstance.remove(HelixState.ONLINE_STATE);
-    assignment.addPartition(new Partition(1, p1StateToInstance));
+    helixStateToInstancesMapForP1 = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMapForP1.put(HelixState.ERROR, Arrays.asList(instance1, instance2));
+    executionStatusToInstancesMapForP1 = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMapForP1.put(ExecutionStatus.ERROR, Arrays.asList(instance1, instance2));
+    assignment.addPartition(new Partition(1, helixStateToInstancesMapForP1, executionStatusToInstancesMapForP1));
     throttler.updateStorageNodesThrottlers(assignment);
     // Instance1 holds 1 of 2 online replicas for partition 0 and 0 of 0 online replicas for partition 1.
     Assert.assertEquals(
@@ -105,9 +116,12 @@ public class StoreReadThrottlerTest {
     PartitionAssignment assignment =
         new PartitionAssignment(Version.composeKafkaTopic(storeName, versionNumber), partitionCount);
     for (int i = 0; i < partitionCount; i++) {
-      Map<String, List<Instance>> stateToInstance = new HashMap<>();
-      stateToInstance.put(HelixState.ONLINE_STATE, Arrays.asList(instances));
-      assignment.addPartition(new Partition(i, stateToInstance));
+      EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+      helixStateToInstancesMap.put(HelixState.LEADER, Arrays.asList(instances[0]));
+      helixStateToInstancesMap.put(HelixState.STANDBY, Arrays.asList(instances[1], instances[2]));
+      EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMap = new EnumMap<>(ExecutionStatus.class);
+      executionStatusToInstancesMap.put(ExecutionStatus.COMPLETED, Arrays.asList(instances));
+      assignment.addPartition(new Partition(i, helixStateToInstancesMap, executionStatusToInstancesMap));
     }
     // each storage node holds 4 online replicas, so the quota of each storage node is 1200/4/3*4=400
     StoreReadThrottler throttler = new StoreReadThrottler(

@@ -45,6 +45,7 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -832,11 +833,12 @@ public abstract class AbstractPushMonitorTest {
       final String topic = "test-lock_v1";
       final String instanceId = "test_instance";
       prepareMockStore(topic);
-      Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
-      onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
+      EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+      helixStateToInstancesMap.put(HelixState.LEADER, Collections.singletonList(new Instance(instanceId, "a", 1)));
       // Craft a PartitionAssignment that will trigger the StoreCleaner methods as part of handleCompletedPush.
       PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
-      completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+      completedPartitionAssignment
+          .addPartition(new Partition(0, helixStateToInstancesMap, new EnumMap<>(ExecutionStatus.class)));
       ReplicaStatus status = new ReplicaStatus(instanceId);
       status.updateStatus(ExecutionStatus.COMPLETED);
       ReadOnlyPartitionStatus completedPartitionStatus =
@@ -879,10 +881,11 @@ public abstract class AbstractPushMonitorTest {
       final String instanceId = "test_instance";
 
       prepareMockStore(topic);
-      Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
-      onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
+      EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+      helixStateToInstancesMap.put(HelixState.LEADER, Collections.singletonList(new Instance(instanceId, "a", 1)));
       PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
-      completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+      completedPartitionAssignment
+          .addPartition(new Partition(0, helixStateToInstancesMap, new EnumMap<>(ExecutionStatus.class)));
       doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
       doReturn(completedPartitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
 

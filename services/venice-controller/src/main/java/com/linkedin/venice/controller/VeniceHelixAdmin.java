@@ -6431,7 +6431,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(topic);
       for (Partition p: partitionAssignment.getAllPartitions()) {
-        if (p.getBootstrapInstances().size() > 0) {
+        if (p.getInstancesInState(ExecutionStatus.STARTED).size() > 0) {
           String storeName = Version.parseStoreFromKafkaTopicName(topic);
           VersionStatus status;
           Store store = storeRepository.getStore(storeName);

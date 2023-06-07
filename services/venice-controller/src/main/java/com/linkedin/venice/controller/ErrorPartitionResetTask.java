@@ -213,11 +213,6 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
       return false;
     }
 
-    boolean onlinePartitionPresent = !partition.getInstancesInState(HelixState.ONLINE).isEmpty();
-    if (onlinePartitionPresent) {
-      return true;
-    }
-
     boolean leaderPartitionPresent = !partition.getInstancesInState(HelixState.LEADER).isEmpty();
     boolean standbyPartitionPresent = !partition.getInstancesInState(HelixState.STANDBY).isEmpty();
     return leaderPartitionPresent && standbyPartitionPresent;

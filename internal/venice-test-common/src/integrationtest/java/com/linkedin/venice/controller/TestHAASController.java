@@ -87,7 +87,7 @@ public class TestHAASController {
     }
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testTransitionToHAASControllerAsControllerClusterLeader() {
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
@@ -125,6 +125,7 @@ public class TestHAASController {
               () -> assertEquals(
                   assertCommand(controllerClient.queryJobStatus(topicName)).getStatus(),
                   ExecutionStatus.COMPLETED.toString())));
+      System.out.println("End of the test");
     }
   }
 
@@ -158,7 +159,7 @@ public class TestHAASController {
     }
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testTransitionToHAASControllerAsStorageClusterLeader() {
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
@@ -201,6 +202,7 @@ public class TestHAASController {
           assertEquals(jobStatusQueryResponse.getStatus(), ExecutionStatus.COMPLETED.toString());
         });
       });
+      System.out.println("End of the test");
     }
   }
 

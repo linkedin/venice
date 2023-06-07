@@ -113,12 +113,6 @@ public interface PushMonitor {
   void markOfflinePushAsError(String topic, String statusDetails);
 
   /**
-   * Given a certain partition assignment, identify if a push would fail after that. This is usually called
-   * when we'd like to change the number of storage nodes in the cluster
-   */
-  boolean wouldJobFail(String topic, PartitionAssignment partitionAssignmentAfterRemoving);
-
-  /**
    * Here, we refresh the push status, in order to avoid a race condition where a small job could
    * already be completed. Previously, we would clobber the COMPLETED status with STARTED, which
    * would stall the job forever.

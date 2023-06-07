@@ -642,21 +642,6 @@ public abstract class AbstractPushMonitor
     }
   }
 
-  public boolean wouldJobFail(String topic, PartitionAssignment partitionAssignmentAfterRemoving) {
-    String storeName = Version.parseStoreFromKafkaTopicName(topic);
-    try (AutoCloseableLock ignore = clusterLockManager.createStoreReadLock(storeName)) {
-      if (!topicToPushMap.containsKey(topic)) {
-        // the offline push has been terminated and archived.
-        return false;
-      } else {
-        OfflinePushStatus offlinePush = getOfflinePush(topic);
-        Pair<ExecutionStatus, Optional<String>> status = PushStatusDecider.getDecider(offlinePush.getStrategy())
-            .checkPushStatusAndDetails(offlinePush, partitionAssignmentAfterRemoving);
-        return status.getFirst().equals(ExecutionStatus.ERROR);
-      }
-    }
-  }
-
   protected abstract Pair<ExecutionStatus, Optional<String>> checkPushStatus(
       OfflinePushStatus pushStatus,
       PartitionAssignment partitionAssignment,

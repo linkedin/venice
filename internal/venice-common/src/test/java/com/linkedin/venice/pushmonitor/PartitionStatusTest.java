@@ -1,6 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import org.testng.Assert;
