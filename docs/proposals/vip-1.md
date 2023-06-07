@@ -38,7 +38,7 @@ or TLS based Authentication, that is based on the client certificate exchanged d
 
 1. **What is in scope?**
 
-   - Define an API to write plugins to perform authentication checks.
+   - Define an API to write plugins to perform authentication checks on Venice components (controller, server and router).
    - The API must support single step authentication mechanisms (JWT, OAuth2, TLS client authentication).
    - Support retrofitting the existing TLS mechanism as a plugin (without introducing the implementation).
    - Ensure that the Authentication API is used by all the services and applied to every request.
@@ -52,6 +52,7 @@ or TLS based Authentication, that is based on the client certificate exchanged d
     - Refactor the AuthorizerService APIs (even if some changes will be needed) 
     - Implement other authentication mechanisms (Kerberos, SAML, etc.)
     - Modify the Admin Tools to support authentication (this will be a follow-up work)
+    - Deal with authentication against the PubSub broker (Kafka, Pulsar, etc.)
 
 ## Project Justification
 
