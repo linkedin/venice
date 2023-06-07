@@ -84,6 +84,11 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public void setNumber(int number) {
+    this.storeVersion.number = number;
+  }
+
+  @Override
   public long getCreatedTime() {
     return this.storeVersion.createdTime;
   }
@@ -173,6 +178,11 @@ public class VersionImpl implements Version {
   @Override
   public String getPushJobId() {
     return this.storeVersion.pushJobId.toString();
+  }
+
+  @Override
+  public void setPushJobId(String pushJobId) {
+    this.storeVersion.pushJobId = pushJobId;
   }
 
   @Override

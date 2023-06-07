@@ -31,6 +31,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
@@ -71,6 +72,7 @@ public class DataRecoveryTest {
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
+  private static final int VERSION_ID_UNSET = -1;
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private List<VeniceMultiClusterWrapper> childDatacenters;
@@ -82,7 +84,9 @@ public class DataRecoveryTest {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+    // If the delay is too short, dc-1 participant store new leader will skip local VT consumption, switch to remote VT,
+    // replicate duplicate SOP/EOP to local VT and miss TopicSwitch, resulting in stuck participant store push job.
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 5L);
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
@@ -110,6 +114,18 @@ public class DataRecoveryTest {
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
+
+    try (ControllerClient controllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
+      // Verify the participant store is up and running in dest region.
+      // Participant store is needed for checking kill record existence and dest region readiness for data recovery.
+      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(participantStoreName, 1),
+          controllerClient,
+          2,
+          TimeUnit.MINUTES);
+    }
   }
 
   @AfterClass(alwaysRun = true)
@@ -217,20 +233,16 @@ public class DataRecoveryTest {
           TimeUnit.SECONDS);
       // Prepare dc-1 for data recovery
       Assert.assertFalse(
-          parentControllerClient.prepareDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty()).isError());
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-        ReadyForDataRecoveryResponse readinessResponse =
-            parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
-        Assert.assertTrue(readinessResponse.isReady(), readinessResponse.getReason());
-      });
-      // Initiate data recovery
+          parentControllerClient.prepareDataRecovery("dc-0", "dc-1", storeName, VERSION_ID_UNSET, Optional.empty())
+              .isError());
+      // Initiate data recovery, a new version will be created in dest fabric
       Assert.assertFalse(
-          parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
-      TestUtils.waitForNonDeterministicPushCompletion(
-          versionCreationResponse.getKafkaTopic(),
-          parentControllerClient,
-          60,
-          TimeUnit.SECONDS);
+          parentControllerClient
+              .dataRecovery("dc-0", "dc-1", storeName, VERSION_ID_UNSET, false, true, Optional.empty())
+              .isError());
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        Assert.assertEquals(dc1Client.getStore(storeName).getStore().getCurrentVersion(), 2);
+      });
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
               .setVeniceURL(childDatacenters.get(1).getClusters().get(clusterName).getRandomRouterURL()))) {

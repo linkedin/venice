@@ -27,7 +27,7 @@ public class VersionJsonSerializerTest {
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setAmplificationFactor(2);
     version.setPartitionerConfig(partitionerConfig);
-    DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false);
+    DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
     version.setDataRecoveryVersionConfig(dataRecoveryVersionConfig);
     // Set some fields to non-default values.
     version.setHybridStoreConfig(hybridStoreConfig);
