@@ -3749,16 +3749,22 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     StoreInfo destStore = getStoreInChildRegion(destinationFabric, clusterName, storeName);
     if (whetherToCreateNewDataRecoveryVersion(destinationFabric, clusterName, destStore, version)) {
-      Store parentStore = getStore(clusterName, storeName);
-      int newVersion = parentStore.peekNextVersion().getNumber();
-      getVeniceHelixAdmin().setStoreLargestUsedVersion(clusterName, storeName, newVersion);
-      LOGGER.info(
-          "Current version {}_v{} in {} might be serving read requests. Copying data to a new version {}.",
-          storeName,
-          version,
-          destinationFabric,
-          newVersion);
-      version = newVersion;
+      getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store parentStore = repository.getStore(storeName);
+        int newVersion = parentStore.peekNextVersion().getNumber();
+        parentStore.setLargestUsedVersionNumber(newVersion);
+        repository.updateStore(parentStore);
+        LOGGER.info(
+            "Current version {}_v{} in {} might be serving read requests. Copying data to a new version {}.",
+            storeName,
+            version,
+            destinationFabric,
+            newVersion);
+        version = newVersion;
+      }
     }
     ControllerClient destFabricChildControllerClient =
         getFabricBuildoutControllerClient(clusterName, destinationFabric);

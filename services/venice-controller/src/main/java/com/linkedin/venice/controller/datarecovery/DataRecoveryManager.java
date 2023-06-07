@@ -85,7 +85,10 @@ public class DataRecoveryManager implements Closeable {
     int srcFabricVersionNumber = sourceFabricVersion.getNumber();
     if (srcFabricVersionNumber != version) {
       sourceFabricVersion.setNumber(version);
-      // Update the push job id as a version with same id cannot be added twice.
+      /**
+       * Update the push job id as a version with same id cannot be added twice.
+       * @see VeniceHelixAdmin#addSpecificVersion(String, String, Version)
+       */
       sourceFabricVersion.setPushJobId("data_recovery_" + sourceFabricVersion.getPushJobId());
     }
     Version dataRecoveryVersion = sourceFabricVersion.cloneVersion();
