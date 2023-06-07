@@ -1,6 +1,7 @@
 package com.linkedin.davinci.notifier;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -32,14 +33,33 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
     this.instance = instance;
   }
 
-  private void report(String kafkaTopic, int partitionId, ExecutionStatus status) {
+  void report(String kafkaTopic, int partitionId, ExecutionStatus status) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
       // No replica status reporting for meta system stores
       return;
     }
-    Store store = storeRepository.getStoreOrThrow(storeName);
+    Store store;
+    try {
+      store = getStoreRepository().getStoreOrThrow(storeName);
+    } catch (VeniceNoStoreException e) {
+      /**
+       * For store deletion, store removal in store repo might happen faster then {@link ExecutionStatus.DROPPED} action.
+       * This is to make sure the meta store notifier does not throw exception when this happens. For other status, this
+       * is not expected, so we should throw exception.
+       */
+      if (status.equals(ExecutionStatus.DROPPED)) {
+        LOGGER.info(
+            "Store {} does not exist in store repository. Skip reporting status: {} for topic: {}, partition: {}",
+            storeName,
+            status,
+            kafkaTopic,
+            partitionId);
+        return;
+      }
+      throw e;
+    }
     if (!store.isStoreMetaSystemStoreEnabled()) {
       // Meta system store is not enabled yet.
       LOGGER.info("Meta system store for topic: {} is not enabled yet", kafkaTopic);
@@ -49,7 +69,7 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     if (status.equals(ExecutionStatus.DROPPED)) {
       try {
-        metaStoreWriter.deleteStoreReplicaStatus(clusterName, storeName, version, partitionId, instance);
+        getMetaStoreWriter().deleteStoreReplicaStatus(clusterName, storeName, version, partitionId, instance);
       } catch (Exception e) {
         /**
          * This could potentially happen during store deletion.
@@ -63,7 +83,7 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
             e);
       }
     } else {
-      metaStoreWriter.writeStoreReplicaStatus(clusterName, storeName, version, partitionId, instance, status);
+      getMetaStoreWriter().writeStoreReplicaStatus(clusterName, storeName, version, partitionId, instance, status);
     }
   }
 
@@ -94,5 +114,13 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
 
   public void drop(String kafkaTopic, int partitionId) {
     report(kafkaTopic, partitionId, ExecutionStatus.DROPPED);
+  }
+
+  MetaStoreWriter getMetaStoreWriter() {
+    return metaStoreWriter;
+  }
+
+  ReadOnlyStoreRepository getStoreRepository() {
+    return storeRepository;
   }
 }
