@@ -200,6 +200,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.ConcurrencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.views.VeniceView;
@@ -232,7 +233,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.helix.AccessOption;
@@ -398,6 +398,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private DataRecoveryManager dataRecoveryManager;
 
   protected final PubSubTopicRepository pubSubTopicRepository;
+
+  private final Object PUSH_JOB_DETAILS_CLIENT_LOCK = new Object();
+  private AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> pushJobDetailsStoreClient = null;
+
+  private final Object LIVENESS_HEARTBEAT_CLIENT_LOCK = new Object();
+  private AvroSpecificStoreClient<BatchJobHeartbeatKey, BatchJobHeartbeatValue> livenessHeartbeatStoreClient = null;
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -1188,9 +1194,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public PushJobDetails getPushJobDetails(@Nonnull PushJobStatusRecordKey key) {
     Validate.notNull(key);
-    String storeName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
-    String d2Service = discoverCluster(storeName).getSecond();
-    return readValue(key, storeName, d2Service, PushJobDetails.class);
+    ConcurrencyUtils.executeUnderConditionalLock(() -> {
+      String storeName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
+      String d2Service = discoverCluster(storeName).getSecond();
+      pushJobDetailsStoreClient = ClientFactory.getAndStartSpecificAvroClient(
+          ClientConfig.defaultSpecificClientConfig(storeName, PushJobDetails.class)
+              .setD2ServiceName(d2Service)
+              .setD2Client(this.d2Client));
+    }, () -> pushJobDetailsStoreClient == null, PUSH_JOB_DETAILS_CLIENT_LOCK);
+    try {
+      return pushJobDetailsStoreClient.get(key).get();
+    } catch (Exception e) {
+      throw new VeniceException(e);
+    }
   }
 
   /**
@@ -1199,22 +1215,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public BatchJobHeartbeatValue getBatchJobHeartbeatValue(@Nonnull BatchJobHeartbeatKey batchJobHeartbeatKey) {
     Validate.notNull(batchJobHeartbeatKey);
-    String storeName = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
-    String d2Service = discoverCluster(storeName).getSecond();
-    return readValue(batchJobHeartbeatKey, storeName, d2Service, BatchJobHeartbeatValue.class);
-  }
-
-  private <K, V extends SpecificRecord> V readValue(
-      K key,
-      String storeName,
-      String d2Service,
-      Class<V> specificValueClass) {
-    // TODO: we may need to use the ICProvider interface to avoid missing IC warning logs when making these client calls
-    try (AvroSpecificStoreClient<K, V> client = ClientFactory.getAndStartSpecificAvroClient(
-        ClientConfig.defaultSpecificClientConfig(storeName, specificValueClass)
-            .setD2ServiceName(d2Service)
-            .setD2Client(this.d2Client))) {
-      return client.get(key).get();
+    ConcurrencyUtils.executeUnderConditionalLock(() -> {
+      String storeName = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
+      String d2Service = discoverCluster(storeName).getSecond();
+      livenessHeartbeatStoreClient = ClientFactory.getAndStartSpecificAvroClient(
+          ClientConfig.defaultSpecificClientConfig(storeName, BatchJobHeartbeatValue.class)
+              .setD2ServiceName(d2Service)
+              .setD2Client(this.d2Client));
+    }, () -> livenessHeartbeatStoreClient == null, LIVENESS_HEARTBEAT_CLIENT_LOCK);
+    try {
+      return livenessHeartbeatStoreClient.get(batchJobHeartbeatKey).get();
     } catch (Exception e) {
       throw new VeniceException(e);
     }
@@ -6506,6 +6516,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     pushStatusStoreReader.ifPresent(PushStatusStoreReader::close);
     pushStatusStoreWriter.ifPresent(PushStatusStoreWriter::close);
     pushStatusStoreDeleter.ifPresent(PushStatusStoreRecordDeleter::close);
+    Utils.closeQuietlyWithErrorLogged(pushJobDetailsStoreClient);
+    Utils.closeQuietlyWithErrorLogged(livenessHeartbeatStoreClient);
     clusterControllerClientPerColoMap.forEach(
         (clusterName, controllerClientMap) -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
     D2ClientUtils.shutdownClient(d2Client);

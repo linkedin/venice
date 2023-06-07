@@ -46,6 +46,12 @@ public class HttpTransportClient extends TransportClient {
     httpClient.start();
   }
 
+  /**
+   * Note: The callback that is triggered by {@link CloseableHttpAsyncClient} runs in the same thread as one of it's worker
+   * threads and if the users of the future run tasks that block the release of the future thread, a deadlock will occur.
+   * Hence, use the async handlers of {@link CompletableFuture} if you plan to use the same client to make multiple
+   * requests sequentially.
+   */
   @Override
   public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
     HttpGet request = getHttpGetRequest(requestPath, headers);
@@ -54,6 +60,12 @@ public class HttpTransportClient extends TransportClient {
     return valueFuture;
   }
 
+  /**
+   * Note: The callback that is triggered by {@link CloseableHttpAsyncClient} runs in the same thread as one of it's worker
+   * threads and if the users of the future run tasks that block the release of the future thread, a deadlock will occur.
+   * Hence, use the async handlers of {@link CompletableFuture} if you plan to use the same client to make multiple
+   * requests sequentially.
+   */
   @Override
   public CompletableFuture<TransportClientResponse> post(
       String requestPath,
@@ -67,6 +79,10 @@ public class HttpTransportClient extends TransportClient {
 
   /**
    * Leverage non-streaming post to achieve feature parity.
+   * Note: The callback that is triggered by {@link CloseableHttpAsyncClient} runs in the same thread as one of it's worker
+   * threads and if the users of the future run tasks that block the release of the future thread, a deadlock will occur.
+   * Hence, use the async handlers of {@link CompletableFuture} if you plan to use the same client to make multiple
+   * requests sequentially.
    */
   @Override
   public void streamPost(
@@ -134,15 +150,6 @@ public class HttpTransportClient extends TransportClient {
     }
   }
 
-  /**
-   * The same {@link CloseableHttpAsyncClient} could not be used to send out another request in its own callback function.
-   * @return
-   */
-  @Override
-  public TransportClient getCopyIfNotUsableInCallback() {
-    return new HttpTransportClient(routerUrl);
-  }
-
   private static class HttpTransportClientCallback extends TransportClientCallback
       implements FutureCallback<HttpResponse> {
     public HttpTransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {
@@ -190,7 +197,7 @@ public class HttpTransportClient extends TransportClient {
     }
   }
 
-  public static String ensureTrailingSlash(String input) {
+  private static String ensureTrailingSlash(String input) {
     if (input.endsWith("/")) {
       return input;
     } else {
