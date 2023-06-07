@@ -58,6 +58,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -392,9 +393,8 @@ public class VenicePushJob implements AutoCloseable {
 
   /**
    * Config to enable single targeted region push mode in VPJ.
-   * In this mode, the VPJ will only push data to a single colo/region first, perform validation and finally
-   * leverage data recovery/repush to propagate data globally.
-   * The single solo/region is decided by the store config in {@link StoreResponse#getStore()}}.
+   * In this mode, the VPJ will only push data to a single region.
+   * The single region is decided by the store config in {@link StoreInfo#getNativeReplicationSourceFabric()}}.
    * For multiple targeted regions push, may use the advanced mode. See {@link #TARGETED_REGION_PUSH_LIST}.
    */
   public static final String TARGETED_REGION_PUSH_ENABLED = "targeted.region.push.enabled";
@@ -402,10 +402,9 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * This is experimental config to specify a list of regions used for targeted region push in VPJ.
    * {@link #TARGETED_REGION_PUSH_ENABLED} has to be enabled to use this config.
-   * In this mode, the VPJ will only push data to the provided regions first, perform validation and finally
-   * leverage data recovery/repush to propagate data globally.
-   * The input should be split by comma, e.g. "dc-0,dc-1,dc-2".
-   * For single colo targeted region push, see {@link #TARGETED_REGION_PUSH_ENABLED}.
+   * In this mode, the VPJ will only push data to the provided regions.
+   * The input is comma separated list of region names, e.g. "dc-0,dc-1,dc-2".
+   * For single targeted region push, see {@link #TARGETED_REGION_PUSH_ENABLED}.
    */
   public static final String TARGETED_REGION_PUSH_LIST = "targeted.region.push.list";
 
