@@ -120,6 +120,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerConfig.class);
+  private static final String LIST_SEPARATOR = ",\\s*";
 
   private final int adminPort;
 
@@ -296,7 +297,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     } else {
       this.childDataCenterControllerUrlMap = parseClusterMap(props, dataCenterAllowlist);
       this.childDataCenterControllerD2Map = parseClusterMap(props, dataCenterAllowlist, true);
-      this.childDataCenterAllowlist = Arrays.asList(dataCenterAllowlist.split(",\\s*"));
+      this.childDataCenterAllowlist = Arrays.asList(dataCenterAllowlist.split(LIST_SEPARATOR));
     }
     this.d2ServiceName =
         childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
@@ -893,7 +894,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     String propsPrefix = D2Routing ? CHILD_CLUSTER_D2_PREFIX : CHILD_CLUSTER_URL_PREFIX;
     return parseChildDataCenterToValue(propsPrefix, clusterPros, datacenterAllowlist, (m, k, v, errMsg) -> {
       m.computeIfAbsent(k, key -> {
-        String[] uriList = v.split(",\\s*");
+        String[] uriList = v.split(LIST_SEPARATOR);
 
         if (D2Routing && uriList.length != 1) {
           throw new VeniceException(errMsg + ": can only have 1 zookeeper url");
@@ -944,7 +945,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
 
     Map<String, String> outputMap = new HashMap<>();
-    List<String> allowlist = Arrays.asList(datacenterAllowlist.split(",\\s*"));
+    List<String> allowlist = Arrays.asList(datacenterAllowlist.split(LIST_SEPARATOR));
 
     for (Map.Entry<Object, Object> uriEntry: childDataCenterKafkaUriProps.entrySet()) {
       String datacenter = (String) uriEntry.getKey();
