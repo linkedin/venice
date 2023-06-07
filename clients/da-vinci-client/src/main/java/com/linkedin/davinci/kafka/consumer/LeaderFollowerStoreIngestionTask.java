@@ -208,6 +208,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 + version.getDataRecoveryVersionConfig().getDataRecoverySourceFabric());
       }
       isDataRecovery = true;
+      dataRecoverySourceVersionNumber = version.getDataRecoveryVersionConfig().getDataRecoverySourceVersionNumber();
       if (isHybridMode()) {
         dataRecoveryCompletionTimeLagThresholdInMs = TopicManager.BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN / 2;
         LOGGER.info(
@@ -565,6 +566,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 consumerTaskId,
                 currentLeaderTopic,
                 partition);
+            if (isDataRecovery && partitionConsumptionState.isBatchOnly() && !versionTopic.equals(currentLeaderTopic)) {
+              partitionConsumptionState.getOffsetRecord().setLeaderTopic(versionTopic);
+              currentLeaderTopic = versionTopic;
+            }
             /**
              * The flag is turned on in {@link LeaderFollowerStoreIngestionTask#shouldProcessRecord} avoid consuming
              * unwanted messages after EOP in remote VT, such as SOBR. Now that the leader switches to consume locally,
@@ -734,6 +739,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     partitionConsumptionState.setLeaderFollowerState(LEADER);
+    if (isDataRecovery && partitionConsumptionState.isBatchOnly() && partitionConsumptionState.consumeRemotely()) {
+      // Batch-only store data recovery might consume from a previous version in remote colo.
+      String dataRecoveryVersionTopic = Version.composeKafkaTopic(storeName, dataRecoverySourceVersionNumber);
+      offsetRecord.setLeaderTopic(pubSubTopicRepository.getTopic(dataRecoveryVersionTopic));
+    }
     final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
     final PubSubTopicPartition leaderTopicPartition = partitionConsumptionState.getSourceTopicPartition(leaderTopic);
     final long leaderStartOffset = partitionConsumptionState
@@ -2541,6 +2551,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (isLeader(partitionConsumptionState)) {
       return;
     }
+    OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    if (isDataRecovery && partitionConsumptionState.isBatchOnly() && !versionTopic.equals(leaderTopic)) {
+      partitionConsumptionState.getOffsetRecord().setLeaderTopic(versionTopic);
+    }
     /**
      * When the node works as a leader, it does not update leader topic when processing TS. When the node demotes to
      * follower after leadership handover or becomes follower after restart, it should track the topic that leader will
@@ -2549,9 +2564,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * VT at RT offset.
      */
     TopicSwitchWrapper topicSwitch = partitionConsumptionState.getTopicSwitch();
-    OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     if (topicSwitch != null) {
-      if (!topicSwitch.getNewSourceTopic().equals(offsetRecord.getLeaderTopic(pubSubTopicRepository))) {
+      if (!topicSwitch.getNewSourceTopic().equals(leaderTopic)) {
         offsetRecord.setLeaderTopic(topicSwitch.getNewSourceTopic());
       }
     }

@@ -3704,6 +3704,28 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceUnsupportedOperationException("nodeReplicaReadiness is not supported");
   }
 
+  private StoreInfo getStoreInChildRegion(String regionName, String clusterName, String storeName) {
+    ControllerClient childControllerClient = getFabricBuildoutControllerClient(clusterName, regionName);
+    StoreResponse storeResponse = childControllerClient.getStore(storeName);
+    if (storeResponse.isError()) {
+      throw new VeniceException(
+          "Error when getting store " + storeName + " from region " + regionName + ": " + storeResponse.getError());
+    }
+    return storeResponse.getStore();
+  }
+
+  private boolean whetherToCreateNewDataRecoveryVersion(
+      String destFabric,
+      String clusterName,
+      StoreInfo destStore,
+      int versionNumber) {
+    // Currently new version data recovery is only supported for batch-only store.
+    // For existing data centers, current store version might be serving read requests. Need to create a new version.
+    // For new data centers or non-current version, it's ok to delete and recreate it. No need to create a new version.
+    return destStore.getHybridStoreConfig() == null && versionNumber == destStore.getCurrentVersion()
+        && multiClusterConfigs.getControllerConfig(clusterName).getChildDataCenterAllowlist().contains(destFabric);
+  }
+
   /**
    * @see Admin#initiateDataRecovery(String, String, int, String, String, boolean, Optional)
    */
@@ -3716,16 +3738,38 @@ public class VeniceParentHelixAdmin implements Admin {
       String destinationFabric,
       boolean copyAllVersionConfigs,
       Optional<Version> ignored) {
-    ControllerClient srcFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, sourceFabric);
+    StoreInfo srcStore = getStoreInChildRegion(sourceFabric, clusterName, storeName);
+    if (version == VERSION_ID_UNSET) {
+      version = srcStore.getCurrentVersion();
+    }
+    Optional<Version> srcVersion = srcStore.getVersion(version);
+    if (!srcVersion.isPresent()) {
+      throw new VeniceException(
+          "Version " + version + " does not exist in source fabric " + sourceFabric + " store " + storeName);
+    }
+    StoreInfo destStore = getStoreInChildRegion(destinationFabric, clusterName, storeName);
+    if (whetherToCreateNewDataRecoveryVersion(destinationFabric, clusterName, destStore, version)) {
+      getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store parentStore = repository.getStore(storeName);
+        int newVersion = parentStore.peekNextVersion().getNumber();
+        parentStore.setLargestUsedVersionNumber(newVersion);
+        repository.updateStore(parentStore);
+        LOGGER.info(
+            "Current version {}_v{} in {} might be serving read requests. Copying data to a new version {}.",
+            storeName,
+            version,
+            destinationFabric,
+            newVersion);
+        version = newVersion;
+      }
+    }
     ControllerClient destFabricChildControllerClient =
         getFabricBuildoutControllerClient(clusterName, destinationFabric);
-    StoreInfo storeInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
-    Optional<Version> sourceVersion = storeInfo.getVersion(version);
-    if (!sourceVersion.isPresent()) {
-      throw new VeniceException("Version: " + version + " does not exist in the given source fabric: " + sourceFabric);
-    }
     ControllerResponse destinationFabricResponse = destFabricChildControllerClient
-        .dataRecovery(sourceFabric, destinationFabric, storeName, version, true, copyAllVersionConfigs, sourceVersion);
+        .dataRecovery(sourceFabric, destinationFabric, storeName, version, true, copyAllVersionConfigs, srcVersion);
     if (destinationFabricResponse.isError()) {
       throw new VeniceException(
           "Failed to initiate data recovery in destination fabric, error: " + destinationFabricResponse.getError());
@@ -3743,16 +3787,28 @@ public class VeniceParentHelixAdmin implements Admin {
       String sourceFabric,
       String destinationFabric,
       Optional<Integer> ignored) {
-    ControllerClient srcFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, sourceFabric);
+    StoreInfo srcStore = getStoreInChildRegion(sourceFabric, clusterName, storeName);
+    if (version == VERSION_ID_UNSET) {
+      version = srcStore.getCurrentVersion();
+    }
+    StoreInfo destStore = getStoreInChildRegion(destinationFabric, clusterName, storeName);
+    if (whetherToCreateNewDataRecoveryVersion(destinationFabric, clusterName, destStore, version)) {
+      LOGGER.info(
+          "Skip current version {}_v{} cleanup in {} as it might be serving read requests.",
+          storeName,
+          version,
+          destinationFabric);
+      return;
+    }
+    int amplificationFactor = srcStore.getPartitionerConfig().getAmplificationFactor();
     ControllerClient destFabricChildControllerClient =
         getFabricBuildoutControllerClient(clusterName, destinationFabric);
-    StoreInfo sourceStoreInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
-    int amplificationFactor = sourceStoreInfo.getPartitionerConfig().getAmplificationFactor();
-    ControllerResponse destinationFabricResponse = destFabricChildControllerClient
+    ControllerResponse destFabricResponse = destFabricChildControllerClient
         .prepareDataRecovery(sourceFabric, destinationFabric, storeName, version, Optional.of(amplificationFactor));
-    if (destinationFabricResponse.isError()) {
+    if (destFabricResponse.isError()) {
       throw new VeniceException(
-          "Failed to prepare for data recovery in destination fabric, error: " + destinationFabricResponse.getError());
+          "Error when preparing data recovery for store " + storeName + " in destination fabric " + destinationFabric
+              + ": " + destFabricResponse.getError());
     }
   }
 

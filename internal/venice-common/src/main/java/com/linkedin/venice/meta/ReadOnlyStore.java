@@ -267,6 +267,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public int getDataRecoverySourceVersionNumber() {
+      return delegate.getDataRecoverySourceVersionNumber();
+    }
+
+    @Override
+    public void setDataRecoverySourceVersionNumber(int dataRecoverySourceVersionNumber) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public DataRecoveryVersionConfig clone() {
       return this.delegate.clone();
     }
@@ -285,6 +295,11 @@ public class ReadOnlyStore implements Store {
     @Override
     public int getNumber() {
       return this.delegate.getNumber();
+    }
+
+    @Override
+    public void setNumber(int number) {
+      throw new UnsupportedOperationException();
     }
 
     @Override
@@ -375,6 +390,11 @@ public class ReadOnlyStore implements Store {
     @Override
     public String getPushJobId() {
       return this.delegate.getPushJobId();
+    }
+
+    @Override
+    public void setPushJobId(String pushJobId) {
+      throw new UnsupportedOperationException();
     }
 
     @Override

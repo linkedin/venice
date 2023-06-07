@@ -99,6 +99,8 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.DataRecoveryVersionConfig;
+import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -3413,6 +3415,48 @@ public abstract class StoreIngestionTaskTest {
       when(partitionConsumptionState.consumeRemotely()).thenReturn(true);
       assertTrue(lfsit.shouldProduceToVersionTopic(partitionConsumptionState));
     }, false);
+  }
+
+  @Test
+  public void testBatchOnlyStoreDataRecovery() {
+    Version version = mock(Version.class);
+    doReturn(1).when(version).getPartitionCount();
+    doReturn(VersionStatus.STARTED).when(version).getStatus();
+    doReturn(true).when(version).isNativeReplicationEnabled();
+    DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
+    doReturn(dataRecoveryVersionConfig).when(version).getDataRecoveryVersionConfig();
+
+    Store store = mock(Store.class);
+    doReturn(Optional.of(version)).when(store).getVersion(eq(1));
+
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(topic).when(storeConfig).getStoreVersionName();
+
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        1,
+        Collections.emptyMap(),
+        true).build();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        store,
+        version,
+        new Properties(),
+        isCurrentVersion,
+        storeConfig,
+        1,
+        false,
+        Optional.empty());
+
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
+    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(0, 1, offsetRecord, false);
+
+    storeIngestionTaskUnderTest.updateLeaderTopicOnFollower(partitionConsumptionState);
+    storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);
+    String dataRecoverySourceTopic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
+    verify(offsetRecord, times(1)).setLeaderTopic(pubSubTopicRepository.getTopic(dataRecoverySourceTopic));
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

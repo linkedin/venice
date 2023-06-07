@@ -7,7 +7,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
@@ -79,15 +78,23 @@ public class DataRecoveryManager implements Closeable {
       String sourceFabric,
       boolean copyAllVersionConfigs,
       Version sourceFabricVersion) {
-    Version dataRecoveryVersion = sourceFabricVersion.cloneVersion();
-    dataRecoveryVersion.setStatus(VersionStatus.STARTED);
     Store store = veniceAdmin.getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    dataRecoveryVersion.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
-    dataRecoveryVersion.setNativeReplicationSourceFabric(sourceFabric);
-    dataRecoveryVersion.setDataRecoveryVersionConfig(new DataRecoveryVersionConfigImpl(sourceFabric, false));
+    int srcFabricVersionNumber = sourceFabricVersion.getNumber();
+    if (srcFabricVersionNumber != version) {
+      sourceFabricVersion.setNumber(version);
+      /**
+       * Update the push job id as a version with same id cannot be added twice.
+       * @see VeniceHelixAdmin#addSpecificVersion(String, String, Version)
+       */
+      sourceFabricVersion.setPushJobId("data_recovery_" + sourceFabricVersion.getPushJobId());
+    }
+    Version dataRecoveryVersion = sourceFabricVersion.cloneVersion();
+    dataRecoveryVersion.setStatus(VersionStatus.STARTED);
+    dataRecoveryVersion
+        .setDataRecoveryVersionConfig(new DataRecoveryVersionConfigImpl(sourceFabric, false, srcFabricVersionNumber));
 
     dataRecoveryVersion.setUseVersionLevelIncrementalPushEnabled(true);
     dataRecoveryVersion.setUseVersionLevelHybridConfig(true);
@@ -118,21 +125,23 @@ public class DataRecoveryManager implements Closeable {
       int sourceAmplificationFactor) {
     verifyStoreIsCapableOfDataRecovery(clusterName, storeName, sourceAmplificationFactor);
     Store store = veniceAdmin.getStore(clusterName, storeName);
+    String topic = Version.composeKafkaTopic(storeName, versionNumber);
     if (store.getCurrentVersion() == versionNumber) {
+      if (!veniceAdmin.isClusterWipeAllowed(clusterName)) {
+        throw new VeniceException(destinationFabric + " cluster " + clusterName + " cannot wipe current version");
+      }
       /**
-       * We need to set the store's current version to the backup version or {@link Store#NON_EXISTING_VERSION} in order to
+       * We need to set the store's current version to the backup version or {@link Store#NON_EXISTING_VERSION} to
        * perform data recovery on the current version.
        */
-      Optional<Version> backupVersion =
-          store.getVersions().stream().filter(v -> v.getNumber() != versionNumber).findFirst();
-      veniceAdmin.updateStore(
-          clusterName,
-          storeName,
-          new UpdateStoreQueryParams()
-              .setCurrentVersion(backupVersion.map(Version::getNumber).orElse(Store.NON_EXISTING_VERSION)));
+      int backupVersion = veniceAdmin.getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+      veniceAdmin.setStoreCurrentVersion(clusterName, storeName, backupVersion);
+      veniceAdmin.wipeCluster(clusterName, destinationFabric, Optional.of(storeName), Optional.of(versionNumber));
+    } else {
+      veniceAdmin.deleteOneStoreVersion(clusterName, storeName, versionNumber);
+      veniceAdmin.stopMonitorOfflinePush(clusterName, topic, true, true);
     }
-    veniceAdmin.wipeCluster(clusterName, destinationFabric, Optional.of(storeName), Optional.of(versionNumber));
-    veniceAdmin.deleteParticipantStoreKillMessage(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
+    veniceAdmin.deleteParticipantStoreKillMessage(clusterName, topic);
   }
 
   private void verifyStoreIsCapableOfDataRecovery(String clusterName, String storeName, int sourceAmplificationFactor) {
