@@ -7,15 +7,14 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientConfigs;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
@@ -38,12 +37,11 @@ public class DictionaryUtils {
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = new ApacheKafkaConsumerAdapterFactory();
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
-        new KafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory
-        .create(getKafkaConsumerProps(props), false, kafkaPubSubMessageDeserializer, null)) {
+    try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory.create(
+        getKafkaConsumerProps(props),
+        new PubSubClientConfigs.Builder().setKafkaValueSerializer(new KafkaValueSerializer()).build(),
+        false,
+        null)) {
       return DictionaryUtils.readDictionaryFromKafka(topicName, pubSubConsumer, pubSubTopicRepository);
     }
   }

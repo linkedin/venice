@@ -10,16 +10,12 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.pools.ObjectPool;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
  * Converts a Kafka {@link ConsumerRecord} to {@link PubSubMessage}.
  */
 public class KafkaPubSubMessageDeserializer extends PubSubMessageDeserializer<Long> {
-  private static final Logger LOGGER = LogManager.getLogger(KafkaPubSubMessageDeserializer.class);
-
   public KafkaPubSubMessageDeserializer(
       KafkaValueSerializer valueSerializer,
       ObjectPool<KafkaMessageEnvelope> putEnvelopePool,

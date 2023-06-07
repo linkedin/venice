@@ -9,21 +9,19 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.util.HashSet;
@@ -36,10 +34,7 @@ import org.testng.annotations.Test;
 
 public class KafkaConsumerServiceTest {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private final KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
-      new OptimizedKafkaValueSerializer(),
-      new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-      new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+  private final KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
 
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
@@ -62,7 +57,7 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(), any(), anyBoolean(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
@@ -83,7 +78,7 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(TopicExistenceChecker.class),
         false,
-        pubSubDeserializer,
+        kafkaValueSerializer,
         SystemTime.INSTANCE,
         null,
         false);
@@ -144,7 +139,7 @@ public class KafkaConsumerServiceTest {
     when(consumer1.hasAnySubscription()).thenReturn(false);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(), any(), anyBoolean(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
@@ -165,7 +160,7 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(TopicExistenceChecker.class),
         false,
-        pubSubDeserializer,
+        kafkaValueSerializer,
         SystemTime.INSTANCE,
         null,
         false);
@@ -240,7 +235,7 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(), any(), anyBoolean(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
@@ -261,7 +256,7 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(TopicExistenceChecker.class),
         false,
-        pubSubDeserializer,
+        kafkaValueSerializer,
         SystemTime.INSTANCE,
         null,
         false);

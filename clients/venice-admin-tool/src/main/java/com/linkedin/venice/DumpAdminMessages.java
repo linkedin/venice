@@ -63,9 +63,8 @@ public class DumpAdminMessages {
     consumerProperties = getKafkaConsumerProperties(kafkaUrl, consumerProperties);
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    OptimizedKafkaValueSerializer valueDeserializer = new OptimizedKafkaValueSerializer();
     KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
-        valueDeserializer,
+        new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     try (PubSubConsumerAdapter consumer = new ApacheKafkaConsumerAdapter(consumerProperties, pubSubDeserializer)) {

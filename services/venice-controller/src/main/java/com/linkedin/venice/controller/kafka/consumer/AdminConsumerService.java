@@ -11,9 +11,10 @@ import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubClientConfigs;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -44,14 +45,14 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   private final PubSubTopicRepository pubSubTopicRepository;
   private final String localKafkaServerUrl;
-  private final PubSubMessageDeserializer pubSubMessageDeserializer;
+  private final KafkaValueSerializer kafkaValueSerializer;
 
   public AdminConsumerService(
       VeniceHelixAdmin admin,
       VeniceControllerConfig config,
       MetricsRepository metricsRepository,
       PubSubTopicRepository pubSubTopicRepository,
-      PubSubMessageDeserializer pubSubMessageDeserializer) {
+      KafkaValueSerializer kafkaValueSerializer) {
     this.config = config;
     this.admin = admin;
     this.adminTopicMetadataAccessor =
@@ -59,7 +60,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     this.metricsRepository = metricsRepository;
     this.remoteConsumptionEnabled = config.isAdminTopicRemoteConsumptionEnabled();
     this.pubSubTopicRepository = pubSubTopicRepository;
-    this.pubSubMessageDeserializer = pubSubMessageDeserializer;
+    this.kafkaValueSerializer = kafkaValueSerializer;
     if (remoteConsumptionEnabled) {
       String adminTopicSourceRegion = config.getAdminTopicSourceRegion();
       remoteKafkaServerUrl = Optional.of(config.getChildDataCenterKafkaUrlMap().get(adminTopicSourceRegion));
@@ -109,7 +110,6 @@ public class AdminConsumerService extends AbstractVeniceService {
         config.getAdminConsumptionCycleTimeoutMs(),
         config.getAdminConsumptionMaxWorkerThreadPoolSize(),
         pubSubTopicRepository,
-        pubSubMessageDeserializer,
         config.getRegionName());
   }
 
@@ -210,7 +210,10 @@ public class AdminConsumerService extends AbstractVeniceService {
      * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
      */
     kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
-    return consumerFactory
-        .create(new VeniceProperties(kafkaConsumerProperties), false, pubSubMessageDeserializer, clusterName);
+    return consumerFactory.create(
+        new VeniceProperties(kafkaConsumerProperties),
+        new PubSubClientConfigs.Builder().setKafkaValueSerializer(kafkaValueSerializer).build(),
+        false,
+        clusterName);
   }
 }

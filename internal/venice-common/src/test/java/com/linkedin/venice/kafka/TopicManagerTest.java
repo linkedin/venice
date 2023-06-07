@@ -103,7 +103,7 @@ public class TopicManagerTest {
         new MockInMemoryConsumer(inMemoryKafkaBroker, new RandomPollStrategy(), mock(PubSubConsumerAdapter.class));
     mockInMemoryConsumer.setMockInMemoryAdminAdapter(mockInMemoryAdminAdapter);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
-    doReturn(mockInMemoryConsumer).when(pubSubConsumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
+    doReturn(mockInMemoryConsumer).when(pubSubConsumerAdapterFactory).create(any(), any(), anyBoolean(), anyString());
 
     topicManager = TopicManagerRepository.builder()
         .setPubSubProperties(k -> VeniceProperties.empty())
@@ -512,7 +512,7 @@ public class TopicManagerTest {
 
     PubSubAdminAdapterFactory adminAdapterFactory = mock(PubSubAdminAdapterFactory.class);
     PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
-    doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
+    doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(), any(), anyBoolean(), anyString());
     doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
     try (TopicManager topicManagerForThisTest = TopicManagerRepository.builder()
         .setPubSubProperties(k -> VeniceProperties.empty())

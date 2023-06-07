@@ -27,9 +27,7 @@ public class PartitionOffsetFetcherFactory {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     PartitionOffsetFetcher partitionOffsetFetcher = new PartitionOffsetFetcherImpl(
         kafkaAdminWrapper,
-        Lazy.of(
-            () -> pubSubConsumerAdapterFactory
-                .create(veniceProperties, false, kafkaPubSubMessageDeserializer, pubSubBootstrapServers)),
+        Lazy.of(() -> pubSubConsumerAdapterFactory.create(veniceProperties, false, pubSubBootstrapServers)),
         kafkaOperationTimeoutMs,
         pubSubBootstrapServers);
     if (optionalMetricsRepository.isPresent()) {
