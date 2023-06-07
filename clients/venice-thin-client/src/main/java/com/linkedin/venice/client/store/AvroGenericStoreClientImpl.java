@@ -28,17 +28,6 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
     }
   }
 
-  /**
-   * To avoid cycle dependency, we need to initialize another store client for schema reader.
-   */
-  @Override
-  protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
-    return new AvroGenericStoreClientImpl<K, V>(
-        getTransportClient().getCopyIfNotUsableInCallback(),
-        false,
-        ClientConfig.defaultGenericClientConfig(getStoreName()));
-  }
-
   @Override
   public RecordDeserializer<V> getDataRecordDeserializer(int writerSchemaId) throws VeniceClientException {
     SchemaReader schemaReader = getSchemaReader();
