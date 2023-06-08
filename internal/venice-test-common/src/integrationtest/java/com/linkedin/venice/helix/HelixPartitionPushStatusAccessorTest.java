@@ -5,7 +5,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
-import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
@@ -15,6 +14,7 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
+import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -48,13 +48,13 @@ public class HelixPartitionPushStatusAccessorTest {
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(clusterName, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
+    admin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
     admin.addResource(
         clusterName,
         resourceName,
         2,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        LeaderStandbySMD.name,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(clusterName, resourceName, 1);
 
@@ -65,7 +65,7 @@ public class HelixPartitionPushStatusAccessorTest {
         Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort1),
         zkAddress,
         httpPort1,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     manager1.connect();
     // Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
@@ -77,7 +77,7 @@ public class HelixPartitionPushStatusAccessorTest {
         Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort2),
         zkAddress,
         httpPort2,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     manager2.connect();
     // Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);

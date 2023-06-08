@@ -4,7 +4,6 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -18,12 +17,12 @@ import java.util.Map;
 public class PartitionStatus implements Comparable<PartitionStatus> {
   private final int partitionId;
 
-  private Map<String, ReplicaStatus> replicaStatusMap;
+  private final Map<String, ReplicaStatus> replicaStatusMap;
 
   @JsonCreator
   public PartitionStatus(@JsonProperty("partitionId") int partitionId) {
     this.partitionId = partitionId;
-    replicaStatusMap = new HashMap<>();
+    this.replicaStatusMap = new HashMap<>();
   }
 
   public int getPartitionId() {
@@ -31,33 +30,32 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
   }
 
   public void updateReplicaStatus(String instanceId, ExecutionStatus newStatus) {
-    updateReplicaStatus(instanceId, newStatus, "");
+    updateReplicaStatus(instanceId, newStatus, "", true);
   }
 
-  public void updateReplicaStatus(String instanceId, ExecutionStatus newStatus, String incrementalPushVersion) {
-    ReplicaStatus replicaStatus = replicaStatusMap.get(instanceId);
-    if (replicaStatus == null) {
-      replicaStatus = new ReplicaStatus(instanceId);
-      replicaStatusMap.put(instanceId, replicaStatus);
-    }
+  public void updateReplicaStatus(String instanceId, ExecutionStatus newStatus, boolean enableStatusHistory) {
+    updateReplicaStatus(instanceId, newStatus, "", enableStatusHistory);
+  }
+
+  public void updateReplicaStatus(
+      String instanceId,
+      ExecutionStatus newStatus,
+      String incrementalPushVersion,
+      long progress) {
+    ReplicaStatus replicaStatus = updateReplicaStatus(instanceId, newStatus, incrementalPushVersion, true);
+    replicaStatus.setCurrentProgress(progress);
+  }
+
+  private ReplicaStatus updateReplicaStatus(
+      String instanceId,
+      ExecutionStatus newStatus,
+      String incrementalPushVersion,
+      boolean enableStatusHistory) {
+    ReplicaStatus replicaStatus =
+        replicaStatusMap.compute(instanceId, (k, v) -> v == null ? new ReplicaStatus(k, enableStatusHistory) : v);
     replicaStatus.setIncrementalPushVersion(incrementalPushVersion);
     replicaStatus.updateStatus(newStatus);
-  }
-
-  public void updateProgress(String instanceId, long progress) {
-    if (replicaStatusMap.containsKey(instanceId)) {
-      replicaStatusMap.get(instanceId).setCurrentProgress(progress);
-    } else {
-      throw new VeniceException("Can not find replica status for: " + instanceId);
-    }
-  }
-
-  public void updateIncrementalPushVersion(String instanceId, String metadata) {
-    if (replicaStatusMap.containsKey(instanceId)) {
-      replicaStatusMap.get(instanceId).setIncrementalPushVersion(metadata);
-    } else {
-      throw new VeniceException("Can not find replica status for: " + instanceId);
-    }
+    return replicaStatus;
   }
 
   public Collection<ReplicaStatus> getReplicaStatuses() {
@@ -73,19 +71,19 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
   }
 
   public ExecutionStatus getReplicaStatus(String instanceId) {
-    if (replicaStatusMap.containsKey(instanceId)) {
-      return replicaStatusMap.get(instanceId).getCurrentStatus();
-    } else {
+    ReplicaStatus replicaStatus = replicaStatusMap.get(instanceId);
+    if (replicaStatus == null) {
       return NOT_CREATED;
     }
+    return replicaStatus.getCurrentStatus();
   }
 
   public List<StatusSnapshot> getReplicaHistoricStatusList(String instanceId) {
-    if (replicaStatusMap.containsKey(instanceId)) {
-      return replicaStatusMap.get(instanceId).getStatusHistory();
+    ReplicaStatus replicaStatus = replicaStatusMap.get(instanceId);
+    if (replicaStatus == null) {
+      return Collections.emptyList();
     }
-
-    return Collections.emptyList();
+    return replicaStatus.getStatusHistory();
   }
 
   @Override

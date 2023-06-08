@@ -111,7 +111,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     TestUtils.waitForNonDeterministicCompletion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
         TimeUnit.MILLISECONDS,
-        () -> routing.getReadyToServeInstances(version.kafkaTopicName(), 0).isEmpty());
+        () -> routing.getWorkingInstances(version.kafkaTopicName(), 0).isEmpty());
     startParticipant(true, NODE_ID);
     Thread.sleep(1000l);
     // New leader controller create resource and trigger state transition on participant.
@@ -157,7 +157,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         return false;
       }
       for (int i = 0; i < partitionCount; i++) {
-        if (partitionAssignment.getPartition(i).getReadyToServeInstances().size() != replicationFactor) {
+        if (partitionAssignment.getPartition(i).getWorkingInstances().size() != replicationFactor) {
           return false;
         }
       }
@@ -191,7 +191,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
-      return partitionAssignment.getPartition(0).getReadyToServeInstances().size() == 1;
+      return partitionAssignment.getPartition(0).getWorkingInstances().size() == 1;
     });
 
     NodeRemovableResult result =

@@ -8,7 +8,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
-import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -22,6 +21,7 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
+import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.Message;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.testng.Assert;
@@ -61,14 +61,9 @@ public class TestHelixStatusMessageChannel {
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(cluster, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
+    admin.addStateModelDef(cluster, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-    admin.addResource(
-        cluster,
-        kafkaTopic,
-        1,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL,
-        IdealState.RebalanceMode.FULL_AUTO.toString());
+    admin.addResource(cluster, kafkaTopic, 1, LeaderStandbySMD.name, IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, kafkaTopic, 1);
 
     controller = new SafeHelixManager(
@@ -76,7 +71,7 @@ public class TestHelixStatusMessageChannel {
             .startHelixController(zkAddress, cluster, "UnitTestController", HelixControllerMain.STANDALONE));
     controller.connect();
     instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
-    manager = TestUtils.getParticipant(cluster, instanceId, zkAddress, port, MockTestStateModel.UNIT_TEST_STATE_MODEL);
+    manager = TestUtils.getParticipant(cluster, instanceId, zkAddress, port, LeaderStandbySMD.name);
     manager.connect();
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), cluster);
     channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
@@ -243,7 +238,7 @@ public class TestHelixStatusMessageChannel {
         Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 1),
         zkAddress,
         port + 1,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     newParticipant.connect();
     HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newParticipant, helixMessageChannelStats);
     newChannel.registerHandler(StoreStatusMessage.class, new TimeoutTestStoreStatusMessageHandler(timeoutCount));
@@ -254,7 +249,7 @@ public class TestHelixStatusMessageChannel {
         WAIT_ZK_TIME,
         TimeUnit.MILLISECONDS,
         () -> routingDataRepository.containsKafkaTopic(kafkaTopic)
-            && routingDataRepository.getReadyToServeInstances(kafkaTopic, 0).size() == 2);
+            && routingDataRepository.getWorkingInstances(kafkaTopic, 0).size() == 2);
 
     HelixStatusMessageChannel controllerChannel =
         getControllerChannel(new TimeoutTestStoreStatusMessageHandler(timeoutCount));
@@ -280,7 +275,7 @@ public class TestHelixStatusMessageChannel {
         Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 1),
         zkAddress,
         port + 1,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     newParticipant.connect();
     HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newParticipant, helixMessageChannelStats);
     boolean[] received = new boolean[1];
@@ -316,7 +311,7 @@ public class TestHelixStatusMessageChannel {
         Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 1),
         zkAddress,
         port + 1,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     newParticipant.connect();
     admin.rebalance(cluster, kafkaTopic, 2);
 
@@ -325,7 +320,7 @@ public class TestHelixStatusMessageChannel {
         WAIT_ZK_TIME,
         TimeUnit.MILLISECONDS,
         () -> routingDataRepository.containsKafkaTopic(kafkaTopic)
-            && routingDataRepository.getReadyToServeInstances(kafkaTopic, 0).size() == 2);
+            && routingDataRepository.getWorkingInstances(kafkaTopic, 0).size() == 2);
 
     HelixStatusMessageChannel controllerChannel =
         getControllerChannel(new TimeoutTestStoreStatusMessageHandler(timeoutCount));
@@ -340,36 +335,6 @@ public class TestHelixStatusMessageChannel {
     }
   }
 
-  /**
-   * Temporarily disable this test since HelixStatusMessageChannel won't throw any exception if the resource
-   * doesn't exist.
-   *
-   * TODO: find a better way to handle this scenario.
-   */
-  @Test(groups = { "flaky" })
-  public void testSendMessageBelongToWrongResourceToStorageNodes() {
-    // Wait until helix has assigned participant to the given resource.
-    TestUtils.waitForNonDeterministicCompletion(
-        WAIT_ZK_TIME,
-        TimeUnit.MILLISECONDS,
-        () -> routingDataRepository.containsKafkaTopic(kafkaTopic)
-            && routingDataRepository.getReadyToServeInstances(kafkaTopic, 0).size() > 0);
-
-    int timeoutCount = 1;
-    // register handler for the channel of storage node
-    TimeoutTestStoreStatusMessageHandler handler = new TimeoutTestStoreStatusMessageHandler(timeoutCount);
-    channel.registerHandler(StoreStatusMessage.class, handler);
-
-    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
-    StoreStatusMessage veniceMessage = new StoreStatusMessage("wrong kafak topic", partitionId, instanceId, status);
-    try {
-      controllerChannel.sendToStorageNodes(cluster, veniceMessage, "wrong kafka topic", timeoutCount);
-      Assert.fail("Sending should be failed due to wrong resource name");
-    } catch (VeniceException e) {
-      // expected.
-    }
-  }
-
   @Test
   public void testSendMessageCrossingClusters() throws Exception {
     int timeoutCount = 1;
@@ -381,7 +346,7 @@ public class TestHelixStatusMessageChannel {
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(newCluster, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
+    admin.addStateModelDef(newCluster, LeaderStandbySMD.name, LeaderStandbySMD.build());
     boolean isReceived[] = new boolean[1];
     channel.registerHandler(StoreStatusMessage.class, new StatusMessageHandler<StoreStatusMessage>() {
       @Override
@@ -392,7 +357,7 @@ public class TestHelixStatusMessageChannel {
 
     String id = Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 10);
     SafeHelixManager newClusterParticipant =
-        TestUtils.getParticipant(newCluster, id, zkAddress, port + 10, MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        TestUtils.getParticipant(newCluster, id, zkAddress, port + 10, LeaderStandbySMD.name);
     newClusterParticipant.connect();
     HelixStatusMessageChannel newChannel =
         new HelixStatusMessageChannel(newClusterParticipant, helixMessageChannelStats);

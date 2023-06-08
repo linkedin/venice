@@ -207,12 +207,15 @@ public class ErrorPartitionResetTask implements Runnable, Closeable {
     }
   }
 
+  /** Check if the partition reached healthy state after a reset. */
   private boolean checkPartitionRecovered(Partition partition, Map<Integer, Integer> partitionResetCountMap) {
-    // Check if the partition reached healthy state after a reset.
-    Set<String> states = partition.getAllInstances().keySet();
-    return partitionResetCountMap.containsKey(partition.getId())
-        && ((states.size() == 1 && states.contains(HelixState.ONLINE_STATE)) || (states.size() == 2
-            && states.contains(HelixState.LEADER_STATE) && states.contains(HelixState.STANDBY_STATE)));
+    if (!partitionResetCountMap.containsKey(partition.getId())) {
+      return false;
+    }
+
+    boolean leaderPartitionPresent = !partition.getInstancesInState(HelixState.LEADER).isEmpty();
+    boolean standbyPartitionPresent = !partition.getInstancesInState(HelixState.STANDBY).isEmpty();
+    return leaderPartitionPresent && standbyPartitionPresent;
   }
 
   /**

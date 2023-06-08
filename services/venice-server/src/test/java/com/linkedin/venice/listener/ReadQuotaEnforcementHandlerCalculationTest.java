@@ -8,7 +8,6 @@ import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -104,16 +103,16 @@ public class ReadQuotaEnforcementHandlerCalculationTest {
         ReplicaState thisReplicaState = mock(ReplicaState.class);
         doReturn(i.getNodeId()).when(thisReplicaState).getParticipantId();
         if (thisNodeId.equals(i.getNodeId())) {
-          doReturn(ExecutionStatus.COMPLETED.name()).when(thisReplicaState).getVenicePushStatus();
+          doReturn(true).when(thisReplicaState).isReadyToServe();
           replicaStates.add(thisReplicaState);
           readyToServeReplicaCount -= 1;
           continue;
         }
         if (readyToServeReplicaCount > 0) {
-          doReturn(ExecutionStatus.COMPLETED.name()).when(thisReplicaState).getVenicePushStatus();
+          doReturn(true).when(thisReplicaState).isReadyToServe();
           readyToServeReplicaCount -= 1;
         } else {
-          doReturn(ExecutionStatus.ERROR.name()).when(thisReplicaState).getVenicePushStatus();
+          doReturn(false).when(thisReplicaState).isReadyToServe();
         }
         replicaStates.add(thisReplicaState);
       }

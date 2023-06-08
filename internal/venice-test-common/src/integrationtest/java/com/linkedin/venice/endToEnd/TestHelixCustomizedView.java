@@ -159,7 +159,7 @@ public class TestHelixCustomizedView {
     List<ReplicaState> replicaStates = resourceStateResponse.getReplicaStates();
     for (ReplicaState replicaState: replicaStates) {
       Assert.assertTrue(replicaState.isReadyToServe());
-      Assert.assertEquals(ExecutionStatus.COMPLETED.name(), replicaState.getVenicePushStatus());
+      Assert.assertEquals(ExecutionStatus.COMPLETED, replicaState.getVenicePushStatus());
     }
   }
 

@@ -116,8 +116,7 @@ public class TestRebalanceByDefaultStrategy {
       StringBuilder sb = new StringBuilder();
       boolean isAllOnline = true;
       for (Replica replica: replicas) {
-        if (replica.getStatus().equals(HelixState.ERROR_STATE)
-            || replica.getStatus().equals(HelixState.OFFLINE_STATE)) {
+        if (replica.getStatus().equals(HelixState.ERROR) || replica.getStatus().equals(HelixState.OFFLINE)) {
           sb.append(replica.getInstance().getNodeId());
           sb.append(":");
           sb.append(replica.getPartitionId());

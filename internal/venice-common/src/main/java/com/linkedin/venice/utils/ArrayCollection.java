@@ -78,7 +78,16 @@ public class ArrayCollection<E> implements Collection<E> {
 
   @Override
   public Object[] toArray() {
-    throw new UnsupportedOperationException("toArray is not supported.");
+    int size = size();
+    Object[] arrayToReturn = new Object[size];
+    Iterator<E> it = iterator();
+    for (int i = 0; i < size; i++) {
+      if (!it.hasNext()) {
+        throw new IllegalStateException("The iterator is not in sync with the size...");
+      }
+      arrayToReturn[i] = it.next();
+    }
+    return arrayToReturn;
   }
 
   @Override
@@ -124,6 +133,23 @@ public class ArrayCollection<E> implements Collection<E> {
   @Override
   public void clear() {
     throw new UnsupportedOperationException("This collection is immutable.");
+  }
+
+  @Override
+  public String toString() {
+    Iterator<E> it = iterator();
+    if (!it.hasNext())
+      return "[]";
+
+    StringBuilder sb = new StringBuilder();
+    sb.append('[');
+    for (;;) {
+      E e = it.next();
+      sb.append(e == this ? "(this Collection)" : e);
+      if (!it.hasNext())
+        return sb.append(']').toString();
+      sb.append(',').append(' ');
+    }
   }
 
   /**

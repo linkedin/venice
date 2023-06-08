@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.utils.DataProviderUtils;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Optional;
@@ -17,8 +18,8 @@ import org.testng.annotations.Test;
 
 
 public class HelixCustomizedViewOfflinePushRepositoryTest {
-  @Test
-  public void testCustomizedViewStoreHandle() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testCustomizedViewStoreHandle(boolean enableReplicaStatusHistory) {
     SafeHelixManager manager = mock(SafeHelixManager.class);
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     Store store = mock(Store.class);
@@ -29,7 +30,7 @@ public class HelixCustomizedViewOfflinePushRepositoryTest {
     when(store.getCurrentVersion()).thenReturn(1);
     when(storeRepository.getStore(anyString())).thenReturn(store);
     HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository =
-        new HelixCustomizedViewOfflinePushRepository(manager, storeRepository);
+        new HelixCustomizedViewOfflinePushRepository(manager, storeRepository, enableReplicaStatusHistory);
     RoutingTableSnapshot routingTableSnapshot = mock(RoutingTableSnapshot.class);
     Collection views = new ArrayList();
     views.add(new CustomizedView("abc_v1"));
