@@ -125,7 +125,6 @@ public class TestHAASController {
               () -> assertEquals(
                   assertCommand(controllerClient.queryJobStatus(topicName)).getStatus(),
                   ExecutionStatus.COMPLETED.toString())));
-      System.out.println("End of the test");
     }
   }
 
@@ -202,7 +201,6 @@ public class TestHAASController {
           assertEquals(jobStatusQueryResponse.getStatus(), ExecutionStatus.COMPLETED.toString());
         });
       });
-      System.out.println("End of the test");
     }
   }
 

@@ -40,8 +40,6 @@ public class HelixExternalViewRepository extends HelixBaseRoutingRepository impl
 
   private volatile Map<String, Integer> resourceToIdealPartitionCountMap;
 
-  private static final String ONLINE_OFFLINE_VENICE_STATE_FILLER = "N/A";
-
   public HelixExternalViewRepository(SafeHelixManager manager) {
     super(manager);
     dataSource.put(PropertyType.EXTERNALVIEW, Collections.emptyList());
