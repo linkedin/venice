@@ -94,6 +94,7 @@ public class TestControllerClient {
     String clusterName = Utils.getUniqueString("test-cluster");
     String storeName = Utils.getUniqueString("test-store");
     String nonExistentStoreName = Utils.getUniqueString("test-missing-store");
+    String errorResponseStoreName = Utils.getUniqueString("test-error-store");
     String fakeLeaderControllerUrl = "http://fake.leader.controller.url";
 
     String nonExistentControllerUrl1 = "http://localhost:22";
@@ -147,6 +148,18 @@ public class TestControllerClient {
           ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + nonExistentStoreName + ".*",
           nonExistentStoreLegacyDiscoRouterHttpResponse);
 
+      D2ServiceDiscoveryResponse errorStoreDiscoveryResponse = new D2ServiceDiscoveryResponse();
+      errorStoreDiscoveryResponse.setName(errorResponseStoreName);
+      errorStoreDiscoveryResponse.setError("Internal server error");
+      errorStoreDiscoveryResponse.setErrorType(ErrorType.GENERAL_ERROR);
+
+      FullHttpResponse errorStoreDiscoHttpResponse = wrapControllerResponseAsFullHttpResponse(
+          errorStoreDiscoveryResponse,
+          HttpResponseStatus.INTERNAL_SERVER_ERROR);
+      mockController.addResponseForUriPattern(
+          ControllerRoute.CLUSTER_DISCOVERY.getPath() + ".*store_name=" + errorResponseStoreName + ".*",
+          errorStoreDiscoHttpResponse);
+
       // When all controllers are missing, the ConnectException should be bubbled up
       D2ServiceDiscoveryResponse discoResponseInvalidControllers = ControllerClient
           .discoverCluster(nonExistentControllerUrl1 + "," + nonExistentControllerUrl2, storeName, Optional.empty(), 1);
@@ -182,15 +195,25 @@ public class TestControllerClient {
         Assert
             .assertEquals(nonExistentStoreDiscoResponseValidInvalidAndLegacy.getErrorType(), ErrorType.STORE_NOT_FOUND);
 
-        // Backward compatibility test. When the controller/router doesn't return STORE_NOT_FOUND, bubble up the error
-        // type
+        // Backward compatibility test. When the controller/router doesn't return STORE_NOT_FOUND, but the client can
+        // still infer that it was due to store being deleted, convert to a STORE_NOT_FOUND
         D2ServiceDiscoveryResponse nonExistentStoreDiscoResponseInvalidAndLegacy = ControllerClient.discoverCluster(
             nonExistentControllerUrl1 + "," + legacyControllerUrl,
             nonExistentStoreName,
             Optional.empty(),
             1);
         Assert.assertTrue(nonExistentStoreDiscoResponseInvalidAndLegacy.isError());
-        Assert.assertEquals(nonExistentStoreDiscoResponseInvalidAndLegacy.getErrorType(), ErrorType.GENERAL_ERROR);
+        Assert.assertEquals(nonExistentStoreDiscoResponseInvalidAndLegacy.getErrorType(), ErrorType.STORE_NOT_FOUND);
+
+        // Backward compatibility test. When the controller/router doesn't return STORE_NOT_FOUND, and the client cannot
+        // identify it as a STORE_NOT_FOUND error, try to query routers using the path param type of cluster discovery
+        D2ServiceDiscoveryResponse errorDiscoResponseInvalidAndLegacy = ControllerClient.discoverCluster(
+            nonExistentControllerUrl1 + "," + validControllerUrl,
+            errorResponseStoreName,
+            Optional.empty(),
+            1);
+        Assert.assertTrue(errorDiscoResponseInvalidAndLegacy.isError());
+        Assert.assertEquals(errorDiscoResponseInvalidAndLegacy.getErrorType(), ErrorType.BAD_REQUEST);
       }
 
       try (ControllerClient controllerClient =

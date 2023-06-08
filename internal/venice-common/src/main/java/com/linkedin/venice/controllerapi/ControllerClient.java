@@ -1142,13 +1142,19 @@ public class ControllerClient implements Closeable {
             // TODO: Routers also support fetching the store name via query params. So, once sufficient time has passed,
             // this check can be changed to break out of the loop on non-5XX errors.
 
-            // Temporary hack to not attempt querying further if controller explicitly returns that store was not found
-            // If Controllers have not been upgraded recently, they will return a 404 status with GENERAL_ERROR as the
-            // ErrorType. If they have been upgraded to recent versions, they will return the proper STORE_NOT_FOUND
+            // Do not attempt querying further if host explicitly returns that store was not found.
+            // If Controllers have been upgraded to recent versions, they will return the proper STORE_NOT_FOUND
             // ErrorType.
-            if (e.getErrorType() == ErrorType.STORE_NOT_FOUND
-                || (e.getErrorType() == ErrorType.GENERAL_ERROR && e.getHttpStatusCode() == 404)) {
+            if (e.getErrorType() == ErrorType.STORE_NOT_FOUND) {
               lastException = e;
+              break;
+            }
+
+            // If Controllers have not been upgraded recently, they will return a 404 status with GENERAL_ERROR as the
+            // ErrorType.
+            if (e.getErrorType() == ErrorType.GENERAL_ERROR && e.getHttpStatusCode() == 404) {
+              lastException =
+                  new VeniceHttpException(e.getHttpStatusCode(), e.getMessage(), e, ErrorType.STORE_NOT_FOUND);
               break;
             }
 
