@@ -16,6 +16,7 @@ import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
@@ -2483,13 +2484,17 @@ public class AdminTool {
      */
     String clusterName = getOptionalArgument(cmd, Arg.CLUSTER);
     if (clusterName == null) {
-      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
-      if (storeName.isEmpty()) {
-        throw new VeniceException("Please either provide a valid topic name or a cluster name.");
+      if (AdminTopicUtils.isAdminTopic(kafkaTopicName)) {
+        clusterName = AdminTopicUtils.getClusterNameFromTopicName(kafkaTopicName);
+      } else {
+        String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+        if (storeName.isEmpty()) {
+          throw new VeniceException("Please either provide a valid topic name or a cluster name.");
+        }
+        D2ServiceDiscoveryResponse clusterDiscovery =
+            ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+        clusterName = clusterDiscovery.getCluster();
       }
-      D2ServiceDiscoveryResponse clusterDiscovery =
-          ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
-      clusterName = clusterDiscovery.getCluster();
     }
 
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
