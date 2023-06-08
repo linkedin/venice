@@ -15,7 +15,7 @@ import org.apache.kafka.common.header.Header;
 /**
  * Converts a Kafka {@link ConsumerRecord} to {@link PubSubMessage}.
  */
-public class KafkaPubSubMessageDeserializer extends PubSubMessageDeserializer<Long> {
+public class KafkaPubSubMessageDeserializer extends PubSubMessageDeserializer {
   public KafkaPubSubMessageDeserializer(
       KafkaValueSerializer valueSerializer,
       ObjectPool<KafkaMessageEnvelope> putEnvelopePool,

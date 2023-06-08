@@ -16,7 +16,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * Base class for deserializing messages from the pubsub specific message format to {@link PubSubMessage}
  */
-public class PubSubMessageDeserializer<POSITION> {
+public class PubSubMessageDeserializer {
   private static final Logger LOGGER = LogManager.getLogger(PubSubMessageDeserializer.class);
 
   public static final String VENICE_TRANSPORT_PROTOCOL_HEADER = "vtp";
@@ -46,12 +46,12 @@ public class PubSubMessageDeserializer<POSITION> {
    * @param timestamp the timestamp of the message
    * @return the deserialized PubSubMessage
    */
-  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, POSITION> deserialize(
+  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deserialize(
       PubSubTopicPartition topicPartition,
       byte[] keyBytes,
       byte[] valueBytes,
       PubSubMessageHeaders headers,
-      POSITION position,
+      Long position,
       Long timestamp) {
     // TODO: Put the key in an object pool as well
     KafkaKey key = keySerializer.deserialize(null, keyBytes);

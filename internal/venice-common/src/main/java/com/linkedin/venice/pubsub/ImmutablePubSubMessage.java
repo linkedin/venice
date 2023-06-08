@@ -5,11 +5,11 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.Objects;
 
 
-public class ImmutablePubSubMessage<K, V, POSITION> implements PubSubMessage<K, V, POSITION> {
+public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
   private final K key;
   private final V value;
   private final PubSubTopicPartition topicPartition;
-  private final POSITION offset;
+  private final long offset;
   private final long timestamp;
   private final int payloadSize;
 
@@ -17,7 +17,7 @@ public class ImmutablePubSubMessage<K, V, POSITION> implements PubSubMessage<K, 
       K key,
       V value,
       PubSubTopicPartition topicPartition,
-      POSITION offset,
+      long offset,
       long timestamp,
       int payloadSize) {
     this.key = key;
@@ -44,7 +44,7 @@ public class ImmutablePubSubMessage<K, V, POSITION> implements PubSubMessage<K, 
   }
 
   @Override
-  public POSITION getOffset() {
+  public Long getOffset() {
     return offset;
   }
 
