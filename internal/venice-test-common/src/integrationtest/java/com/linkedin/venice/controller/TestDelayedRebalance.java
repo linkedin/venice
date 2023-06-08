@@ -109,7 +109,7 @@ public class TestDelayedRebalance {
         cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     Assert.assertNull(
         partitionAssignment.getPartition(0)
-            .getInstanceStatusById(Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort)));
+            .getHelixStateByInstanceId(Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort)));
   }
 
   @Test
@@ -161,7 +161,9 @@ public class TestDelayedRebalance {
       Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 2);
       String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort);
       Assert.assertNull(
-          routingDataRepository.getPartitionAssignments(topicName).getPartition(0).getInstanceStatusById(instanceId));
+          routingDataRepository.getPartitionAssignments(topicName)
+              .getPartition(0)
+              .getHelixStateByInstanceId(instanceId));
     });
   }
 
@@ -203,8 +205,8 @@ public class TestDelayedRebalance {
     // The restart server get the original replica and become ONLINE again.
     Assert.assertEquals(
         partitionAssignment.getPartition(0)
-            .getInstanceStatusById(Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort)),
-        ExecutionStatus.COMPLETED.name());
+            .getExecutionStatusByInstanceId(Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort)),
+        ExecutionStatus.COMPLETED);
   }
 
   private int stopAServer(String topicName) {

@@ -26,6 +26,7 @@ import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -43,6 +44,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -52,6 +54,7 @@ import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
@@ -473,7 +476,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     resourceAssignment.setPartitionAssignment(topicName, null);
 
     PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
-    partitionAssignment.addPartition(new Partition(0, Collections.emptyMap()));
+    partitionAssignment
+        .addPartition(new Partition(0, new EnumMap<>(HelixState.class), new EnumMap<>(ExecutionStatus.class)));
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
     Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, "{\"type\" : \"string\"}"));
     Mockito.when(mockSchemaRepo.getValueSchemas(storeName)).thenReturn(Collections.emptyList());

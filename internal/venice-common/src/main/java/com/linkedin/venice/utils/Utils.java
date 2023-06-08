@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Instance;
@@ -786,10 +787,16 @@ public class Utils {
       for (String resourceName: resourceNames) {
         PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
         for (Partition partition: partitionAssignment.getAllPartitions()) {
-          String status = partition.getInstanceStatusById(instanceId);
-          if (status != null) {
+          HelixState helixState = partition.getHelixStateByInstanceId(instanceId);
+          ExecutionStatus executionStatus = partition.getExecutionStatusByInstanceId(instanceId);
+          if (helixState != null || executionStatus != null) {
+            /**
+             * N.B.: We only add the {@link Replica} to the returned list if the partition is hosted on the provided
+             * {@param instanceId}, which we consider to be the case if the {@link Partition} object carries either
+             * an {@link ExecutionStatus} and/or a {@link HelixState} for it.
+             */
             Replica replica = new Replica(Instance.fromNodeId(instanceId), partition.getId(), resourceName);
-            replica.setStatus(status);
+            replica.setStatus(helixState);
             replicas.add(replica);
           }
         }

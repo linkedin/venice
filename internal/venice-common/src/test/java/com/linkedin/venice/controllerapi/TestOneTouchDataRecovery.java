@@ -39,13 +39,13 @@ public class TestOneTouchDataRecovery {
       PartitionStatus partition = new PartitionStatus(i);
       for (int j = 0; j < REPLICATION_FACTOR; j++) {
         if (isNormal) {
-          partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.STARTED, StringUtils.EMPTY);
-          partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.END_OF_PUSH_RECEIVED, StringUtils.EMPTY);
-          partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.TOPIC_SWITCH_RECEIVED, StringUtils.EMPTY);
+          partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.STARTED);
+          partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.END_OF_PUSH_RECEIVED);
+          partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.TOPIC_SWITCH_RECEIVED);
         }
-        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.COMPLETED, StringUtils.EMPTY);
-        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.STARTED, StringUtils.EMPTY);
-        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.COMPLETED, StringUtils.EMPTY);
+        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.COMPLETED);
+        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.STARTED);
+        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.COMPLETED);
       }
       status.setPartitionStatus(partition);
     }

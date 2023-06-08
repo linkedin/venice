@@ -16,7 +16,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
@@ -140,8 +139,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     /**
      * First check store bucket for capacity; don't throttle retried request at store version level
      */
-    if (storeVersionBuckets.containsKey(request.getResourceName()) && !request.isRetryRequest()) {
-      if (!storeVersionBuckets.get(request.getResourceName()).tryConsume(rcu)) {
+    TokenBucket tokenBucket = storeVersionBuckets.get(request.getResourceName());
+    if (tokenBucket != null && !request.isRetryRequest()) {
+      if (!tokenBucket.tryConsume(rcu)) {
         // TODO: check if extra node capacity and can still process this request out of quota
         stats.recordRejected(storeName, rcu);
         if (enforcing) {
@@ -294,7 +294,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       List<String> readyToServeInstances = new ArrayList<>();
       for (ReplicaState replicaState: customizedViewRepository
           .getReplicaStates(partitionAssignment.getTopic(), p.getId())) {
-        if (replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name())) {
+        if (replicaState.isReadyToServe()) {
           readyToServeInstances.add(replicaState.getParticipantId());
         }
       }

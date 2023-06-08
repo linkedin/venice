@@ -98,7 +98,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -2511,8 +2510,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (int i = 0; i < numOfPartition; i++) {
       PartitionStatus partition = new PartitionStatus(i);
       for (int j = 0; j < replicationFactor; j++) {
-        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.STARTED, StringUtils.EMPTY);
-        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.COMPLETED, StringUtils.EMPTY);
+        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.STARTED);
+        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.COMPLETED);
       }
       status.setPartitionStatus(partition);
     }

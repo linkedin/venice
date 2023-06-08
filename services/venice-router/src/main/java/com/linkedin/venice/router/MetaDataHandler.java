@@ -33,6 +33,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.helix.SystemStoreJSONSerializer;
@@ -42,7 +43,6 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
@@ -101,7 +101,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final RedundantExceptionFilter EXCEPTION_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  private final RoutingDataRepository routingDataRepository;
+  private final HelixCustomizedViewOfflinePushRepository routingDataRepository;
   private final ReadOnlySchemaRepository schemaRepo;
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final Map<String, String> clusterToD2Map;
@@ -128,7 +128,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       "Expected partitioner class %s cannot be found.";
 
   public MetaDataHandler(
-      RoutingDataRepository routingDataRepository,
+      HelixCustomizedViewOfflinePushRepository routingDataRepository,
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreConfigRepository storeConfigRepo,
       Map<String, String> clusterToD2Map,

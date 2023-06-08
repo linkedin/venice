@@ -4,7 +4,6 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.helix.HelixExternalViewRepository;
@@ -20,14 +19,15 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.LiveInstance;
 import org.testng.Assert;
@@ -89,61 +89,78 @@ public class TestInstanceStatusDecider {
     String onlineInstanceId = "localhost_1";
     String bootstrapInstanceId = "localhost_2";
     PartitionAssignment partitionAssignment = prepareAssignments(resourceName);
-    Map<String, List<Instance>> statusToInstancesMap = new HashMap<>();
     List<Instance> onlineInstances = new ArrayList<>();
     onlineInstances.add(Instance.fromNodeId(onlineInstanceId));
     List<Instance> bootstrapInstances = new ArrayList<>();
     bootstrapInstances.add(Instance.fromNodeId(bootstrapInstanceId));
-    statusToInstancesMap.put(HelixState.ONLINE_STATE, onlineInstances);
-    statusToInstancesMap.put(HelixState.BOOTSTRAP_STATE, bootstrapInstances);
-    partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
+
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMap.put(HelixState.LEADER, onlineInstances);
+    helixStateToInstancesMap.put(HelixState.STANDBY, bootstrapInstances);
+
+    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMap = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMap.put(ExecutionStatus.COMPLETED, onlineInstances);
+    executionStatusToInstancesMap.put(ExecutionStatus.STARTED, bootstrapInstances);
+    partitionAssignment.addPartition(new Partition(0, helixStateToInstancesMap, executionStatusToInstancesMap));
 
     // Test the completed push.
     prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 2);
+    NodeRemovableResult bootstrapInstanceIsRemovable =
+        InstanceStatusDecider.isRemovable(resources, clusterName, bootstrapInstanceId);
     Assert.assertTrue(
-        InstanceStatusDecider.isRemovable(resources, clusterName, bootstrapInstanceId).isRemovable(),
-        bootstrapInstanceId + "could be removed because it's not the last online copy.");
+        bootstrapInstanceIsRemovable.isRemovable(),
+        bootstrapInstanceId + " could be removed because it's not the last online copy: "
+            + bootstrapInstanceIsRemovable.getDetails());
+    NodeRemovableResult onlineInstanceIsRemovable =
+        InstanceStatusDecider.isRemovable(resources, clusterName, onlineInstanceId);
     Assert.assertFalse(
-        InstanceStatusDecider.isRemovable(resources, clusterName, onlineInstanceId).isRemovable(),
-        onlineInstanceId + "could NOT be removed because it the last online copy.");
+        onlineInstanceIsRemovable.isRemovable(),
+        onlineInstanceId + " could NOT be removed because it the last online copy: "
+            + onlineInstanceIsRemovable.getDetails());
 
   }
 
   @Test
   public void testIsRemovableLossDataInstanceView() {
     int partitionCount = 2;
-    String instance1 = "localhost_1";
-    String instance2 = "localhost_2";
+    String instance1Name = "localhost_1";
+    String instance2Name = "localhost_2";
+    Instance instance1 = Instance.fromNodeId(instance1Name);
+    Instance instance2 = Instance.fromNodeId(instance2Name);
+
     PartitionAssignment partitionAssignment = prepareMultiPartitionAssignments(resourceName, partitionCount);
-    Map<String, List<Instance>> statusToInstancesMap = new HashMap<>();
+
     // Partition 0 have 2 online replicas
-    List<Instance> onlineInstances = new ArrayList<>();
-    onlineInstances.add(Instance.fromNodeId(instance1));
-    onlineInstances.add(Instance.fromNodeId(instance2));
-    statusToInstancesMap.put(HelixState.ONLINE_STATE, onlineInstances);
-    partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMapForP0 = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMapForP0.put(HelixState.LEADER, Arrays.asList(instance1));
+    helixStateToInstancesMapForP0.put(HelixState.STANDBY, Arrays.asList(instance2));
+    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMapForP0 = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMapForP0.put(ExecutionStatus.COMPLETED, Arrays.asList(instance1, instance2));
+    partitionAssignment
+        .addPartition(new Partition(0, helixStateToInstancesMapForP0, executionStatusToInstancesMapForP0));
+
     // Partition 1 only have 1 bootstrap replica but no online replica.
-    List<Instance> bootstrapInstances = new ArrayList<>();
-    bootstrapInstances.add(Instance.fromNodeId(instance2));
-    statusToInstancesMap = new HashMap<>();
-    statusToInstancesMap.put(HelixState.BOOTSTRAP_STATE, bootstrapInstances);
-    partitionAssignment.addPartition(new Partition(1, statusToInstancesMap));
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMapForP1 = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMapForP1.put(HelixState.LEADER, Arrays.asList(instance2));
+    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMapForP1 = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMapForP1.put(ExecutionStatus.STARTED, Arrays.asList(instance2));
+    partitionAssignment
+        .addPartition(new Partition(1, helixStateToInstancesMapForP1, executionStatusToInstancesMapForP1));
 
     // Test the completed push.
     prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 2);
     Assert.assertTrue(
-        InstanceStatusDecider.isRemovable(resources, clusterName, instance1, Collections.emptyList(), true)
+        InstanceStatusDecider.isRemovable(resources, clusterName, instance1Name, Collections.emptyList(), true)
             .isRemovable(),
-        instance1 + "could be removed because it's not the last online copy in the instance's point of view.");
+        instance1Name + "could be removed because it's not the last online copy in the instance's point of view.");
     Assert.assertFalse(
-        InstanceStatusDecider.isRemovable(resources, clusterName, instance2, Collections.emptyList(), true)
+        InstanceStatusDecider.isRemovable(resources, clusterName, instance2Name, Collections.emptyList(), true)
             .isRemovable(),
-        instance2 + "could NOT be removed because it the last online copy in the instance's point of view.");
+        instance2Name + "could NOT be removed because it the last online copy in the instance's point of view.");
     Assert.assertFalse(
-        InstanceStatusDecider.isRemovable(resources, clusterName, instance1).isRemovable(),
-        instance1
+        InstanceStatusDecider.isRemovable(resources, clusterName, instance1Name).isRemovable(),
+        instance1Name
             + "could NOT be removed because in the cluster's point of view, partition 1 does not have any online replica alive.");
-
   }
 
   /**
@@ -153,16 +170,18 @@ public class TestInstanceStatusDecider {
   @Test
   public void testIsRemovableInFlightJob() {
     String instanceId = "localhost_1";
-    Map<String, List<Instance>> statusToInstancesMap = new HashMap<>();
     List<Instance> instances = new ArrayList<>();
     instances.add(Instance.fromNodeId(instanceId));
-    statusToInstancesMap.put(HelixState.BOOTSTRAP_STATE, instances);
+
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMap.put(HelixState.LEADER, instances);
+    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMap = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMap.put(ExecutionStatus.STARTED, instances);
     PartitionAssignment partitionAssignment = prepareAssignments(resourceName);
-    partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
+    partitionAssignment.addPartition(new Partition(0, helixStateToInstancesMap, executionStatusToInstancesMap));
     // Test for the running push
     prepareStoreAndVersion(storeName, version, VersionStatus.STARTED, false, 1);
 
-    doReturn(false).when(mockMonitor).wouldJobFail(eq(resourceName), any());
     NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, instanceId);
     Assert
         .assertTrue(result.isRemovable(), "Instance should be removable because ongoing push shouldn't be a blocker.");
@@ -175,14 +194,19 @@ public class TestInstanceStatusDecider {
   @Test
   public void testIsRemovableTriggerRebalance() {
     int replicationFactor = 3;
-    Map<String, List<Instance>> statusToInstancesMap = new HashMap<>();
     List<Instance> instances = new ArrayList<>();
     for (int i = 1; i <= replicationFactor; i++) {
       instances.add(Instance.fromNodeId("localhost_" + i));
     }
-    statusToInstancesMap.put(HelixState.ONLINE_STATE, instances);
+
     PartitionAssignment partitionAssignment = prepareAssignments(resourceName);
-    partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMapForP0 = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMapForP0.put(HelixState.LEADER, Arrays.asList(instances.get(0)));
+    helixStateToInstancesMapForP0.put(HelixState.STANDBY, Arrays.asList(instances.get(1), instances.get(2)));
+    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMapForP0 = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMapForP0.put(ExecutionStatus.COMPLETED, instances);
+    partitionAssignment
+        .addPartition(new Partition(0, helixStateToInstancesMapForP0, executionStatusToInstancesMapForP0));
 
     prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 3);
     Assert.assertTrue(
@@ -190,9 +214,15 @@ public class TestInstanceStatusDecider {
         "Instance should be removable because after removing one instance, there are still 2 active replicas, it will not trigger re-balance.");
 
     // Remove one instance
-    instances.remove(instances.size() - 1);
-    statusToInstancesMap.put(HelixState.ONLINE_STATE, instances);
-    partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
+    helixStateToInstancesMapForP0 = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMapForP0.put(HelixState.LEADER, Arrays.asList(instances.get(0)));
+    helixStateToInstancesMapForP0.put(HelixState.STANDBY, Arrays.asList(instances.get(1)));
+    executionStatusToInstancesMapForP0 = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMapForP0
+        .put(ExecutionStatus.COMPLETED, Arrays.asList(instances.get(0), instances.get(1)));
+    partitionAssignment
+        .addPartition(new Partition(0, helixStateToInstancesMapForP0, executionStatusToInstancesMapForP0));
+
     prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 3);
     NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1");
     Assert.assertFalse(
@@ -211,19 +241,25 @@ public class TestInstanceStatusDecider {
     int replicationFactor = 3;
     PartitionAssignment partitionAssignment = prepareMultiPartitionAssignments(resourceName, partitionCount);
 
-    Map<String, List<Instance>> statusToInstancesMap = new HashMap<>();
     List<Instance> instances = new ArrayList<>();
     for (int i = 1; i <= replicationFactor; i++) {
       instances.add(Instance.fromNodeId("localhost_" + i));
     }
-    statusToInstancesMap.put(HelixState.ONLINE_STATE, instances);
-    partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
 
-    statusToInstancesMap = new HashMap<>();
-    instances = new ArrayList<>();
-    instances.add(Instance.fromNodeId("localhost_1"));
-    statusToInstancesMap.put(HelixState.ONLINE_STATE, instances);
-    partitionAssignment.addPartition(new Partition(1, statusToInstancesMap));
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMapForP0 = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMapForP0.put(HelixState.LEADER, Arrays.asList(instances.get(0)));
+    helixStateToInstancesMapForP0.put(HelixState.STANDBY, Arrays.asList(instances.get(1), instances.get(2)));
+    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMapForP0 = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMapForP0.put(ExecutionStatus.COMPLETED, instances);
+    partitionAssignment
+        .addPartition(new Partition(0, helixStateToInstancesMapForP0, executionStatusToInstancesMapForP0));
+
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMapForP1 = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMapForP1.put(HelixState.LEADER, Arrays.asList(instances.get(0)));
+    EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMapForP1 = new EnumMap<>(ExecutionStatus.class);
+    executionStatusToInstancesMapForP1.put(ExecutionStatus.COMPLETED, Arrays.asList(instances.get(0)));
+    partitionAssignment
+        .addPartition(new Partition(1, helixStateToInstancesMapForP1, executionStatusToInstancesMapForP1));
 
     prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true, 3);
     Assert.assertTrue(

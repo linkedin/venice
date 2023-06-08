@@ -24,8 +24,7 @@ public class ResourceAssignment {
   public PartitionAssignment getPartitionAssignment(String resource) {
     PartitionAssignment partitionAssignment = resourceToAssignmentsMap.get(resource);
     if (partitionAssignment == null) {
-      String errorMessage = "Resource '" + resource + "' does not exist";
-      LOGGER.trace(errorMessage);
+      LOGGER.trace("Resource '{}' does not exist", resource);
       // TODO: Might want to add some (configurable) retries here or higher up the stack. If the Helix spectator is out
       // of sync, this fails...
       throw new VeniceNoHelixResourceException(resource);
