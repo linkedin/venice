@@ -21,8 +21,8 @@ public class ApacheKafkaConsumerAdapterFactory implements PubSubConsumerAdapterF
     return new ApacheKafkaConsumerAdapter(
         new KafkaConsumer<>(apacheKafkaConsumerConfig.getConsumerProperties()),
         veniceProperties,
-        isKafkaConsumerOffsetCollectionEnabled,
-        null); // TODO(sushant): fix this
+        pubSubClientConfigs,
+        isKafkaConsumerOffsetCollectionEnabled);
   }
 
   @Override

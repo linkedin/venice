@@ -15,14 +15,11 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -63,11 +60,7 @@ public class DumpAdminMessages {
     consumerProperties = getKafkaConsumerProperties(kafkaUrl, consumerProperties);
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
-        new OptimizedKafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumerAdapter consumer = new ApacheKafkaConsumerAdapter(consumerProperties, pubSubDeserializer)) {
+    try (PubSubConsumerAdapter consumer = new ApacheKafkaConsumerAdapter(consumerProperties)) {
       // include the message with startingOffset
       PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
           pubSubTopicRepository.getTopic(adminTopic),

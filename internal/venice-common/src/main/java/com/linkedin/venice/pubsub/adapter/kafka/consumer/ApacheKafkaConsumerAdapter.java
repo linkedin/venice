@@ -9,11 +9,13 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.adapter.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
+import com.linkedin.venice.pubsub.api.PubSubClientConfigs;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -57,28 +59,28 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
   private final Map<TopicPartition, PubSubTopicPartition> assignments;
 
-  private final KafkaPubSubMessageDeserializer pubSubMessageDeserializer;
+  private final KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer;
 
-  public ApacheKafkaConsumerAdapter(Properties props, KafkaPubSubMessageDeserializer pubSubMessageDeserializer) {
-    this(props, DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE, pubSubMessageDeserializer);
+  public ApacheKafkaConsumerAdapter(Properties props) {
+    this(props, new PubSubClientConfigs.Builder().build(), DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE);
   }
 
   public ApacheKafkaConsumerAdapter(
       Properties props,
-      boolean isKafkaConsumerOffsetCollectionEnabled,
-      KafkaPubSubMessageDeserializer pubSubMessageDeserializer) {
+      PubSubClientConfigs pubSubClientConfigs,
+      boolean isKafkaConsumerOffsetCollectionEnabled) {
     this(
         new KafkaConsumer<>(props),
         new VeniceProperties(props),
-        isKafkaConsumerOffsetCollectionEnabled,
-        pubSubMessageDeserializer);
+        pubSubClientConfigs,
+        isKafkaConsumerOffsetCollectionEnabled);
   }
 
   public ApacheKafkaConsumerAdapter(
       Consumer<byte[], byte[]> consumer,
       VeniceProperties props,
-      boolean isKafkaConsumerOffsetCollectionEnabled,
-      KafkaPubSubMessageDeserializer pubSubMessageDeserializer) {
+      PubSubClientConfigs pubSubClientConfigs,
+      boolean isKafkaConsumerOffsetCollectionEnabled) {
     this.kafkaConsumer = consumer;
     this.consumerPollRetryTimes = props.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
     this.consumerPollRetryBackoffMs =
@@ -86,7 +88,10 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     this.topicPartitionsOffsetsTracker =
         isKafkaConsumerOffsetCollectionEnabled ? new TopicPartitionsOffsetsTracker() : null;
     this.assignments = new HashMap<>();
-    this.pubSubMessageDeserializer = pubSubMessageDeserializer;
+    this.kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+        pubSubClientConfigs.getKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     LOGGER.info("Consumer poll retry times: {}", this.consumerPollRetryTimes);
     LOGGER.info("Consumer poll retry back off in ms: {}", this.consumerPollRetryBackoffMs);
     LOGGER.info("Consumer offset collection enabled: {}", isKafkaConsumerOffsetCollectionEnabled);
@@ -188,7 +193,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
               new ArrayList<>(topicPartitionConsumerRecords.size());
           for (ConsumerRecord<byte[], byte[]> consumerRecord: topicPartitionConsumerRecords) {
             PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
-                pubSubMessageDeserializer.deserialize(consumerRecord, pubSubTopicPartition);
+                kafkaPubSubMessageDeserializer.deserialize(consumerRecord, pubSubTopicPartition);
             topicPartitionPubSubMessages.add(pubSubMessage);
           }
           polledPubSubMessages.put(pubSubTopicPartition, topicPartitionPubSubMessages);
