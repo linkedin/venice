@@ -63,7 +63,7 @@ public class HttpClient5Utils {
       return this;
     }
 
-    public CloseableHttpAsyncClient buildAndStart() {
+    public CloseableHttpAsyncClient build() {
       if (sslContext == null) {
         throw new IllegalArgumentException("'sslContext' needs to be specified.");
       }
@@ -95,7 +95,11 @@ public class HttpClient5Utils {
                   .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
                   .build())
           .build();
+      return client;
+    }
 
+    public CloseableHttpAsyncClient buildAndStart() {
+      CloseableHttpAsyncClient client = build();
       client.start();
       return client;
     }
