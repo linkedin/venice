@@ -58,9 +58,9 @@ public class TestVeniceHelixResources {
     doReturn(mock(HelixReadOnlyZKSharedSchemaRepository.class)).when(veniceHelixAdmin)
         .getReadOnlyZKSharedSchemaRepository();
     VeniceControllerConfig controllerConfig = mock(VeniceControllerConfig.class);
-    when(controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber()).thenReturn(4);
-    when(controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
-    when(controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled()).thenReturn(true);
+    when(controllerConfig.getDaVinciPushStatusScanThreadNumber()).thenReturn(4);
+    when(controllerConfig.getDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
+    when(controllerConfig.isDaVinciPushStatusEnabled()).thenReturn(true);
     when(controllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
     return new HelixVeniceClusterResources(
         cluster,

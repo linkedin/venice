@@ -120,11 +120,12 @@ public abstract class AbstractPushMonitor
         pushStatusStoreReader,
         (topic) -> handleCompletedPush(getOfflinePush(topic)),
         (topic, details) -> handleErrorPush(getOfflinePush(topic), details),
-        controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled(),
-        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds(),
-        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber(),
-        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt());
-    this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled();
+        controllerConfig.isDaVinciPushStatusScanEnabled(),
+        controllerConfig.getDaVinciPushStatusScanIntervalInSeconds(),
+        controllerConfig.getDaVinciPushStatusScanThreadNumber(),
+        controllerConfig.getDaVinciPushStatusScanNoReportRetryMaxAttempt(),
+        controllerConfig.getDaVinciPushStatusScanMaxOfflineInstance());
+    this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
     pushStatusCollector.start();
   }
 

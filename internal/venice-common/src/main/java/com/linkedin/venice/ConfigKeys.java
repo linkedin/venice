@@ -1654,24 +1654,25 @@ public class ConfigKeys {
   public static final String PUSH_STATUS_STORE_ENABLED = "push.status.store.enabled";
 
   // Config to check whether the offline push will also monitor Da Vinci push status.
-  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED =
-      "offline.push.monitor.davinci.push.status.enabled";
+  public static final String DAVINCI_PUSH_STATUS_SCAN_ENABLED = "davinci.push.status.scan.enabled";
 
   // Config to determine the Da Vinci push status scanning interval in seconds.
-  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS =
-      "offline.push.monitor.davinci.push.status.scan.interval.in.seconds";
+  public static final String DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS =
+      "davinci.push.status.scan.interval.in.seconds";
 
   // Config to determine the Da Vinci push status scanning worker thread number.
-  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER =
-      "offline.push.monitor.davinci.push.status.scan.thread.number";
+  public static final String DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER = "davinci.push.status.scan.thread.number";
 
   /**
    * Max retry when not receiving any DaVinci status report.
    * This is mainly for testing purpose since in local integration test, the push job runs too fast in the backend,
    * and no DaVinci status report will mark the push job succeed right away.
    */
-  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_NO_DAVINCI_STATUS_REPORT_RETRY_MAX_ATTEMPTS =
-      "offline.push.monitor.davinci.push.status.scan.no.davinci.status.report.retry.max.attempts";
+  public static final String DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS =
+      "davinci.push.status.scan.no.report.retry.max.attempts";
+
+  public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE =
+      "davinci.push.status.scan.max.offline.instance";
 
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
