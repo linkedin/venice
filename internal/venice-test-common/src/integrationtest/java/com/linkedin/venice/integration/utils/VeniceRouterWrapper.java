@@ -110,8 +110,8 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     }
 
     return (serviceName, dataDirectory) -> {
-      int port = Utils.getFreePort();
-      int sslPort = Utils.getFreePort();
+      int port = TestUtils.getFreePort();
+      int sslPort = TestUtils.getFreePort();
       PropertyBuilder builder = new PropertyBuilder().put(CLUSTER_NAME, clusterName)
           .put(LISTENER_PORT, port)
           .put(LISTENER_SSL_PORT, sslPort)

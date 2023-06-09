@@ -67,13 +67,13 @@ public class ZkServerWrapper extends ProcessWrapper {
   static StatefulServiceProvider<ZkServerWrapper> generateService() {
     return (String serviceName, File dataDirectory) -> {
       if (!isSingleton) {
-        return createRealZkServerWrapper(serviceName, Utils.getFreePort(), dataDirectory);
+        return createRealZkServerWrapper(serviceName, TestUtils.getFreePort(), dataDirectory);
       }
 
       synchronized (ZkServerWrapper.class) {
         if (INSTANCE == null) {
           try {
-            INSTANCE = createRealZkServerWrapper(serviceName, Utils.getFreePort(), dataDirectory);
+            INSTANCE = createRealZkServerWrapper(serviceName, TestUtils.getFreePort(), dataDirectory);
             Runtime.getRuntime().addShutdownHook(new Thread(INSTANCE::close));
             INSTANCE.start();
           } catch (Exception e) {

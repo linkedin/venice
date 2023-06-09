@@ -156,7 +156,7 @@ public class ServiceFactory {
       Set<String> clusters = new HashSet<>();
       clusters.add(cluster);
       AdminSparkServer server = new AdminSparkServer(
-          Utils.getFreePort(),
+          TestUtils.getFreePort(),
           admin,
           new MetricsRepository(),
           clusters,

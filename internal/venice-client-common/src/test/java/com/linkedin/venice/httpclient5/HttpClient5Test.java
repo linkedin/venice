@@ -5,7 +5,6 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -44,7 +43,7 @@ public class HttpClient5Test {
    * This is not very safe since the port can be grabbed by some parallel tests.
    * Will tune this logic if this test become very flaky.
    */
-  private final int port = Utils.getFreePort();
+  private final int port = TestUtils.getFreePort();
 
   private void sendRequest(CloseableHttpAsyncClient httpClient, int iteration, boolean failOnTimeout) {
     LOGGER.info("Iteration: {}", iteration);
