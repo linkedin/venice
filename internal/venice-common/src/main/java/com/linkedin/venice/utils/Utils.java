@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -500,23 +499,6 @@ public class Utils {
     double divider = Math.pow(1000, suffixIndex);
     int prettyNumber = (int) Math.round(doubleNumber / divider);
     return prettyNumber + LARGE_NUMBER_SUFFIXES[suffixIndex];
-  }
-
-  /**
-   * WARNING: The code which generates the free port and uses it must always be called within
-   * a try/catch and a loop. There is no guarantee that the port returned will still be
-   * available at the time it is used. This is best-effort only.
-   *
-   * N.B.: Visibility is package-private on purpose.
-   *
-   * @return a free port to be used by tests.
-   */
-  public static int getFreePort() {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   public static String getUniqueString() {

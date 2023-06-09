@@ -111,7 +111,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     final String kafkaBootstrapServers = "localhost:1234";
 
     return (serviceName, dataDirectory) -> {
-      int port = Utils.getFreePort();
+      int port = TestUtils.getFreePort();
       String httpURI = "http://localhost:" + port;
       String httpsURI = "https://localhost:" + sslPortFromPort(port);
       List<ServiceDiscoveryAnnouncer> d2ServerList = new ArrayList<>();

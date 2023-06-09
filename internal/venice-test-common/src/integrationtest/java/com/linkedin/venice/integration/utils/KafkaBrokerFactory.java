@@ -9,6 +9,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.ArrayList;
@@ -45,8 +46,8 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
   @Override
   public StatefulServiceProvider<PubSubBrokerWrapper> generateService(PubSubBrokerConfigs configs) {
     return (String serviceName, File dir) -> {
-      int port = Utils.getFreePort();
-      int sslPort = Utils.getFreePort();
+      int port = TestUtils.getFreePort();
+      int sslPort = TestUtils.getFreePort();
       Map<String, Object> configMap = new HashMap<>();
 
       boolean shouldCloseZkServer = false;
