@@ -97,8 +97,8 @@ public class TestControllerClient {
     String errorResponseStoreName = Utils.getUniqueString("test-error-store");
     String fakeLeaderControllerUrl = "http://fake.leader.controller.url";
 
-    String nonExistentControllerUrl1 = "http://localhost:22";
-    String nonExistentControllerUrl2 = "http://localhost:23";
+    String nonExistentControllerUrl1 = "http://localhost:1100";
+    String nonExistentControllerUrl2 = "http://localhost:1101";
 
     try (MockHttpServerWrapper mockController = ServiceFactory.getMockHttpServer("mock_controller");
         MockHttpServerWrapper mockLegacyHost = ServiceFactory.getMockHttpServer("mock_legacy_router")) {
@@ -164,7 +164,9 @@ public class TestControllerClient {
       D2ServiceDiscoveryResponse discoResponseInvalidControllers = ControllerClient
           .discoverCluster(nonExistentControllerUrl1 + "," + nonExistentControllerUrl2, storeName, Optional.empty(), 1);
       Assert.assertTrue(discoResponseInvalidControllers.isError());
-      Assert.assertTrue(discoResponseInvalidControllers.getError().contains(ConnectException.class.getCanonicalName()));
+      Assert.assertTrue(
+          discoResponseInvalidControllers.getError().contains(ConnectException.class.getCanonicalName()),
+          discoResponseInvalidControllers.getError());
 
       // When only some controllers are missing, the ConnectException should never be bubbled up. Since this behavior is
       // triggered from Java libs, and we randomise the controller list to do some load balancing, the best way to
