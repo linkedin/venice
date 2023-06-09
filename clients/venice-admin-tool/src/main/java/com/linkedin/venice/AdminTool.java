@@ -638,24 +638,25 @@ public class AdminTool {
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
     boolean isNonInteractive = cmd.hasOption(Arg.NON_INTERACTIVE.toString());
 
-    StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
-    cmdParams.setCommand(recoveryCommand);
-    cmdParams.setDestFabric(destFabric);
-    cmdParams.setSourceFabric(sourceFabric);
-    cmdParams.setTimestamp(timestamp);
-    cmdParams.setSSLFactory(sslFactory);
-    cmdParams.setUrl(url);
+    StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder();
+    builder.setCommand(recoveryCommand);
+    builder.setDestFabric(destFabric);
+    builder.setSourceFabric(sourceFabric);
+    builder.setTimestamp((LocalDateTime) DateTimeFormatter.ISO_LOCAL_DATE_TIME.parse(timestamp));
+    builder.setSSLFactory(sslFactory);
+    builder.setUrl(url);
     if (extraCommandArgs != null) {
-      cmdParams.setExtraCommandArgs(extraCommandArgs);
+      builder.setExtraCommandArgs(extraCommandArgs);
     }
-    cmdParams.setDebug(isDebuggingEnabled);
+    builder.setDebug(isDebuggingEnabled);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
     params.setNonInteractive(isNonInteractive);
 
     try (ControllerClient cli = new ControllerClient("*", url, sslFactory)) {
-      cmdParams.setPCtrlCliWithoutCluster(cli);
+      builder.setPCtrlCliWithoutCluster(cli);
+      StoreRepushCommand.Params cmdParams = builder.build();
       dataRecoveryClient.execute(params, cmdParams);
     }
   }
@@ -669,14 +670,12 @@ public class AdminTool {
 
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
 
-    EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
-    cmdParams.setTargetRegion(destFabric);
-    cmdParams.setParentUrl(parentUrl);
-    cmdParams.setSSLFactory(sslFactory);
     Long total;
 
     try (ControllerClient cli = new ControllerClient("*", parentUrl, sslFactory)) {
-      cmdParams.setPCtrlCliWithoutCluster(cli);
+      EstimateDataRecoveryTimeCommand.Params.Builder builder =
+          new EstimateDataRecoveryTimeCommand.Params.Builder(destFabric, cli, parentUrl, sslFactory);
+      EstimateDataRecoveryTimeCommand.Params cmdParams = builder.build();
       total = dataRecoveryClient.estimateRecoveryTime(params, cmdParams);
     }
 
@@ -699,13 +698,13 @@ public class AdminTool {
 
     String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL);
 
-    MonitorCommand.Params monitorParams = new MonitorCommand.Params();
-    monitorParams.setTargetRegion(destFabric);
-    monitorParams.setParentUrl(parentUrl);
-    monitorParams.setSSLFactory(sslFactory);
+    MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder();
+    builder.setTargetRegion(destFabric);
+    builder.setParentUrl(parentUrl);
+    builder.setSSLFactory(sslFactory);
 
     try {
-      monitorParams.setDateTime(LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+      builder.setDateTime(LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
     } catch (DateTimeParseException e) {
       throw new VeniceException(
           String.format(
@@ -721,7 +720,8 @@ public class AdminTool {
     }
 
     try (ControllerClient parentCtrlCli = new ControllerClient("*", parentUrl, sslFactory)) {
-      monitorParams.setPCtrlCliWithoutCluster(parentCtrlCli);
+      builder.setPCtrlCliWithoutCluster(parentCtrlCli);
+      MonitorCommand.Params monitorParams = builder.build();
       dataRecoveryClient.monitor(params, monitorParams);
     }
   }
