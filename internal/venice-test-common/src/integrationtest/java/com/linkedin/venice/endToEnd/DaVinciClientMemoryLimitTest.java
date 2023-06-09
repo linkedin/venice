@@ -78,7 +78,7 @@ public class DaVinciClientMemoryLimitTest {
     Properties clusterConfig = new Properties();
     clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 10L);
     // To allow more times for DaVinci clients to report status
-    clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 5);
+    clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 15);
     venice = ServiceFactory.getVeniceCluster(1, 2, 1, 1, 100, false, false, clusterConfig);
     d2Client = new D2ClientBuilder().setZkHosts(venice.getZk().getAddress())
         .setZkSessionTimeout(3, TimeUnit.SECONDS)

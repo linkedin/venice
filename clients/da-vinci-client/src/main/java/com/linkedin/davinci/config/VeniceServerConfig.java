@@ -685,7 +685,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
           "Extracted total memtable table usage capacity in forked process: {}",
           totalMemtableUsageInForkedProcess);
 
-      extractedMemoryLimit = configuredIngestionMemoryLimit - totalMemtableUsageInForkedProcess - forkedProcessHeapSize
+      extractedMemoryLimit = configuredIngestionMemoryLimit - totalMemtableUsage - forkedProcessHeapSize
           - totalMemtableUsageInForkedProcess;
       if (extractedMemoryLimit <= 0) {
         throw new VeniceException(
