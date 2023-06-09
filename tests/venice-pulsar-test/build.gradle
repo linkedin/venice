@@ -9,8 +9,9 @@ configurations {
 
 sourceSets {
   pulsarIntegrationTest {
-    java.srcDirs = ['src/pulsarintegrationtest/java']
-    resources.srcDirs = ['src/pulsarintegrationtest/resources']
+    java.srcDir 'src/pulsarIntegrationTest/java'
+    java.srcDir 'src/pulsarIntegrationTest/proto'
+    resources.srcDir 'src/pulsarIntegrationTest/resources'
   }
 }
 

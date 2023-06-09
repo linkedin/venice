@@ -69,5 +69,5 @@ with various values and find ones that work for you.
 $ ./gradlew :sub-module:testType --tests "fully.qualified.name.of.the.test"
 
 # To run a specific integration test
-$ ./gradlew :venice-test-common:integrationtest --tests "fully.qualified.name.of.the.test"
+$ ./gradlew :internal:venice-test-common:integrationTest --tests "fully.qualified.name.of.the.test"
 ```
