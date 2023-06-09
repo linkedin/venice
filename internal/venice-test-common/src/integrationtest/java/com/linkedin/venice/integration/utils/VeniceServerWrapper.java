@@ -199,11 +199,11 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       clusterProps.storeFlattened(clusterConfigFile);
 
       // Generate server.properties in config directory
-      int listenPort = Utils.getFreePort();
-      int ingestionIsolationApplicationPort = Utils.getFreePort();
-      int ingestionIsolationServicePort = Utils.getFreePort();
+      int listenPort = TestUtils.getFreePort();
+      int ingestionIsolationApplicationPort = TestUtils.getFreePort();
+      int ingestionIsolationServicePort = TestUtils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
-          .put(ADMIN_PORT, Utils.getFreePort())
+          .put(ADMIN_PORT, TestUtils.getFreePort())
           .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
           .put(ENABLE_SERVER_ALLOW_LIST, enableServerAllowlist)
           .put(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 4)

@@ -48,7 +48,7 @@ public class IsolatedIngestionServerTest {
 
   @Test(timeOut = TIMEOUT_MS)
   public void testShutdownAfterHeartbeatTimeout() {
-    int servicePort = Utils.getFreePort();
+    int servicePort = TestUtils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
     try (MainIngestionRequestClient client = new MainIngestionRequestClient(configLoader)) {
       Process isolatedIngestionService = client.startForkedIngestionProcess(configLoader);
@@ -67,7 +67,7 @@ public class IsolatedIngestionServerTest {
 
   @Test(timeOut = TIMEOUT_MS)
   public void testReleaseTargetPortBinding() {
-    int servicePort = Utils.getFreePort();
+    int servicePort = TestUtils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
     try (MainIngestionRequestClient client = new MainIngestionRequestClient(configLoader)) {
       // Make sure the process is forked successfully.
@@ -109,7 +109,7 @@ public class IsolatedIngestionServerTest {
     String testRegion = "ei-ltx1";
     // Set app region system property.
     System.setProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION, testRegion);
-    VeniceConfigLoader configLoader = getConfigLoader(Utils.getFreePort());
+    VeniceConfigLoader configLoader = getConfigLoader(TestUtils.getFreePort());
     // Build and save config to file.
     String configFilePath = buildAndSaveConfigsForForkedIngestionProcess(configLoader);
     // Load config from saved config file.

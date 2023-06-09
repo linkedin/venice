@@ -139,8 +139,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(VeniceControllerCreateOptions options) {
     return (serviceName, dataDirectory) -> {
-      int adminPort = Utils.getFreePort();
-      int adminSecurePort = Utils.getFreePort();
+      int adminPort = TestUtils.getFreePort();
+      int adminSecurePort = TestUtils.getFreePort();
       List<VeniceProperties> propertiesList = new ArrayList<>();
 
       VeniceProperties extraProps = new VeniceProperties(options.getExtraProperties());

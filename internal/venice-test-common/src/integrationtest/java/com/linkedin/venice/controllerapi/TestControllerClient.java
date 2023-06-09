@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -97,8 +98,8 @@ public class TestControllerClient {
     String errorResponseStoreName = Utils.getUniqueString("test-error-store");
     String fakeLeaderControllerUrl = "http://fake.leader.controller.url";
 
-    String nonExistentControllerUrl1 = "http://localhost:" + Utils.getFreePort();
-    String nonExistentControllerUrl2 = "http://localhost:" + Utils.getFreePort();
+    String nonExistentControllerUrl1 = "http://localhost:" + TestUtils.getFreePort();
+    String nonExistentControllerUrl2 = "http://localhost:" + TestUtils.getFreePort();
 
     try (MockHttpServerWrapper mockController = ServiceFactory.getMockHttpServer("mock_controller");
         MockHttpServerWrapper mockLegacyHost = ServiceFactory.getMockHttpServer("mock_legacy_router")) {

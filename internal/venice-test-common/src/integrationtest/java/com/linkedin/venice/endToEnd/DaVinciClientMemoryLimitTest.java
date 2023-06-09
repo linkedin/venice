@@ -109,8 +109,8 @@ public class DaVinciClientMemoryLimitTest {
         .put(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, "10MB");
     if (ingestionIsolationEnabledInDaVinci) {
       venicePropertyBuilder.put(SERVER_INGESTION_MODE, IngestionMode.ISOLATED);
-      venicePropertyBuilder.put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, Utils.getFreePort());
-      venicePropertyBuilder.put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, Utils.getFreePort());
+      venicePropertyBuilder.put(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, TestUtils.getFreePort());
+      venicePropertyBuilder.put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, TestUtils.getFreePort());
       venicePropertyBuilder.put(SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "-Xms256M;-Xmx256M");
       venicePropertyBuilder.put(INGESTION_MEMORY_LIMIT, "296MB"); // 256M + 10M + 30M
     } else {
