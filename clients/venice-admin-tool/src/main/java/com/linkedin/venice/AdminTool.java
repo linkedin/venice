@@ -642,7 +642,7 @@ public class AdminTool {
     builder.setCommand(recoveryCommand);
     builder.setDestFabric(destFabric);
     builder.setSourceFabric(sourceFabric);
-    builder.setTimestamp((LocalDateTime) DateTimeFormatter.ISO_LOCAL_DATE_TIME.parse(timestamp));
+    builder.setTimestamp(LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
     builder.setSSLFactory(sslFactory);
     builder.setUrl(url);
     if (extraCommandArgs != null) {
