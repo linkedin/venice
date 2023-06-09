@@ -506,8 +506,6 @@ public class Utils {
    * a try/catch and a loop. There is no guarantee that the port returned will still be
    * available at the time it is used. This is best-effort only.
    *
-   * N.B.: Visibility is package-private on purpose.
-   *
    * @return a free port to be used by tests.
    */
   public static int getFreePort() {

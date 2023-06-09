@@ -97,8 +97,8 @@ public class TestControllerClient {
     String errorResponseStoreName = Utils.getUniqueString("test-error-store");
     String fakeLeaderControllerUrl = "http://fake.leader.controller.url";
 
-    String nonExistentControllerUrl1 = "http://localhost:1100";
-    String nonExistentControllerUrl2 = "http://localhost:1101";
+    String nonExistentControllerUrl1 = "http://localhost:" + Utils.getFreePort();
+    String nonExistentControllerUrl2 = "http://localhost:" + Utils.getFreePort();
 
     try (MockHttpServerWrapper mockController = ServiceFactory.getMockHttpServer("mock_controller");
         MockHttpServerWrapper mockLegacyHost = ServiceFactory.getMockHttpServer("mock_legacy_router")) {
