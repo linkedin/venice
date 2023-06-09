@@ -16,15 +16,11 @@ import org.apache.commons.httpclient.HttpStatus;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
 import org.apache.hc.client5.http.async.methods.SimpleResponseConsumer;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
-import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
-import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
-import org.apache.hc.client5.http.ssl.ClientTlsStrategyBuilder;
 import org.apache.hc.core5.concurrent.FutureCallback;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.nio.AsyncRequestProducer;
 import org.apache.hc.core5.http.nio.support.AsyncRequestBuilder;
-import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -67,9 +63,13 @@ public class HttpTransportClient extends TransportClient {
       SSLFactory sslFactory) {
 
     if (requireHHtp2) {
-      // HTTP2 only client doesn't allow you to configure the ConnectionManager
+      // HTTP2 only client doesn't allow you to configure the ConnectionManager, 1 connection is enough
+      // this is kind of problem for K8S deployment, where we have multiple pods
+      // but we access the router via a single Service
       LOGGER.info("Creating a TLS HTTP2 only client to {}", routerUrl);
-      return new HttpClient5Utils.HttpClient5Builder().setSslContext(sslFactory.getSSLContext()).build();
+      return new HttpClient5Utils.HttpClient5Builder().setHttp1(false)
+          .setSslContext(sslFactory.getSSLContext())
+          .build();
     }
 
     LOGGER.info(
@@ -77,17 +77,10 @@ public class HttpTransportClient extends TransportClient {
         routerUrl,
         maxConnectionsTotal,
         maxConnectionsPerRoute);
-    return HttpAsyncClients.custom()
-        .setVersionPolicy(HttpVersionPolicy.FORCE_HTTP_1)
-        .setConnectionManager(
-            PoolingAsyncClientConnectionManagerBuilder.create()
-                .setMaxConnTotal(maxConnectionsTotal)
-                .setMaxConnPerRoute(maxConnectionsPerRoute)
-                .setTlsStrategy(
-                    sslFactory != null
-                        ? ClientTlsStrategyBuilder.create().setSslContext(sslFactory.getSSLContext()).build()
-                        : null)
-                .build())
+    return new HttpClient5Utils.HttpClient5Builder().setHttp1(true)
+        .setHttp1MaxConnectionsPerRoute(maxConnectionsPerRoute)
+        .setHttp1MaxConnectionsTotal(maxConnectionsTotal)
+        .setSslContext(sslFactory != null ? sslFactory.getSSLContext() : null)
         .build();
   }
 
