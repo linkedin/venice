@@ -9,9 +9,9 @@ configurations {
 
 sourceSets {
   pulsarIntegrationTest {
-    java.srcDir 'src/pulsarIntegrationTest/java'
+    // 'src/pulsarIntegrationTest/java' is in srcDir by default. Just add the proto directory
     java.srcDir 'src/pulsarIntegrationTest/proto'
-    resources.srcDir 'src/pulsarIntegrationTest/resources'
+    resources
   }
 }
 

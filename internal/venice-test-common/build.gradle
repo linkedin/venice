@@ -45,12 +45,12 @@ configurations {
 
 sourceSets {
   integrationTest {
-    java.srcDir 'src/integrationTest/java'
+    // 'src/integrationTest/java' is in srcDir by default. Just add the proto directory
     java.srcDir 'src/integrationTest/proto'
-    resources.srcDir 'src/integrationTest/resources'
+    resources
   }
   jmh {
-    java.srcDir 'src/jmh/java'
+    // 'src/jmh/java' is in srcDir by default. Just add the proto directory
     java.srcDir 'src/jmh/proto'
     resources
   }
