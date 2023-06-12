@@ -113,7 +113,7 @@ public class PulsarVeniceSinkTest {
   @BeforeClass
   public void setUp() {
     environment =
-        new DockerComposeContainer(new File("src/pulsarintegrationtest/resources/docker-compose-pulsar-venice.yaml"))
+        new DockerComposeContainer(new File("src/pulsarIntegrationTest/resources/docker-compose-pulsar-venice.yaml"))
             .withExposedService("proxy", 6650)
             .withExposedService("proxy", 8080)
             .withTailChildContainers(true)

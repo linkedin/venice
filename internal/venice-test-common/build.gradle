@@ -45,8 +45,14 @@ configurations {
 
 sourceSets {
   integrationTest {
-    java.srcDirs = ['src/integrationtest/java']
-    resources.srcDirs = ['src/integrationtest/resources']
+    // 'src/integrationTest/java' is in srcDir by default. Just add the proto directory
+    java.srcDir 'src/integrationTest/proto'
+    resources
+  }
+  jmh {
+    // 'src/jmh/java' is in srcDir by default. Just add the proto directory
+    java.srcDir 'src/jmh/proto'
+    resources
   }
 }
 
@@ -320,8 +326,9 @@ flakyTest {
 idea {
   module {
     testSourceDirs += project.sourceSets.integrationTest.java.srcDirs
+    testSourceDirs += project.sourceSets.jmh.java.srcDirs
+
     testResourceDirs += project.sourceSets.integrationTest.resources.srcDirs
-    // testSourceDirs += project.sourceSets.jmh.java.srcDirs // broken, somehow, gotta debug...
   }
 }
 
