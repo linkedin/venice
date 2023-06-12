@@ -14,7 +14,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * Base class for deserializing messages from the pubsub specific message format to {@link PubSubMessage}
+ * The class for deserializing messages from the pubsub specific message format to {@link PubSubMessage}
  */
 public class PubSubMessageDeserializer {
   private static final Logger LOGGER = LogManager.getLogger(PubSubMessageDeserializer.class);
