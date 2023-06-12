@@ -41,7 +41,7 @@ public class DictionaryUtils {
         getKafkaConsumerProps(props),
         new PubSubClientConfigs.Builder().setKafkaValueSerializer(new KafkaValueSerializer()).build(),
         false,
-        null)) {
+        "dictionaryUtilsConsumer")) {
       return DictionaryUtils.readDictionaryFromKafka(topicName, pubSubConsumer, pubSubTopicRepository);
     }
   }
