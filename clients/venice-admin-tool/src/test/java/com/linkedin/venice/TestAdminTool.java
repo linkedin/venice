@@ -145,4 +145,23 @@ public class TestAdminTool {
         { "--get-kafka-topic-configs", "--url", "http://localhost:7036", "--kafka-topic-name", badTopicName };
     Assert.assertThrows(VeniceException.class, () -> AdminTool.main(args));
   }
+
+  @Test
+  public void testAdminTopicIsAllowedByTopicConfigsRelatedApi() {
+    String topicName = "venice_admin_testCluster";
+    String[] args = { "--update-kafka-topic-retention", "--url", "http://localhost:7036", "--kafka-topic-name",
+        topicName, "--kafka-topic-retention-in-ms", "1000" };
+    try {
+      AdminTool.main(args);
+    } catch (Exception e) {
+      Assert.fail("AdminTool should allow admin topic to be updated by config update API", e);
+    }
+
+    String[] args2 = { "--get-kafka-topic-configs", "--url", "http://localhost:7036", "--kafka-topic-name", topicName };
+    try {
+      AdminTool.main(args2);
+    } catch (Exception e) {
+      Assert.fail("AdminTool should allow admin topic to be queried by config query API", e);
+    }
+  }
 }

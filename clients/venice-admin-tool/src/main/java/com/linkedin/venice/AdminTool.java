@@ -2436,13 +2436,18 @@ public class AdminTool {
   private static void getKafkaTopicConfigs(CommandLine cmd) {
     String veniceControllerUrls = getRequiredArgument(cmd, Arg.URL);
     String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
-    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
-    if (storeName.isEmpty()) {
-      throw new VeniceException("Please either provide a valid topic name.");
+    String clusterName = null;
+    if (AdminTopicUtils.isAdminTopic(kafkaTopicName)) {
+      clusterName = AdminTopicUtils.getClusterNameFromTopicName(kafkaTopicName);
+    } else {
+      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+      if (storeName.isEmpty()) {
+        throw new VeniceException("Please either provide a valid topic name.");
+      }
+      D2ServiceDiscoveryResponse clusterDiscovery =
+          ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+      clusterName = clusterDiscovery.getCluster();
     }
-    D2ServiceDiscoveryResponse clusterDiscovery =
-        ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
-    String clusterName = clusterDiscovery.getCluster();
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
       PubSubTopicConfigResponse response = tmpControllerClient.getKafkaTopicConfigs(kafkaTopicName);
       printObject(response);
