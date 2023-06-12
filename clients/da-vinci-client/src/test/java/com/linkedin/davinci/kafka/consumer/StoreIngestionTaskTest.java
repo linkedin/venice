@@ -123,6 +123,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -133,7 +134,6 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -168,6 +168,7 @@ import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -236,7 +237,10 @@ public abstract class StoreIngestionTaskTest {
   private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   // TODO: Test other permutations of these params
-  private static final KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
+  private static final PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
+      new OptimizedKafkaValueSerializer(),
+      new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+      new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
   static {
     StoreIngestionTask.SCHEMA_POLLING_DELAY_MS = 100;
@@ -813,7 +817,7 @@ public abstract class StoreIngestionTaskTest {
         return inMemoryRemoteKafkaConsumer;
       }
       return inMemoryLocalKafkaConsumer;
-    }).when(mockFactory).create(any(), any(), anyBoolean(), any());
+    }).when(mockFactory).create(any(), anyBoolean(), any(), any());
 
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createVeniceWriter(any());
@@ -860,7 +864,7 @@ public abstract class StoreIngestionTaskTest {
         1000,
         mock(TopicExistenceChecker.class),
         isLiveConfigEnabled,
-        kafkaValueSerializer,
+        pubSubDeserializer,
         SystemTime.INSTANCE,
         kafkaConsumerServiceStats,
         false);
@@ -881,7 +885,7 @@ public abstract class StoreIngestionTaskTest {
         1000,
         mock(TopicExistenceChecker.class),
         isLiveConfigEnabled,
-        kafkaValueSerializer,
+        pubSubDeserializer,
         SystemTime.INSTANCE,
         kafkaConsumerServiceStats,
         false);

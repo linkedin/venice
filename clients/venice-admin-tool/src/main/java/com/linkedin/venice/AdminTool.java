@@ -68,6 +68,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -78,6 +79,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
@@ -85,12 +87,14 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.BufferedReader;
 import java.io.Console;
 import java.io.FileInputStream;
@@ -2866,7 +2870,12 @@ public class AdminTool {
   }
 
   private static PubSubConsumerAdapter getConsumer(Properties consumerProps) {
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     return new ApacheKafkaConsumerAdapterFactory()
-        .create(new VeniceProperties(consumerProps), false, "admin-tool-topic-dumper");
+        .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "");
   }
+
 }

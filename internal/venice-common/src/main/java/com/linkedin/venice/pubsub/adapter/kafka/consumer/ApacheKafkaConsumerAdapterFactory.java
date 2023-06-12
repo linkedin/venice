@@ -1,8 +1,8 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
-import com.linkedin.venice.pubsub.api.PubSubClientConfigs;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -14,15 +14,15 @@ public class ApacheKafkaConsumerAdapterFactory implements PubSubConsumerAdapterF
   @Override
   public ApacheKafkaConsumerAdapter create(
       VeniceProperties veniceProperties,
-      PubSubClientConfigs pubSubClientConfigs,
       boolean isKafkaConsumerOffsetCollectionEnabled,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
       String consumerName) {
     ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(veniceProperties, consumerName);
     return new ApacheKafkaConsumerAdapter(
         new KafkaConsumer<>(apacheKafkaConsumerConfig.getConsumerProperties()),
         veniceProperties,
-        pubSubClientConfigs,
-        isKafkaConsumerOffsetCollectionEnabled);
+        isKafkaConsumerOffsetCollectionEnabled,
+        pubSubMessageDeserializer);
   }
 
   @Override

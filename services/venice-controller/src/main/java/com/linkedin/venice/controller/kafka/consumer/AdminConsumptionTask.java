@@ -27,6 +27,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -238,6 +239,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private final PubSubTopicRepository pubSubTopicRepository;
 
+  private final PubSubMessageDeserializer pubSubMessageDeserializer;
+
   /**
    * The local region name of the controller.
    */
@@ -258,6 +261,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       long processingCycleTimeoutInMs,
       int maxWorkerThreadPoolSize,
       PubSubTopicRepository pubSubTopicRepository,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
       String regionName) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
@@ -291,6 +295,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.undelegatedRecords = new LinkedList<>();
     this.stats.setAdminConsumptionFailedOffset(failingOffset);
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     this.pubSubTopic = pubSubTopicRepository.getTopic(topic);
     this.regionName = regionName;
 

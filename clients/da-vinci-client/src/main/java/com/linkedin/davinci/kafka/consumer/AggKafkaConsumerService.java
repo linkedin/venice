@@ -11,9 +11,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.SystemTime;
@@ -51,7 +51,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
-  private final KafkaValueSerializer kafkaValueSerializer;
+  private final PubSubMessageDeserializer pubSubDeserializer;
   private final TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier;
 
   public AggKafkaConsumerService(
@@ -63,7 +63,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
       TopicExistenceChecker topicExistenceChecker,
-      final KafkaValueSerializer kafkaValueSerializer) {
+      final PubSubMessageDeserializer pubSubDeserializer) {
     this.consumerFactory = consumerFactory;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.numOfConsumersPerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
@@ -78,7 +78,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.isKafkaConsumerOffsetCollectionEnabled = serverConfig.isKafkaConsumerOffsetCollectionEnabled();
-    this.kafkaValueSerializer = kafkaValueSerializer;
+    this.pubSubDeserializer = pubSubDeserializer;
     this.sslPropertiesSupplier = sslPropertiesSupplier;
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
@@ -142,7 +142,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             sharedConsumerNonExistingTopicCleanupDelayMS,
             topicExistenceChecker,
             liveConfigBasedKafkaThrottlingEnabled,
-            kafkaValueSerializer,
+            pubSubDeserializer,
             SystemTime.INSTANCE,
             null,
             isKafkaConsumerOffsetCollectionEnabled));

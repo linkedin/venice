@@ -10,6 +10,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -18,9 +19,9 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubClientConfigs;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -29,6 +30,7 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.Properties;
@@ -153,11 +155,12 @@ public class PubSubSharedProducerAdapterFactoryTest {
         sharedKafkaProducerAdapterFactory.close();
       }
     }
-    try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory.create(
-        new VeniceProperties(properties),
-        new PubSubClientConfigs.Builder().setKafkaValueSerializer(new KafkaValueSerializer()).build(),
-        false,
-        "")) {
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
+        new KafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    try (PubSubConsumerAdapter pubSubConsumer =
+        pubSubConsumerAdapterFactory.create(new VeniceProperties(properties), false, pubSubMessageDeserializer, "")) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(existingTopic, 0);
       Long end = pubSubConsumer.endOffset(pubSubTopicPartition);
       Assert.assertTrue(end > 100L); // to account for the SOP that VW sends internally.

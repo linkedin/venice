@@ -13,15 +13,17 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Collections;
@@ -64,7 +66,10 @@ public class TestAdminConsumerService {
     AdminConsumerService adminConsumerService1 = null;
     AdminConsumerService adminConsumerService2 = null;
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
     try {
       adminConsumerService1 = new AdminConsumerService(
@@ -72,7 +77,7 @@ public class TestAdminConsumerService {
           controllerConfig,
           metricsRepository,
           pubSubTopicRepository,
-          kafkaValueSerializer);
+          pubSubMessageDeserializer);
 
       /**
        * The creation of a second {@link AdminConsumerService} crashed after introducing a regression
@@ -84,7 +89,7 @@ public class TestAdminConsumerService {
             controllerConfig,
             metricsRepository,
             pubSubTopicRepository,
-            kafkaValueSerializer);
+            pubSubMessageDeserializer);
       } catch (Exception e) {
         Assert.fail("Creating a second " + AdminConsumerService.class.getSimpleName() + " should not fail", e);
       }

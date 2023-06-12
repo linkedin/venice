@@ -7,15 +7,14 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
-import com.linkedin.venice.pubsub.adapter.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
-import com.linkedin.venice.pubsub.api.PubSubClientConfigs;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -34,6 +33,7 @@ import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
+import org.apache.kafka.common.header.Header;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -59,28 +59,28 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
   private final Map<TopicPartition, PubSubTopicPartition> assignments;
 
-  private final KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer;
+  private final PubSubMessageDeserializer pubSubMessageDeserializer;
 
-  public ApacheKafkaConsumerAdapter(Properties props) {
-    this(props, new PubSubClientConfigs.Builder().build(), DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE);
+  public ApacheKafkaConsumerAdapter(Properties props, PubSubMessageDeserializer pubSubMessageDeserializer) {
+    this(props, DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE, pubSubMessageDeserializer);
   }
 
   public ApacheKafkaConsumerAdapter(
       Properties props,
-      PubSubClientConfigs pubSubClientConfigs,
-      boolean isKafkaConsumerOffsetCollectionEnabled) {
+      boolean isKafkaConsumerOffsetCollectionEnabled,
+      PubSubMessageDeserializer pubSubMessageDeserializer) {
     this(
         new KafkaConsumer<>(props),
         new VeniceProperties(props),
-        pubSubClientConfigs,
-        isKafkaConsumerOffsetCollectionEnabled);
+        isKafkaConsumerOffsetCollectionEnabled,
+        pubSubMessageDeserializer);
   }
 
   public ApacheKafkaConsumerAdapter(
       Consumer<byte[], byte[]> consumer,
       VeniceProperties props,
-      PubSubClientConfigs pubSubClientConfigs,
-      boolean isKafkaConsumerOffsetCollectionEnabled) {
+      boolean isKafkaConsumerOffsetCollectionEnabled,
+      PubSubMessageDeserializer pubSubMessageDeserializer) {
     this.kafkaConsumer = consumer;
     this.consumerPollRetryTimes = props.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
     this.consumerPollRetryBackoffMs =
@@ -88,10 +88,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     this.topicPartitionsOffsetsTracker =
         isKafkaConsumerOffsetCollectionEnabled ? new TopicPartitionsOffsetsTracker() : null;
     this.assignments = new HashMap<>();
-    this.kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
-        pubSubClientConfigs.getKafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     LOGGER.info("Consumer poll retry times: {}", this.consumerPollRetryTimes);
     LOGGER.info("Consumer poll retry back off in ms: {}", this.consumerPollRetryBackoffMs);
     LOGGER.info("Consumer offset collection enabled: {}", isKafkaConsumerOffsetCollectionEnabled);
@@ -193,7 +190,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
               new ArrayList<>(topicPartitionConsumerRecords.size());
           for (ConsumerRecord<byte[], byte[]> consumerRecord: topicPartitionConsumerRecords) {
             PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
-                kafkaPubSubMessageDeserializer.deserialize(consumerRecord, pubSubTopicPartition);
+                deserialize(consumerRecord, pubSubTopicPartition);
             topicPartitionPubSubMessages.add(pubSubMessage);
           }
           polledPubSubMessages.put(pubSubTopicPartition, topicPartitionPubSubMessages);
@@ -389,4 +386,26 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     return pubSubTopicPartitionInfos;
   }
 
+  /**
+   * Deserialize the {@link ConsumerRecord} into {@link PubSubMessage}.
+   * @param consumerRecord the {@link ConsumerRecord} to deserialize
+   * @param topicPartition the {@link PubSubTopicPartition} of the {@link ConsumerRecord}
+   * @return
+   */
+  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deserialize(
+      ConsumerRecord<byte[], byte[]> consumerRecord,
+      PubSubTopicPartition topicPartition) {
+    PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
+    for (Header header: consumerRecord.headers()) {
+      pubSubMessageHeaders.add(header.key(), header.value());
+    }
+    long position = consumerRecord.offset();
+    return pubSubMessageDeserializer.deserialize(
+        topicPartition,
+        consumerRecord.key(),
+        consumerRecord.value(),
+        pubSubMessageHeaders,
+        position,
+        consumerRecord.timestamp());
+  }
 }

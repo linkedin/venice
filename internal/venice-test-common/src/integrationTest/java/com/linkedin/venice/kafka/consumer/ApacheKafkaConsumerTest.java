@@ -1,10 +1,13 @@
 package com.linkedin.venice.kafka.consumer;
 
+import static org.mockito.Mockito.mock;
+
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
@@ -33,7 +36,7 @@ public class ApacheKafkaConsumerTest {
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBroker.getAddress());
-    consumer = new ApacheKafkaConsumerAdapter(properties);
+    consumer = new ApacheKafkaConsumerAdapter(properties, mock(PubSubMessageDeserializer.class));
   }
 
   @AfterMethod

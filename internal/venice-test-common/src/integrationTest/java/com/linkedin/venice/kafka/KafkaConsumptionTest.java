@@ -32,6 +32,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -46,6 +47,7 @@ import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -179,6 +181,10 @@ public class KafkaConsumptionTest {
 
     TopicExistenceChecker topicExistenceChecker = mock(TopicExistenceChecker.class);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = IntegrationTestPushUtils.getVeniceConsumerFactory();
+    PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
         pubSubConsumerAdapterFactory,
         k -> VeniceProperties.empty(),
@@ -188,7 +194,7 @@ public class KafkaConsumptionTest {
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
         topicExistenceChecker,
-        new OptimizedKafkaValueSerializer());
+        pubSubDeserializer);
 
     versionTopic = getTopic();
     int partition = 0;

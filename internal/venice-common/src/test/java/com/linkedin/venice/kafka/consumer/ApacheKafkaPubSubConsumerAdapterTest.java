@@ -12,7 +12,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubClientConfigs;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -45,18 +45,18 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "broker address");
-    PubSubClientConfigs pubSubClientConfigs = mock(PubSubClientConfigs.class);
+    PubSubMessageDeserializer pubSubMessageDeserializer = mock(PubSubMessageDeserializer.class);
     apacheKafkaConsumerWithOffsetTrackingDisabled = new ApacheKafkaConsumerAdapter(
         delegateKafkaConsumer,
         new VeniceProperties(properties),
-        pubSubClientConfigs,
-        false);
+        false,
+        pubSubMessageDeserializer);
 
     apacheKafkaConsumerWithOffsetTrackingEnabled = new ApacheKafkaConsumerAdapter(
         delegateKafkaConsumer,
         new VeniceProperties(properties),
-        pubSubClientConfigs,
-        true);
+        true,
+        pubSubMessageDeserializer);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

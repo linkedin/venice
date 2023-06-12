@@ -8,13 +8,12 @@ import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubClientConfigs;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -97,7 +96,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final TopicExistenceChecker topicExistenceChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
-      final KafkaValueSerializer kafkaValueSerializer,
+      final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final KafkaConsumerServiceStats statsOverride,
       final boolean isKafkaConsumerOffsetCollectionEnabled) {
@@ -123,8 +122,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
           pubSubConsumerAdapterFactory.create(
               new VeniceProperties(consumerProperties),
-              new PubSubClientConfigs.Builder().setKafkaValueSerializer(kafkaValueSerializer).build(),
               isKafkaConsumerOffsetCollectionEnabled,
+              pubSubDeserializer,
               null),
           stats,
           this::recordPartitionsPerConsumerSensor,
@@ -390,7 +389,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
         long sharedConsumerNonExistingTopicCleanupDelayMS,
         TopicExistenceChecker topicExistenceChecker,
         boolean liveConfigBasedKafkaThrottlingEnabled,
-        KafkaValueSerializer kafkaValueSerializer,
+        PubSubMessageDeserializer pubSubDeserializer,
         Time time,
         KafkaConsumerServiceStats stats,
         boolean isKafkaConsumerOffsetCollectionEnabled);
