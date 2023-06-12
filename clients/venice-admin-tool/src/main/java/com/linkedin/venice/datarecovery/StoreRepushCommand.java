@@ -215,15 +215,15 @@ public class StoreRepushCommand extends Command {
           String url,
           Optional<SSLFactory> sslFactory,
           boolean debug) {
-        this.command = command;
-        this.destFabric = destFabric;
-        this.sourceFabric = sourceFabric;
-        this.extraCommandArgs = extraCommandArgs;
-        this.timestamp = timestamp;
-        this.pCtrlCliWithoutCluster = controllerClient;
-        this.url = url;
-        this.sslFactory = sslFactory;
-        this.debug = debug;
+        this.setCommand(command)
+            .setDestFabric(destFabric)
+            .setSourceFabric(sourceFabric)
+            .setExtraCommandArgs(extraCommandArgs)
+            .setTimestamp(timestamp)
+            .setPCtrlCliWithoutCluster(controllerClient)
+            .setUrl(url)
+            .setSSLFactory(sslFactory)
+            .setDebug(debug);
       }
 
       public Builder(StoreRepushCommand.Params p) {
@@ -253,42 +253,50 @@ public class StoreRepushCommand extends Command {
         return ret;
       }
 
-      public void setCommand(String command) {
+      public StoreRepushCommand.Params.Builder setCommand(String command) {
         this.command = command;
+        return this;
       }
 
-      public void setDestFabric(String destFabric) {
+      public StoreRepushCommand.Params.Builder setDestFabric(String destFabric) {
         this.destFabric = destFabric;
+        return this;
       }
 
-      public void setSourceFabric(String sourceFabric) {
+      public StoreRepushCommand.Params.Builder setSourceFabric(String sourceFabric) {
         this.sourceFabric = sourceFabric;
+        return this;
       }
 
-      public void setExtraCommandArgs(String extraCommandArgs) {
+      public StoreRepushCommand.Params.Builder setExtraCommandArgs(String extraCommandArgs) {
         this.extraCommandArgs = extraCommandArgs;
+        return this;
       }
 
-      public void setTimestamp(LocalDateTime timestamp) {
+      public StoreRepushCommand.Params.Builder setTimestamp(LocalDateTime timestamp) {
         this.timestamp = timestamp;
+        return this;
       }
 
-      public void setPCtrlCliWithoutCluster(ControllerClient pCtrlCliWithoutCluster) {
+      public StoreRepushCommand.Params.Builder setPCtrlCliWithoutCluster(ControllerClient pCtrlCliWithoutCluster) {
         this.pCtrlCliWithoutCluster = pCtrlCliWithoutCluster;
+        return this;
       }
 
-      public void setUrl(String url) {
+      public StoreRepushCommand.Params.Builder setUrl(String url) {
         this.url = url;
+        return this;
       }
 
-      public void setSSLFactory(Optional<SSLFactory> sslFactory) {
+      public StoreRepushCommand.Params.Builder setSSLFactory(Optional<SSLFactory> sslFactory) {
         this.sslFactory = sslFactory;
+        return this;
       }
 
-      public void setDebug(boolean debug) {
+      public StoreRepushCommand.Params.Builder setDebug(boolean debug) {
         this.debug = debug;
+        return this;
       }
-
     }
   }
 

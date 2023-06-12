@@ -212,11 +212,11 @@ public class MonitorCommand extends Command {
           String parentUrl,
           Optional<SSLFactory> sslFactory,
           LocalDateTime dateTime) {
-        this.targetRegion = targetRegion;
-        this.pCtrlCliWithoutCluster = controllerClient;
-        this.parentUrl = parentUrl;
-        this.sslFactory = sslFactory;
-        this.dateTime = dateTime;
+        this.setTargetRegion(targetRegion)
+            .setPCtrlCliWithoutCluster(controllerClient)
+            .setParentUrl(parentUrl)
+            .setSSLFactory(sslFactory)
+            .setDateTime(dateTime);
       }
 
       public Builder(MonitorCommand.Params p) {
@@ -233,24 +233,29 @@ public class MonitorCommand extends Command {
         return ret;
       }
 
-      public void setTargetRegion(String targetRegion) {
+      public MonitorCommand.Params.Builder setTargetRegion(String targetRegion) {
         this.targetRegion = targetRegion;
+        return this;
       }
 
-      public void setPCtrlCliWithoutCluster(ControllerClient pCtrlCliWithoutCluster) {
+      public MonitorCommand.Params.Builder setPCtrlCliWithoutCluster(ControllerClient pCtrlCliWithoutCluster) {
         this.pCtrlCliWithoutCluster = pCtrlCliWithoutCluster;
+        return this;
       }
 
-      public void setParentUrl(String parentUrl) {
+      public MonitorCommand.Params.Builder setParentUrl(String parentUrl) {
         this.parentUrl = parentUrl;
+        return this;
       }
 
-      public void setSSLFactory(Optional<SSLFactory> sslFactory) {
+      public MonitorCommand.Params.Builder setSSLFactory(Optional<SSLFactory> sslFactory) {
         this.sslFactory = sslFactory;
+        return this;
       }
 
-      public void setDateTime(LocalDateTime dateTime) {
+      public MonitorCommand.Params.Builder setDateTime(LocalDateTime dateTime) {
         this.dateTime = dateTime;
+        return this;
       }
 
     }

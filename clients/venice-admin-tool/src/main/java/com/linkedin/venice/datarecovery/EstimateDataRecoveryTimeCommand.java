@@ -117,10 +117,10 @@ public class EstimateDataRecoveryTimeCommand extends Command {
           ControllerClient controllerClient,
           String parentUrl,
           Optional<SSLFactory> sslFactory) {
-        this.targetRegion = targetRegion;
-        this.pCtrlCliWithoutCluster = controllerClient;
-        this.parentUrl = parentUrl;
-        this.sslFactory = sslFactory;
+        this.setTargetRegion(targetRegion)
+            .setPCtrlCliWithoutCluster(controllerClient)
+            .setParentUrl(parentUrl)
+            .setSSLFactory(sslFactory);
       }
 
       public Builder(EstimateDataRecoveryTimeCommand.Params p) {
@@ -136,20 +136,25 @@ public class EstimateDataRecoveryTimeCommand extends Command {
         return ret;
       }
 
-      public void setTargetRegion(String targetRegion) {
+      public EstimateDataRecoveryTimeCommand.Params.Builder setTargetRegion(String targetRegion) {
         this.targetRegion = targetRegion;
+        return this;
       }
 
-      public void setParentUrl(String parentUrl) {
+      public EstimateDataRecoveryTimeCommand.Params.Builder setParentUrl(String parentUrl) {
         this.parentUrl = parentUrl;
+        return this;
       }
 
-      public void setSSLFactory(Optional<SSLFactory> sslFactory) {
+      public EstimateDataRecoveryTimeCommand.Params.Builder setSSLFactory(Optional<SSLFactory> sslFactory) {
         this.sslFactory = sslFactory;
+        return this;
       }
 
-      public void setPCtrlCliWithoutCluster(ControllerClient controllerClient) {
+      public EstimateDataRecoveryTimeCommand.Params.Builder setPCtrlCliWithoutCluster(
+          ControllerClient controllerClient) {
         this.pCtrlCliWithoutCluster = controllerClient;
+        return this;
       }
     }
   }

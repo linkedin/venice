@@ -638,13 +638,12 @@ public class AdminTool {
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
     boolean isNonInteractive = cmd.hasOption(Arg.NON_INTERACTIVE.toString());
 
-    StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder();
-    builder.setCommand(recoveryCommand);
-    builder.setDestFabric(destFabric);
-    builder.setSourceFabric(sourceFabric);
-    builder.setTimestamp(LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-    builder.setSSLFactory(sslFactory);
-    builder.setUrl(url);
+    StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder().setCommand(recoveryCommand)
+        .setDestFabric(destFabric)
+        .setSourceFabric(sourceFabric)
+        .setTimestamp(LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+        .setSSLFactory(sslFactory)
+        .setUrl(url);
     if (extraCommandArgs != null) {
       builder.setExtraCommandArgs(extraCommandArgs);
     }
@@ -698,10 +697,9 @@ public class AdminTool {
 
     String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL);
 
-    MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder();
-    builder.setTargetRegion(destFabric);
-    builder.setParentUrl(parentUrl);
-    builder.setSSLFactory(sslFactory);
+    MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder().setTargetRegion(destFabric)
+        .setParentUrl(parentUrl)
+        .setSSLFactory(sslFactory);
 
     try {
       builder.setDateTime(LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));

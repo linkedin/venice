@@ -107,11 +107,11 @@ public class TestDataRecoveryClient {
     ControllerClient controllerClient = mock(ControllerClient.class);
 
     Set<String> storeNames = new HashSet<>(Arrays.asList("store1", "store2"));
-    EstimateDataRecoveryTimeCommand.Params.Builder builder = new EstimateDataRecoveryTimeCommand.Params.Builder();
-    builder.setTargetRegion("region1");
-    builder.setParentUrl("https://localhost:7036");
-    builder.setPCtrlCliWithoutCluster(controllerClient);
-    builder.setSSLFactory(Optional.empty());
+    EstimateDataRecoveryTimeCommand.Params.Builder builder =
+        new EstimateDataRecoveryTimeCommand.Params.Builder().setTargetRegion("region1")
+            .setParentUrl("https://localhost:7036")
+            .setPCtrlCliWithoutCluster(controllerClient)
+            .setSSLFactory(Optional.empty());
     EstimateDataRecoveryTimeCommand.Params cmdParams = builder.build();
     EstimateDataRecoveryTimeCommand mockCmd = spy(EstimateDataRecoveryTimeCommand.class);
     List<DataRecoveryTask> tasks = buildEstimateDataRecoveryTasks(storeNames, mockCmd, cmdParams);
@@ -151,15 +151,14 @@ public class TestDataRecoveryClient {
 
   private void executeRecovery(boolean isSuccess) {
     ControllerClient controllerClient = mock(ControllerClient.class);
-    StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder();
-    builder.setCommand("cmd");
-    builder.setExtraCommandArgs("args");
-    builder.setPCtrlCliWithoutCluster(controllerClient);
-    builder.setUrl("https://localhost:7036");
-    builder.setTimestamp(LocalDateTime.parse("2999-12-31T00:00:00", DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-    builder.setSSLFactory(Optional.empty());
-    builder.setDestFabric("ei-ltx1");
-    builder.setSourceFabric("ei-ltx1");
+    StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder().setCommand("cmd")
+        .setExtraCommandArgs("args")
+        .setPCtrlCliWithoutCluster(controllerClient)
+        .setUrl("https://localhost:7036")
+        .setTimestamp(LocalDateTime.parse("2999-12-31T00:00:00", DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+        .setSSLFactory(Optional.empty())
+        .setDestFabric("ei-ltx1")
+        .setSourceFabric("ei-ltx1");
 
     StoreRepushCommand.Params cmdParams = builder.build();
 
@@ -323,12 +322,11 @@ public class TestDataRecoveryClient {
     doReturn(monitor).when(dataRecoveryClient).getMonitor();
     doCallRealMethod().when(dataRecoveryClient).monitor(any(), any());
 
-    MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder();
-    builder.setTargetRegion(region);
-    builder.setDateTime(now);
-    builder.setPCtrlCliWithoutCluster(mockedCli);
-    builder.setParentUrl("https://localhost:7036");
-    builder.setSSLFactory(Optional.empty());
+    MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder().setTargetRegion(region)
+        .setDateTime(now)
+        .setPCtrlCliWithoutCluster(mockedCli)
+        .setParentUrl("https://localhost:7036")
+        .setSSLFactory(Optional.empty());
     MonitorCommand.Params monitorParams = builder.build();
 
     MonitorCommand mockMonitorCmd = spy(MonitorCommand.class);
