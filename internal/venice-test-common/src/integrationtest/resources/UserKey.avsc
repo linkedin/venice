@@ -1,0 +1,18 @@
+{
+  "doc": "Key schema for the Venice Store learning-search-blocked-contents which stores contents dismissed by learners for given queries.",
+  "fields": [
+    {
+      "doc": "This can be either a MemberUrn or an EnterpriseProfileUrn based on the learner's primary identity.",
+      "name": "learnerUrn",
+      "type": "string"
+    },
+    {
+      "doc": "Query string used to make the search. This is either the raw query entered by the learner or the query inferred based on a topic/skill selection in the absence of a raw query.",
+      "name": "query",
+      "type": "string"
+    }
+  ],
+  "name": "LearningSearchLearnerBlockedContentsKey",
+  "namespace": "com.linkedin.learning.venice",
+  "type": "record"
+}

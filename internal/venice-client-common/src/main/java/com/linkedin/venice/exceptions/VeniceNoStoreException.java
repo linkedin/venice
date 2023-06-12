@@ -1,6 +1,5 @@
 package com.linkedin.venice.exceptions;
 
-import java.util.Optional;
 import org.apache.http.HttpStatus;
 
 
@@ -12,31 +11,31 @@ public class VeniceNoStoreException extends VeniceException {
   private final String clusterName;
 
   public VeniceNoStoreException(String storeName, String clusterName) {
-    super("Store: " + storeName + " does not exist in cluster " + clusterName);
+    super(getErrorMessage(storeName, clusterName, null), ErrorType.STORE_NOT_FOUND);
     this.storeName = storeName;
     this.clusterName = clusterName;
   }
 
   public VeniceNoStoreException(String storeName, String clusterName, Throwable t) {
-    super("Store: " + storeName + " does not exist in cluster " + clusterName, t);
+    super(getErrorMessage(storeName, clusterName, null), t, ErrorType.STORE_NOT_FOUND);
     this.storeName = storeName;
     this.clusterName = clusterName;
   }
 
   public VeniceNoStoreException(String storeName) {
-    super("Store: " + storeName + " does not exist");
+    super(getErrorMessage(storeName, null, null), ErrorType.STORE_NOT_FOUND);
     this.storeName = storeName;
     this.clusterName = "unspecified";
   }
 
-  public VeniceNoStoreException(String storeName, Optional<String> additionalMessage) {
-    super("Store: " + storeName + " does not exist. " + (additionalMessage.orElse("")));
+  public VeniceNoStoreException(String storeName, String clusterName, String additionalMessage) {
+    super(getErrorMessage(storeName, clusterName, additionalMessage), ErrorType.STORE_NOT_FOUND);
     this.storeName = storeName;
-    this.clusterName = "unspecified";
+    this.clusterName = clusterName;
   }
 
   public VeniceNoStoreException(String storeName, Throwable t) {
-    super("Store: " + storeName + " does not exist", t);
+    super(getErrorMessage(storeName, null, null), t, ErrorType.STORE_NOT_FOUND);
     this.storeName = storeName;
     this.clusterName = "unspecified";
   }
@@ -52,5 +51,20 @@ public class VeniceNoStoreException extends VeniceException {
   @Override
   public int getHttpStatusCode() {
     return HttpStatus.SC_NOT_FOUND;
+  }
+
+  private static String getErrorMessage(String storeName, String clusterName, String additionalMessage) {
+    StringBuilder errorBuilder = new StringBuilder().append("Store: ").append(storeName).append(" does not exist");
+    if (clusterName != null) {
+      errorBuilder.append(" in cluster ").append(clusterName);
+    } else {
+      errorBuilder.append(".");
+    }
+
+    if (additionalMessage != null) {
+      errorBuilder.append(additionalMessage);
+    }
+
+    return errorBuilder.toString();
   }
 }

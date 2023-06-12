@@ -7,8 +7,8 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.security.SSLFactory;
@@ -27,6 +27,7 @@ import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -39,6 +40,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
   private final Optional<SSLFactory> sslFactory;
+  private final Executor sslHandshakeExecutor;
   private final Optional<ServerAclHandler> aclHandler;
   private final Optional<ServerStoreAclHandler> storeAclHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();
@@ -50,9 +52,10 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
   public HttpChannelInitializer(
       ReadOnlyStoreRepository storeMetadataRepository,
-      CompletableFuture<RoutingDataRepository> routingRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       MetricsRepository metricsRepository,
       Optional<SSLFactory> sslFactory,
+      Executor sslHandshakeExecutor,
       VeniceServerConfig serverConfig,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
@@ -87,6 +90,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
 
     this.sslFactory = sslFactory;
+    this.sslHandshakeExecutor = sslHandshakeExecutor;
     this.storeAclHandler = storeAccessController.isPresent()
         ? Optional.of(new ServerStoreAclHandler(storeAccessController.get(), storeMetadataRepository))
         : Optional.empty();
@@ -99,12 +103,12 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         : Optional.empty();
 
     if (serverConfig.isQuotaEnforcementEnabled()) {
-      String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerPort());
+      String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
       this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
       this.quotaEnforcer = new ReadQuotaEnforcementHandler(
           serverConfig.getNodeCapacityInRcu(),
           storeMetadataRepository,
-          routingRepository,
+          customizedViewRepository,
           nodeId,
           quotaUsageStats);
 
@@ -143,7 +147,11 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   @Override
   public void initChannel(SocketChannel ch) {
     if (sslFactory.isPresent()) {
-      ch.pipeline().addLast(new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false));
+      SslInitializer sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
+      if (sslHandshakeExecutor != null) {
+        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+      }
+      ch.pipeline().addLast(sslInitializer);
     }
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
       StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);

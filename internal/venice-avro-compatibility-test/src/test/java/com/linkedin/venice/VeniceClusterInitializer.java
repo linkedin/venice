@@ -1,13 +1,11 @@
 package com.linkedin.venice;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -16,13 +14,13 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -95,38 +93,26 @@ public class VeniceClusterInitializer implements Closeable {
     this.storeName = storeName;
     // Create test store
     this.controllerClient = this.veniceCluster.getControllerClient();
-    NewStoreResponse newStoreResponse =
-        controllerClient.createNewStore(storeName, "test_owner", KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
-    if (newStoreResponse.isError()) {
-      throw new VeniceException(
-          "Failed to create the store: " + storeName + ", and the error: " + newStoreResponse.getError());
-    }
-    TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(LOGGER));
+    TestUtils.assertCommand(controllerClient.createNewStore(storeName, "test_owner", KEY_SCHEMA_STR, VALUE_SCHEMA_STR));
+    this.veniceCluster.createMetaSystemStore(storeName);
     // Enable read compute
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);
-    ControllerResponse updateStoreResponse = controllerClient.updateStore(storeName, params);
-    if (updateStoreResponse.isError()) {
-      throw new VeniceException(
-          "Failed to update store: " + storeName + ", and the error: " + updateStoreResponse.getError());
-    }
-    VersionCreationResponse newVersion = controllerClient.requestTopicForWrites(
-        storeName,
-        10240000,
-        Version.PushType.BATCH,
-        Version.guidBasedDummyPushId(),
-        true,
-        false,
-        false,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        false,
-        -1);
-    if (newVersion.isError()) {
-      throw new VeniceException(
-          "Failed to create a new version for store: " + storeName + ", and error is: " + newVersion.getError());
-    }
+    TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
+    VersionCreationResponse newVersion = TestUtils.assertCommand(
+        controllerClient.requestTopicForWrites(
+            storeName,
+            10240000,
+            Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(),
+            true,
+            false,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1));
     this.pushVersion = newVersion.getVersion();
     this.pushVersionTopic = newVersion.getKafkaTopic();
     this.valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
@@ -195,8 +181,8 @@ public class VeniceClusterInitializer implements Closeable {
     }
 
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
-    try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
-        vwFactory.createVeniceWriter(pushVersionTopic, keySerializer, new DefaultSerializer(), false)) {
+    try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(pushVersionTopic).setKeySerializer(keySerializer).build())) {
       veniceWriter.broadcastStartOfPush(Collections.emptyMap());
       Future[] writerFutures = new Future[ENTRY_COUNT];
       for (int i = 0; i < ENTRY_COUNT; i++) {
@@ -241,8 +227,8 @@ public class VeniceClusterInitializer implements Closeable {
    * @param args
    */
   public static void main(String[] args) {
-    LOGGER.info("Avro version in VeniceClusterInitializer: {}", AvroCompatibilityHelper.getRuntimeAvroVersion());
-    Assert.assertEquals(AvroCompatibilityHelper.getRuntimeAvroVersion(), AvroVersion.AVRO_1_9);
+    LOGGER.info("Avro version in VeniceClusterInitializer: {}", AvroCompatibilityHelperCommon.getRuntimeAvroVersion());
+    Assert.assertEquals(AvroCompatibilityHelperCommon.getRuntimeAvroVersion(), AvroVersion.AVRO_1_9);
     Assert.assertEquals(args.length, 2, "Store name and router port arguments are expected");
 
     String storeName = args[0];

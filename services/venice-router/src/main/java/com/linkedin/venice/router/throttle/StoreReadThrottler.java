@@ -62,9 +62,9 @@ public class StoreReadThrottler {
     }
   }
 
-  public void mayThrottleRead(double readCapacityUnit, Optional<String> storageNodeId) {
-    if (storageNodeId.isPresent()) {
-      EventThrottler storageNodeThrottler = storageNodesThrottlers.get(storageNodeId.get());
+  public void mayThrottleRead(double readCapacityUnit, String storageNodeId) {
+    if (storageNodeId != null) {
+      EventThrottler storageNodeThrottler = storageNodesThrottlers.get(storageNodeId);
       // TODO While updating storage nodes' throttlers, there might be a very short period that we haven't create a
       // TODO throttler for the given storage node. Right now just accept this request, could add a default quota later.
       if (storageNodeThrottler != null) {

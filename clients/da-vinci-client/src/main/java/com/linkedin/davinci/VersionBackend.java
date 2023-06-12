@@ -114,7 +114,7 @@ public class VersionBackend {
       entry.getValue().cancel(true);
     }
     try {
-      backend.getIngestionBackend().killConsumptionTask(version.kafkaTopicName());
+      backend.getIngestionBackend().shutdownIngestionTask(version.kafkaTopicName());
     } catch (VeniceException e) {
       LOGGER.error("Encounter exception when killing consumption task: {}", version.kafkaTopicName(), e);
     }
@@ -235,7 +235,7 @@ public class VersionBackend {
   }
 
   public void computeWithKeyPrefixFilter(
-      byte[] prefixBytes,
+      byte[] keyPrefix,
       int partition,
       StreamingCallback<GenericRecord, GenericRecord> callback,
       ComputeRequestWrapper computeRequestWrapper,
@@ -273,7 +273,7 @@ public class VersionBackend {
         getStorageEngineOrThrow(),
         partition,
         version.getPartitionerConfig(),
-        prefixBytes,
+        keyPrefix,
         reusableValueRecord,
         reusableBinaryDecoder,
         keyRecordDeserializer,

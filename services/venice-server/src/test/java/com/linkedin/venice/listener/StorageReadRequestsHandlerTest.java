@@ -21,32 +21,52 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
+import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
+import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.StorageResponseObject;
+import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
+import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.unit.kafka.SimplePartitioner;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
+import io.netty.buffer.Unpooled;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
+import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -197,6 +217,125 @@ public class StorageReadRequestsHandlerTest {
       if (count > 200) { // two seconds
         throw new RuntimeException("Timeout waiting for StorageExecutionHandler output to appear");
       }
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public static void testMultiGetNotUsingKeyBytes(Boolean isParallel) throws Exception {
+    String topic = "temp-test-topic_v1";
+    int schemaId = 1;
+    List<Object> outputArray = new ArrayList<>();
+
+    // [0]""/[1]"storage"/[2]{$resourceName}
+    String uri = "/" + TYPE_STORAGE + "/" + topic;
+
+    RecordSerializer<MultiGetRouterRequestKeyV1> serializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
+    List<MultiGetRouterRequestKeyV1> keys = new ArrayList<>();
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String keyPrefix = "key_";
+    String valuePrefix = "value_";
+
+    SimplePartitioner simplePartitioner = new SimplePartitioner();
+    AbstractStorageEngine testStore = mock(AbstractStorageEngine.class);
+    Map<Integer, String> allValueStrings = new HashMap<>();
+    int recordCount = 10;
+
+    // Prepare multiGet records belong to specific sub-partitions, if the router does not have right logic to figure out
+    // the sub-partition, the test will fail. Here we use SimplePartitioner to generate sub-partition id, as it only
+    // consider the first byte of the key.
+    for (int i = 0; i < recordCount; ++i) {
+      MultiGetRouterRequestKeyV1 requestKey = new MultiGetRouterRequestKeyV1();
+      byte[] keyBytes = keySerializer.serialize(null, keyPrefix + i);
+      int subPartition = simplePartitioner.getPartitionId(keyBytes, 3);
+      requestKey.keyBytes = ByteBuffer.wrap(keyBytes);
+      requestKey.keyIndex = i;
+      requestKey.partitionId = 0;
+      String valueString = valuePrefix + i;
+      byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
+      doReturn(valueBytes).when(testStore).get(subPartition, ByteBuffer.wrap(keyBytes));
+      allValueStrings.put(i, valueString);
+      keys.add(requestKey);
+    }
+
+    // Prepare request
+    byte[] postBody = serializer.serializeObjects(keys);
+    FullHttpRequest httpRequest =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri, Unpooled.wrappedBuffer(postBody));
+    httpRequest.headers()
+        .set(
+            HttpConstants.VENICE_API_VERSION,
+            ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+    MultiGetRouterRequestWrapper testRequest = MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(httpRequest);
+
+    StorageEngineRepository testRepository = mock(StorageEngineRepository.class);
+    doReturn(testStore).when(testRepository).getLocalStorageEngine(topic);
+
+    MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
+
+    ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
+    doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
+
+    ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
+    Store store = mock(Store.class);
+    Version version = mock(Version.class);
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setPartitionerClass(SimplePartitioner.class.getName());
+    partitionerConfig.setAmplificationFactor(3);
+    when(version.getPartitionerConfig()).thenReturn(partitionerConfig);
+    when(store.getVersion(anyInt())).thenReturn(Optional.of(version));
+    when(metadataRepo.getStoreOrThrow(anyString())).thenReturn(store);
+
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+    doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
+    when(mockCtx.writeAndFlush(any())).then(i -> {
+      outputArray.add(i.getArguments()[0]);
+      return null;
+    });
+
+    ThreadPoolExecutor threadPoolExecutor =
+        new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(2));
+
+    try {
+      StorageReadRequestsHandler testHandler = new StorageReadRequestsHandler(
+          threadPoolExecutor,
+          threadPoolExecutor,
+          testRepository,
+          metadataRepo,
+          schemaRepo,
+          mockMetadataRetriever,
+          null,
+          false,
+          isParallel,
+          10,
+          serverConfig,
+          mock(StorageEngineBackedCompressorFactory.class),
+          Optional.empty());
+      testHandler.channelRead(mockCtx, testRequest);
+      waitUntilStorageExecutionHandlerRespond(outputArray);
+
+      // parsing of response
+      Assert.assertEquals(outputArray.size(), 1);
+      Assert.assertTrue(outputArray.get(0) instanceof MultiGetResponseWrapper);
+      MultiGetResponseWrapper multiGetResponseWrapper = (MultiGetResponseWrapper) outputArray.get(0);
+      RecordDeserializer<MultiGetResponseRecordV1> deserializer =
+          SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
+      Iterable<MultiGetResponseRecordV1> values =
+          deserializer.deserializeObjects(multiGetResponseWrapper.getResponseBody().array());
+      Map<Integer, String> results = new HashMap<>();
+      values.forEach(K -> {
+        String valueString = new String(K.value.array(), StandardCharsets.UTF_8);
+        results.put(K.keyIndex, valueString);
+      });
+      Assert.assertEquals(results.size(), recordCount);
+      for (int i = 0; i < recordCount; i++) {
+        Assert.assertEquals(results.get(i), allValueStrings.get(i));
+      }
+    } finally {
+      TestUtils.shutdownExecutor(threadPoolExecutor);
     }
   }
 
@@ -384,12 +523,13 @@ public class StorageReadRequestsHandlerTest {
     // Mock the MetadataResponse from ingestion task
     MetadataResponse expectedMetadataResponse = new MetadataResponse();
     VersionProperties versionProperties = new VersionProperties(
-        123,
+        1,
         0,
         1,
         "test_partitioner_class",
         Collections.singletonMap("test_partitioner_param", "test_param"),
         2);
+    expectedMetadataResponse.setVersions(Collections.singletonList(1));
     expectedMetadataResponse.setVersionMetadata(versionProperties);
     expectedMetadataResponse.setKeySchema(keySchema);
     expectedMetadataResponse.setValueSchemas(valueSchemas);

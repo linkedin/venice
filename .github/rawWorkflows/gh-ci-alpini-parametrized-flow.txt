@@ -1,0 +1,70 @@
+  $FlowName:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: $TimeOut
+    outputs:
+      alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # Checkout as many commits as needed for the diff
+          fetch-depth: 2
+      - name: Check if files have changed
+        uses: dorny/paths-filter@v2
+        id: check_alpini_files_changed
+        with:
+          filters: |
+            alpini:
+              - 'internal/alpini/**'
+      - uses: actions/checkout@v3
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+          cache: 'gradle'
+      # - name: Allow Deprecated TLS versions for Alpini tests
+      #   run: |
+      #     echo "java.security file before modifications: "
+      #     cat "$JAVA_HOME/conf/security/java.security"
+
+      #     # This is possibly flaky but
+      #     sed -i 's/TLSv1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1
+      #     sed -i 's/TLSv1.1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1.1
+
+      #     echo "java.security file after modifications: "
+      #     cat "$JAVA_HOME/conf/security/java.security"
+      - shell: bash
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Build with Gradle
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: "$GradleArguments"
+      - name: Package Build Artifacts
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30

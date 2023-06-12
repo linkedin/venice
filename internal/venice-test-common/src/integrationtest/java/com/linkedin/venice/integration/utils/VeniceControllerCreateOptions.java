@@ -4,6 +4,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_DELAYED_TO_REBALANCE_MS;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
@@ -22,13 +24,16 @@ public class VeniceControllerCreateOptions {
   private final boolean d2Enabled;
   private final int replicationFactor;
   private final int partitionSize;
+  private final int numberOfPartitions;
+  private final int maxNumberOfPartitions;
   private final int minActiveReplica;
   private final long rebalanceDelayMs;
   private final String[] clusterNames;
   private final Map<String, String> clusterToD2;
+  private final Map<String, String> clusterToServerD2;
   private final VeniceControllerWrapper[] childControllers;
   private final ZkServerWrapper zkServer;
-  private final KafkaBrokerWrapper kafkaBroker;
+  private final PubSubBrokerWrapper kafkaBroker;
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
   private final String regionName;
@@ -38,10 +43,13 @@ public class VeniceControllerCreateOptions {
     d2Enabled = builder.d2Enabled;
     replicationFactor = builder.replicationFactor;
     partitionSize = builder.partitionSize;
+    numberOfPartitions = builder.numberOfPartitions;
+    maxNumberOfPartitions = builder.maxNumberOfPartitions;
     minActiveReplica = builder.minActiveReplica;
     rebalanceDelayMs = builder.rebalanceDelayMs;
     clusterNames = builder.clusterNames;
     clusterToD2 = builder.clusterToD2;
+    clusterToServerD2 = builder.clusterToServerD2;
     childControllers = builder.childControllers;
     zkServer = builder.zkServer;
     kafkaBroker = builder.kafkaBroker;
@@ -68,6 +76,12 @@ public class VeniceControllerCreateOptions {
         .append("partitionSize:")
         .append(partitionSize)
         .append(", ")
+        .append("numberOfPartitions:")
+        .append(numberOfPartitions)
+        .append(", ")
+        .append("maxNumberOfPartitions:")
+        .append(maxNumberOfPartitions)
+        .append(", ")
         .append("minActiveReplica:")
         .append(minActiveReplica)
         .append(", ")
@@ -88,6 +102,9 @@ public class VeniceControllerCreateOptions {
         .append(", ")
         .append("clusterToD2:")
         .append(clusterToD2)
+        .append(",")
+        .append("clusterToServerD2:")
+        .append(clusterToServerD2)
         .append(", ")
         .append("extraProperties:")
         .append(extraProperties)
@@ -127,6 +144,14 @@ public class VeniceControllerCreateOptions {
     return partitionSize;
   }
 
+  public int getNumberOfPartitions() {
+    return numberOfPartitions;
+  }
+
+  public int getMaxNumberOfPartitions() {
+    return maxNumberOfPartitions;
+  }
+
   public int getMinActiveReplica() {
     return minActiveReplica;
   }
@@ -147,11 +172,15 @@ public class VeniceControllerCreateOptions {
     return clusterToD2;
   }
 
+  public Map<String, String> getClusterToServerD2() {
+    return clusterToServerD2;
+  }
+
   public VeniceControllerWrapper[] getChildControllers() {
     return childControllers;
   }
 
-  public KafkaBrokerWrapper getKafkaBroker() {
+  public PubSubBrokerWrapper getKafkaBroker() {
     return kafkaBroker;
   }
 
@@ -170,28 +199,31 @@ public class VeniceControllerCreateOptions {
   public static class Builder {
     private final String[] clusterNames;
     private final ZkServerWrapper zkServer;
-    private final KafkaBrokerWrapper kafkaBroker;
+    private final PubSubBrokerWrapper kafkaBroker;
     private boolean sslToKafka = false;
     private boolean d2Enabled = false;
     private boolean isMinActiveReplicaSet = false;
     private int replicationFactor = DEFAULT_REPLICATION_FACTOR;
     private int partitionSize = DEFAULT_PARTITION_SIZE_BYTES;
+    private int numberOfPartitions = DEFAULT_NUMBER_OF_PARTITIONS;
+    private int maxNumberOfPartitions = DEFAULT_MAX_NUMBER_OF_PARTITIONS;
     private int minActiveReplica;
     private long rebalanceDelayMs = DEFAULT_DELAYED_TO_REBALANCE_MS;
     private Map<String, String> clusterToD2 = null;
+    private Map<String, String> clusterToServerD2 = null;
     private VeniceControllerWrapper[] childControllers = null;
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
     private String regionName = "";
 
-    public Builder(String[] clusterNames, ZkServerWrapper zkServer, KafkaBrokerWrapper kafkaBroker) {
+    public Builder(String[] clusterNames, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
       this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
       this.zkServer = Objects.requireNonNull(zkServer, "ZkServerWrapper cannot be null when creating controller");
       this.kafkaBroker =
           Objects.requireNonNull(kafkaBroker, "KafkaBrokerWrapper cannot be null when creating controller");
     }
 
-    public Builder(String clusterName, ZkServerWrapper zkServer, KafkaBrokerWrapper kafkaBroker) {
+    public Builder(String clusterName, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
       this(new String[] { clusterName }, zkServer, kafkaBroker);
     }
 
@@ -215,6 +247,16 @@ public class VeniceControllerCreateOptions {
       return this;
     }
 
+    public Builder numberOfPartitions(int numberOfPartitions) {
+      this.numberOfPartitions = numberOfPartitions;
+      return this;
+    }
+
+    public Builder maxNumberOfPartitions(int maxNumberOfPartitions) {
+      this.maxNumberOfPartitions = maxNumberOfPartitions;
+      return this;
+    }
+
     public Builder minActiveReplica(int minActiveReplica) {
       this.minActiveReplica = minActiveReplica;
       this.isMinActiveReplicaSet = true;
@@ -228,6 +270,11 @@ public class VeniceControllerCreateOptions {
 
     public Builder clusterToD2(Map<String, String> clusterToD2) {
       this.clusterToD2 = clusterToD2;
+      return this;
+    }
+
+    public Builder clusterToServerD2(Map<String, String> clusterToServerD2) {
+      this.clusterToServerD2 = clusterToServerD2;
       return this;
     }
 

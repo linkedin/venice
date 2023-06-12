@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
@@ -30,15 +31,18 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.admin.KafkaAdminClient;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import java.util.Arrays;
@@ -50,7 +54,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.config.MapConfig;
@@ -210,8 +213,12 @@ public class IntegrationTestPushUtils {
     return veniceProducer;
   }
 
-  public static KafkaClientFactory getVeniceConsumerFactory(KafkaBrokerWrapper kafka) {
-    return new TestKafkaClientFactory(kafka.getAddress());
+  public static PubSubConsumerAdapterFactory getVeniceConsumerFactory() {
+    return new ApacheKafkaConsumerAdapterFactory();
+  }
+
+  public static PubSubAdminAdapterFactory getVeniceAdminFactory() {
+    return new ApacheKafkaAdminAdapterFactory();
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName, Schema recordSchema, Properties props) {
@@ -363,42 +370,23 @@ public class IntegrationTestPushUtils {
     sendStreamingRecord(producer, storeName, Integer.toString(recordId), new String(chars));
   }
 
-  private static class TestKafkaClientFactory extends KafkaClientFactory {
-    private final String kafkaBootstrapServers;
-
-    public TestKafkaClientFactory(String kafkaBootstrapServers) {
-      this.kafkaBootstrapServers = kafkaBootstrapServers;
-    }
-
-    @Override
-    public Properties setupSSL(Properties properties) {
-      properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
-      return properties;
-    }
-
-    @Override
-    protected String getKafkaAdminClass() {
-      return KafkaAdminClient.class.getName();
-    }
-
-    @Override
-    protected String getWriteOnlyAdminClass() {
-      return getKafkaAdminClass();
-    }
-
-    @Override
-    protected String getReadOnlyAdminClass() {
-      return getKafkaAdminClass();
-    }
-
-    @Override
-    public String getKafkaBootstrapServers() {
-      return kafkaBootstrapServers;
-    }
-
-    @Override
-    protected KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
-      return new TestKafkaClientFactory(kafkaBootstrapServers);
-    }
+  public static TopicManagerRepository getTopicManagerRepo(
+      long kafkaOperationTimeoutMs,
+      long topicDeletionStatusPollIntervalMs,
+      long topicMinLogCompactionLagMs,
+      String pubSubBootstrapServers,
+      PubSubTopicRepository pubSubTopicRepository) {
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
+    return TopicManagerRepository.builder()
+        .setPubSubProperties(k -> new VeniceProperties(properties))
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setLocalKafkaBootstrapServers(pubSubBootstrapServers)
+        .setPubSubConsumerAdapterFactory(getVeniceConsumerFactory())
+        .setPubSubAdminAdapterFactory(getVeniceAdminFactory())
+        .setKafkaOperationTimeoutMs(kafkaOperationTimeoutMs)
+        .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollIntervalMs)
+        .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
+        .build();
   }
 }

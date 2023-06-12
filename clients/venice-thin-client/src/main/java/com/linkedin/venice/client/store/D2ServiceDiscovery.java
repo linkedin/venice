@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
-import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -42,13 +42,14 @@ public class D2ServiceDiscovery {
 
   public static final String TYPE_D2_SERVICE_DISCOVERY = "discover_cluster";
 
-  public D2ServiceDiscoveryResponseV2 find(D2TransportClient client, String storeName) {
+  public D2ServiceDiscoveryResponse find(D2TransportClient client, String storeName) {
     return find(client, storeName, true);
   }
 
-  public D2ServiceDiscoveryResponseV2 find(D2TransportClient client, String storeName, boolean retryOnFailure) {
+  public D2ServiceDiscoveryResponse find(D2TransportClient client, String storeName, boolean retryOnFailure) {
     int maxAttempts = retryOnFailure ? 10 : 1;
     String requestPath = TYPE_D2_SERVICE_DISCOVERY + "/" + storeName;
+    // TODO: remove this once sufficient time has passed. Left in to make clients work with legacy controllers
     Map<String, String> requestHeaders = Collections.singletonMap(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED, "true");
     boolean storeNotFound = false;
     for (int attempt = 0; attempt < maxAttempts; ++attempt) {
@@ -68,8 +69,8 @@ public class D2ServiceDiscovery {
           storeNotFound = true;
           break;
         }
-        D2ServiceDiscoveryResponseV2 result =
-            OBJECT_MAPPER.readValue(response.getBody(), D2ServiceDiscoveryResponseV2.class);
+        D2ServiceDiscoveryResponse result =
+            OBJECT_MAPPER.readValue(response.getBody(), D2ServiceDiscoveryResponse.class);
         if (result.isError()) {
           throw new VeniceException(result.getError());
         }

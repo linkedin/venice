@@ -267,36 +267,28 @@ public class StorageNodeReadTest {
       }
     }
 
-    /**
+    /*
      * Test with {@link AvroGenericStoreClient}.
      */
-    for (boolean reuseObjectsForSerialization: new boolean[] { false, true }) {
-      String assertionDetails = "{reuseObjectsForSerialization = " + reuseObjectsForSerialization + "}";
-      try (AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName)
-              .setVeniceURL(routerAddr)
-              .setReuseObjectsForSerialization(reuseObjectsForSerialization))) {
-        Set<String> keySet = new HashSet<>();
-        final int EXISTING_KEY_COUNT_IN_BATCH_GET_REQUEST = 10;
+    try (AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory
+        .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
+      Set<String> keySet = new HashSet<>();
+      final int EXISTING_KEY_COUNT_IN_BATCH_GET_REQUEST = 10;
+      for (int i = 0; i < EXISTING_KEY_COUNT_IN_BATCH_GET_REQUEST; ++i) {
+        keySet.add(keyPrefix + i);
+      }
+      keySet.add("unknown_key");
+      try {
+        Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
+        Assert.assertEquals(result.size(), EXISTING_KEY_COUNT_IN_BATCH_GET_REQUEST, "Unexpected result size ");
         for (int i = 0; i < EXISTING_KEY_COUNT_IN_BATCH_GET_REQUEST; ++i) {
-          keySet.add(keyPrefix + i);
-        }
-        keySet.add("unknown_key");
-        try {
-          Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
           Assert.assertEquals(
-              result.size(),
-              EXISTING_KEY_COUNT_IN_BATCH_GET_REQUEST,
-              "Unexpected result size " + assertionDetails);
-          for (int i = 0; i < EXISTING_KEY_COUNT_IN_BATCH_GET_REQUEST; ++i) {
-            Assert.assertEquals(
-                result.get(keyPrefix + i).toString(),
-                valuePrefix + i,
-                "Key " + i + " does not have expected value " + assertionDetails);
-          }
-        } catch (Exception e) {
-          Assert.fail("Batch get failed " + assertionDetails, e);
+              result.get(keyPrefix + i).toString(),
+              valuePrefix + i,
+              "Key " + i + " does not have expected value ");
         }
+      } catch (Exception e) {
+        Assert.fail("Batch get failed ", e);
       }
     }
   }

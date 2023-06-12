@@ -8,14 +8,15 @@ import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusListener;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
+import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.lang.StringUtils;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -23,6 +24,7 @@ import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.helix.zookeeper.zkclient.IZkDataListener;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.zookeeper.data.Stat;
 
 
 /**
@@ -88,6 +90,24 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
   }
 
+  /**
+   * For testing purpose only.
+   */
+  public VeniceOfflinePushMonitorAccessor(
+      String clusterName,
+      ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor,
+      ZkBaseDataAccessor<PartitionStatus> partitionStatusAccessor) {
+    this.clusterName = clusterName;
+    this.offlinePushStatusAccessor = offlinePushStatusAccessor;
+    this.partitionStatusAccessor = partitionStatusAccessor;
+    this.offlinePushStatusParentPath = getOfflinePushStatuesParentPath();
+    this.zkClient = null;
+    this.listenerManager = new ListenerManager<>();
+    this.partitionStatusZkListener = new PartitionStatusZkListener();
+    this.refreshAttemptsForZkReconnect = DEFAULT_ZK_REFRESH_ATTEMPTS;
+    this.refreshIntervalForZkReconnectInMs = DEFAULT_ZK_REFRESH_INTERVAL;
+  }
+
   private void registerSerializers(HelixAdapterSerializer adapter) {
     String offlinePushStatusPattern = offlinePushStatusParentPath + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
     String partitionStatusPattern = offlinePushStatusPattern + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
@@ -150,6 +170,28 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   }
 
   @Override
+  public Optional<Long> getOfflinePushStatusCreationTime(String kafkaTopic) {
+    try {
+      Stat stat = offlinePushStatusAccessor.getStat(getOfflinePushStatusPath(kafkaTopic), AccessOption.PERSISTENT);
+      if (stat == null) {
+        LOGGER.warn(
+            "Failed to get offline push status creation time for topic: {} in cluster: {}.",
+            kafkaTopic,
+            clusterName);
+        return Optional.empty();
+      }
+      return Optional.of(stat.getCtime());
+    } catch (Exception e) {
+      LOGGER.warn(
+          "Failed to get offline push status creation time for topic: {} in cluster: {}.",
+          kafkaTopic,
+          clusterName,
+          e);
+      return Optional.empty();
+    }
+  }
+
+  @Override
   public void updateOfflinePushStatus(OfflinePushStatus pushStatus) {
     HelixUtils.update(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus);
     LOGGER.info(
@@ -205,7 +247,13 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       String instanceId,
       ExecutionStatus status,
       String incrementalPushVersion) {
-    compareAndUpdateReplicaStatus(topic, partitionId, instanceId, status, Integer.MIN_VALUE, incrementalPushVersion);
+    compareAndUpdateReplicaStatus(
+        topic,
+        partitionId,
+        instanceId,
+        status,
+        ReplicaStatus.NO_PROGRESS,
+        incrementalPushVersion);
   }
 
   /**
@@ -249,14 +297,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         currentData = new PartitionStatus(partitionId);
       }
 
-      currentData.updateReplicaStatus(instanceId, status, incrementalPushVersion);
-      if (progress != Integer.MIN_VALUE) {
-        currentData.updateProgress(instanceId, progress);
-      }
-      if (!StringUtils.isEmpty(incrementalPushVersion)) {
-        currentData.updateIncrementalPushVersion(instanceId, incrementalPushVersion);
-      }
-
+      currentData.updateReplicaStatus(instanceId, status, incrementalPushVersion, progress);
       return currentData;
     });
     LOGGER.info(

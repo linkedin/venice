@@ -199,7 +199,8 @@ public class InstanceStatusDecider {
          * If the instance does not hold any replica of this partition, skip it. As in the instance' view, we only care
          * about the partitions that has been assigned to this instance.
          */
-        if (partition.getInstanceStatusById(instanceId) == null) {
+        if (partition.getHelixStateByInstanceId(instanceId) == null
+            && partition.getExecutionStatusByInstanceId(instanceId) == null) {
           continue;
         }
       }

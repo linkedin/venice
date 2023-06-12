@@ -12,8 +12,10 @@ import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionC
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedCheckerStats;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -50,7 +52,10 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
       Optional<ClientConfig> routerClientConfig,
-      Optional<ICProvider> icProvider) {
+      Optional<ICProvider> icProvider,
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
+      PubSubTopicRepository pubSubTopicRepository,
+      PubSubClientsFactory pubSubClientsFactory) {
     this.multiClusterConfigs = multiClusterConfigs;
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(
         multiClusterConfigs,
@@ -59,7 +64,9 @@ public class VeniceControllerService extends AbstractVeniceService {
         d2Client,
         sslConfig,
         accessController,
-        icProvider);
+        icProvider,
+        pubSubTopicRepository,
+        pubSubClientsFactory);
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(
@@ -70,7 +77,9 @@ public class VeniceControllerService extends AbstractVeniceService {
           accessController,
           authorizerService,
           createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository),
-          WriteComputeSchemaConverter.getInstance());
+          WriteComputeSchemaConverter.getInstance(),
+          externalSupersetSchemaGenerator,
+          pubSubTopicRepository);
       LOGGER.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
@@ -90,7 +99,6 @@ public class VeniceControllerService extends AbstractVeniceService {
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     /** N.B. The code below is copied from {@link com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine */
     // BiConsumer<Integer, Schema> newSchemaEncountered = (schemaId, schema) -> internalAdmin.addValueSchema(
     // "?", // TODO: Figure out a clean way to retrieve the cluster name param
@@ -109,7 +117,6 @@ public class VeniceControllerService extends AbstractVeniceService {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     for (String cluster: multiClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService = new AdminConsumerService(
-          cluster,
           internalAdmin,
           multiClusterConfigs.getControllerConfig(cluster),
           metricsRepository,
@@ -119,6 +126,7 @@ public class VeniceControllerService extends AbstractVeniceService {
 
       this.admin.setAdminConsumerService(cluster, adminConsumerService);
     }
+
   }
 
   private LingeringStoreVersionChecker createLingeringStoreVersionChecker(

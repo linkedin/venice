@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
 import static org.mockito.Mockito.doReturn;
@@ -13,10 +14,9 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StorePartitionDataReceiver;
 import com.linkedin.davinci.kafka.consumer.TopicExistenceChecker;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -31,6 +31,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -45,7 +46,6 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
@@ -55,11 +55,9 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.mockito.Mockito;
@@ -76,55 +74,60 @@ public class KafkaConsumptionTest {
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  private KafkaBrokerWrapper localKafka;
-  private KafkaBrokerWrapper remoteKafka;
+  private PubSubBrokerWrapper localKafka;
+  private PubSubBrokerWrapper remoteKafka;
   private TopicManager topicManager;
   private TopicManager remoteTopicManager;
   private TestMockTime mockTime;
   private TestMockTime remoteMockTime;
-  private ZkServerWrapper localZkServer;
-  private ZkServerWrapper remoteZkServer;
-  private String versionTopicName;
   private PubSubTopic versionTopic;
-  private KafkaClientFactory localKafkaClientFactory;
-  private KafkaClientFactory remoteKafkaClientFactory;
 
-  private String getTopic() {
+  private PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
-    String topicName = Utils.getUniqueString(callingFunction) + "_v1";
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString(callingFunction));
     int partitions = 1;
     int replicas = 1;
-    topicManager.createTopic(topicName, partitions, replicas, false);
+    topicManager.createTopic(versionTopic, partitions, replicas, false);
     TestUtils.waitForNonDeterministicAssertion(
         WAIT_TIME_IN_SECONDS,
         TimeUnit.SECONDS,
-        () -> Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
-    remoteTopicManager.createTopic(topicName, partitions, replicas, false);
+        () -> Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(versionTopic)));
+    remoteTopicManager.createTopic(versionTopic, partitions, replicas, false);
     TestUtils.waitForNonDeterministicAssertion(
         WAIT_TIME_IN_SECONDS,
         TimeUnit.SECONDS,
-        () -> Assert.assertTrue(remoteTopicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
-    return topicName;
+        () -> Assert.assertTrue(remoteTopicManager.containsTopicAndAllPartitionsAreOnline(versionTopic)));
+    return versionTopic;
   }
 
   @BeforeClass
   public void setUp() {
     mockTime = new TestMockTime();
-    localZkServer = ServiceFactory.getZkServer();
-    localKafka = ServiceFactory.getKafkaBroker(localZkServer, Optional.of(mockTime));
-    localKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(localKafka);
+    localKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
     topicManager =
-        new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, localKafkaClientFactory);
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                MIN_COMPACTION_LAG,
+                localKafka.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     topicManager.setTopicConfigCache(cacheNothingCache);
 
-    remoteZkServer = ServiceFactory.getZkServer();
     remoteMockTime = new TestMockTime();
-    remoteKafka = ServiceFactory.getKafkaBroker(remoteZkServer, Optional.of(remoteMockTime));
-    remoteKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(remoteKafka);
+    remoteKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(remoteMockTime).build());
     remoteTopicManager =
-        new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, remoteKafkaClientFactory);
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                MIN_COMPACTION_LAG,
+                remoteKafka.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
     Cache remoteCacheNothingCache = mock(Cache.class);
     Mockito.when(remoteCacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     remoteTopicManager.setTopicConfigCache(remoteCacheNothingCache);
@@ -134,14 +137,12 @@ public class KafkaConsumptionTest {
   public void cleanUp() {
     topicManager.close();
     localKafka.close();
-    localZkServer.close();
 
     remoteTopicManager.close();
     remoteKafka.close();
-    remoteZkServer.close();
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10 * Time.MS_PER_SECOND)
   public void testLocalAndRemoteConsumption(boolean isTopicWiseSharedConsumerAssignmentStrategy)
       throws ExecutionException, InterruptedException {
     // Prepare Aggregate Kafka Consumer Service.
@@ -179,13 +180,14 @@ public class KafkaConsumptionTest {
     doReturn(clusterUrlToIdMap).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
 
     TopicExistenceChecker topicExistenceChecker = mock(TopicExistenceChecker.class);
-    KafkaClientFactory kafkaClientFactory = new KafkaConsumerFactoryImpl(new VeniceProperties());
+    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = IntegrationTestPushUtils.getVeniceConsumerFactory();
     KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
-        kafkaClientFactory,
+        pubSubConsumerAdapterFactory,
+        k -> VeniceProperties.empty(),
         veniceServerConfig,
         mockBandwidthThrottler,
         mockRecordsThrottler,
@@ -194,8 +196,7 @@ public class KafkaConsumptionTest {
         topicExistenceChecker,
         pubSubDeserializer);
 
-    versionTopicName = getTopic();
-    versionTopic = pubSubTopicRepository.getTopic(versionTopicName);
+    versionTopic = getTopic();
     int partition = 0;
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
@@ -203,7 +204,7 @@ public class KafkaConsumptionTest {
 
     // Local consumer subscription.
     Properties consumerProperties = new Properties();
-    consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, localKafkaUrl);
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
@@ -215,7 +216,7 @@ public class KafkaConsumptionTest {
 
     // Remote consumer subscription.
     consumerProperties = new Properties();
-    consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, remoteKafkaUrl);
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaUrl);
     consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
@@ -230,11 +231,11 @@ public class KafkaConsumptionTest {
     int controlRecordsNum = 3;
     for (int i = 0; i < dataRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopicName, true, timestamp, localKafkaUrl);
+      produceToKafka(versionTopic.getName(), true, timestamp, localKafkaUrl);
     }
     for (int i = 0; i < controlRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopicName, false, timestamp, localKafkaUrl);
+      produceToKafka(versionTopic.getName(), false, timestamp, localKafkaUrl);
     }
     final int localExpectedRecordsNum = dataRecordsNum + controlRecordsNum;
     waitForNonDeterministicCompletion(
@@ -247,11 +248,11 @@ public class KafkaConsumptionTest {
     controlRecordsNum = 4;
     for (int i = 0; i < dataRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopicName, true, timestamp, remoteKafkaUrl);
+      produceToKafka(versionTopic.getName(), true, timestamp, remoteKafkaUrl);
     }
     for (int i = 0; i < controlRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopicName, false, timestamp, remoteKafkaUrl);
+      produceToKafka(versionTopic.getName(), false, timestamp, remoteKafkaUrl);
     }
     final int remoteExpectedRecordsNum = dataRecordsNum + controlRecordsNum;
     waitForNonDeterministicCompletion(

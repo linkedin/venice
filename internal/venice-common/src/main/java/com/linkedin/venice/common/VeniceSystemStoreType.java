@@ -211,7 +211,7 @@ public enum VeniceSystemStoreType {
       return null;
     }
     for (VeniceSystemStoreType systemStoreType: VALUES) {
-      if (storeName.startsWith(systemStoreType.getPrefix())) {
+      if (storeName.startsWith(systemStoreType.getPrefix()) && !systemStoreType.getPrefix().equals(storeName)) {
         return systemStoreType;
       }
     }
@@ -236,5 +236,17 @@ public enum VeniceSystemStoreType {
       enabledSystemStoreTypes.add(VeniceSystemStoreType.META_STORE);
     }
     return enabledSystemStoreTypes;
+  }
+
+  /**
+   * Extract the corresponding user store name from the given store name if it happens to be a system store.
+   */
+  public static String extractUserStoreName(String storeName) {
+    String userStoreName = storeName;
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    if (systemStoreType != null) {
+      userStoreName = systemStoreType.extractRegularStoreName(storeName);
+    }
+    return userStoreName;
   }
 }

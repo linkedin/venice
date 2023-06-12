@@ -93,6 +93,13 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
     return this.delegate.getPartitionIds();
   }
 
+  public boolean checkDatabaseIntegrity(
+      int partitionId,
+      Map<String, String> checkpointedInfo,
+      StoragePartitionConfig storagePartitionConfig) {
+    return this.delegate.checkDatabaseIntegrity(partitionId, checkpointedInfo, storagePartitionConfig);
+  }
+
   @Override
   public void beginBatchWrite(
       StoragePartitionConfig storagePartitionConfig,
@@ -185,5 +192,10 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   @Override
   public long getStoreSizeInBytes() {
     return this.delegate.getStoreSizeInBytes();
+  }
+
+  @Override
+  public void reopenStoragePartition(int partitionId) {
+    this.delegate.reopenStoragePartition(partitionId);
   }
 }

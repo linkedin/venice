@@ -9,6 +9,7 @@ import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
@@ -17,6 +18,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
@@ -36,7 +38,7 @@ import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
@@ -48,13 +50,16 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
+import com.linkedin.venice.controller.VeniceControllerContext;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.d2.D2Server;
-import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -89,6 +94,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   public static final String PARENT_D2_CLUSTER_NAME = "ParentControllerD2Cluster";
   public static final String PARENT_D2_SERVICE_NAME = "ParentController";
 
+  public static final String SUPERSET_SCHEMA_GENERATOR = "SupersetSchemaGenerator";
+
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
   public static final String DEFAULT_PARENT_DATA_CENTER_REGION_NAME = "dc-parent-0";
 
@@ -102,6 +109,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final MetricsRepository metricsRepository;
   private final String regionName;
 
+  private final PubSubClientsFactory pubSubClientsFactory;
+
   private VeniceControllerWrapper(
       String regionName,
       String serviceName,
@@ -113,7 +122,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       boolean isParent,
       List<ServiceDiscoveryAnnouncer> d2ServerList,
       String zkAddress,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      PubSubClientsFactory pubSubClientsFactory) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.configs = configs;
@@ -124,12 +134,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.d2ServerList = d2ServerList;
     this.metricsRepository = metricsRepository;
     this.regionName = regionName;
+    this.pubSubClientsFactory = pubSubClientsFactory;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(VeniceControllerCreateOptions options) {
     return (serviceName, dataDirectory) -> {
-      int adminPort = Utils.getFreePort();
-      int adminSecurePort = Utils.getFreePort();
+      int adminPort = TestUtils.getFreePort();
+      int adminSecurePort = TestUtils.getFreePort();
       List<VeniceProperties> propertiesList = new ArrayList<>();
 
       VeniceProperties extraProps = new VeniceProperties(options.getExtraProperties());
@@ -143,6 +154,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         clusterToD2 = options.getClusterToD2();
       }
 
+      Map<String, String> clusterToServerD2;
+      if (options.getClusterToServerD2() == null || options.getClusterToServerD2().isEmpty()) {
+        clusterToServerD2 = Arrays.stream(options.getClusterNames())
+            .collect(Collectors.toMap(c -> c, c -> Utils.getUniqueString("server_d2_service")));
+      } else {
+        clusterToServerD2 = options.getClusterToServerD2();
+      }
+
       for (String clusterName: options.getClusterNames()) {
         VeniceProperties clusterProps = IntegrationTestUtils
             .getClusterProps(clusterName, options.getZkAddress(), options.getKafkaBroker(), options.isSslToKafka());
@@ -154,32 +173,28 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(ADMIN_TOPIC_REPLICATION_FACTOR, 1)
             .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
             .put(DEFAULT_REPLICA_FACTOR, options.getReplicationFactor())
-            .put(DEFAULT_NUMBER_OF_PARTITION, 1)
             .put(ADMIN_PORT, adminPort)
             .put(ADMIN_SECURE_PORT, adminSecurePort)
-            /**
-             * Running with just one partition may not fully exercise the distributed nature of the system,
-             * but we do want to minimize the number as each partition results in files, connections, threads, etc.
-             * in the whole system. 3 seems like a reasonable tradeoff between these concerns.
-             */
-            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3)
             .put(DEFAULT_PARTITION_SIZE, options.getPartitionSize())
+            .put(DEFAULT_NUMBER_OF_PARTITION, options.getNumberOfPartitions())
+            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, options.getMaxNumberOfPartitions())
             .put(CONTROLLER_PARENT_MODE, options.isParent())
             .put(DELAY_TO_REBALANCE_MS, options.getRebalanceDelayMs())
             .put(MIN_ACTIVE_REPLICA, options.getMinActiveReplica())
             .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100)
             .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO)
             .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(clusterToD2))
-            .put(SSL_TO_KAFKA, options.isSslToKafka())
+            .put(CLUSTER_TO_SERVER_D2, TestUtils.getClusterToD2String(clusterToServerD2))
+            .put(SSL_TO_KAFKA_LEGACY, options.isSslToKafka())
             .put(SSL_KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getSSLAddress())
             .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
             .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
             .put(KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getAddress())
-            .put(OFFLINE_JOB_START_TIMEOUT_MS, 60_000)
+            .put(OFFLINE_JOB_START_TIMEOUT_MS, 120_000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
             .put(TOPIC_CLEANUP_DELAY_FACTOR, 2)
-            .put(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
+            .put(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName())
             .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             // Moving from topic monitor to admin protocol for add version and starting ingestion
             .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true)
@@ -189,6 +204,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(PUSH_STATUS_STORE_ENABLED, true)
+            .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 5)
             .put(CONCURRENT_INIT_ROUTINES_ENABLED, true)
             .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .put(extraProps.toProperties());
@@ -298,15 +314,21 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (clientConfig != null && clientConfig instanceof ClientConfig) {
         consumerClientConfig = Optional.of((ClientConfig) clientConfig);
       }
-      VeniceController veniceController = new VeniceController(
-          propertiesList,
-          metricsRepository,
-          d2ServerList,
-          Optional.empty(),
-          Optional.ofNullable(options.getAuthorizerService()),
-          d2Client,
-          consumerClientConfig,
-          Optional.empty());
+      Optional<SupersetSchemaGenerator> supersetSchemaGenerator = Optional.empty();
+      Object passedSupersetSchemaGenerator = options.getExtraProperties().get(SUPERSET_SCHEMA_GENERATOR);
+      if (passedSupersetSchemaGenerator != null && passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
+        supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
+      }
+      VeniceControllerContext ctx = new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
+          .setMetricsRepository(metricsRepository)
+          .setServiceDiscoveryAnnouncers(d2ServerList)
+          .setAuthorizerService(options.getAuthorizerService())
+          .setD2Client(d2Client)
+          .setRouterClientConfig(consumerClientConfig.orElse(null))
+          .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
+          .setPubSubClientsFactory(options.getKafkaBroker().getPubSubClientsFactory())
+          .build();
+      VeniceController veniceController = new VeniceController(ctx);
       return new VeniceControllerWrapper(
           options.getRegionName(),
           serviceName,
@@ -318,7 +340,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           options.isParent(),
           d2ServerList,
           options.getZkAddress(),
-          metricsRepository);
+          metricsRepository,
+          options.getKafkaBroker().getPubSubClientsFactory());
     };
   }
 
@@ -390,7 +413,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       d2ServerList.add(createD2Server(zkAddress, securePort, true, isParent));
     }
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
-    service = new VeniceController(configs, d2ServerList, Optional.empty(), d2Client);
+    service = new VeniceController(
+        new VeniceControllerContext.Builder().setPropertiesList(configs)
+            .setServiceDiscoveryAnnouncers(d2ServerList)
+            .setD2Client(d2Client)
+            .setPubSubClientsFactory(pubSubClientsFactory)
+            .build());
   }
 
   /***

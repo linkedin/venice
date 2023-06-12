@@ -78,13 +78,13 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
 
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).getVersions().size(), 1);
-    // Check store level active active is enabled or not
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).isActiveActiveReplicationEnabled(), false);
+    // Check store level Active/Active is enabled or not
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeNameHybrid).isActiveActiveReplicationEnabled());
     veniceAdmin.updateStore(
         clusterName,
         storeNameHybrid,
         new UpdateStoreQueryParams().setHybridRewindSeconds(1000L).setHybridOffsetLagThreshold(1000L));
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).isActiveActiveReplicationEnabled(), true);
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeNameHybrid).isActiveActiveReplicationEnabled());
 
     // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
@@ -123,14 +123,15 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).getVersions().size(), 1);
 
-    // Check store level active active is enabled or not
+    // Check store level Active/Active is enabled or not
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameIncremental, false);
-    Assert.assertEquals(
-        veniceAdmin.getStore(clusterName, storeNameIncremental).isActiveActiveReplicationEnabled(),
-        false);
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeNameIncremental).isActiveActiveReplicationEnabled());
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameIncremental, true);
-    Assert
-        .assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).isActiveActiveReplicationEnabled(), true);
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeNameIncremental).isActiveActiveReplicationEnabled());
+    veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameIncremental, false);
+    // After inc push is disabled, even default A/A config for pure hybrid store is false, original store A/A config is
+    // enabled.
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeNameIncremental).isActiveActiveReplicationEnabled());
 
     // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
@@ -169,25 +170,27 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).getVersions().size(), 1);
 
-    // Store level active active should be enabled since this store is a batch-only store by default
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled(), true);
+    // Store level Active/Active replication should be enabled since this store is a batch-only store by default
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled());
 
-    // After updating the store to have incremental push enabled, its A/A is disabled
+    // After updating the store to have incremental push enabled, it's A/A is still enabled
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameBatchOnly, true);
-    Assert
-        .assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled(), false);
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled());
 
-    // After updating the store back to a batch-only store, its A/A becomes enabled again
+    // Let's disable the A/A config for the store.
+    veniceAdmin.setActiveActiveReplicationEnabled(clusterName, storeNameBatchOnly, false);
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled());
+
+    // After updating the store back to a batch-only store, it's A/A becomes enabled again
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameBatchOnly, false);
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled(), true);
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled());
 
-    // After updating the store to be a hybrid store, its A/A is disabled is again
+    // After updating the store to be a hybrid store, it's A/A should still be enabled.
     veniceAdmin.updateStore(
         clusterName,
         storeNameBatchOnly,
         new UpdateStoreQueryParams().setHybridRewindSeconds(1000L).setHybridOffsetLagThreshold(1000L));
-    Assert
-        .assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled(), false);
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled());
 
     // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);
@@ -208,7 +211,9 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
         TestUtils.getMultiClusterConfigFromOneCluster(
             new VeniceControllerConfig(new VeniceProperties(controllerProperties))),
         new MetricsRepository(),
-        D2TestUtils.getAndStartD2Client(zkAddress));
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository,
+        pubSubBrokerWrapper.getPubSubClientsFactory());
 
     veniceAdmin.initStorageCluster(clusterName);
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
@@ -241,15 +246,15 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
       boolean enableActiveActiveForBatchOnly) throws IOException {
     Properties props = super.getControllerProperties(clusterName);
     props.setProperty(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, "true");
-    // enable active active replication for hybrid stores stores through cluster-level config
+    // Enable Active/Active replication for hybrid stores through cluster-level config
     props.setProperty(
         ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE,
         Boolean.toString(enableActiveActiveForHybrid));
-    // enable active active replication for incremental stores through cluster-level config
+    // Enable Active/Active replication for incremental stores through cluster-level config
     props.setProperty(
         ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE,
         Boolean.toString(enableActiveActiveForIncrementalPush));
-    // enable active active replication for batch-only stores through cluster-level config
+    // Enable Active/Active replication for batch-only stores through cluster-level config
     props.setProperty(
         ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE,
         Boolean.toString(enableActiveActiveForBatchOnly));

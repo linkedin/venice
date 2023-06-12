@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
@@ -33,6 +34,7 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_HYBRI
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
+import static com.linkedin.venice.ConfigKeys.ENABLE_PARTITION_COUNT_ROUND_UP;
 import static com.linkedin.venice.ConfigKeys.FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HELIX_REBALANCE_ALG;
 import static com.linkedin.venice.ConfigKeys.HELIX_SEND_MESSAGE_TIMEOUT_MS;
@@ -43,24 +45,27 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.PARTITION_COUNT_ROUND_UP_SIZE;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_MONITOR_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
-import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION_ID;
+import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
@@ -80,6 +85,7 @@ import com.linkedin.venice.pushmonitor.PushMonitorType;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -109,8 +115,11 @@ public class VeniceControllerClusterConfig {
   private int numberOfPartitionForHybrid;
   private int maxNumberOfPartition;
   private long partitionSize;
+  private boolean partitionCountRoundUpEnabled;
+  private int partitionCountRoundUpSize;
   private long offLineJobWaitTimeInMilliseconds;
   private Map<String, String> clusterToD2Map;
+  private Map<String, String> clusterToServerD2Map;
   private boolean sslToKafka;
   private int helixSendMessageTimeoutMilliseconds;
   private int adminTopicReplicationFactor;
@@ -236,6 +245,13 @@ public class VeniceControllerClusterConfig {
   private long leakedPushStatusCleanUpServiceSleepIntervalInMs;
 
   /**
+   * The amount of time a leaked resource is allowed to linger before it is cleaned up.
+   *
+   * A leaked resource per store is allowed to linger for some time in order to gather troubleshooting information.
+   */
+  private long leakedResourceAllowedLingerTimeInMs;
+
+  /**
    * Jetty config overrides for Spark server
    */
   private VeniceProperties jettyConfigOverrides;
@@ -248,7 +264,7 @@ public class VeniceControllerClusterConfig {
   private boolean disableParentRequestTopicForStreamPushes;
 
   private int defaultReadQuotaPerRouter;
-  private int replicationMetadataVersionId;
+  private int replicationMetadataVersion;
 
   private boolean errorLeaderReplicaFailOverEnabled;
 
@@ -286,6 +302,8 @@ public class VeniceControllerClusterConfig {
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
     maxNumberOfPartition = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
+    partitionCountRoundUpEnabled = props.getBoolean(ENABLE_PARTITION_COUNT_ROUND_UP, false);
+    partitionCountRoundUpSize = props.getInt(PARTITION_COUNT_ROUND_UP_SIZE, 1);
     // If the timeout is longer than 3min, we need to update controller client's timeout as well, otherwise creating
     // version would fail.
     offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 120000);
@@ -339,7 +357,8 @@ public class VeniceControllerClusterConfig {
     controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
 
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
-    this.sslToKafka = props.getBoolean(SSL_TO_KAFKA, false);
+    clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
+    this.sslToKafka = props.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false);
     // Enable ssl to kafka
     if (sslToKafka) {
       // In that case , ssl kafka broker list is an mandatory field
@@ -380,12 +399,15 @@ public class VeniceControllerClusterConfig {
     }
     this.leakedPushStatusCleanUpServiceSleepIntervalInMs =
         props.getLong(LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
+    // 7 days should be enough for detecting and troubleshooting a leaked push status.
+    this.leakedResourceAllowedLingerTimeInMs =
+        props.getLong(LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS, TimeUnit.DAYS.toMillis(7));
     this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
     this.disableParentRequestTopicForStreamPushes =
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
-    this.replicationMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID, 1);
+    this.replicationMetadataVersion = props.getInt(REPLICATION_METADATA_VERSION, 1);
     this.childDatacenters = props.getString(CHILD_CLUSTER_ALLOWLIST);
     this.errorLeaderReplicaFailOverEnabled = props.getBoolean(FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED, true);
   }
@@ -469,6 +491,14 @@ public class VeniceControllerClusterConfig {
     return maxNumberOfPartition;
   }
 
+  public boolean isPartitionCountRoundUpEnabled() {
+    return partitionCountRoundUpEnabled;
+  }
+
+  public int getPartitionCountRoundUpSize() {
+    return partitionCountRoundUpSize;
+  }
+
   public long getOffLineJobWaitTimeInMilliseconds() {
     return offLineJobWaitTimeInMilliseconds;
   }
@@ -491,6 +521,10 @@ public class VeniceControllerClusterConfig {
 
   public Map<String, String> getClusterToD2Map() {
     return clusterToD2Map;
+  }
+
+  public Map<String, String> getClusterToServerD2Map() {
+    return clusterToServerD2Map;
   }
 
   public boolean isSslToKafka() {
@@ -617,6 +651,10 @@ public class VeniceControllerClusterConfig {
     return leakedPushStatusCleanUpServiceSleepIntervalInMs;
   }
 
+  public long getLeakedResourceAllowedLingerTimeInMs() {
+    return leakedResourceAllowedLingerTimeInMs;
+  }
+
   public String getNativeReplicationSourceFabricAsDefaultForBatchOnly() {
     return nativeReplicationSourceFabricAsDefaultForBatchOnly;
   }
@@ -633,8 +671,8 @@ public class VeniceControllerClusterConfig {
     return jettyConfigOverrides;
   }
 
-  public int getReplicationMetadataVersionId() {
-    return replicationMetadataVersionId;
+  public int getReplicationMetadataVersion() {
+    return replicationMetadataVersion;
   }
 
   public String getChildDatacenters() {

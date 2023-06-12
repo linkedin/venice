@@ -37,7 +37,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   private final String kafkaUrl;
   protected final LeaderProducedRecordContext leaderProducedRecordContext;
   private final long produceTimeNs;
-  private final long beforeProcessingRecordTimestamp;
+  private final long beforeProcessingRecordTimestampNs;
 
   /**
    * The mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
@@ -57,15 +57,15 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
     this.ingestionTask = ingestionTask;
     this.sourceConsumerRecord = sourceConsumerRecord;
     this.partitionConsumptionState = partitionConsumptionState;
     this.subPartition = subPartition;
     this.kafkaUrl = kafkaUrl;
     this.leaderProducedRecordContext = leaderProducedRecordContext;
-    this.produceTimeNs = System.nanoTime();
-    this.beforeProcessingRecordTimestamp = beforeProcessingRecordTimestamp;
+    this.produceTimeNs = ingestionTask.isUserSystemStore() ? 0 : System.nanoTime();
+    this.beforeProcessingRecordTimestampNs = beforeProcessingRecordTimestampNs;
   }
 
   @Override
@@ -112,6 +112,10 @@ class LeaderProducerCallback implements ChunkAwareCallback {
         }
       }
 
+      long currentTimeForMetricsMs = System.currentTimeMillis();
+      // record the timestamp when the writer has finished writing to the version topic
+      leaderProducedRecordContext.setProducedTimestampMs(currentTimeForMetricsMs);
+
       // record just the time it took for this callback to be invoked before we do further processing here such as
       // queuing to drainer.
       // this indicates how much time kafka took to deliver the message to broker.
@@ -120,7 +124,17 @@ class LeaderProducerCallback implements ChunkAwareCallback {
             .recordLeaderProducerCompletionTime(
                 ingestionTask.getStoreName(),
                 ingestionTask.versionNumber,
-                LatencyUtils.getLatencyInMS(produceTimeNs));
+                LatencyUtils.getLatencyInMS(produceTimeNs),
+                currentTimeForMetricsMs);
+        if (ingestionTask.isHybridMode() && sourceConsumerRecord.getTopicPartition().getPubSubTopic().isRealTime()
+            && partitionConsumptionState.hasLagCaughtUp()) {
+          ingestionTask.getVersionIngestionStats()
+              .recordNearlineProducerToLocalBrokerLatency(
+                  ingestionTask.getStoreName(),
+                  ingestionTask.versionNumber,
+                  currentTimeForMetricsMs - sourceConsumerRecord.getValue().producerMetadata.messageTimestamp,
+                  currentTimeForMetricsMs);
+        }
       }
 
       int producedRecordNum = 0;
@@ -143,15 +157,18 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               leaderProducedRecordContext,
               subPartition,
               kafkaUrl,
-              beforeProcessingRecordTimestamp);
+              beforeProcessingRecordTimestampNs,
+              currentTimeForMetricsMs);
 
           producedRecordNum++;
           producedRecordSize = Math.max(0, produceResult.getSerializedSize());
         } else {
-          producedRecordSize += produceChunksToStoreBufferService(chunkedValueManifest, valueChunks, false);
+          producedRecordSize +=
+              produceChunksToStoreBufferService(chunkedValueManifest, valueChunks, false, currentTimeForMetricsMs);
           producedRecordNum += chunkedValueManifest.keysWithChunkIdSuffix.size();
           if (chunkedRmdManifest != null) {
-            producedRecordSize += produceChunksToStoreBufferService(chunkedRmdManifest, rmdChunks, true);
+            producedRecordSize +=
+                produceChunksToStoreBufferService(chunkedRmdManifest, rmdChunks, true, currentTimeForMetricsMs);
             producedRecordNum += chunkedRmdManifest.keysWithChunkIdSuffix.size();
           }
           // produce the manifest inside the top-level key
@@ -178,7 +195,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               producedRecordForManifest,
               subPartition,
               kafkaUrl,
-              beforeProcessingRecordTimestamp);
+              beforeProcessingRecordTimestampNs,
+              currentTimeForMetricsMs);
           producedRecordNum++;
           producedRecordSize += key.length + manifest.remaining();
         }
@@ -249,7 +267,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   private long produceChunksToStoreBufferService(
       ChunkedValueManifest manifest,
       ByteBuffer[] chunks,
-      boolean isRmdChunks) throws InterruptedException {
+      boolean isRmdChunks,
+      long currentTimeForMetricsMs) throws InterruptedException {
     long totalChunkSize = 0;
     for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
       ByteBuffer chunkKey = manifest.keysWithChunkIdSuffix.get(i);
@@ -271,7 +290,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           producedRecordForChunk,
           subPartition,
           kafkaUrl,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestampNs,
+          currentTimeForMetricsMs);
       totalChunkSize += chunkKey.remaining() + chunkValue.remaining();
     }
     return totalChunkSize;

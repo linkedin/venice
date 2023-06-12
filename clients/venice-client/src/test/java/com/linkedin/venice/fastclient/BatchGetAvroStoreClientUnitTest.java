@@ -1,5 +1,11 @@
 package com.linkedin.venice.fastclient;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
+
 import com.beust.jcommander.internal.Lists;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -19,7 +25,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -59,16 +64,15 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -95,16 +99,15 @@ public class BatchGetAvroStoreClientUnitTest {
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
     // Timed out before incrementing any counters
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -163,16 +166,15 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -201,16 +203,15 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -235,16 +236,15 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -275,16 +275,15 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -317,16 +316,15 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -367,16 +365,15 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -411,16 +408,15 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -450,17 +446,17 @@ public class BatchGetAvroStoreClientUnitTest {
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
     int expectedNumberOfKeysToBeRetried = NUM_KEYS / NUM_PARTITIONS; // get for 1 partition is retried
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetried);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetried);
   }
@@ -493,17 +489,17 @@ public class BatchGetAvroStoreClientUnitTest {
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
     int expectedNumberOfKeysToBeRetried = NUM_KEYS / NUM_PARTITIONS; // get for 1 partition is retried
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetried);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetried);
   }
@@ -536,17 +532,17 @@ public class BatchGetAvroStoreClientUnitTest {
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
     int expectedNumberOfKeysToBeRetried = NUM_KEYS / NUM_PARTITIONS; // get for 1 partition is retried
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetried);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -580,17 +576,17 @@ public class BatchGetAvroStoreClientUnitTest {
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
     int expectedNumberOfKeysToBeRetried = (NUM_KEYS / NUM_PARTITIONS) * 2; // get for 2 partitions are retried
     int expectedNumberOfKeysToBeRetriedSuccessfully = NUM_KEYS / NUM_PARTITIONS; // retry for 1 partition wins
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetried);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetriedSuccessfully);
   }
@@ -629,17 +625,17 @@ public class BatchGetAvroStoreClientUnitTest {
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
     int expectedNumberOfKeysToBeRetried = (NUM_KEYS / NUM_PARTITIONS) * 2; // get for 2 partitions are retried
     int expectedNumberOfKeysToBeRetriedSuccessfully = NUM_KEYS / NUM_PARTITIONS; // retry for 1 partition wins
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetried);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetriedSuccessfully);
   }
@@ -676,17 +672,17 @@ public class BatchGetAvroStoreClientUnitTest {
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
     int expectedNumberOfKeysToBeRetried = (NUM_KEYS / NUM_PARTITIONS) * 2; // get for 2 partitions are retried
     int expectedNumberOfKeysToBeRetriedSuccessfully = NUM_KEYS / NUM_PARTITIONS; // retry for 1 partition wins
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetried);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetriedSuccessfully);
   }
@@ -718,17 +714,17 @@ public class BatchGetAvroStoreClientUnitTest {
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
     int expectedNumberOfKeysToBeRetried = NUM_KEYS / NUM_PARTITIONS; // get for 1 partitions are retried
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetried);
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -760,9 +756,9 @@ public class BatchGetAvroStoreClientUnitTest {
 
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
     int expectedNumberOfKeysToBeRetried = NUM_KEYS / NUM_PARTITIONS; // get for 1 partitions are retried
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    Assert.assertTrue(
+    assertTrue(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
 
     /**
@@ -771,15 +767,15 @@ public class BatchGetAvroStoreClientUnitTest {
      *  Check {@link StatsAvroGenericStoreClient#recordRequestMetrics} for more details.
      */
     // The 1 following assert should have been true but counters are not incremented as mentioned above
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
             .value() > 0);
     // The 1 following assert should have been true but counters are not incremented as mentioned above
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
             .value() == expectedNumberOfKeysToBeRetried);
 
-    Assert.assertFalse(
+    assertFalse(
         metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
   }
 
@@ -787,7 +783,7 @@ public class BatchGetAvroStoreClientUnitTest {
     return client.generateKeyValues(0, NUM_KEYS) // generate NUM_KEYS keys
         .partitionKeys(NUM_PARTITIONS) // partition into NUM_PARTITIONS partitions
         .setLongTailRetryEnabledForBatchGet(true) // enable retry
-        .setLongTailRetryThresholdForBatchGetInMicroseconds(RETRY_THRESHOLD_IN_MS * 1000)
+        .setLongTailRetryThresholdForBatchGetInMicroSeconds(RETRY_THRESHOLD_IN_MS * 1000)
 
         .assignRouteToPartitions("https://host0.linkedin.com", 0, 1)
         .assignRouteToPartitions("https://host1.linkedin.com", 1, 2)
@@ -826,10 +822,10 @@ public class BatchGetAvroStoreClientUnitTest {
       public void onRecordReceived(String key, Utf8 value) {
         LOGGER.info("Record received {}:{}", key, value);
         if ("nonExisting".equals(key)) {
-          Assert.assertNull(value);
+          assertNull(value);
         } else {
           if (results.containsKey(key)) {
-            Assert.fail("Duplicate value received for key " + key);
+            fail("Duplicate value received for key " + key);
           }
           results.put(key, value.toString());
         }
@@ -839,8 +835,8 @@ public class BatchGetAvroStoreClientUnitTest {
       public void onCompletion(Optional<Exception> exception) {
         LOGGER.info("OnCompletion called . Exception: {} isComplete: {} ", exception, isComplete.get());
         if (!exception.isPresent()) {
-          Assert.assertEquals(exception, Optional.empty());
-          Assert.assertTrue(isComplete.compareAndSet(false, true));
+          assertEquals(exception, Optional.empty());
+          assertTrue(isComplete.compareAndSet(false, true));
           recordCompletionFuture.complete(0);
         } else {
           recordCompletionFuture.completeExceptionally(exception.get());
@@ -854,13 +850,13 @@ public class BatchGetAvroStoreClientUnitTest {
       if (e != null) {
         LOGGER.error("Exception received", e);
         if (expectedError) {
-          Assert.assertFalse(isComplete.get());
+          assertFalse(isComplete.get());
         } else {
-          Assert.fail("Exception received");
+          fail("Exception received");
         }
       } else {
         LOGGER.info("Test completed successfully");
-        Assert.assertTrue(isComplete.get());
+        assertTrue(isComplete.get());
       }
     });
 

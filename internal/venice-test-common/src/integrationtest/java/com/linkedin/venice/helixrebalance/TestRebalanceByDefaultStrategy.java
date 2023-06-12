@@ -1,5 +1,6 @@
 package com.linkedin.venice.helixrebalance;
 
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
@@ -55,8 +56,10 @@ public class TestRebalanceByDefaultStrategy {
         false,
         false);
     String storeName = Utils.getUniqueString("testRollingUpgrade");
+    long storageQuota = (long) partitionSize * partitionNumber;
     cluster.getNewStore(storeName);
-    VersionCreationResponse response = cluster.getNewVersion(storeName, partitionSize * partitionNumber);
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
 
     topicName = response.getKafkaTopic();
 
@@ -86,7 +89,7 @@ public class TestRebalanceByDefaultStrategy {
     Set<Integer> ports = new HashSet<>();
     cluster.getVeniceServers().forEach(wrapper -> ports.add(wrapper.getPort()));
     for (Integer port: ports) {
-      String instanceId = Utils.getHelixNodeIdentifier(port);
+      String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
       TestUtils.waitForNonDeterministicCompletion(RETRY_REMOVE_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         try {
           if (cluster.getLeaderVeniceController()
@@ -113,8 +116,7 @@ public class TestRebalanceByDefaultStrategy {
       StringBuilder sb = new StringBuilder();
       boolean isAllOnline = true;
       for (Replica replica: replicas) {
-        if (replica.getStatus().equals(HelixState.ERROR_STATE)
-            || replica.getStatus().equals(HelixState.OFFLINE_STATE)) {
+        if (replica.getStatus().equals(HelixState.ERROR) || replica.getStatus().equals(HelixState.OFFLINE)) {
           sb.append(replica.getInstance().getNodeId());
           sb.append(":");
           sb.append(replica.getPartitionId());

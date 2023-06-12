@@ -63,12 +63,12 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   private <T> CompletableFuture<T> retryOnError(
-      CompletableFuture<T> origFuture,
+      CompletableFuture<T> originalFuture,
       Supplier<CompletableFuture<T>> supplier,
       RequestType requestType) {
     CompletableFuture<T> retryFuture = new CompletableFuture<>();
 
-    origFuture.whenComplete((T val, Throwable throwable) -> {
+    originalFuture.whenComplete((T val, Throwable throwable) -> {
       if (throwable != null) {
         int attempt = 0;
         Throwable retryThrowable = throwable;

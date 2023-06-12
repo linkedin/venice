@@ -1,6 +1,8 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 
 
 public class ConfigKeys {
@@ -12,6 +14,8 @@ public class ConfigKeys {
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
 
   public static final String ADMIN_PORT = "admin.port";
+  public static final String ADMIN_HOSTNAME = "admin.hostname";
+
   public static final String ADMIN_SECURE_PORT = "admin.secure.port";
 
   /**
@@ -36,6 +40,23 @@ public class ConfigKeys {
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = ApacheKafkaProducerConfig.KAFKA_PRODUCER_RETRIES_CONFIG;
   public static final String KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS =
       ApacheKafkaProducerConfig.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
+
+  public static final String KAFKA_CLIENT_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_CLIENT_ID_CONFIG;
+  public static final String KAFKA_GROUP_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_GROUP_ID_CONFIG;
+  public static final String KAFKA_AUTO_OFFSET_RESET_CONFIG = ApacheKafkaConsumerConfig.KAFKA_AUTO_OFFSET_RESET_CONFIG;
+  public static final String KAFKA_ENABLE_AUTO_COMMIT_CONFIG =
+      ApacheKafkaConsumerConfig.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
+  public static final String KAFKA_FETCH_MIN_BYTES_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MIN_BYTES_CONFIG;
+  public static final String KAFKA_FETCH_MAX_BYTES_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MAX_BYTES_CONFIG;
+  public static final String KAFKA_MAX_POLL_RECORDS_CONFIG = ApacheKafkaConsumerConfig.KAFKA_MAX_POLL_RECORDS_CONFIG;
+  public static final String KAFKA_FETCH_MAX_WAIT_MS_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
+  public static final String KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG =
+      ApacheKafkaConsumerConfig.KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG;
+  public static final String KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG =
+      ApacheKafkaConsumerConfig.KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG;
+  public static final String KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG =
+      ApacheKafkaConsumerConfig.KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
+
   public static final String KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC =
       "kafka.admin.get.topic.config.max.retry.sec";
 
@@ -198,10 +219,19 @@ public class ConfigKeys {
   public static final String DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID = "default.partition.count.for.hybrid";
   public static final String DEFAULT_MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
   public static final String DEFAULT_PARTITION_SIZE = "default.partition.size";
+  /**
+   * Whether to round up the version-level partition count calculated by storage quota. Default is false.
+   */
+  public static final String ENABLE_PARTITION_COUNT_ROUND_UP = "enable.partition.count.round.up";
+  /**
+   * If {@value ENABLE_PARTITION_COUNT_ROUND_UP} is enabled, this config defines the round up size. Default is 1.
+   */
+  public static final String PARTITION_COUNT_ROUND_UP_SIZE = "partition.count.round.up.size";
   public static final String OFFLINE_JOB_START_TIMEOUT_MS = "offline.job.start.timeout.ms";
   public static final String DELAY_TO_REBALANCE_MS = "delay.to.rebalance.ms";
   public static final String MIN_ACTIVE_REPLICA = "min.active.replica";
   public static final String CLUSTER_TO_D2 = "cluster.to.d2";
+  public static final String CLUSTER_TO_SERVER_D2 = "cluster.to.server.d2";
   public static final String HELIX_SEND_MESSAGE_TIMEOUT_MS = "helix.send.message.timeout.ms";
   public static final String REFRESH_ATTEMPTS_FOR_ZK_RECONNECT = "refresh.attempts.for.zk.reconnect";
   public static final String REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS = "refresh.interval.for.zk.reconnect.ms";
@@ -328,8 +358,23 @@ public class ConfigKeys {
   public static final String CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES =
       "controller.store.graveyard.cleanup.sleep.interval.between.list.fetch.minutes";
 
+  /**
+   * Whether the superset schema generation in Parent Controller should be done via passed callback or not.
+   */
+  public static final String CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
+      "controller.parent.external.superset.schema.generation.enabled";
+
+  /**
+   * Whether to initialize system schemas when controller starts. Default is true.
+   */
+  public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
+      "system.schema.initialization.at.start.time.enabled";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
+
+  public static final String LISTENER_HOSTNAME = "listener.hostname";
+
   public static final String DATA_BASE_PATH = "data.base.path";
   public static final String AUTOCREATE_DATA_PATH = "autocreate.data.path";
   public static final String ENABLE_SERVER_ALLOW_LIST = "enable.server.allowlist";
@@ -355,13 +400,32 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
-  public static final String SSL_TO_KAFKA = ApacheKafkaProducerConfig.SSL_TO_KAFKA;
+
+  /**
+   * This config key is a misspelling. It is now considered deprecated.
+   * @deprecated Use {@link KAFKA_OVER_SSL}
+   */
+  @Deprecated
+  public static final String SSL_TO_KAFKA_LEGACY = ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
+  public static final String KAFKA_OVER_SSL = ApacheKafkaProducerConfig.KAFKA_OVER_SSL;
   public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
   public static final String HYBRID_QUOTA_ENFORCEMENT_ENABLED = "server.hybrid.quota.enforcement.enabled";
   public static final String SERVER_DATABASE_MEMORY_STATS_ENABLED = "server.database.memory.stats.enabled";
 
   public static final String ROUTER_MAX_READ_CAPACITY = "router.max.read.capacity";
   public static final String ROUTER_QUOTA_CHECK_WINDOW = "router.quota.check.window";
+
+  /**
+   * This instructs the router to start running with self signed TLS certificates as opposed to those
+   * provided via other properties. This should only be used for testing and defaults to true when running
+   * RouterServer.main().
+   */
+  public static final String ROUTER_USE_LOCAL_SSL_SETTINGS = "router.local.ssl";
+
+  /**
+   * This instructs the router to open an ssl port. This defaults to true.
+   */
+  public static final String ROUTER_ENABLE_SSL = "router.enable.ssl";
 
   public static final String SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS =
       "server.remote.ingestion.repair.sleep.interval.seconds";
@@ -510,11 +574,6 @@ public class ConfigKeys {
    * Check the available types in {@literal com.linkedin.venice.config.BlockingQueueType}
    */
   public static final String SERVER_BLOCKING_QUEUE_TYPE = "server.blocking.queue.type";
-
-  /**
-   * This config is used to control whether openssl is enabled for Kafka consumers in server.
-   */
-  public static final String SERVER_ENABLE_KAFKA_OPENSSL = "server.enable.kafka.openssl";
 
   /**
    * This config is used to control how much time Server will wait for connection warming from Routers.
@@ -819,6 +878,11 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
 
   /**
+   * Enable per router per storage node throttler by distributing the store quota among the partitions and replicas.
+   */
+  public static final String ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED = "router.per.storage.node.throttler.enabled";
+
+  /**
    * This config is used to bound the pending request.
    * Without this config, the accumulated requests in Http Async Client could grow unlimitedly,
    * which would put Router in a non-recoverable state because of long GC pause introduced
@@ -852,11 +916,7 @@ public class ConfigKeys {
    */
   public static final String ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER = "router.per.storage.node.read.quota.buffer";
 
-  /**
-   * The TTL for each entry in router cache (millisecond)
-   * If 0, TTL is not enabled; other, cache TTL is enabled
-   */
-  public static final String ROUTER_CACHE_TTL_MILLIS = "router.cache.ttl.millis";
+  public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
   /**
    * Whether to enable customized dns cache in router or not.
@@ -1143,7 +1203,7 @@ public class ConfigKeys {
    * A list of fabrics that are source(s) of the active active real time replication. When active-active replication
    * is enabled on the controller {@link #ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER} is true, this list should contain fabrics
    * where the Venice server should consume from when it accepts the TS (TopicSwitch) message.
-   * Example value of this config: "dc-0,dc-1,dc-2".
+   * Example value of this config: "dc-0, dc-1, dc-2".
    */
   public static final String ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST = "active.active.real.time.source.fabric.list";
 
@@ -1365,6 +1425,11 @@ public class ConfigKeys {
   public static final String ROUTER_HTTP2_MAX_HEADER_LIST_SIZE = "router.http2.max.header.list.size";
 
   /**
+   * Whether to enable openssl in the Router http client when talking to server.
+   */
+  public static final String ROUTER_HTTP_CLIENT_OPENSSL_ENABLED = "router.http.client.openssl.enabled";
+
+  /**
    * In Leader/Follower state transition model, in order to avoid split brain problem (multiple leaders) as much as possible,
    * the newly promoted leader should keep checking whether there is any new messages from the old leader in the version
    * topic, and wait for some time (5 minutes by default) after the last message consumed before switching to leader role
@@ -1485,7 +1550,7 @@ public class ConfigKeys {
   public static final String ROUTER_DICTIONARY_PROCESSING_THREADS = "router.dictionary.processing.threads";
 
   /**
-   * The class name to use for the {@link com.linkedin.venice.kafka.admin.KafkaAdminWrapper}.
+   * The class name to use for the {@link PubSubAdminAdapter}.
    */
   public static final String KAFKA_ADMIN_CLASS = "kafka.admin.class";
 
@@ -1588,6 +1653,27 @@ public class ConfigKeys {
    */
   public static final String PUSH_STATUS_STORE_ENABLED = "push.status.store.enabled";
 
+  // Config to check whether the offline push will also monitor Da Vinci push status.
+  public static final String DAVINCI_PUSH_STATUS_SCAN_ENABLED = "davinci.push.status.scan.enabled";
+
+  // Config to determine the Da Vinci push status scanning interval in seconds.
+  public static final String DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS =
+      "davinci.push.status.scan.interval.in.seconds";
+
+  // Config to determine the Da Vinci push status scanning worker thread number.
+  public static final String DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER = "davinci.push.status.scan.thread.number";
+
+  /**
+   * Max retry when not receiving any DaVinci status report.
+   * This is mainly for testing purpose since in local integration test, the push job runs too fast in the backend,
+   * and no DaVinci status report will mark the push job succeed right away.
+   */
+  public static final String DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS =
+      "davinci.push.status.scan.no.report.retry.max.attempts";
+
+  public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE =
+      "davinci.push.status.scan.max.offline.instance";
+
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
 
@@ -1655,6 +1741,11 @@ public class ConfigKeys {
       "leaked.push.status.clean.up.service.interval.ms";
 
   /**
+   * This config defines the allowed linger time for a leaked resource.
+   */
+  public static final String LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS = "leaked.resource.allowed.linger.time.ms";
+
+  /**
    * This config controls whether to use da-vinci based implementation of the system store repository when
    * CLIENT_USE_SYSTEM_STORE_REPOSITORY is set to true. By default the thin-client based implementation will be used.
    */
@@ -1691,7 +1782,7 @@ public class ConfigKeys {
    * This will indicate which ReplicationMetadataSchemaGenerator version to use to generate replication metadata schema.
    * This config should be set on a per-cluster level, meaning that each cluster can have its own RMD version ID.
    */
-  public static final String REPLICATION_METADATA_VERSION_ID = "replication.metadata.version.id";
+  public static final String REPLICATION_METADATA_VERSION = "replication.metadata.version";
 
   /*
    * This config will specify the offset lag threshold to be used for offset lag comparison in making partition online faster.
@@ -1813,4 +1904,43 @@ public class ConfigKeys {
    * but that can have other side effects, so it may not be preferred.
    */
   public static final String FAST_AVRO_FIELD_LIMIT_PER_METHOD = "fast.avro.field.limit.per.method";
+
+  /**
+   * Config to control the number of threads in the thread pool executor used for ssl handshake in servers. The purpose
+   * is to limit the concurrency of ssl handshakes. The feature to use a thread pool executor for handling ssl
+   * handshakes is disabled if the value of this config is <= 0. The default value is 0.
+   */
+  public static final String SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE = "server.ssl.handshake.thread.pool.size";
+
+  /**
+   * Config to control the queue capacity for the thread pool executor used for ssl handshake in servers.
+   */
+  public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
+
+  /**
+   * Number of threads for online Venice producer controlling the number of concurrent write operations.
+   */
+  public static final String CLIENT_PRODUCER_THREAD_NUM = "client.producer.thread.num";
+
+  /**
+   * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
+   */
+  public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =
+      "client.producer.schema.refresh.interval.seconds";
+
+  /*
+   * The memory up-limit for the ingestion path while using RocksDB Plaintable format.
+   * Currently, this option is only meaningful for DaVinci use cases.
+   */
+  public static final String INGESTION_MEMORY_LIMIT = "ingestion.memory.limit";
+
+  /**
+   * Whether the ingestion is using mlock or not.
+   * Currently, this option is only meaningful for DaVinci use cases.
+   *
+   * Actually, this config option is being actively used, and it is a placeholder for the future optimization.
+   * The memory limit logic implemented today is assuming mlock usage, and to make it backward compatible when
+   * we want to do more optimization for non-mlock usage, we will ask the mlock user to enable this flag.
+   */
+  public static final String INGESTION_MLOCK_ENABLED = "ingestion.mlock.enabled";
 }

@@ -13,9 +13,9 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Optional;
 import org.apache.avro.SchemaParseException;
@@ -386,9 +386,9 @@ public class TestHelixReadWriteSchemaRepository {
     createStore(storeName);
     schemaRepo.addValueSchema(storeName, valueSchemaStr1);
     schemaRepo.addDerivedSchema(storeName, derivedSchemaStr, 1);
-    Pair<Integer, Integer> schemaId = schemaRepo.getDerivedSchemaId(storeName, derivedSchemaAvroStr);
+    GeneratedSchemaID schemaId = schemaRepo.getDerivedSchemaId(storeName, derivedSchemaAvroStr);
     Assert.assertEquals(
-        schemaId.getSecond().intValue(),
+        schemaId.getGeneratedSchemaVersion(),
         1,
         "getValueSchemaId did not get the correct schema which is an exact match");
   }

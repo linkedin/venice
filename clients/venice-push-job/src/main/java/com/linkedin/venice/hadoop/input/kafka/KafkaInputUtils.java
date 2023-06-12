@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.SSL_CONFIGURATOR_CLASS_CONFIG;
 
@@ -10,8 +11,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
-import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -24,7 +24,7 @@ import org.apache.kafka.clients.CommonClientConfigs;
 
 
 public class KafkaInputUtils {
-  public static KafkaClientFactory getConsumerFactory(JobConf config) {
+  public static VeniceProperties getConsumerProperties(JobConf config) {
     Properties sslProps = null;
     Properties consumerFactoryProperties = new Properties();
     if (config.get(SSL_CONFIGURATOR_CLASS_CONFIG) != null) {
@@ -48,10 +48,11 @@ public class KafkaInputUtils {
      * Use a large receive buffer size: 4MB since Kafka re-push could consume remotely.
      */
     consumerFactoryProperties.setProperty(CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
-    consumerFactoryProperties
-        .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
+    consumerFactoryProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
 
-    return new KafkaConsumerFactoryImpl(new VeniceProperties(consumerFactoryProperties));
+    ApacheKafkaProducerConfig.copyKafkaSASLProperties(HadoopUtils.getProps(config), consumerFactoryProperties, true);
+
+    return new VeniceProperties(consumerFactoryProperties);
   }
 
   public static VeniceCompressor getCompressor(
@@ -62,7 +63,7 @@ public class KafkaInputUtils {
       VeniceProperties properties) {
     if (strategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
       Properties props = properties.toProperties();
-      props.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+      props.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
       ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
       return compressorFactory
           .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));

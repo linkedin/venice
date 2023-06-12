@@ -599,6 +599,12 @@
                               "name": "isDataRecoveryComplete",
                               "type": "boolean",
                               "doc": "Whether or not data recovery is complete."
+                            },
+                            {
+                              "name": "dataRecoverySourceVersionNumber",
+                              "type": "int",
+                              "doc": "The store version number to be used as the source for data recovery.",
+                              "default": 0
                             }
                           ]
                         }

@@ -1,16 +1,21 @@
 package com.linkedin.venice.kafka;
 
-import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
-
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
-import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.InstrumentedApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Time;
@@ -31,9 +36,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.common.PartitionInfo;
-import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
@@ -44,10 +46,10 @@ import org.apache.logging.log4j.Logger;
 /**
  * Topic Manager is shared by multiple cluster's controllers running in one physical Venice controller instance.
  *
- * This class contains one global {@link Consumer}, which is not thread-safe, so when you add new functions,
+ * This class contains one global {@link PubSubConsumerAdapter}, which is not thread-safe, so when you add new functions,
  * which is using this global consumer, please add 'synchronized' keyword, otherwise this {@link TopicManager}
  * won't be thread-safe, and Kafka consumer will report the following error when multiple threads are trying to
- * use the same consumer: KafkaConsumer is not safe for multi-threaded access.
+ * use the same consumer: PubSubConsumerAdapter is not safe for multi-threaded access.
  */
 public class TopicManager implements Closeable {
   private static final int MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES = 10;
@@ -83,38 +85,41 @@ public class TopicManager implements Closeable {
 
   // Immutable state
   private final Logger logger;
-  private final String kafkaBootstrapServers;
+  private final String pubSubBootstrapServers;
   private final long kafkaOperationTimeoutMs;
   private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
-  private final KafkaClientFactory kafkaClientFactory;
-
-  private Consumer<byte[], byte[]> kafkaRawBytesConsumer;
-  // private final Lazy<KafkaAdminWrapper> kafkaAdmin;
-  private final Lazy<KafkaAdminWrapper> kafkaWriteOnlyAdmin;
-  private final Lazy<KafkaAdminWrapper> kafkaReadOnlyAdmin;
+  private final PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
+  private final Lazy<PubSubAdminAdapter> kafkaWriteOnlyAdmin;
+  private final Lazy<PubSubAdminAdapter> kafkaReadOnlyAdmin;
   private final PartitionOffsetFetcher partitionOffsetFetcher;
 
   // It's expensive to grab the topic config over and over again, and it changes infrequently. So we temporarily cache
   // queried configs.
-  Cache<String, Properties> topicConfigCache = Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
+  Cache<PubSubTopic, PubSubTopicConfiguration> topicConfigCache =
+      Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
 
-  // TODO: Consider adding a builder for this class as the number of constructors is getting high.
-  public TopicManager(
-      long kafkaOperationTimeoutMs,
-      long topicDeletionStatusPollIntervalMs,
-      long topicMinLogCompactionLagMs,
-      KafkaClientFactory kafkaClientFactory,
-      Optional<MetricsRepository> optionalMetricsRepository) {
-    this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
-    this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
-    this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
-    this.kafkaClientFactory = kafkaClientFactory;
-    this.kafkaBootstrapServers = kafkaClientFactory.getKafkaBootstrapServers();
-    this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaBootstrapServers + "]");
+  public TopicManager(TopicManagerRepository.Builder builder, String pubSubBootstrapServers) {
+    this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + pubSubBootstrapServers + "]");
+    this.kafkaOperationTimeoutMs = builder.getKafkaOperationTimeoutMs();
+    this.topicDeletionStatusPollIntervalMs = builder.getTopicDeletionStatusPollIntervalMs();
+    this.topicMinLogCompactionLagMs = builder.getTopicMinLogCompactionLagMs();
+    this.pubSubAdminAdapterFactory = builder.getPubSubAdminAdapterFactory();
+    this.pubSubBootstrapServers = pubSubBootstrapServers;
+
+    TopicManagerRepository.SSLPropertiesSupplier pubSubProperties = builder.getPubSubProperties();
+    PubSubTopicRepository pubSubTopicRepository = builder.getPubSubTopicRepository();
+
+    Optional<MetricsRepository> optionalMetricsRepository = Optional.ofNullable(builder.getMetricsRepository());
 
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaReadOnlyAdmin = kafkaClientFactory.getReadOnlyKafkaAdmin(optionalMetricsRepository);
+      PubSubAdminAdapter kafkaReadOnlyAdmin =
+          pubSubAdminAdapterFactory.create(pubSubProperties.get(pubSubBootstrapServers), pubSubTopicRepository);
+      kafkaReadOnlyAdmin = createInstrumentedPubSubAdmin(
+          optionalMetricsRepository,
+          "ReadOnlyKafkaAdminStats",
+          kafkaReadOnlyAdmin,
+          pubSubBootstrapServers);
       logger.info(
           "{} is using kafka read-only admin client of class: {}",
           this.getClass().getSimpleName(),
@@ -123,7 +128,13 @@ public class TopicManager implements Closeable {
     });
 
     this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaWriteOnlyAdmin = kafkaClientFactory.getWriteOnlyKafkaAdmin(optionalMetricsRepository);
+      PubSubAdminAdapter kafkaWriteOnlyAdmin =
+          pubSubAdminAdapterFactory.create(pubSubProperties.get(pubSubBootstrapServers), pubSubTopicRepository);
+      kafkaWriteOnlyAdmin = createInstrumentedPubSubAdmin(
+          optionalMetricsRepository,
+          "WriteOnlyKafkaAdminStats",
+          kafkaWriteOnlyAdmin,
+          pubSubBootstrapServers);
       logger.info(
           "{} is using kafka write-only admin client of class: {}",
           this.getClass().getSimpleName(),
@@ -131,59 +142,52 @@ public class TopicManager implements Closeable {
       return kafkaWriteOnlyAdmin;
     });
 
-    Optional<MetricsParameters> metricsForPartitionOffsetFetcher = kafkaClientFactory.getMetricsParameters()
-        .map(
-            mp -> new MetricsParameters(
-                this.kafkaClientFactory.getClass(),
-                PartitionOffsetFetcher.class,
-                kafkaClientFactory.getKafkaBootstrapServers(),
-                mp.metricsRepository));
     this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
-        kafkaClientFactory.clone(kafkaClientFactory.getKafkaBootstrapServers(), metricsForPartitionOffsetFetcher),
+        builder.getPubSubConsumerAdapterFactory(),
+        pubSubProperties.get(pubSubBootstrapServers),
+        pubSubBootstrapServers,
         kafkaReadOnlyAdmin,
         kafkaOperationTimeoutMs,
         optionalMetricsRepository);
   }
 
-  // This constructor is used mostly for testing purpose
-  public TopicManager(
-      long kafkaOperationTimeoutMs,
-      long topicDeletionStatusPollIntervalMs,
-      long topicMinLogCompactionLagMs,
-      KafkaClientFactory kafkaClientFactory) {
-    this(
-        kafkaOperationTimeoutMs,
-        topicDeletionStatusPollIntervalMs,
-        topicMinLogCompactionLagMs,
-        kafkaClientFactory,
-        Optional.empty());
-  }
-
-  /**
-   * This constructor is used in server only; server doesn't have access to controller config like
-   * topic.deletion.status.poll.interval.ms, so we use default config defined in this class; besides, TopicManager
-   * in server doesn't use the config mentioned above.
-   */
-  public TopicManager(KafkaClientFactory kafkaClientFactory) {
-    this(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS,
-        DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS,
-        kafkaClientFactory);
+  private PubSubAdminAdapter createInstrumentedPubSubAdmin(
+      Optional<MetricsRepository> optionalMetricsRepository,
+      String statsNamePrefix,
+      PubSubAdminAdapter pubSubAdmin,
+      String pubSubBootstrapServers) {
+    if (optionalMetricsRepository.isPresent()) {
+      // Use pub sub bootstrap server to identify which pub sub admin client stats it is
+      final String kafkaAdminStatsName =
+          String.format("%s_%s_%s", statsNamePrefix, pubSubAdmin.getClassName(), pubSubBootstrapServers);
+      PubSubAdminAdapter instrumentedKafkaAdmin =
+          new InstrumentedApacheKafkaAdminAdapter(pubSubAdmin, optionalMetricsRepository.get(), kafkaAdminStatsName);
+      logger.info(
+          "Created instrumented Kafka admin client for Kafka cluster with bootstrap "
+              + "server {} and has stats name prefix {}",
+          pubSubBootstrapServers,
+          statsNamePrefix);
+      return instrumentedKafkaAdmin;
+    } else {
+      logger.info(
+          "Created non-instrumented Kafka admin client for Kafka cluster with bootstrap server {}",
+          pubSubBootstrapServers);
+      return pubSubAdmin;
+    }
   }
 
   /**
    * Create a topic, and block until the topic is created, with a default timeout of
    * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
    *
-   * @see {@link #createTopic(String, int, int, boolean, boolean, Optional)}
+   * @see {@link #createTopic(PubSubTopic, int, int, boolean, boolean, Optional)}
    */
-  public void createTopic(String topicName, int numPartitions, int replication, boolean eternal) {
+  public void createTopic(PubSubTopic topicName, int numPartitions, int replication, boolean eternal) {
     createTopic(topicName, numPartitions, replication, eternal, false, Optional.empty(), false);
   }
 
   public void createTopic(
-      String topicName,
+      PubSubTopic topicName,
       int numPartitions,
       int replication,
       boolean eternal,
@@ -208,7 +212,7 @@ public class TopicManager implements Closeable {
    *                            if true, a much shorter timeout will be used to make topic creation non-blocking.
    */
   public void createTopic(
-      String topicName,
+      PubSubTopic topicName,
       int numPartitions,
       int replication,
       boolean eternal,
@@ -246,7 +250,7 @@ public class TopicManager implements Closeable {
    *                            if true, a much shorter timeout will be used to make topic creation non-blocking.
    */
   public void createTopic(
-      String topicName,
+      PubSubTopic topicName,
       int numPartitions,
       int replication,
       long retentionTimeMs,
@@ -257,26 +261,18 @@ public class TopicManager implements Closeable {
     long startTime = System.currentTimeMillis();
     long deadlineMs =
         startTime + (useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs);
-
-    logger.info("Creating topic: {} partitions: {} replication: {}", topicName, numPartitions, replication);
-    Properties topicProperties = new Properties();
-    topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionTimeMs));
-    if (logCompaction) {
-      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
-      topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, Long.toString(topicMinLogCompactionLagMs));
-    } else {
-      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE);
-    }
-
-    // If not set, Kafka cluster defaults will apply
-    minIsr.ifPresent(minIsrConfig -> topicProperties.put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, minIsrConfig));
-
-    // Just in case the Kafka cluster isn't configured as expected.
-    topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, "LogAppendTime");
+    PubSubTopicConfiguration pubSubTopicConfiguration =
+        new PubSubTopicConfiguration(Optional.of(retentionTimeMs), logCompaction, minIsr, topicMinLogCompactionLagMs);
+    logger.info(
+        "Creating topic: {} partitions: {} replication: {}, configuration: {}",
+        topicName,
+        numPartitions,
+        replication,
+        pubSubTopicConfiguration);
 
     try {
       RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-          () -> kafkaWriteOnlyAdmin.get().createTopic(topicName, numPartitions, replication, topicProperties),
+          () -> kafkaWriteOnlyAdmin.get().createTopic(topicName, numPartitions, replication, pubSubTopicConfiguration),
           10,
           Duration.ofMillis(200),
           Duration.ofSeconds(1),
@@ -301,7 +297,7 @@ public class TopicManager implements Closeable {
     logger.info("Successfully created {}topic: {}", eternal ? "eternal " : "", topicName);
   }
 
-  protected void waitUntilTopicCreated(String topicName, int partitionCount, long deadlineMs) {
+  protected void waitUntilTopicCreated(PubSubTopic topicName, int partitionCount, long deadlineMs) {
     long startTime = System.currentTimeMillis();
     while (!containsTopicAndAllPartitionsAreOnline(topicName, partitionCount)) {
       if (System.currentTimeMillis() > deadlineMs) {
@@ -318,14 +314,14 @@ public class TopicManager implements Closeable {
    * underlying Kafka admin client doesn't support it. In both cases, deletion will occur asynchronously.
    * @param topicName
    */
-  private Future<Void> ensureTopicIsDeletedAsync(String topicName) {
+  private Future<Void> ensureTopicIsDeletedAsync(PubSubTopic topicName) {
     // TODO: Stop using Kafka APIs which depend on ZK.
     logger.info("Deleting topic: {}", topicName);
     return kafkaWriteOnlyAdmin.get().deleteTopic(topicName);
   }
 
-  public int getReplicationFactor(String topicName) {
-    return partitionsFor(topicName).iterator().next().replicas().length;
+  public int getReplicationFactor(PubSubTopic topicName) {
+    return partitionsFor(topicName).iterator().next().replicasNum();
   }
 
   /**
@@ -335,30 +331,31 @@ public class TopicManager implements Closeable {
    * @param retentionInMS
    * @return true if the retention time config of the input topic gets updated; return false if nothing gets updated
    */
-  public boolean updateTopicRetention(String topicName, long retentionInMS) throws TopicDoesNotExistException {
-    Properties topicProperties = getTopicConfig(topicName);
-    return updateTopicRetention(topicName, retentionInMS, topicProperties);
+  public boolean updateTopicRetention(PubSubTopic topicName, long retentionInMS) throws TopicDoesNotExistException {
+    PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topicName);
+    return updateTopicRetention(topicName, retentionInMS, pubSubTopicConfiguration);
   }
 
   /**
    * Update retention for the given topic given a {@link Properties}.
    * @param topicName
-   * @param retentionInMS
-   * @param topicProperties
+   * @param expectedRetentionInMs
+   * @param pubSubTopicConfiguration
    * @return true if the retention time gets updated; false if no update is needed.
    */
-  public boolean updateTopicRetention(String topicName, long retentionInMS, Properties topicProperties)
-      throws TopicDoesNotExistException {
-    String retentionInMSStr = Long.toString(retentionInMS);
-    if (!topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG) || // config doesn't exist
-        !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
-      topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionInMS));
-      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
+  public boolean updateTopicRetention(
+      PubSubTopic topicName,
+      long expectedRetentionInMs,
+      PubSubTopicConfiguration pubSubTopicConfiguration) throws TopicDoesNotExistException {
+    Optional<Long> retentionTimeMs = pubSubTopicConfiguration.retentionInMs();
+    if (!retentionTimeMs.isPresent() || expectedRetentionInMs != retentionTimeMs.get()) {
+      pubSubTopicConfiguration.setRetentionInMs(Optional.of(expectedRetentionInMs));
+      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, pubSubTopicConfiguration);
       logger.info(
           "Updated topic: {} with retention.ms: {} in cluster [{}]",
           topicName,
-          retentionInMS,
-          this.kafkaBootstrapServers);
+          expectedRetentionInMs,
+          this.pubSubBootstrapServers);
       return true;
     }
     // Retention time has already been updated for this topic before
@@ -369,72 +366,65 @@ public class TopicManager implements Closeable {
    * Update topic compaction policy.
    * @throws TopicDoesNotExistException, if the topic doesn't exist
    */
-  public synchronized void updateTopicCompactionPolicy(String topicName, boolean logCompaction)
+  public synchronized void updateTopicCompactionPolicy(PubSubTopic topic, boolean expectedLogCompacted)
       throws TopicDoesNotExistException {
-    Properties topicProperties = getTopicConfig(topicName);
-    // If the compaction policy doesn't exist, by default it is disabled.
-    String currentCompactionPolicy = topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG)
-        ? (String) topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG)
-        : TopicConfig.CLEANUP_POLICY_DELETE;
-    String expectedCompactionPolicy =
-        logCompaction ? TopicConfig.CLEANUP_POLICY_COMPACT : TopicConfig.CLEANUP_POLICY_DELETE;
-    long currentMinLogCompactionLagMs = topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
-        ? Long.parseLong((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
-        : 0L;
-    long expectedMinLogCompactionLagMs = logCompaction ? topicMinLogCompactionLagMs : 0L;
-    boolean needToUpdateTopicConfig = false;
-    if (!expectedCompactionPolicy.equals(currentCompactionPolicy)) {
-      // Different, then update
-      needToUpdateTopicConfig = true;
-      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, expectedCompactionPolicy);
-    }
-    if (currentMinLogCompactionLagMs != expectedMinLogCompactionLagMs) {
-      needToUpdateTopicConfig = true;
-      topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, Long.toString(expectedMinLogCompactionLagMs));
-    }
-    if (needToUpdateTopicConfig) {
-      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
+    PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topic);
+    boolean currentLogCompacted = pubSubTopicConfiguration.isLogCompacted();
+    if (expectedLogCompacted != currentLogCompacted) {
+      pubSubTopicConfiguration.setLogCompacted(expectedLogCompacted);
+      Long currentMinLogCompactionLagMs = pubSubTopicConfiguration.minLogCompactionLagMs();
+      Long expectedMinLogCompactionLagMs = expectedLogCompacted ? topicMinLogCompactionLagMs : 0;
+      pubSubTopicConfiguration.setMinLogCompactionLagMs(expectedMinLogCompactionLagMs);
+      kafkaWriteOnlyAdmin.get().setTopicConfig(topic, pubSubTopicConfiguration);
       logger.info(
           "Kafka compaction policy for topic: {} has been updated from {} to {}, min compaction lag updated from {} to {}",
-          topicName,
-          currentCompactionPolicy,
-          expectedCompactionPolicy,
+          topic,
+          currentLogCompacted,
+          expectedLogCompacted,
           currentMinLogCompactionLagMs,
-          expectedCompactionPolicy);
+          expectedMinLogCompactionLagMs);
     }
   }
 
-  public boolean isTopicCompactionEnabled(String topicName) {
-    Properties topicProperties = getCachedTopicConfig(topicName);
-    return topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG)
-        && topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG).equals(TopicConfig.CLEANUP_POLICY_COMPACT);
+  public boolean isTopicCompactionEnabled(PubSubTopic topicName) {
+    PubSubTopicConfiguration topicProperties = getCachedTopicConfig(topicName);
+    return topicProperties.isLogCompacted();
   }
 
-  public long getTopicMinLogCompactionLagMs(String topicName) {
-    Properties topicProperties = getCachedTopicConfig(topicName);
-    return topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
-        ? Long.parseLong((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
-        : 0L;
+  public long getTopicMinLogCompactionLagMs(PubSubTopic topicName) {
+    PubSubTopicConfiguration topicProperties = getCachedTopicConfig(topicName);
+    return topicProperties.minLogCompactionLagMs();
   }
 
-  public Map<String, Long> getAllTopicRetentions() {
+  public boolean updateTopicMinInSyncReplica(PubSubTopic topicName, int minISR) throws TopicDoesNotExistException {
+    PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topicName);
+    Optional<Integer> currentMinISR = pubSubTopicConfiguration.minInSyncReplicas();
+    // config doesn't exist config is different
+    if (!currentMinISR.isPresent() || !currentMinISR.get().equals(minISR)) {
+      pubSubTopicConfiguration.setMinInSyncReplicas(Optional.of(minISR));
+      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, pubSubTopicConfiguration);
+      logger.info("Updated topic: {} with min.insync.replicas: {}", topicName, minISR);
+      return true;
+    }
+    // min.insync.replicas has already been updated for this topic before
+    return false;
+  }
+
+  public Map<PubSubTopic, Long> getAllTopicRetentions() {
     return kafkaReadOnlyAdmin.get().getAllTopicRetentions();
   }
 
   /**
    * Return topic retention time in MS.
    */
-  public long getTopicRetention(String topicName) throws TopicDoesNotExistException {
-    Properties topicProperties = getTopicConfig(topicName);
-    if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
-      return Long.parseLong(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG));
-    }
-    return UNKNOWN_TOPIC_RETENTION;
+  public long getTopicRetention(PubSubTopic topicName) throws TopicDoesNotExistException {
+    PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topicName);
+    return getTopicRetention(pubSubTopicConfiguration);
   }
 
-  public long getTopicRetention(Properties topicProperties) throws TopicDoesNotExistException {
-    if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
-      return Long.parseLong(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG));
+  public long getTopicRetention(PubSubTopicConfiguration pubSubTopicConfiguration) {
+    if (pubSubTopicConfiguration.retentionInMs().isPresent()) {
+      return pubSubTopicConfiguration.retentionInMs().get();
     }
     return UNKNOWN_TOPIC_RETENTION;
   }
@@ -446,7 +436,7 @@ public class TopicManager implements Closeable {
    * @return true if the topic does not exist or if it exists but its retention time is below truncated threshold
    *         false if the topic exists and its retention time is above truncated threshold
    */
-  public boolean isTopicTruncated(String topicName, long truncatedTopicMaxRetentionMs) {
+  public boolean isTopicTruncated(PubSubTopic topicName, long truncatedTopicMaxRetentionMs) {
     try {
       return isRetentionBelowTruncatedThreshold(getTopicRetention(topicName), truncatedTopicMaxRetentionMs);
     } catch (TopicDoesNotExistException e) {
@@ -461,33 +451,35 @@ public class TopicManager implements Closeable {
   /**
    * This operation is a little heavy, since it will pull the configs for all the topics.
    */
-  public Properties getTopicConfig(String topicName) throws TopicDoesNotExistException {
-    final Properties properties = kafkaReadOnlyAdmin.get().getTopicConfig(topicName);
-    topicConfigCache.put(topicName, properties);
-    return properties;
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
+    final PubSubTopicConfiguration pubSubTopicConfiguration = kafkaReadOnlyAdmin.get().getTopicConfig(topicName);
+    topicConfigCache.put(topicName, pubSubTopicConfiguration);
+    return pubSubTopicConfiguration;
   }
 
-  public Properties getTopicConfigWithRetry(String topicName) {
-    final Properties properties = kafkaReadOnlyAdmin.get().getTopicConfigWithRetry(topicName);
-    topicConfigCache.put(topicName, properties);
-    return properties;
+  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName) {
+    final PubSubTopicConfiguration pubSubTopicConfiguration =
+        kafkaReadOnlyAdmin.get().getTopicConfigWithRetry(topicName);
+    topicConfigCache.put(topicName, pubSubTopicConfiguration);
+    return pubSubTopicConfiguration;
   }
 
   /**
    * Still heavy, but can be called repeatedly to amortize that cost.
    */
-  public Properties getCachedTopicConfig(String topicName) {
-    // query the cache first, if it it doesn't have it, query it from kafka and store it.
-    Properties properties = topicConfigCache.getIfPresent(topicName);
-    if (properties == null) {
-      properties = getTopicConfigWithRetry(topicName);
+  public PubSubTopicConfiguration getCachedTopicConfig(PubSubTopic topicName) {
+    // query the cache first, if it doesn't have it, query it from kafka and store it.
+    PubSubTopicConfiguration pubSubTopicConfiguration = topicConfigCache.getIfPresent(topicName);
+    if (pubSubTopicConfiguration == null) {
+      pubSubTopicConfiguration = getTopicConfigWithRetry(topicName);
     }
-    return properties;
+    return pubSubTopicConfiguration;
   }
 
-  public Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames) {
-    final Map<String, Properties> topicConfigs = kafkaReadOnlyAdmin.get().getSomeTopicConfigs(topicNames);
-    for (Map.Entry<String, Properties> topicConfig: topicConfigs.entrySet()) {
+  public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
+    final Map<PubSubTopic, PubSubTopicConfiguration> topicConfigs =
+        kafkaReadOnlyAdmin.get().getSomeTopicConfigs(topicNames);
+    for (Map.Entry<PubSubTopic, PubSubTopicConfiguration> topicConfig: topicConfigs.entrySet()) {
       topicConfigCache.put(topicConfig.getKey(), topicConfig.getValue());
     }
     return topicConfigs;
@@ -501,11 +493,11 @@ public class TopicManager implements Closeable {
    * By using this function, the topic deletion is a sync op, which bypasses the hanging issue of
    * non-existing topic operations.
    * Once Kafka addresses the hanging issue of non-existing topic operations, we can safely revert back
-   * to use the async version: {@link #ensureTopicIsDeletedAsync(String)}
+   * to use the async version: {@link #ensureTopicIsDeletedAsync(PubSubTopic)}
    *
    * It is intentional to make this function to be non-synchronized since it could lock
    * {@link TopicManager} for a pretty long time (up to 30 seconds) if topic deletion is slow.
-   * When topic deletion slowness happens, it will cause other operations, such as {@link #getTopicLatestOffsets(String)}
+   * When topic deletion slowness happens, it will cause other operations, such as {@link #getTopicLatestOffsets(PubSubTopic)}
    * to be blocked for a long time, and this could cause push job failure.
    *
    * Even with non-synchronized function, Venice could still guarantee there will be only one topic
@@ -513,7 +505,7 @@ public class TopicManager implements Closeable {
    *
    * @param topicName
    */
-  public void ensureTopicIsDeletedAndBlock(String topicName) throws ExecutionException {
+  public void ensureTopicIsDeletedAndBlock(PubSubTopic topicName) throws ExecutionException {
     if (!containsTopicAndAllPartitionsAreOnline(topicName)) {
       // Topic doesn't exist
       return;
@@ -524,7 +516,7 @@ public class TopicManager implements Closeable {
     // This is trying to guard concurrent topic deletion in Kafka.
     if (!CONCURRENT_TOPIC_DELETION_REQUEST_POLICY &&
     /**
-     * TODO: Add support for this call in the {@link com.linkedin.venice.kafka.admin.KafkaAdminClient}
+     * TODO: Add support for this call in the {@link ApacheKafkaAdminAdapter}
      * This is the last remaining call that depends on {@link kafka.utils.ZkUtils}.
      */
         kafkaReadOnlyAdmin.get().isTopicDeletionUnderway()) {
@@ -581,19 +573,13 @@ public class TopicManager implements Closeable {
           consumerRecreationInterval = MAX_CONSUMER_RECREATION_INTERVAL;
         }
       }
-      // TODO: consider removing this check since in Java admin client, if deleteTopic() returns, it means the topic is
-      // really gone.
-      if (isTopicFullyDeleted(topicName, closeAndRecreateConsumer)) {
-        logger.info("Topic: {} has been deleted after polling {} times", topicName, current);
-        return;
-      }
     }
     throw new VeniceOperationAgainstKafkaTimedOut(
         "Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs + " ms (" + current
             + " attempts).");
   }
 
-  public void ensureTopicIsDeletedAndBlockWithRetry(String topicName) throws ExecutionException {
+  public void ensureTopicIsDeletedAndBlockWithRetry(PubSubTopic topicName) throws ExecutionException {
     // Topic deletion may time out, so go ahead and retry the operation up the max number of attempts, if we
     // simply cannot succeed, bubble the exception up.
     int attempts = 0;
@@ -627,27 +613,30 @@ public class TopicManager implements Closeable {
     }
   }
 
-  public synchronized Set<String> listTopics() {
+  public synchronized Set<PubSubTopic> listTopics() {
     return kafkaReadOnlyAdmin.get().listAllTopics();
   }
 
   /**
    * A quick check to see whether the topic exists.
    */
-  public boolean containsTopic(String topic) {
+  public boolean containsTopic(PubSubTopic topic) {
     return kafkaReadOnlyAdmin.get().containsTopic(topic);
   }
 
   /**
-   * See Java doc of {@link KafkaAdminWrapper#containsTopicWithExpectationAndRetry} which provides exactly the same
+   * See Java doc of {@link PubSubAdminAdapter#containsTopicWithExpectationAndRetry} which provides exactly the same
    * semantics.
    */
-  public boolean containsTopicWithExpectationAndRetry(String topic, int maxAttempts, final boolean expectedResult) {
+  public boolean containsTopicWithExpectationAndRetry(
+      PubSubTopic topic,
+      int maxAttempts,
+      final boolean expectedResult) {
     return kafkaReadOnlyAdmin.get().containsTopicWithExpectationAndRetry(topic, maxAttempts, expectedResult);
   }
 
   public boolean containsTopicWithExpectationAndRetry(
-      String topic,
+      PubSubTopic topic,
       int maxAttempts,
       final boolean expectedResult,
       Duration initialBackoff,
@@ -664,9 +653,9 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * @see {@link #containsTopicAndAllPartitionsAreOnline(String, Integer)}
+   * @see {@link #containsTopicAndAllPartitionsAreOnline(PubSubTopic, Integer)}
    */
-  public boolean containsTopicAndAllPartitionsAreOnline(String topic) {
+  public boolean containsTopicAndAllPartitionsAreOnline(PubSubTopic topic) {
     return containsTopicAndAllPartitionsAreOnline(topic, null);
   }
 
@@ -676,11 +665,13 @@ public class TopicManager implements Closeable {
    * @return true if the topic exists and all its partitions have at least one in-sync replica
    *         false if the topic does not exist at all or if it exists but isn't completely available
    */
-  public synchronized boolean containsTopicAndAllPartitionsAreOnline(String topic, Integer expectedPartitionCount) {
+  public synchronized boolean containsTopicAndAllPartitionsAreOnline(
+      PubSubTopic topic,
+      Integer expectedPartitionCount) {
     if (!containsTopic(topic)) {
       return false;
     }
-    List<PartitionInfo> partitionInfoList = partitionOffsetFetcher.partitionsFor(topic);
+    List<PubSubTopicPartitionInfo> partitionInfoList = partitionOffsetFetcher.partitionsFor(topic);
     if (partitionInfoList == null) {
       logger.warn("getConsumer().partitionsFor() returned null for topic: {}", topic);
       return false;
@@ -699,7 +690,7 @@ public class TopicManager implements Closeable {
     }
 
     boolean allPartitionsHaveAnInSyncReplica =
-        partitionInfoList.stream().allMatch(partitionInfo -> partitionInfo.inSyncReplicas().length > 0);
+        partitionInfoList.stream().allMatch(PubSubTopicPartitionInfo::hasInSyncReplicas);
     if (allPartitionsHaveAnInSyncReplica) {
       logger.trace("The following topic has the at least one in-sync replica for each partition: {}", topic);
     } else {
@@ -712,92 +703,44 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * This is an extensive check to verify that a topic is fully cleaned up.
-   *
-   * @return true if the topic exists neither in ZK nor in the brokers
-   *         false if the topic exists fully or partially
-   */
-  private synchronized boolean isTopicFullyDeleted(String topic, boolean closeAndRecreateConsumer) {
-    if (containsTopic(topic)) {
-      logger.info("containsTopicInKafkaZK() returned true, meaning that the ZK path still exists for topic: {}", topic);
-      return false;
-    }
-
-    List<PartitionInfo> partitionInfoList = getRawBytesConsumer(closeAndRecreateConsumer).partitionsFor(topic);
-    if (partitionInfoList == null) {
-      logger.trace("getConsumer().partitionsFor() returned null for topic: {}", topic);
-      return true;
-    }
-
-    boolean noPartitionStillHasAnyReplica =
-        partitionInfoList.stream().noneMatch(partitionInfo -> partitionInfo.replicas().length > 0);
-    if (noPartitionStillHasAnyReplica) {
-      logger.trace(
-          "getConsumer().partitionsFor() returned no partitionInfo still containing a replica for topic: {}",
-          topic);
-    } else {
-      logger.info(
-          "The following topic still has at least one replica in at least one partition: {}, partitionInfoList: {}",
-          topic,
-          Arrays.toString(partitionInfoList.toArray()));
-    }
-    return noPartitionStillHasAnyReplica;
-  }
-
-  /**
    * Generate a map from partition number to the last offset available for that partition
    * @param topic
-   * @return a Map of partition to latest offset, or an empty map if there's any problem
+   * @return a Map of partition to the latest offset, or an empty map if there's any problem
    */
-  public Int2LongMap getTopicLatestOffsets(String topic) {
+  public Int2LongMap getTopicLatestOffsets(PubSubTopic topic) {
     return partitionOffsetFetcher.getTopicLatestOffsets(topic);
   }
 
-  public long getPartitionLatestOffsetAndRetry(String topic, int partition, int retries) {
-    return partitionOffsetFetcher.getPartitionLatestOffsetAndRetry(topic, partition, retries);
+  public long getPartitionLatestOffsetAndRetry(PubSubTopicPartition pubSubTopicPartition, int retries) {
+    return partitionOffsetFetcher.getPartitionLatestOffsetAndRetry(pubSubTopicPartition, retries);
   }
 
-  public long getProducerTimestampOfLastDataRecord(String topic, int partition, int retries) {
-    return partitionOffsetFetcher.getProducerTimestampOfLastDataRecord(topic, partition, retries);
+  public long getProducerTimestampOfLastDataRecord(PubSubTopicPartition pubSubTopicPartition, int retries) {
+    return partitionOffsetFetcher.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, retries);
+  }
+
+  public long getPartitionEarliestOffsetAndRetry(PubSubTopicPartition pubSubTopicPartition, int retries) {
+    return partitionOffsetFetcher.getPartitionEarliestOffsetAndRetry(pubSubTopicPartition, retries);
   }
 
   /**
    * Get offsets for only one partition with a specific timestamp.
    */
-  public long getPartitionOffsetByTime(String topic, int partition, long timestamp) {
-    return partitionOffsetFetcher.getPartitionOffsetByTime(topic, partition, timestamp);
+  public long getPartitionOffsetByTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    return partitionOffsetFetcher.getPartitionOffsetByTime(pubSubTopicPartition, timestamp);
   }
 
   /**
-   * Get a list of {@link PartitionInfo} objects for the specified topic.
+   * Get a list of {@link PubSubTopicPartitionInfo} objects for the specified topic.
    * @param topic
    * @return
    */
-  public List<PartitionInfo> partitionsFor(String topic) {
+  public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     return partitionOffsetFetcher.partitionsFor(topic);
   }
 
-  /**
-   * @deprecated this is only used by {@link #isTopicFullyDeleted(String, boolean)} in cases where the
-   *             ScalaAdminUtils is used. We should deprecate
-   *             both the Scala admin as well as this function, so please do not proliferate its usage
-   *             in new code paths.
-   * TODO: remove the usage of this raw consumer.
-   */
-  @Deprecated
-  private synchronized Consumer<byte[], byte[]> getRawBytesConsumer(boolean closeAndRecreate) {
-    if (this.kafkaRawBytesConsumer == null) {
-      this.kafkaRawBytesConsumer = kafkaClientFactory.getRawBytesKafkaConsumer();
-    } else if (closeAndRecreate) {
-      this.kafkaRawBytesConsumer.close(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
-      this.kafkaRawBytesConsumer = kafkaClientFactory.getRawBytesKafkaConsumer();
-      logger.info("Closed and recreated consumer.");
-    }
-    return this.kafkaRawBytesConsumer;
-  }
-
   public String getKafkaBootstrapServers() {
-    return this.kafkaBootstrapServers;
+    return this.pubSubBootstrapServers;
   }
 
   @Override
@@ -808,7 +751,7 @@ public class TopicManager implements Closeable {
   }
 
   // For testing only
-  public void setTopicConfigCache(Cache<String, Properties> topicConfigCache) {
+  public void setTopicConfigCache(Cache<PubSubTopic, PubSubTopicConfiguration> topicConfigCache) {
     this.topicConfigCache = topicConfigCache;
   }
 

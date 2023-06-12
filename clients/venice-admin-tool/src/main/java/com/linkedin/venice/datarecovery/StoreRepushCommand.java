@@ -1,10 +1,15 @@
 package com.linkedin.venice.datarecovery;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.security.SSLFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
@@ -17,27 +22,24 @@ import org.apache.logging.log4j.Logger;
  * We expect the command to comply with the following contract:
  *
  * Input:
- *    <COMMAND> --store <store_name> --fabric <source_fabric> --password <credentials> [<EXTRA_COMMAND_ARGS>]
+ *    <COMMAND> [<EXTRA_COMMAND_ARGS>] --store <store_name> --fabric <source_fabric>
  * Output:
  *    success: link_to_running_task
  *    failure: failure_reason
  */
 
-public class StoreRepushCommand {
+public class StoreRepushCommand extends Command {
   private static final Logger LOGGER = LogManager.getLogger(StoreRepushCommand.class);
 
-  // Store name.
-  private String store;
   private Params params;
-  private Result result;
+  private Result result = new Result();
   private List<String> shellCmd;
 
   // For unit test only.
   public StoreRepushCommand() {
   }
 
-  public StoreRepushCommand(String store, Params params) {
-    this.store = store;
+  public StoreRepushCommand(Params params) {
     this.params = params;
     this.shellCmd = generateShellCmd();
   }
@@ -47,21 +49,22 @@ public class StoreRepushCommand {
     this.params = params;
   }
 
-  public String getStore() {
-    return store;
+  @Override
+  public StoreRepushCommand.Result getResult() {
+    return result;
   }
 
-  public Result getResult() {
-    return result;
+  @Override
+  public boolean needWaitForFirstTaskToComplete() {
+    return true;
   }
 
   private List<String> generateRepushCommand() {
     List<String> cmd = new ArrayList<>();
     cmd.add(this.params.command);
-    cmd.add(String.format("--store '%s'", store));
-    cmd.add(String.format("--fabric '%s'", this.params.sourceFabric));
-    cmd.add(String.format("--password '%s'", this.params.password));
     cmd.add(this.params.extraCommandArgs);
+    cmd.add(String.format("--store '%s'", this.params.store));
+    cmd.add(String.format("--fabric '%s'", this.params.sourceFabric));
     return cmd;
   }
 
@@ -81,13 +84,14 @@ public class StoreRepushCommand {
     return shellCmd;
   }
 
-  public void processOutput(String output, int exitCode) {
-    result = new Result();
+  private void processOutput(String output, int exitCode) {
     result.setStdOut(output);
     result.setExitCode(exitCode);
     result.parseStandardOutput();
+    result.setCoreWorkDone(true);
   }
 
+  @Override
   public void execute() {
     ProcessBuilder pb = new ProcessBuilder(getShellCmd());
     // so we can ignore the error stream.
@@ -131,30 +135,53 @@ public class StoreRepushCommand {
 
   @Override
   public String toString() {
-    String cmd = "StoreRepushCommand{\n" + String.join(" ", shellCmd) + "\n}";
-    // Hide user's password.
-    cmd = cmd.replace(params.getPassword(), "******");
-    return cmd;
+    return "StoreRepushCommand{\n" + String.join(" ", shellCmd) + "\n}";
   }
 
-  public static class Params {
+  public static class Params extends Command.Params {
     // command name.
     private String command;
+    // dest fabric
+    private String destFabric;
     // source fabric.
     private String sourceFabric;
     // extra arguments to command.
     private String extraCommandArgs;
-    // User's credentials.
-    private String password;
+    // expected completion timestamp
+    private LocalDateTime timestamp;
     // Debug run.
     private boolean debug = false;
 
-    public void setPassword(String password) {
-      this.password = password;
+    private ControllerClient pCtrlCliWithoutCluster;
+    private String url;
+    private Optional<SSLFactory> sslFactory;
+
+    public String getUrl() {
+      return url;
     }
 
-    public String getPassword() {
-      return this.password;
+    public void setUrl(String url) {
+      this.url = url;
+    }
+
+    public void setSSLFactory(Optional<SSLFactory> sslFactory) {
+      this.sslFactory = sslFactory;
+    }
+
+    public void setPCtrlCliWithoutCluster(ControllerClient cli) {
+      this.pCtrlCliWithoutCluster = cli;
+    }
+
+    public ControllerClient getPCtrlCliWithoutCluster() {
+      return this.pCtrlCliWithoutCluster;
+    }
+
+    public LocalDateTime getTimestamp() {
+      return this.timestamp;
+    }
+
+    public String getDestFabric() {
+      return this.destFabric;
     }
 
     public void setDebug(boolean debug) {
@@ -169,18 +196,35 @@ public class StoreRepushCommand {
       this.extraCommandArgs = args;
     }
 
-    public void setSourceFabric(String fabric) {
-      this.sourceFabric = fabric;
+    public void setDestFabric(String fabric) {
+      this.destFabric = fabric;
     }
+
+    public void setTimestamp(String timestamp) {
+      this.timestamp = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+
+    public Optional<SSLFactory> getSSLFactory() {
+      return sslFactory;
+    }
+
+    public void setTimestamp(LocalDateTime time) {
+      this.timestamp = time;
+    }
+
+    public String getSourceFabric() {
+      return sourceFabric;
+    }
+
+    public void setSourceFabric(String sourceFabric) {
+      this.sourceFabric = sourceFabric;
+    }
+
   }
 
-  public static class Result {
-    private String cluster;
-    private String store;
+  public static class Result extends Command.Result {
     private String stdOut;
     private int exitCode;
-    private String error;
-    private String message;
 
     public int getExitCode() {
       return exitCode;
@@ -196,42 +240,6 @@ public class StoreRepushCommand {
 
     public void setStdOut(String stdOut) {
       this.stdOut = stdOut;
-    }
-
-    public boolean isError() {
-      return error != null;
-    }
-
-    public String getCluster() {
-      return cluster;
-    }
-
-    public void setCluster(String cluster) {
-      this.cluster = cluster;
-    }
-
-    public String getStore() {
-      return store;
-    }
-
-    public void setStore(String store) {
-      this.store = store;
-    }
-
-    public void setError(String error) {
-      this.error = error;
-    }
-
-    public String getError() {
-      return error;
-    }
-
-    public String getMessage() {
-      return message;
-    }
-
-    public void setMessage(String message) {
-      this.message = message;
     }
 
     public void parseStandardOutput() {

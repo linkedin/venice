@@ -11,7 +11,6 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.HttpClientTransport;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
@@ -25,7 +24,6 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -59,14 +57,7 @@ public class MainIngestionRequestClient implements Closeable {
     int totalAttempts = 3;
     ForkedJavaProcess forkedIngestionProcess = null;
 
-    List<String> jvmArgs = new ArrayList<>();
-    for (String jvmArg: configLoader.getCombinedProperties()
-        .getString(ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "")
-        .split(";")) {
-      if (jvmArg.length() != 0) {
-        jvmArgs.add(jvmArg);
-      }
-    }
+    List<String> jvmArgs = configLoader.getVeniceServerConfig().getForkedProcessJvmArgList();
 
     // Prepare initialization config
     String configFilePath = buildAndSaveConfigsForForkedIngestionProcess(configLoader);
@@ -141,6 +132,15 @@ public class MainIngestionRequestClient implements Closeable {
     sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), 1);
   }
 
+  public void shutdownIngestionTask(String topicName) {
+    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+    ingestionTaskCommand.commandType = IngestionCommandType.SHUTDOWN_INGESTION_TASK.getValue();
+    ingestionTaskCommand.topicName = topicName;
+
+    // We do not need to retry here. Retry will slow down DaVinciBackend's shutdown speed severely.
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), 1);
+  }
+
   public void removeStorageEngine(String topicName) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.REMOVE_STORAGE_ENGINE.getValue();
@@ -155,7 +155,7 @@ public class MainIngestionRequestClient implements Closeable {
     sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT);
   }
 
-  public boolean unsubscribeTopicPartition(String topicName, int partitionId) {
+  public boolean removeTopicPartition(String topicName, int partitionId) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.REMOVE_PARTITION.getValue();
     ingestionTaskCommand.topicName = topicName;

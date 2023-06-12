@@ -1,6 +1,5 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -174,10 +173,7 @@ public class HelixSchemaAccessor {
 
   protected String getStorePath(String storeName) {
     StringBuilder sb = new StringBuilder(HelixUtils.getHelixClusterZkPath(clusterName));
-    sb.append(HelixReadOnlyStoreRepository.STORE_REPOSITORY_PATH)
-        .append("/")
-        .append(VeniceSystemStoreUtils.getZkStoreName(storeName))
-        .append("/");
+    sb.append(HelixReadOnlyStoreRepository.STORE_REPOSITORY_PATH).append("/").append(storeName).append("/");
     return sb.toString();
   }
 

@@ -1,8 +1,8 @@
 package com.linkedin.venice.compression;
 
+import com.linkedin.venice.io.ZeroCopyByteArrayOutputStream;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -56,7 +56,7 @@ public class GzipCompressor extends VeniceCompressor {
      * We say "maximize" and not "eliminate" because in certain cases GZIP can actually bloat the payload, and in those
      * cases there would still be at least one copy.
      */
-    ByteArrayOutputStream outputStream = new ZeroCopyByteArrayOutputStream(data.remaining());
+    ZeroCopyByteArrayOutputStream outputStream = new ZeroCopyByteArrayOutputStream(data.remaining());
     for (int i = 0; i < startPositionOfOutput; i++) {
       outputStream.write(0);
     }
@@ -67,7 +67,7 @@ public class GzipCompressor extends VeniceCompressor {
         gos.write(ByteUtils.extractByteArray(data));
       }
       gos.finish();
-      ByteBuffer output = ByteBuffer.wrap(outputStream.toByteArray(), 0, outputStream.size());
+      ByteBuffer output = outputStream.toByteBuffer();
       output.position(startPositionOfOutput);
       return output;
     }
@@ -103,17 +103,6 @@ public class GzipCompressor extends VeniceCompressor {
   @Override
   public int hashCode() {
     return super.hashCode();
-  }
-
-  private static class ZeroCopyByteArrayOutputStream extends ByteArrayOutputStream {
-    public ZeroCopyByteArrayOutputStream(int size) {
-      super(size);
-    }
-
-    @Override
-    public synchronized byte[] toByteArray() {
-      return buf;
-    }
   }
 
   @Override

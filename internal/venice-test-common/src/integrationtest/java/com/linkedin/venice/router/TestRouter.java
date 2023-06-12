@@ -100,7 +100,8 @@ public class TestRouter {
           Assert.assertEquals(
               response.getStatus(),
               HttpStatus.SC_SERVICE_UNAVAILABLE,
-              "Router with Mock components should return a 503 service unavailable error");
+              "Router with Mock components should return a 503 service unavailable error. Response: "
+                  + response.toString());
         }
 
         try (InternalAvroStoreClient<Object, Object> storeClient =

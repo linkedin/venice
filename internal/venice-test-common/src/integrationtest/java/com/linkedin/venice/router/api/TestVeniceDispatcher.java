@@ -38,7 +38,6 @@ import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
-import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -52,11 +51,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import org.apache.http.client.methods.HttpGet;
@@ -367,9 +364,6 @@ public class TestVeniceDispatcher {
 
     Scatter mockScatter = mock(Scatter.class);
     ScatterGatherRequest mockScatterGatherRequest = mock(ScatterGatherRequest.class);
-    Set<String> partitionNames = new HashSet<>();
-    partitionNames.add("test_store_v1_1");
-    doReturn(partitionNames).when(mockScatterGatherRequest).getPartitionsNames();
     RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
     AggRouterHttpRequestStats stats = mock(AggRouterHttpRequestStats.class);
 
@@ -380,7 +374,6 @@ public class TestVeniceDispatcher {
     VenicePath mockPath = mock(VenicePath.class);
     doReturn("test_store").when(mockPath).getStoreName();
     doReturn(requestType).when(mockPath).getRequestType();
-    doReturn(Unpooled.EMPTY_BUFFER).when(mockPath).getRequestBody();
     doReturn(HttpMethod.GET).when(mockPath).getHttpMethod();
 
     if (requestType.equals(RequestType.SINGLE_GET)) {

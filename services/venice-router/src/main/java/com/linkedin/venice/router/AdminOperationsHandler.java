@@ -3,7 +3,6 @@ package com.linkedin.venice.router;
 import static com.linkedin.venice.router.api.VenicePathParser.ACTION_DISABLE;
 import static com.linkedin.venice.router.api.VenicePathParser.ACTION_ENABLE;
 import static com.linkedin.venice.router.api.VenicePathParser.TASK_READ_QUOTA_THROTTLE;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_ADMIN;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
@@ -16,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.acl.AccessController;
 import com.linkedin.venice.acl.AclException;
+import com.linkedin.venice.router.api.RouterResourceType;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.AdminOperationsStats;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -90,10 +90,10 @@ public class AdminOperationsHandler extends SimpleChannelInboundHandler<HttpRequ
 
     VenicePathParserHelper pathHelper = parseRequest(req);
 
-    final String resourceType = pathHelper.getResourceType();
+    final RouterResourceType resourceType = pathHelper.getResourceType();
     final String adminTask = pathHelper.getResourceName();
 
-    if (!resourceType.equals(TYPE_ADMIN)) {
+    if (resourceType != RouterResourceType.TYPE_ADMIN) {
       // Pass request to the next channel if it's not an admin operation
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);

@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
@@ -11,6 +12,7 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.Pair;
@@ -33,7 +35,6 @@ public class PushMonitorDelegator implements PushMonitor {
   private static final Logger LOGGER = LogManager.getLogger(PushMonitorDelegator.class);
 
   private final ReadWriteStoreRepository metadataRepository;
-  private final OfflinePushAccessor offlinePushAccessor;
   private final String clusterName;
   private final ClusterLockManager clusterLockManager;
 
@@ -54,10 +55,10 @@ public class PushMonitorDelegator implements PushMonitor {
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
-      boolean disableErrorLeaderReplica) {
+      VeniceControllerConfig controllerConfig,
+      PushStatusStoreReader pushStatusStoreReader) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
-    this.offlinePushAccessor = offlinePushAccessor;
 
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(
         clusterName,
@@ -71,7 +72,8 @@ public class PushMonitorDelegator implements PushMonitor {
         aggregateRealTimeSourceKafkaUrl,
         activeActiveRealTimeSourceKafkaURLs,
         helixAdminClient,
-        disableErrorLeaderReplica);
+        controllerConfig,
+        pushStatusStoreReader);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();
@@ -85,9 +87,9 @@ public class PushMonitorDelegator implements PushMonitor {
       if (store == null) {
         throw new VeniceNoStoreException(
             Version.parseStoreFromKafkaTopicName(kafkaTopic),
-            Optional.of(
-                "Cannot find store metadata when tyring to allocate push status to push monitor."
-                    + "It's likely that the store has been deleted. topic: " + topicName));
+            null,
+            "Cannot find store metadata when tyring to allocate push status to push monitor."
+                + "It's likely that the store has been deleted. topic: " + topicName);
       }
       return partitionStatusBasedPushStatusMonitor;
     });
@@ -138,12 +140,17 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic) {
+  public Pair<ExecutionStatus, String> getPushStatusAndDetails(String topic) {
     return getPushMonitor(topic).getPushStatusAndDetails(topic);
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(
+  public List<UncompletedPartition> getUncompletedPartitions(String topic) {
+    return getPushMonitor(topic).getUncompletedPartitions(topic);
+  }
+
+  @Override
+  public Pair<ExecutionStatus, String> getIncrementalPushStatusAndDetails(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
@@ -152,7 +159,7 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(
+  public Pair<ExecutionStatus, String> getIncrementalPushStatusFromPushStatusStore(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
@@ -180,18 +187,8 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Map<String, Long> getOfflinePushProgress(String topic) {
-    return getPushMonitor(topic).getOfflinePushProgress(topic);
-  }
-
-  @Override
   public void markOfflinePushAsError(String topic, String statusDetails) {
     getPushMonitor(topic).markOfflinePushAsError(topic, statusDetails);
-  }
-
-  @Override
-  public boolean wouldJobFail(String topic, PartitionAssignment partitionAssignmentAfterRemoving) {
-    return getPushMonitor(topic).wouldJobFail(topic, partitionAssignmentAfterRemoving);
   }
 
   @Override
@@ -209,5 +206,10 @@ public class PushMonitorDelegator implements PushMonitor {
 
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     return getPushMonitor(partitionAssignment.getTopic()).getReadyToServeInstances(partitionAssignment, partitionId);
+  }
+
+  @Override
+  public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
+    return partitionStatusBasedPushStatusMonitor.isOfflinePushMonitorDaVinciPushStatusEnabled();
   }
 }

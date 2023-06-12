@@ -7,7 +7,6 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.util.Collection;
@@ -23,9 +22,7 @@ import org.apache.helix.PropertyKey;
 import org.apache.helix.PropertyType;
 import org.apache.helix.api.listeners.BatchMode;
 import org.apache.helix.api.listeners.ControllerChangeListener;
-import org.apache.helix.api.listeners.IdealStateChangeListener;
 import org.apache.helix.api.listeners.RoutingTableChangeListener;
-import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.spectator.RoutingTableProvider;
 import org.apache.helix.spectator.RoutingTableSnapshot;
@@ -47,7 +44,7 @@ import org.apache.logging.log4j.Logger;
  */
 @BatchMode
 public abstract class HelixBaseRoutingRepository
-    implements RoutingDataRepository, ControllerChangeListener, IdealStateChangeListener, RoutingTableChangeListener {
+    implements RoutingDataRepository, ControllerChangeListener, RoutingTableChangeListener {
   private static final Logger LOGGER = LogManager.getLogger(HelixBaseRoutingRepository.class);
 
   /**
@@ -69,8 +66,6 @@ public abstract class HelixBaseRoutingRepository
 
   protected final Lock liveInstancesMapLock = new ReentrantLock();
   protected Map<String, Instance> liveInstancesMap = new HashMap<>();
-
-  protected volatile Map<String, Integer> resourceToIdealPartitionCountMap;
 
   private long leaderControllerChangeTimeMs = -1;
 
@@ -95,7 +90,6 @@ public abstract class HelixBaseRoutingRepository
       // After adding the listener, helix will initialize the callback which will get the entire external view
       // and trigger the external view change event. In other words, venice will read the newest external view
       // immediately.
-      manager.addIdealStateChangeListener(this);
       manager.addControllerListener(this);
       // Use routing table provider to get the notification of the external view change, customized view change,
       // and live instances change.
@@ -126,7 +120,6 @@ public abstract class HelixBaseRoutingRepository
   public void clear() {
     // removeListener method is a thread safe method, we don't need to lock here again.
     manager.removeListener(keyBuilder.controller(), this);
-    manager.removeListener(keyBuilder.idealStates(), this);
     if (routingTableProvider != null) {
       routingTableProvider.removeRoutingTableChangeListener(this);
       try {
@@ -138,15 +131,26 @@ public abstract class HelixBaseRoutingRepository
   }
 
   /**
-   * Get instances from local memory. All instances are in {@link HelixState#ONLINE} state.
+   * Get instances from local memory. All instances are in {@link HelixState#LEADER} or {@link HelixState#STANDBY} state.
+   */
+  public List<Instance> getWorkingInstances(String kafkaTopic, int partitionId) {
+    Partition partition = resourceAssignment.getPartitionAssignment(kafkaTopic).getPartition(partitionId);
+    if (partition == null) {
+      return Collections.emptyList();
+    } else {
+      return partition.getWorkingInstances();
+    }
+  }
+
+  /**
+   * Get instances from local memory. All instances are in {@link ExecutionStatus#COMPLETED} state.
    */
   public List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId) {
     return getReadyToServeInstances(resourceAssignment.getPartitionAssignment(kafkaTopic), partitionId);
   }
 
   /**
-   * Get ready to serve instances from local memory. All instances are in {@link ExecutionStatus#COMPLETED} or
-   * {@link HelixState#ONLINE} state.
+   * Get ready to serve instances from local memory. All instances are in {@link ExecutionStatus#COMPLETED} state.
    */
   @Override
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
@@ -162,17 +166,11 @@ public abstract class HelixBaseRoutingRepository
    * This function is mainly used in VeniceVersionFinder#anyOfflinePartitions() when there is no online replica for
    * a specific partition, and it calls this function to get the partition assignment info for error msg. It's valid
    * case that there is no partition assignment for a specific partition and we return EMPTY_MAP.
-   *
-   * If the expectation for this function is more than just logging error message, we should invoke
-   * {@link RoutingDataRepository#refreshRoutingDataForResource(String)} to get a fresh partition assignment.
    */
-  public Map<String, List<Instance>> getAllInstances(String kafkaTopic, int partitionId) {
+  public Map<ExecutionStatus, List<Instance>> getAllInstances(String kafkaTopic, int partitionId) {
     Partition partition = getPartitionAssignments(kafkaTopic).getPartition(partitionId);
-    return partition != null ? partition.getAllInstances() : Collections.emptyMap();
+    return partition != null ? partition.getAllInstancesByExecutionStatus() : Collections.emptyMap();
   }
-
-  @Override
-  public abstract List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId);
 
   /**
    * @param resourceName Name of the resource.
@@ -212,11 +210,6 @@ public abstract class HelixBaseRoutingRepository
   @Override
   public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
     listenerManager.unsubscribe(kafkaTopic, listener);
-  }
-
-  @Override
-  public Map<String, Instance> getLiveInstancesMap() {
-    return liveInstancesMap;
   }
 
   @Override
@@ -275,22 +268,6 @@ public abstract class HelixBaseRoutingRepository
         liveInstance.getId(),
         Utils.parseHostFromHelixNodeIdentifier(liveInstance.getId()),
         Utils.parsePortFromHelixNodeIdentifier(liveInstance.getId()));
-  }
-
-  @Override
-  public void onIdealStateChange(List<IdealState> idealStates, NotificationContext changeContext) {
-    refreshResourceToIdealPartitionCountMap(idealStates);
-  }
-
-  protected void refreshResourceToIdealPartitionCountMap(List<IdealState> idealStates) {
-    HashMap<String, Integer> partitionCountMap = new HashMap<>();
-    for (IdealState idealState: idealStates) {
-      // Ideal state could be null, if a resource has already been deleted.
-      if (idealState != null) {
-        partitionCountMap.put(idealState.getResourceName(), idealState.getNumPartitions());
-      }
-    }
-    this.resourceToIdealPartitionCountMap = Collections.unmodifiableMap(partitionCountMap);
   }
 
   @Override

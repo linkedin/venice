@@ -7,7 +7,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
@@ -17,6 +16,8 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -41,15 +42,19 @@ public class DataRecoveryManager implements Closeable {
   private final Map<String, AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue>> clientMap =
       new VeniceConcurrentHashMap<>();
 
+  private final PubSubTopicRepository pubSubTopicRepository;
+
   public DataRecoveryManager(
       VeniceHelixAdmin veniceAdmin,
       D2Client d2Client,
       String clusterDiscoveryD2ServiceName,
-      Optional<ICProvider> icProvider) {
+      Optional<ICProvider> icProvider,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.veniceAdmin = veniceAdmin;
     this.d2Client = d2Client;
     this.clusterDiscoveryD2ServiceName = clusterDiscoveryD2ServiceName;
     this.icProvider = icProvider;
+    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   /**
@@ -73,15 +78,23 @@ public class DataRecoveryManager implements Closeable {
       String sourceFabric,
       boolean copyAllVersionConfigs,
       Version sourceFabricVersion) {
-    Version dataRecoveryVersion = sourceFabricVersion.cloneVersion();
-    dataRecoveryVersion.setStatus(VersionStatus.STARTED);
     Store store = veniceAdmin.getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    dataRecoveryVersion.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
-    dataRecoveryVersion.setNativeReplicationSourceFabric(sourceFabric);
-    dataRecoveryVersion.setDataRecoveryVersionConfig(new DataRecoveryVersionConfigImpl(sourceFabric, false));
+    int srcFabricVersionNumber = sourceFabricVersion.getNumber();
+    if (srcFabricVersionNumber != version) {
+      sourceFabricVersion.setNumber(version);
+      /**
+       * Update the push job id as a version with same id cannot be added twice.
+       * @see VeniceHelixAdmin#addSpecificVersion(String, String, Version)
+       */
+      sourceFabricVersion.setPushJobId("data_recovery_" + sourceFabricVersion.getPushJobId());
+    }
+    Version dataRecoveryVersion = sourceFabricVersion.cloneVersion();
+    dataRecoveryVersion.setStatus(VersionStatus.STARTED);
+    dataRecoveryVersion
+        .setDataRecoveryVersionConfig(new DataRecoveryVersionConfigImpl(sourceFabric, false, srcFabricVersionNumber));
 
     dataRecoveryVersion.setUseVersionLevelIncrementalPushEnabled(true);
     dataRecoveryVersion.setUseVersionLevelHybridConfig(true);
@@ -112,21 +125,23 @@ public class DataRecoveryManager implements Closeable {
       int sourceAmplificationFactor) {
     verifyStoreIsCapableOfDataRecovery(clusterName, storeName, sourceAmplificationFactor);
     Store store = veniceAdmin.getStore(clusterName, storeName);
+    String topic = Version.composeKafkaTopic(storeName, versionNumber);
     if (store.getCurrentVersion() == versionNumber) {
+      if (!veniceAdmin.isClusterWipeAllowed(clusterName)) {
+        throw new VeniceException(destinationFabric + " cluster " + clusterName + " cannot wipe current version");
+      }
       /**
-       * We need to set the store's current version to the backup version or {@link Store#NON_EXISTING_VERSION} in order to
+       * We need to set the store's current version to the backup version or {@link Store#NON_EXISTING_VERSION} to
        * perform data recovery on the current version.
        */
-      Optional<Version> backupVersion =
-          store.getVersions().stream().filter(v -> v.getNumber() != versionNumber).findFirst();
-      veniceAdmin.updateStore(
-          clusterName,
-          storeName,
-          new UpdateStoreQueryParams()
-              .setCurrentVersion(backupVersion.map(Version::getNumber).orElse(Store.NON_EXISTING_VERSION)));
+      int backupVersion = veniceAdmin.getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+      veniceAdmin.setStoreCurrentVersion(clusterName, storeName, backupVersion);
+      veniceAdmin.wipeCluster(clusterName, destinationFabric, Optional.of(storeName), Optional.of(versionNumber));
+    } else {
+      veniceAdmin.deleteOneStoreVersion(clusterName, storeName, versionNumber);
+      veniceAdmin.stopMonitorOfflinePush(clusterName, topic, true, true);
     }
-    veniceAdmin.wipeCluster(clusterName, destinationFabric, Optional.of(storeName), Optional.of(versionNumber));
-    veniceAdmin.deleteParticipantStoreKillMessage(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
+    veniceAdmin.deleteParticipantStoreKillMessage(clusterName, topic);
   }
 
   private void verifyStoreIsCapableOfDataRecovery(String clusterName, String storeName, int sourceAmplificationFactor) {
@@ -164,17 +179,17 @@ public class DataRecoveryManager implements Closeable {
     if (store.getVersion(versionNumber).isPresent()) {
       throw new VeniceException("Previous store version metadata still exists");
     }
-    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
-    if (veniceAdmin.getTopicManager().containsTopic(kafkaTopic)) {
-      throw new VeniceException("Previous version topic: " + kafkaTopic + " still exists");
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
+    if (veniceAdmin.getTopicManager().containsTopic(versionTopic)) {
+      throw new VeniceException("Previous version topic: " + versionTopic + " still exists");
     }
     if (!ExecutionStatus.NOT_CREATED
-        .equals(veniceAdmin.getOffLinePushStatus(clusterName, kafkaTopic).getExecutionStatus())) {
-      throw new VeniceException("Previous push status for " + kafkaTopic + " still exists");
+        .equals(veniceAdmin.getOffLinePushStatus(clusterName, versionTopic.getName()).getExecutionStatus())) {
+      throw new VeniceException("Previous push status for " + versionTopic + " still exists");
     }
     try {
-      if (!isStoreVersionKillRecordNull(clusterName, kafkaTopic)) {
-        throw new VeniceException("Previous kill record for " + kafkaTopic + " still exists");
+      if (!isStoreVersionKillRecordNull(clusterName, versionTopic.getName())) {
+        throw new VeniceException("Previous kill record for " + versionTopic + " still exists");
       }
     } catch (Exception e) {
       throw new VeniceException("Unable to check if the store version kill record is null", e);

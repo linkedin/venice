@@ -8,6 +8,7 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.function.Predicate;
@@ -24,6 +25,7 @@ public class ClientConfig<T extends SpecificRecord> {
   public static final int DEFAULT_ZK_TIMEOUT_MS = 5000;
   public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
   public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
+  public static final Duration DEFAULT_SCHEMA_REFRESH_PERIOD = Duration.ofMillis(0);
 
   // Basic settings
   private String storeName;
@@ -49,15 +51,21 @@ public class ClientConfig<T extends SpecificRecord> {
   private int retryCount = 1;
   private long retryBackOffInMs = 0;
   private boolean useBlackHoleDeserializer = false;
-  private boolean reuseObjectsForSerialization = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
   private boolean projectionFieldValidation = true;
-
+  private Duration schemaRefreshPeriod = DEFAULT_SCHEMA_REFRESH_PERIOD;
   private Optional<Predicate<Schema>> preferredSchemaFilter = Optional.empty();
 
   // Security settings
   private boolean isHttps = false;
   private SSLFactory sslFactory = null;
+
+  // HttpTransport settings
+  private int maxConnectionsPerRoute; // only for HTTP1
+
+  private int maxConnectionsTotal; // only for HTTP1
+
+  private boolean httpClient5Http2Enabled;
 
   // Test settings
   private Time time = new SystemTime();
@@ -87,11 +95,12 @@ public class ClientConfig<T extends SpecificRecord> {
         .setVsonClient(config.isVsonClient())
 
         // D2 specific settings
-        .setD2Routing(config.isD2Routing())
         .setD2ServiceName(config.getD2ServiceName())
         .setD2BasePath(config.getD2BasePath())
         .setD2ZkTimeout(config.getD2ZkTimeout())
         .setD2Client(config.getD2Client())
+        .setD2Routing(config.isD2Routing()) // This should be the last of the D2 configs since it is an inferred config
+                                            // and we want the cloned config to match the source config
 
         // Performance-related settings
         .setMetricsRepository(config.getMetricsRepository())
@@ -102,14 +111,18 @@ public class ClientConfig<T extends SpecificRecord> {
         .setRetryCount(config.getRetryCount())
         .setRetryBackOffInMs(config.getRetryBackOffInMs())
         .setUseBlackHoleDeserializer(config.isUseBlackHoleDeserializer())
-        .setReuseObjectsForSerialization(config.isReuseObjectsForSerialization())
         // Security settings
         .setHttps(config.isHttps())
         .setSslFactory(config.getSslFactory())
-
         .setForceClusterDiscoveryAtStartTime(config.isForceClusterDiscoveryAtStartTime())
         .setProjectionFieldValidationEnabled(config.isProjectionFieldValidationEnabled())
         .setPreferredSchemaFilter(config.getPreferredSchemaFilter().orElse(null))
+        .setSchemaRefreshPeriod(config.getSchemaRefreshPeriod())
+
+        // HttpTransport settings
+        .setMaxConnectionsPerRoute(config.getMaxConnectionsPerRoute())
+        .setMaxConnectionsTotal(config.getMaxConnectionsTotal())
+        .setHttpClient5Http2Enabled(config.isHttpClient5Http2Enabled())
 
         // Test settings
         .setTime(config.getTime());
@@ -254,6 +267,33 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public int getMaxConnectionsPerRoute() {
+    return maxConnectionsPerRoute;
+  }
+
+  public ClientConfig<T> setMaxConnectionsPerRoute(int maxConnectionsPerRoute) {
+    this.maxConnectionsPerRoute = maxConnectionsPerRoute;
+    return this;
+  }
+
+  public int getMaxConnectionsTotal() {
+    return maxConnectionsTotal;
+  }
+
+  public ClientConfig<T> setMaxConnectionsTotal(int maxConnectionsTotal) {
+    this.maxConnectionsTotal = maxConnectionsTotal;
+    return this;
+  }
+
+  public boolean isHttpClient5Http2Enabled() {
+    return httpClient5Http2Enabled;
+  }
+
+  public ClientConfig<T> setHttpClient5Http2Enabled(boolean httpClient5Http2Enabled) {
+    this.httpClient5Http2Enabled = httpClient5Http2Enabled;
+    return this;
+  }
+
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
   }
@@ -385,15 +425,6 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  public boolean isReuseObjectsForSerialization() {
-    return reuseObjectsForSerialization;
-  }
-
-  public ClientConfig<T> setReuseObjectsForSerialization(boolean reuseObjectsForSerialization) {
-    this.reuseObjectsForSerialization = reuseObjectsForSerialization;
-    return this;
-  }
-
   public boolean isProjectionFieldValidationEnabled() {
     return projectionFieldValidation;
   }
@@ -409,6 +440,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setPreferredSchemaFilter(Predicate<Schema> preferredSchemaFilter) {
     this.preferredSchemaFilter = Optional.ofNullable(preferredSchemaFilter);
+    return this;
+  }
+
+  public Duration getSchemaRefreshPeriod() {
+    return schemaRefreshPeriod;
+  }
+
+  public ClientConfig<T> setSchemaRefreshPeriod(Duration schemaRefreshPeriod) {
+    this.schemaRefreshPeriod = schemaRefreshPeriod;
     return this;
   }
 
@@ -446,6 +486,10 @@ public class ClientConfig<T extends SpecificRecord> {
     }
 
     if (this.isVsonClient() != anotherClientConfig.isVsonClient()) {
+      return false;
+    }
+
+    if (this.isD2Routing() != anotherClientConfig.isD2Routing()) {
       return false;
     }
 

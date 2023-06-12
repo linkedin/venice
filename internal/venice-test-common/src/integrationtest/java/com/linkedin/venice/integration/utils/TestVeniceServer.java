@@ -1,7 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
-import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
@@ -9,19 +8,16 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.StorageReadRequestsHandler;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
-import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.server.VeniceServerContext;
 import io.netty.channel.ChannelHandlerContext;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -35,35 +31,8 @@ public class TestVeniceServer extends VeniceServer {
 
   private AtomicReference<RequestHandler> requestHandler = new AtomicReference<>();
 
-  public TestVeniceServer(VeniceConfigLoader configLoader) throws VeniceException {
-    super(configLoader);
-  }
-
-  public TestVeniceServer(
-      VeniceConfigLoader configLoader,
-      MetricsRepository metricsRepository,
-      Optional<SSLFactory> sslFactory,
-      Optional<StaticAccessController> accessController,
-      Optional<ClientConfig> consumerClientConfig) {
-    super(configLoader, metricsRepository, sslFactory, accessController, consumerClientConfig);
-  }
-
-  public TestVeniceServer(
-      VeniceConfigLoader configLoader,
-      MetricsRepository metricsRepository,
-      Optional<SSLFactory> sslFactory,
-      Optional<StaticAccessController> accessController,
-      Optional<ClientConfig> consumerClientConfig,
-      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers) {
-    super(
-        configLoader,
-        metricsRepository,
-        sslFactory,
-        accessController,
-        Optional.empty(),
-        consumerClientConfig,
-        null,
-        serviceDiscoveryAnnouncers);
+  public TestVeniceServer(VeniceServerContext serverContext) {
+    super(serverContext);
   }
 
   @Override
@@ -71,7 +40,7 @@ public class TestVeniceServer extends VeniceServer {
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
       ReadOnlySchemaRepository schemaRepository,
-      CompletableFuture<RoutingDataRepository> routingRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       MetadataRetriever metadataRetriever,
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
@@ -86,7 +55,7 @@ public class TestVeniceServer extends VeniceServer {
         storageEngineRepository,
         storeMetadataRepository,
         schemaRepository,
-        routingRepository,
+        customizedViewRepository,
         metadataRetriever,
         serverConfig,
         metricsRepository,

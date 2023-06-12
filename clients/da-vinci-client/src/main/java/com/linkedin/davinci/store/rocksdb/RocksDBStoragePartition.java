@@ -6,6 +6,7 @@ import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -40,6 +41,7 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksIterator;
 import org.rocksdb.Slice;
+import org.rocksdb.SstFileManager;
 import org.rocksdb.SstFileWriter;
 import org.rocksdb.Statistics;
 import org.rocksdb.WriteOptions;
@@ -57,6 +59,7 @@ import org.rocksdb.WriteOptions;
 @NotThreadSafe
 public class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
+  private static final String ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_SPACE_QUOTA = "Max allowed space was reached";
   protected static final ReadOptions READ_OPTIONS_DEFAULT = new ReadOptions();
   static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
 
@@ -131,7 +134,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
   protected final List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
 
-  private RocksDBSstFileWriter rocksDBSstFileWritter;
+  private RocksDBSstFileWriter rocksDBSstFileWriter = null;
 
   protected RocksDBStoragePartition(
       StoragePartitionConfig storagePartitionConfig,
@@ -152,6 +155,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
     // restart,
     Options options = getStoreOptions(storagePartitionConfig, false);
+
     // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server
     // restart,
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
@@ -182,7 +186,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
     if (deferredWrite) {
-      this.rocksDBSstFileWritter = new RocksDBSstFileWriter(
+      this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
           storeName,
           partitionId,
           dbDir,
@@ -193,35 +197,52 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           rocksDBServerConfig);
     }
 
-    try {
-      /**
-       * There are some possible optimization opportunities for column families. For example, optimizeForSmallDb() option
-       * may be applied if we are sure replicationMetadata column family is smaller in size.
-       */
-      ColumnFamilyOptions columnFamilyOptions;
-      for (byte[] name: columnFamilyNameList) {
-        if (name == REPLICATION_METADATA_COLUMN_FAMILY && !rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
-          columnFamilyOptions = new ColumnFamilyOptions(getStoreOptions(storagePartitionConfig, true));
-        } else {
-          columnFamilyOptions = new ColumnFamilyOptions(options);
-        }
-        columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions));
-      }
-      /**
-       * This new open(ReadOnly)WithColumnFamily API replace original open(ReadOnly) API to reduce code duplication.
-       * In the default case, we will only open DEFAULT_COLUMN_FAMILY, which is what old API does internally.
-       */
-      if (this.readOnly) {
-        this.rocksDB = rocksDbThrottler
-            .openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+    /**
+     * There are some possible optimization opportunities for column families. For example, optimizeForSmallDb() option
+     * may be applied if we are sure replicationMetadata column family is smaller in size.
+     */
+    ColumnFamilyOptions columnFamilyOptions;
+    for (byte[] name: columnFamilyNameList) {
+      if (name == REPLICATION_METADATA_COLUMN_FAMILY && !rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+        columnFamilyOptions = new ColumnFamilyOptions(getStoreOptions(storagePartitionConfig, true));
       } else {
-        this.rocksDB =
-            rocksDbThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+        columnFamilyOptions = new ColumnFamilyOptions(options);
       }
-    } catch (RocksDBException | InterruptedException e) {
-      throw new VeniceException("Failed to open RocksDB for store: " + storeName + ", partition id: " + partitionId, e);
+      columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions));
     }
-
+    /**
+     * This new open(ReadOnly)WithColumnFamily API replace original open(ReadOnly) API to reduce code duplication.
+     * In the default case, we will only open DEFAULT_COLUMN_FAMILY, which is what old API does internally.
+     */
+    Runnable dbOpenRunnable = () -> {
+      try {
+        if (this.readOnly) {
+          this.rocksDB = rocksDbThrottler
+              .openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+        } else {
+          this.rocksDB =
+              rocksDbThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
+        }
+      } catch (RocksDBException | InterruptedException e) {
+        throw new VeniceException(
+            "Failed to open RocksDB for store: " + storeName + ", partition id: " + partitionId,
+            e);
+      }
+    };
+    if (factory.getMemoryLimit() > 0) {
+      /**
+       * We need to put a lock when calculating the memory usage since multiple threads can open different databases concurrently.
+       *
+       * {@link SstFileManager} doesn't check the size limit when opening up an existing database,
+       * so this function will do the check manually when opening up any new database.
+       */
+      synchronized (factory) {
+        checkMemoryLimit(factory.getMemoryLimit(), factory.getSstFileManager(), fullPathForPartitionDB);
+        dbOpenRunnable.run();
+      }
+    } else {
+      dbOpenRunnable.run();
+    }
     registerDBStats();
     LOGGER.info(
         "Opened RocksDB for store: {}, partition: {}, in {} and {} mode",
@@ -247,6 +268,46 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         rocksDbThrottler,
         rocksDBServerConfig,
         Collections.singletonList(RocksDB.DEFAULT_COLUMN_FAMILY));
+  }
+
+  private void checkMemoryLimit(long memoryLimit, SstFileManager sstFileManager, String dbPath) {
+    if (memoryLimit < 0) {
+      return;
+    }
+
+    /**
+     * Check whether current {@link sstFileManager} is already tracking the sst files in the db path.
+     * Here are the reasons:
+     * 1. Database close won't remove the tracking info from SSTFileManager.
+     * 2. During ingestion, Venice could reopen the database (close and open).
+     */
+    File storeDbDir = new File(dbPath);
+    if (storeDbDir.exists()) {
+      Map<String, Long> trackedSSTFiles = sstFileManager.getTrackedFiles();
+      File[] sstFiles = storeDbDir.listFiles((dir, name) -> name.endsWith(".sst"));
+      if (sstFiles == null) {
+        return;
+      }
+      boolean alreadyTracked = false;
+      long storeSize = 0;
+      for (File sstFile: sstFiles) {
+        if (trackedSSTFiles.containsKey(sstFile.getAbsolutePath())) {
+          alreadyTracked = true;
+        } else if (alreadyTracked) {
+          throw new VeniceException("SSTFileManager tracking files is missing sst file: " + sstFile.getAbsolutePath());
+        }
+        storeSize += sstFile.length();
+      }
+      if (alreadyTracked) {
+        return;
+      }
+      long currentSSTFileUsage = sstFileManager.getTotalSize();
+      if (currentSSTFileUsage + storeSize >= memoryLimit) {
+        throw new MemoryLimitExhaustedException(
+            "Failed to open up RocksDB store: " + storeName + ", memory limit: " + memoryLimit
+                + " and the current memory usage: " + currentSSTFileUsage + ", new store size: " + storeSize);
+      }
+    }
   }
 
   protected void makeSureRocksDBIsStillOpen() {
@@ -344,6 +405,16 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
+  public boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
+    makeSureRocksDBIsStillOpen();
+    if (!deferredWrite) {
+      LOGGER.info("checkDatabaseIntegrity will do nothing since 'deferredWrite' is disabled");
+      return true;
+    }
+    return rocksDBSstFileWriter.checkDatabaseIntegrity(checkpointedInfo);
+  }
+
+  @Override
   public synchronized void beginBatchWrite(
       Map<String, String> checkpointedInfo,
       Optional<Supplier<byte[]>> expectedChecksumSupplier) {
@@ -352,7 +423,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       LOGGER.info("'beginBatchWrite' will do nothing since 'deferredWrite' is disabled");
       return;
     }
-    rocksDBSstFileWritter.open(checkpointedInfo, expectedChecksumSupplier);
+    rocksDBSstFileWriter.open(checkpointedInfo, expectedChecksumSupplier);
   }
 
   @Override
@@ -372,7 +443,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * Note: this function should be invoked after {@link #sync()} to make sure
      * the last SST file written is finished.
      */
-    rocksDBSstFileWritter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
+    rocksDBSstFileWriter.ingestSSTFiles(rocksDB, columnFamilyHandleList);
+  }
+
+  private void checkAndThrowMemoryLimitException(RocksDBException e) {
+    if (e.getMessage().contains(ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_SPACE_QUOTA)) {
+      throw new MemoryLimitExhaustedException(storeName, partitionId, factory.getSstFileManager().getTotalSize());
+    }
   }
 
   @Override
@@ -390,7 +467,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     try {
       if (deferredWrite) {
-        rocksDBSstFileWritter.put(key, valueBuffer);
+        rocksDBSstFileWriter.put(key, valueBuffer);
       } else {
         rocksDB.put(
             writeOptions,
@@ -402,6 +479,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
             valueBuffer.remaining());
       }
     } catch (RocksDBException e) {
+      checkAndThrowMemoryLimitException(e);
       throw new VeniceException(
           "Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId,
           e);
@@ -502,7 +580,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (!deferredWrite) {
       return true;
     }
-    return rocksDBSstFileWritter.validateBatchIngestion();
+    return rocksDBSstFileWriter.validateBatchIngestion();
   }
 
   private ReadOptions getReadOptionsForIteration(byte[] keyPrefix) {
@@ -546,6 +624,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         rocksDB.delete(key);
       }
     } catch (RocksDBException e) {
+      checkAndThrowMemoryLimitException(e);
       throw new VeniceException(
           "Failed to delete entry from store: " + storeName + ", partition id: " + partitionId,
           e);
@@ -575,6 +654,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           // crash recovery
           rocksDB.flush(WAIT_FOR_FLUSH_OPTIONS);
         } catch (RocksDBException e) {
+          checkAndThrowMemoryLimitException(e);
           throw new VeniceException(
               "Failed to flush memtable to disk for store: " + storeName + ", partition id: " + partitionId,
               e);
@@ -582,20 +662,27 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       }
       return Collections.emptyMap();
     }
-
-    return rocksDBSstFileWritter.sync();
+    return rocksDBSstFileWriter.sync();
   }
 
-  private void removeDirWithTwoLayers(String fullPath) {
+  public void deleteFilesInDirectory(String fullPath) {
     File dir = new File(fullPath);
     if (dir.exists()) {
-      // Remove the files inside first
+      // Remove the files inside
       Arrays.stream(dir.list()).forEach(file -> {
         if (!(new File(fullPath, file).delete())) {
           LOGGER.warn("Failed to remove file: {} in dir: {}", file, fullPath);
         }
       });
-      // Remove file directory
+    }
+  }
+
+  private void deleteDirectory(String fullPath) {
+    // Remove the files inside the directory
+    deleteFilesInDirectory(fullPath);
+    // Remove the directory
+    File dir = new File(fullPath);
+    if (dir.exists()) {
       if (!dir.delete()) {
         LOGGER.warn("Failed to remove dir: {}", fullPath);
       }
@@ -616,26 +703,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      * To avoid resource leaking, we will clean up all the database files anyway.
      */
     // Remove extra SST files first
-    deleteSSTFiles(fullPathForTempSSTFileDir);
+    deleteFilesInDirectory(fullPathForTempSSTFileDir);
     // Remove partition directory
-    removeDirWithTwoLayers(fullPathForPartitionDB);
+    deleteDirectory(fullPathForPartitionDB);
     LOGGER.info("RocksDB for store: {}, partition: {} was dropped.", storeName, partitionId);
-  }
-
-  public void deleteSSTFiles(String fullPathForTempSSTFile) {
-    File dir = new File(fullPathForTempSSTFile);
-    if (dir.exists()) {
-      // Remove the files inside first
-      Arrays.stream(dir.list()).forEach(file -> {
-        if (!(new File(fullPathForTempSSTFile, file).delete())) {
-          LOGGER.warn("Failed to remove file: {} in dir: {} ", file, fullPathForTempSSTFile);
-        }
-      });
-      // Remove file directory
-      if (!dir.delete()) {
-        LOGGER.warn("Failed to remove dir: {}", fullPathForTempSSTFile);
-      }
-    }
   }
 
   @Override
@@ -659,7 +730,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       envOptions.close();
     }
     if (deferredWrite) {
-      rocksDBSstFileWritter.close();
+      rocksDBSstFileWriter.close();
     }
     options.close();
     if (writeOptions != null) {
@@ -773,5 +844,15 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   protected Options getOptions() {
     return options;
+  }
+
+  // Visible for testing
+  public String getFullPathForTempSSTFileDir() {
+    return fullPathForTempSSTFileDir;
+  }
+
+  // Visible for testing
+  public RocksDBSstFileWriter getRocksDBSstFileWriter() {
+    return rocksDBSstFileWriter;
   }
 }

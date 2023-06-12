@@ -355,6 +355,18 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   /**
+   * checks whether the current state of the database is valid
+   * during the start of ingestion.
+   */
+  public boolean checkDatabaseIntegrity(
+      int partitionId,
+      Map<String, String> checkpointedInfo,
+      StoragePartitionConfig storagePartitionConfig) {
+    adjustStoragePartition(storagePartitionConfig);
+    return getPartitionOrThrow(partitionId).checkDatabaseIntegrity(checkpointedInfo);
+  }
+
+  /**
    * A lot of storage engines support efficient methods for performing large
    * number of writes (puts/deletes) against the data source. This method puts
    * the storage engine in this batch write mode
@@ -643,7 +655,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    *
    * @return the number of non-null partitions in {@link #partitionList}
    */
-  protected synchronized long getNumberOfPartitions() {
+  public synchronized long getNumberOfPartitions() {
     return this.partitionList.stream().filter(Objects::nonNull).count();
   }
 
@@ -706,5 +718,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public boolean isChunked() {
     StoreVersionState svs = getStoreVersionState();
     return svs == null ? false : svs.chunked;
+  }
+
+  public boolean hasMemorySpaceLeft() {
+    return true;
   }
 }

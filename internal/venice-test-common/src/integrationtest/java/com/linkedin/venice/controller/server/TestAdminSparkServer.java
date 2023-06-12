@@ -104,7 +104,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanQueryInstanceStatusInCluster() {
-    MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses();
+    MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses(false);
     Assert.assertFalse(nodeResponse.isError(), nodeResponse.getError());
     Assert.assertEquals(nodeResponse.getInstancesStatusMap().size(), STORAGE_NODE_COUNT, "Node count does not match");
     Assert.assertEquals(
@@ -470,7 +470,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanQueryRemovability() {
     VeniceServerWrapper server = cluster.getVeniceServers().get(0);
-    String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
+    String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
 
     ControllerResponse response = controllerClient.isNodeRemovable(nodeId);
     Assert.assertFalse(response.isError(), response.getError());
@@ -612,7 +612,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void controllerClientCanUpdateAllowList() {
     Admin admin = cluster.getLeaderVeniceController().getVeniceAdmin();
 
-    String nodeId = Utils.getHelixNodeIdentifier(34567);
+    String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), 34567);
     Assert.assertFalse(
         admin.getAllowlist(cluster.getClusterName()).contains(nodeId),
         nodeId + " has not been added into allowlist.");
@@ -849,20 +849,6 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void controllerClientCanEnableQuotaRebalance() {
-    int expectedRouterCount = 100;
-    controllerClient.enableQuotaRebalanced(false, expectedRouterCount);
-    Assert.assertFalse(controllerClient.getRoutersClusterConfig().getConfig().isQuotaRebalanceEnabled());
-    Assert.assertEquals(
-        controllerClient.getRoutersClusterConfig().getConfig().getExpectedRouterCount(),
-        expectedRouterCount);
-    // After enable this feature, Venice don't need expected router count, because it will use the live router count, so
-    // could give any expected router count here.
-    controllerClient.enableQuotaRebalanced(true, 0);
-    Assert.assertTrue(controllerClient.getRoutersClusterConfig().getConfig().isQuotaRebalanceEnabled());
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanDiscoverCluster() {
     String storeName = Utils.getUniqueString("controllerClientCanDiscoverCluster");
     controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
@@ -980,7 +966,9 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     childControllerAdmin.incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
     String topicToDelete = Version.composeKafkaTopic(storeName, 1);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Assert.assertTrue(childControllerAdmin.getTopicManager().containsTopic(topicToDelete));
+      Assert.assertTrue(
+          childControllerAdmin.getTopicManager()
+              .containsTopic(cluster.getPubSubTopicRepository().getTopic(topicToDelete)));
       Assert.assertFalse(childControllerAdmin.isTopicTruncated(topicToDelete));
     });
     controllerClient.deleteKafkaTopic(topicToDelete);

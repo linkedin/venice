@@ -85,11 +85,12 @@ public class AggVersionedIngestionStats
       int version,
       int regionId,
       long bytesConsumed,
-      long offsetConsumed) {
+      long offsetConsumed,
+      long currentTimeMs) {
     recordVersionedAndTotalStat(storeName, version, stat -> {
-      stat.recordRegionHybridBytesConsumed(regionId, bytesConsumed);
-      stat.recordRegionHybridRecordsConsumed(regionId, 1);
-      stat.recordRegionHybridAvgConsumedOffset(regionId, offsetConsumed);
+      stat.recordRegionHybridBytesConsumed(regionId, bytesConsumed, currentTimeMs);
+      stat.recordRegionHybridRecordsConsumed(regionId, 1, currentTimeMs);
+      stat.recordRegionHybridAvgConsumedOffset(regionId, offsetConsumed, currentTimeMs);
     });
   }
 
@@ -126,14 +127,40 @@ public class AggVersionedIngestionStats
   }
 
   public void recordSubscribePrepLatency(String storeName, int version, double value) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordSubscribePrepLatency(value));
+    long currentTimeMs = System.currentTimeMillis();
+    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordSubscribePrepLatency(value, currentTimeMs));
   }
 
-  public void recordConsumedRecordEndToEndProcessingLatency(String storeName, int version, double value) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordConsumedRecordEndToEndProcessingLatency(value));
+  public void recordConsumedRecordEndToEndProcessingLatency(
+      String storeName,
+      int version,
+      double value,
+      long currentTimeMs) {
+    recordVersionedAndTotalStat(
+        storeName,
+        version,
+        stat -> stat.recordConsumedRecordEndToEndProcessingLatency(value, currentTimeMs));
   }
 
   public void recordVersionTopicEndOffsetRewind(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, IngestionStats::recordVersionTopicEndOffsetRewind);
+  }
+
+  public void recordNearlineProducerToLocalBrokerLatency(String storeName, int version, double value, long timestamp) {
+    recordVersionedAndTotalStat(
+        storeName,
+        version,
+        stat -> stat.recordNearlineProducerToLocalBrokerLatency(value, timestamp));
+  }
+
+  public void recordNearlineLocalBrokerToReadyToServeLatency(
+      String storeName,
+      int version,
+      double value,
+      long timestamp) {
+    recordVersionedAndTotalStat(
+        storeName,
+        version,
+        stat -> stat.recordNearlineLocalBrokerToReadyToServeLatency(value, timestamp));
   }
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -24,11 +25,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -64,6 +65,10 @@ import org.apache.logging.log4j.Logger;
  * This class is used to create a task, which will consume the admin messages from the special admin topics.
  */
 public class AdminConsumptionTask implements Runnable, Closeable {
+  // Setting this to a value so that admin queue will not go out of memory in case of too many admin messages.
+  // If we hit this number , there is most likely something seriously wrong with the system.
+  private static final int MAX_WORKER_QUEUE_SIZE = 10000;
+
   private static class AdminErrorInfo {
     long offset;
     Exception exception;
@@ -142,7 +147,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final boolean remoteConsumptionEnabled;
 
   private boolean isSubscribed;
-  private final PubSubConsumer consumer;
+  private final PubSubConsumerAdapter consumer;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
   private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
   /**
@@ -237,9 +242,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
 
+  /**
+   * The local region name of the controller.
+   */
+  private final String regionName;
+
   public AdminConsumptionTask(
       String clusterName,
-      PubSubConsumer consumer,
+      PubSubConsumerAdapter consumer,
       boolean remoteConsumptionEnabled,
       Optional<String> remoteKafkaServerUrl,
       VeniceHelixAdmin admin,
@@ -252,7 +262,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       long processingCycleTimeoutInMs,
       int maxWorkerThreadPoolSize,
       PubSubTopicRepository pubSubTopicRepository,
-      KafkaPubSubMessageDeserializer pubSubMessageDeserializer) {
+      KafkaPubSubMessageDeserializer pubSubMessageDeserializer,
+      String regionName) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
@@ -274,18 +285,20 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
     this.problematicStores = new ConcurrentHashMap<>();
+    // since we use an unbounded queue the core pool size is really the max pool size
     this.executorService = new ThreadPoolExecutor(
-        1,
+        maxWorkerThreadPoolSize,
         maxWorkerThreadPoolSize,
         60,
         TimeUnit.SECONDS,
-        new LinkedBlockingQueue<>(),
+        new LinkedBlockingQueue<>(MAX_WORKER_QUEUE_SIZE),
         new DaemonThreadFactory("Venice-Admin-Execution-Task"));
     this.undelegatedRecords = new LinkedList<>();
     this.stats.setAdminConsumptionFailedOffset(failingOffset);
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     this.pubSubTopic = pubSubTopicRepository.getTopic(topic);
+    this.regionName = regionName;
 
     if (remoteConsumptionEnabled) {
       if (!remoteKafkaServerUrl.isPresent()) {
@@ -313,9 +326,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           continue;
         }
         if (!isSubscribed) {
-          if (whetherTopicExists(topic)) {
+          if (whetherTopicExists(pubSubTopic)) {
             // Topic was not created by this process, so we make sure it has the right retention.
-            makeSureAdminTopicUsingInfiniteRetentionPolicy(topic);
+            makeSureAdminTopicUsingInfiniteRetentionPolicy(pubSubTopic);
           } else {
             String logMessageFormat = "Admin topic: {} hasn't been created yet. {}";
             if (!isParentController) {
@@ -330,7 +343,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               continue;
             }
             LOGGER.info(logMessageFormat, topic, "Since this is the parent controller, it will be created now.");
-            admin.getTopicManager().createTopic(topic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
+            admin.getTopicManager()
+                .createTopic(pubSubTopic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
             LOGGER.info("Admin topic {} is created.", topic);
           }
           subscribe();
@@ -496,7 +510,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 admin,
                 executionIdAccessor,
                 isParentController,
-                stats));
+                stats,
+                regionName));
         stores.add(entry.getKey());
       }
     }
@@ -608,7 +623,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     consumer.close();
   }
 
-  private boolean whetherTopicExists(String topicName) {
+  private boolean whetherTopicExists(PubSubTopic topicName) {
     if (topicExists) {
       return true;
     }
@@ -621,7 +636,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return topicExists;
   }
 
-  private void makeSureAdminTopicUsingInfiniteRetentionPolicy(String topicName) {
+  private void makeSureAdminTopicUsingInfiniteRetentionPolicy(PubSubTopic topicName) {
     if (remoteConsumptionEnabled) {
       sourceKafkaClusterTopicManager.updateTopicRetention(topicName, Long.MAX_VALUE);
     } else {
@@ -814,6 +829,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                   + " because it does not contain a storeName field");
         }
     }
+    storeName = VeniceSystemStoreType.extractUserStoreName(storeName);
     return storeName;
   }
 
@@ -943,8 +959,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
        *  In the default read_uncommitted isolation level, the end offset is the high watermark (that is, the offset of
        *  the last successfully replicated message plus one), so subtract 1 from the max offset result.
        */
-      long sourceAdminTopicEndOffset = sourceKafkaClusterTopicManager
-          .getPartitionLatestOffsetAndRetry(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, 10) - 1;
+      PubSubTopicPartition adminTopicPartition =
+          new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+      long sourceAdminTopicEndOffset =
+          sourceKafkaClusterTopicManager.getPartitionLatestOffsetAndRetry(adminTopicPartition, 10) - 1;
       /**
        * If the first consumer poll returns nothing, "lastConsumedOffset" will remain as {@link #UNASSIGNED_VALUE}, so a
        * huge lag will be reported, but actually that's not case since consumer is subscribed to the last checkpoint offset.

@@ -5,7 +5,6 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.StoreStateReader;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -20,6 +19,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.store.StoreStateReader;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
@@ -38,8 +38,9 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * This implementation uses DaVinci client backed meta system store to provide data to the {@link NativeMetadataRepository}.
- * The data is then cached and served from there.
+ * The data is then cached and served from there. Deprecated due to cyclic dependency during initialization.
  */
+@Deprecated
 public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataRepository {
   private static final int KEY_SCHEMA_ID = 1;
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientMetaStoreBasedRepository.class);

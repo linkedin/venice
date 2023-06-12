@@ -2,19 +2,19 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
-import com.linkedin.davinci.stats.ThreadPoolStats;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -48,6 +48,8 @@ public class ListenerService extends AbstractVeniceService {
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
 
+  private ThreadPoolExecutor sslHandshakeExecutor;
+
   // TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
@@ -55,7 +57,7 @@ public class ListenerService extends AbstractVeniceService {
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
       ReadOnlySchemaRepository schemaRepository,
-      CompletableFuture<RoutingDataRepository> routingRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       MetadataRetriever metadataRetriever,
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
@@ -81,6 +83,14 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.getComputeQueueCapacity());
     new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
 
+    if (sslFactory.isPresent() && serverConfig.getSslHandshakeThreadPoolSize() > 0) {
+      this.sslHandshakeExecutor = createThreadPool(
+          serverConfig.getSslHandshakeThreadPoolSize(),
+          "SSLHandShakeThread",
+          serverConfig.getSslHandshakeQueueCapacity());
+      new ThreadPoolStats(metricsRepository, this.sslHandshakeExecutor, "ssl_handshake_thread_pool");
+    }
+
     StorageReadRequestsHandler requestHandler = createRequestHandler(
         executor,
         computeExecutor,
@@ -97,9 +107,10 @@ public class ListenerService extends AbstractVeniceService {
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
-        routingRepository,
+        customizedViewRepository,
         metricsRepository,
         sslFactory,
+        sslHandshakeExecutor,
         serverConfig,
         routerAccessController,
         storeAccessController,
@@ -161,21 +172,8 @@ public class ListenerService extends AbstractVeniceService {
   }
 
   protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix, int capacity) {
-    ThreadPoolExecutor executor = new ThreadPoolExecutor(
-        threadCount,
-        threadCount,
-        0,
-        TimeUnit.MILLISECONDS,
-        serverConfig.getExecutionQueue(capacity),
-        new DaemonThreadFactory(threadNamePrefix));
-    /**
-     * When the capacity is fully saturated, the scheduled task will be executed in the caller thread.
-     * We will leverage this policy to propagate the back pressure to the caller, so that no more tasks will be
-     * scheduled.
-     */
-    executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-
-    return executor;
+    return ThreadPoolFactory
+        .createThreadPool(threadCount, threadNamePrefix, capacity, serverConfig.getBlockingQueueType());
   }
 
   protected StorageReadRequestsHandler createRequestHandler(

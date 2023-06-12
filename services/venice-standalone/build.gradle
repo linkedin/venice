@@ -1,0 +1,39 @@
+plugins {
+  id 'application'
+  id 'com.github.johnrengelman.shadow'
+}
+
+application {
+  mainClassName = 'com.linkedin.venice.standalone.VeniceStandalone'
+  applicationDefaultJvmArgs = ["-Djava.net.preferIPv4Stack=true"]
+}
+installDist.dependsOn test
+
+dependencies {
+  implementation libraries.log4j2core
+  implementation project(':internal:venice-common')
+  implementation project(':clients:da-vinci-client')
+  implementation project(':services:venice-controller')
+  implementation project(':services:venice-server')
+  implementation project(':services:venice-router')
+  implementation project(path: ':internal:venice-common')
+}
+
+jar {
+  manifest {
+    attributes = [
+        'Implementation-Title': 'Venice Standalone',
+        'Implementation-Version': project.version,
+        'Main-Class': application.mainClass.get()
+    ]
+  }
+}
+
+run {
+  args = ["${project.projectDir}/config"]
+}
+
+ext {
+  jacocoCoverageThreshold = 0.23
+}
+

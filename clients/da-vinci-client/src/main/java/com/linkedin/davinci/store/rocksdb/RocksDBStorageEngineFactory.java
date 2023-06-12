@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import java.io.File;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -24,6 +25,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.Cache;
@@ -91,6 +93,10 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+
+  private final long memoryLimit;
+
+  private final long memtableSize;
 
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
     this(
@@ -160,8 +166,14 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     // The memory usage of all the memtables will cost to the shared block cache
     this.writeBufferManager =
         new WriteBufferManager(rocksDBServerConfig.getRocksDBTotalMemtableUsageCapInBytes(), this.sharedCache);
+    this.memoryLimit = serverConfig.getIngestionMemoryLimit();
+    this.memtableSize = rocksDBServerConfig.getRocksDBMemtableSizeInBytes();
     try {
       this.sstFileManager = new SstFileManager(this.env);
+      if (this.memoryLimit > 0) {
+        this.sstFileManager.setMaxAllowedSpaceUsage(this.memoryLimit);
+        LOGGER.info("Setup the max allowed SST space usage: {} in RocksDB factory", this.memoryLimit);
+      }
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to create the shared SstFileManager", e);
     }
@@ -172,6 +184,15 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
         DEFAULT_FAIRNESS,
         DEFAULT_MODE,
         rocksDBServerConfig.isAutoTunedRateLimiterEnabled());
+
+  }
+
+  public long getMemoryLimit() {
+    return memoryLimit;
+  }
+
+  public long getMemtableSize() {
+    return memtableSize;
   }
 
   public Optional<Statistics> getAggStatistics() {
@@ -211,9 +232,9 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     verifyPersistenceType(storeConfig);
     final String storeName = storeConfig.getStoreVersionName();
     try {
-      storageEngineMap.putIfAbsent(
+      return storageEngineMap.computeIfAbsent(
           storeName,
-          new RocksDBStorageEngine(
+          ignored -> new RocksDBStorageEngine(
               storeConfig,
               this,
               rocksDBPath,
@@ -223,7 +244,6 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
               storeVersionStateSerializer,
               partitionStateSerializer,
               replicationMetadataEnabled));
-      return storageEngineMap.get(storeName);
     } catch (Exception e) {
       throw new StorageInitializationException(e);
     }
@@ -272,6 +292,34 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       LOGGER.info("Finished removing RocksDB storage engine for store: {}", storeName);
     } else {
       LOGGER.info("RocksDB store: {} doesn't exist", storeName);
+    }
+  }
+
+  /**
+   * The following function shouldn't be invoked at runtime (only at startup time), so we didn't apply
+   * any throttling here, and if the above condition changes in the future, we may need to consider
+   * throttling the deletion to reduce the IO impact to the database disk, which may result in some
+   * side effect in the read path.
+   */
+  @Override
+  public synchronized void removeStorageEngine(String storeName) {
+    if (storageEngineMap.containsKey(storeName)) {
+      throw new VeniceException(
+          "Storage engine has already been opened previously, and please use #removeStorageEngine(AbstractStorageEngine) for deletion");
+    }
+    File storeDir = new File(rocksDBPath, storeName);
+    if (storeDir.exists()) {
+      LOGGER.info("Started removing RocksDB database folder for store: {}", storeName);
+
+      try {
+        FileUtils.deleteDirectory(storeDir);
+      } catch (IOException e) {
+        throw new VeniceException("Failed to delete RocksDB database folder for store: " + storeName);
+      }
+
+      LOGGER.info("Finished removing RocksDB database folder for store: {}", storeName);
+    } else {
+      LOGGER.warn("RocksDB store: {} doesn't exist", storeName);
     }
   }
 

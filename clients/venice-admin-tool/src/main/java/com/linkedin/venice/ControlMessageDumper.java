@@ -8,38 +8,38 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.TopicPartition;
 
 
 public class ControlMessageDumper {
-  private Map<GUID, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> producerToRecords = new HashMap<>();
-  private KafkaConsumer consumer;
+  private Map<GUID, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> producerToRecords = new HashMap<>();
+  private PubSubConsumerAdapter consumer;
   private int messageCount;
   private int COUNTDOWN = 3; // TODO: make this configurable
 
   public ControlMessageDumper(
-      Properties consumerProps,
+      PubSubConsumerAdapter consumer,
       String topic,
       int partitionNumber,
       int startingOffset,
       int messageCount) {
+    this.consumer = consumer;
     this.messageCount = messageCount;
-    this.consumer = new KafkaConsumer(consumerProps);
-
-    TopicPartition partition = new TopicPartition(topic, partitionNumber);
-    consumer.assign(Collections.singletonList(partition));
-    consumer.seek(partition, startingOffset);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopicPartition partition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionNumber);
+    consumer.subscribe(partition, startingOffset - 1);
   }
 
   /**
@@ -52,13 +52,15 @@ public class ControlMessageDumper {
     int currentMessageCount = 0;
 
     do {
-      ConsumerRecords records = consumer.poll(1000); // up to 1 second
-
-      Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> iter = records.iterator();
-      while (iter.hasNext() && currentMessageCount < messageCount) {
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
+          consumer.poll(1000); // up to 1 second
+      int recordsCount = records.values().stream().mapToInt(List::size).sum();
+      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator =
+          Utils.iterateOnMapOfLists(records);
+      while (recordsIterator.hasNext() && currentMessageCount < messageCount) {
         currentMessageCount++;
-        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = iter.next();
-        KafkaMessageEnvelope envelope = record.value();
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordsIterator.next();
+        KafkaMessageEnvelope envelope = record.getValue();
 
         if (MessageType.valueOf(envelope) == MessageType.CONTROL_MESSAGE) {
           GUID producerGUID = envelope.producerMetadata.producerGUID;
@@ -67,7 +69,7 @@ public class ControlMessageDumper {
       }
 
       System.out.println("Consumed " + currentMessageCount + " messages");
-      countdownBeforeStop = records.count() == 0 ? countdownBeforeStop - 1 : COUNTDOWN;
+      countdownBeforeStop = recordsCount == 0 ? countdownBeforeStop - 1 : COUNTDOWN;
     } while (currentMessageCount < messageCount && countdownBeforeStop > 0);
 
     return this;
@@ -76,26 +78,29 @@ public class ControlMessageDumper {
   /**
    *  Display control messages from each producer
    */
-  public void display() {
+  public int display() {
     int i = 1;
-    for (Map.Entry<GUID, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> entry: producerToRecords.entrySet()) {
+    int totalMessages = 0;
+    for (Map.Entry<GUID, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: producerToRecords
+        .entrySet()) {
       GUID producerGUID = entry.getKey();
       System.out.println(String.format("\nproducer %d: %s", i++, producerGUID));
 
-      List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records = entry.getValue();
-      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
-        KafkaMessageEnvelope envelope = record.value();
+      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records = entry.getValue();
+      totalMessages += records.size();
+      for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
+        KafkaMessageEnvelope envelope = record.getValue();
         ProducerMetadata metadata = envelope.producerMetadata;
 
         if (MessageType.valueOf(envelope) == MessageType.CONTROL_MESSAGE) {
           ControlMessage msg = (ControlMessage) envelope.payloadUnion;
           ControlMessageType msgType = ControlMessageType.valueOf(msg);
           System.out.println();
-          System.out.println("offset: " + record.offset());
+          System.out.println("offset: " + record.getOffset());
           System.out.println("segment: " + metadata.segmentNumber);
           System.out.println("sequence number: " + metadata.messageSequenceNumber);
           System.out.println("timestamp1: " + metadata.messageTimestamp);
-          System.out.println("timestamp2: " + record.timestamp());
+          System.out.println("timestamp2: " + record.getPubSubMessageTime());
           System.out.println(msgType);
 
           if (msgType == ControlMessageType.END_OF_SEGMENT) {
@@ -106,5 +111,6 @@ public class ControlMessageDumper {
         }
       }
     }
+    return totalMessages;
   }
 }

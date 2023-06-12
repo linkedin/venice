@@ -1,9 +1,9 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.davinci.config.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
 import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_HEALTH_CHECK;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
+import static com.linkedin.venice.utils.concurrent.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
@@ -152,6 +152,7 @@ public abstract class TestRead {
     extraProperties.put(ConfigKeys.ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED, "true");
     extraProperties.put(ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED, isRouterHttp2Enabled());
     extraProperties.put(ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED, true);
+    extraProperties.put(ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 0.0);
 
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, true, false, extraProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
@@ -161,6 +162,7 @@ public abstract class TestRead {
     serverProperties.put(ConfigKeys.SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, 1); // test bounded queue
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY, 1);
     serverProperties.put(ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE, ARRAY_BLOCKING_QUEUE.name());
+    serverProperties.put(ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY, 10000);
     serverProperties.put(ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 3);
     serverProperties.put(ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED, true);
     serverProperties.put(ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP, "");
@@ -391,6 +393,8 @@ public abstract class TestRead {
         Assert.assertEquals(getMaxServerMetricValue(".total--compute_request_part_count.Max"), 1.0);
       }
       // Verify storage node metrics
+      Assert.assertTrue(getMaxServerMetricValue(".total--records_consumed.Rate") > 0.0);
+
       Assert.assertTrue(getMaxServerMetricValue(".total--multiget_request_size_in_bytes.Max") > 0.0);
       Assert.assertTrue(getMaxServerMetricValue(".total--compute_request_size_in_bytes.Max") > 0.0);
       for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {

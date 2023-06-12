@@ -15,6 +15,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
@@ -69,7 +70,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(69, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(71, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -122,6 +123,11 @@ public enum AvroProtocolDefinition {
   BATCH_JOB_HEARTBEAT(33, 1, BatchJobHeartbeatValue.class),
 
   /**
+   * Used to encode the position of a PubSub message.
+   */
+  PUBSUB_POSITION_WIRE_FORMAT(34, 1, PubSubPositionWireFormat.class),
+
+  /**
    * Key schema for metadata system store.
    */
   METADATA_SYSTEM_SCHEMA_STORE_KEY(StoreMetaKey.class),
@@ -129,7 +135,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(13, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(14, StoreMetaValue.class),
 
   /**
    * Key schema for push status system store.

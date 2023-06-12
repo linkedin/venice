@@ -2,7 +2,6 @@ package com.linkedin.alpini.netty4.misc;
 
 import com.linkedin.alpini.base.misc.Headers;
 import io.netty.handler.codec.http.HttpHeaders;
-import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -70,23 +69,8 @@ public class BasicHeaders implements Headers {
   }
 
   @Override
-  public Optional<CharSequence> get(CharSequence name) {
-    return Optional.ofNullable(_headers.get(name));
-  }
-
-  @Override
-  public Optional<Date> getAsDate(CharSequence name) {
-    return Optional.ofNullable(_headers.getTimeMillis(name)).map(Date::new);
-  }
-
-  @Override
-  public Optional<Integer> getAsInt(CharSequence name) {
-    return Optional.ofNullable(_headers.getInt(name));
-  }
-
-  @Override
-  public Optional<Long> getAsLong(CharSequence name) {
-    return get(name).flatMap(value -> Optional.ofNullable(Long.parseLong(value.toString())));
+  public CharSequence get(CharSequence name) {
+    return _headers.get(name);
   }
 
   @Override

@@ -1,7 +1,7 @@
 package com.linkedin.venice.unit.kafka;
 
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -22,7 +22,7 @@ public class InMemoryKafkaBroker {
   private final String brokerNamePrefix;
 
   public InMemoryKafkaBroker(String brokerNamePrefix) {
-    port = Utils.getFreePort();
+    port = TestUtils.getFreePort();
     this.brokerNamePrefix = brokerNamePrefix;
   }
 
@@ -83,5 +83,9 @@ public class InMemoryKafkaBroker {
    */
   public String getKafkaBootstrapServer() {
     return brokerNamePrefix + "_InMemoryKafkaBroker:" + port;
+  }
+
+  public Long endOffsets(String topicName, int partition) {
+    return topics.get(topicName).getEndOffsets(partition);
   }
 }

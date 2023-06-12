@@ -1,14 +1,11 @@
 package com.linkedin.venice.schema.merge;
 
-import static org.apache.avro.Schema.Type.ARRAY;
-import static org.apache.avro.Schema.Type.MAP;
-import static org.apache.avro.Schema.Type.UNION;
+import static com.linkedin.venice.schema.SchemaUtils.isArrayField;
+import static com.linkedin.venice.schema.SchemaUtils.isMapField;
 
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.List;
-import java.util.Map;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -36,8 +33,7 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
       Object newFieldValue,
       final long newPutTimestamp,
       final int putOperationColoID) {
-    Object oldFieldValue = oldRecord.get(fieldName);
-    if (oldFieldValue instanceof List || oldFieldValue instanceof Map) {
+    if (isMapField(oldRecord, fieldName) || isArrayField(oldRecord, fieldName)) {
       // Collection field must have collection timestamp at this point.
       Object collectionFieldTimestampObj = oldTimestampRecord.get(fieldName);
       if (!(collectionFieldTimestampObj instanceof GenericRecord)) {
@@ -55,16 +51,14 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
           fieldName,
           newPutTimestamp,
           putOperationColoID);
-
-    } else {
-      return super.putOnField(
-          oldRecord,
-          oldTimestampRecord,
-          fieldName,
-          newFieldValue,
-          newPutTimestamp,
-          putOperationColoID);
     }
+    return super.putOnField(
+        oldRecord,
+        oldTimestampRecord,
+        fieldName,
+        newFieldValue,
+        newPutTimestamp,
+        putOperationColoID);
   }
 
   /**
@@ -86,9 +80,7 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
       final long putOperationTimestamp,
       final int putOperationColoID) {
     final CollectionRmdTimestamp collectionRmd = new CollectionRmdTimestamp(collectionFieldTimestampRecord);
-    Object currFieldValue = currValueRecord.get(fieldName);
-
-    if (currFieldValue instanceof List<?>) {
+    if (isArrayField(currValueRecord, fieldName)) {
       return collectionFieldOperationHandler.handlePutList(
           putOperationTimestamp,
           putOperationColoID,
@@ -96,9 +88,8 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
           collectionRmd,
           currValueRecord,
           fieldName);
-
-    } else if (currFieldValue instanceof Map) {
-      if (!(putFieldValue instanceof IndexedHashMap)) {
+    } else if (isMapField(currValueRecord, fieldName)) {
+      if ((putFieldValue != null) && (!(putFieldValue instanceof IndexedHashMap))) {
         throw new IllegalStateException(
             "Expect the value to put on the field to be an IndexedHashMap. Got: " + putFieldValue.getClass());
       }
@@ -109,12 +100,10 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
           collectionRmd,
           currValueRecord,
           fieldName);
-
-    } else {
-      throw new IllegalStateException(
-          "Expect a field that is of a collection type (Map or List). Got: " + currFieldValue + " for field "
-              + fieldName);
     }
+    throw new IllegalStateException(
+        "Expect a field that is of a collection type (Map or List). Got: " + currValueRecord.get(fieldName)
+            + " for field " + fieldName);
   }
 
   @Override
@@ -124,7 +113,9 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
       final String fieldName,
       final long deleteTimestamp,
       final int coloID) {
-    if (isCollectionField(currValueRecord, fieldName)) {
+    boolean isMapField = isMapField(currValueRecord, fieldName);
+    boolean isArrayField = isArrayField(currValueRecord, fieldName);
+    if (isMapField || isArrayField) {
       Object timestamp = currTimestampRecord.get(fieldName);
       if (timestamp instanceof Long) {
         throw new IllegalStateException(
@@ -133,17 +124,7 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
                 fieldName,
                 timestamp));
       }
-      Object currFieldValue = currValueRecord.get(fieldName);
-
-      if (currFieldValue instanceof List<?>) {
-        return collectionFieldOperationHandler.handleDeleteList(
-            deleteTimestamp,
-            coloID,
-            new CollectionRmdTimestamp((GenericRecord) timestamp),
-            currValueRecord,
-            fieldName);
-
-      } else if (currFieldValue instanceof Map) {
+      if (isMapField) {
         return collectionFieldOperationHandler.handleDeleteMap(
             deleteTimestamp,
             coloID,
@@ -152,30 +133,15 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
             fieldName);
 
       } else {
-        throw new IllegalStateException(
-            "Expect a field that is of a collection type (Map or List). Got: " + currFieldValue + " for field "
-                + fieldName);
+        return collectionFieldOperationHandler.handleDeleteList(
+            deleteTimestamp,
+            coloID,
+            new CollectionRmdTimestamp((GenericRecord) timestamp),
+            currValueRecord,
+            fieldName);
       }
-
     } else {
       return super.deleteRecordField(currValueRecord, currTimestampRecord, fieldName, deleteTimestamp, coloID);
     }
-  }
-
-  private boolean isCollectionField(GenericRecord currRecord, String fieldName) {
-    Object fieldValue = currRecord.get(fieldName);
-    if (fieldValue != null) {
-      return fieldValue instanceof List || fieldValue instanceof Map;
-    }
-
-    Schema fieldSchema = currRecord.getSchema().getField(fieldName).schema();
-    if (fieldSchema.getType() == ARRAY) {
-      return true;
-    }
-    // Check if field is a nullable map.
-    if (fieldSchema.getType() == UNION && fieldSchema.getTypes().get(1).getType() == MAP) {
-      return true;
-    }
-    return false;
   }
 }

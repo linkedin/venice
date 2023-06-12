@@ -4,6 +4,9 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -40,27 +43,43 @@ class CachedKafkaMetadataGetter {
    * return the next available offset rather the latest used offset. Therefore,
    * the value will be 1 offset greater than what's expected.
    */
-  long getOffset(TopicManager topicManager, String topicName, int partitionId) {
+  long getOffset(TopicManager topicManager, PubSubTopic pubSubTopic, int partitionId) {
+    final String sourceKafkaServer = topicManager.getKafkaBootstrapServers();
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partitionId);
+    try {
+      return fetchMetadata(
+          new KafkaMetadataCacheKey(sourceKafkaServer, pubSubTopicPartition),
+          offsetCache,
+          () -> topicManager.getPartitionLatestOffsetAndRetry(pubSubTopicPartition, DEFAULT_MAX_RETRY));
+    } catch (TopicDoesNotExistException e) {
+      // It's observed in production that with java based admin client the topic may not be found temporarily, return
+      // error code
+      LOGGER.error("Failed to get offset for topic partition {}", pubSubTopicPartition, e);
+      return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
+    }
+  }
+
+  long getEarliestOffset(TopicManager topicManager, PubSubTopicPartition pubSubTopicPartition) {
     final String sourceKafkaServer = topicManager.getKafkaBootstrapServers();
     try {
       return fetchMetadata(
-          new KafkaMetadataCacheKey(sourceKafkaServer, topicName, partitionId),
+          new KafkaMetadataCacheKey(sourceKafkaServer, pubSubTopicPartition),
           offsetCache,
-          () -> topicManager.getPartitionLatestOffsetAndRetry(topicName, partitionId, DEFAULT_MAX_RETRY));
+          () -> topicManager.getPartitionEarliestOffsetAndRetry(pubSubTopicPartition, DEFAULT_MAX_RETRY));
     } catch (TopicDoesNotExistException e) {
       // It's observed in production that with java based admin client the topic may not be found temporarily, return
       // error code
-      LOGGER.error("Failed to get offset for {} partition {}", topicName, partitionId, e);
+      LOGGER.error("Failed to get offset for topic partition {}", pubSubTopicPartition, e);
       return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
     }
   }
 
-  long getProducerTimestampOfLastDataMessage(TopicManager topicManager, String topicName, int partitionId) {
+  long getProducerTimestampOfLastDataMessage(TopicManager topicManager, PubSubTopicPartition pubSubTopicPartition) {
     try {
       return fetchMetadata(
-          new KafkaMetadataCacheKey(topicManager.getKafkaBootstrapServers(), topicName, partitionId),
+          new KafkaMetadataCacheKey(topicManager.getKafkaBootstrapServers(), pubSubTopicPartition),
           lastProducerTimestampCache,
-          () -> topicManager.getProducerTimestampOfLastDataRecord(topicName, partitionId, DEFAULT_MAX_RETRY));
+          () -> topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, DEFAULT_MAX_RETRY));
     } catch (TopicDoesNotExistException e) {
       // It's observed in production that with java based admin client the topic may not be found temporarily, return
       // error code
@@ -68,11 +87,13 @@ class CachedKafkaMetadataGetter {
     }
   }
 
-  boolean containsTopic(TopicManager topicManager, String topicName) {
+  boolean containsTopic(TopicManager topicManager, PubSubTopic pubSubTopic) {
     return fetchMetadata(
-        new KafkaMetadataCacheKey(topicManager.getKafkaBootstrapServers(), topicName, -1),
+        new KafkaMetadataCacheKey(
+            topicManager.getKafkaBootstrapServers(),
+            new PubSubTopicPartitionImpl(pubSubTopic, -1)),
         topicExistenceCache,
-        () -> topicManager.containsTopic(topicName));
+        () -> topicManager.containsTopic(pubSubTopic));
   }
 
   /**
@@ -107,21 +128,18 @@ class CachedKafkaMetadataGetter {
 
   static class KafkaMetadataCacheKey {
     private final String kafkaServer;
-    private final String topicName;
-    private final int partitionId;
+    private final PubSubTopicPartition pubSubTopicPartition;
 
-    KafkaMetadataCacheKey(String kafkaServer, String topicName, int partitionId) {
+    KafkaMetadataCacheKey(String kafkaServer, PubSubTopicPartition pubSubTopicPartition) {
       this.kafkaServer = kafkaServer;
-      this.topicName = topicName;
-      this.partitionId = partitionId;
+      this.pubSubTopicPartition = pubSubTopicPartition;
     }
 
     @Override
     public int hashCode() {
       int result = 1;
       result = 31 * result + (kafkaServer == null ? 0 : kafkaServer.hashCode());
-      result = 31 * result + (topicName == null ? 0 : topicName.hashCode());
-      result = 31 * result + partitionId;
+      result = 31 * result + (pubSubTopicPartition == null ? 0 : pubSubTopicPartition.hashCode());
       return result;
     }
 
@@ -135,8 +153,7 @@ class CachedKafkaMetadataGetter {
       }
 
       final KafkaMetadataCacheKey other = (KafkaMetadataCacheKey) o;
-      return partitionId == other.partitionId && Objects.equals(topicName, other.topicName)
-          && Objects.equals(kafkaServer, other.kafkaServer);
+      return pubSubTopicPartition.equals(other.pubSubTopicPartition) && Objects.equals(kafkaServer, other.kafkaServer);
     }
   }
 

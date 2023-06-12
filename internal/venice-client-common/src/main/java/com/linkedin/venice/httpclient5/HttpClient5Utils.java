@@ -2,6 +2,7 @@ package com.linkedin.venice.httpclient5;
 
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
+import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
@@ -62,7 +63,7 @@ public class HttpClient5Utils {
       return this;
     }
 
-    public CloseableHttpAsyncClient buildAndStart() {
+    public CloseableHttpAsyncClient build() {
       if (sslContext == null) {
         throw new IllegalArgumentException("'sslContext' needs to be specified.");
       }
@@ -83,14 +84,22 @@ public class HttpClient5Utils {
       final CloseableHttpAsyncClient client = HttpAsyncClients.customHttp2()
           .setTlsStrategy(tlsStrategy)
           .setIOReactorConfig(ioReactorConfig)
+          .setDefaultConnectionConfig(
+              ConnectionConfig.custom()
+                  .setConnectTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                  .setSocketTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                  .build())
           .setDefaultRequestConfig(
               RequestConfig.custom()
                   .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
                   .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-                  .setConnectTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
                   .build())
           .build();
+      return client;
+    }
 
+    public CloseableHttpAsyncClient buildAndStart() {
+      CloseableHttpAsyncClient client = build();
       client.start();
       return client;
     }

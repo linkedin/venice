@@ -103,6 +103,14 @@ public abstract class AbstractStoragePartition {
    */
   public abstract boolean verifyConfig(StoragePartitionConfig storagePartitionConfig);
 
+  /**
+   * checks whether the current state of the database is valid
+   * during the start of ingestion.
+   */
+  public boolean checkDatabaseIntegrity(Map<String, String> checkpointedInfo) {
+    return true;
+  }
+
   public void beginBatchWrite(Map<String, String> checkpointedInfo, Optional<Supplier<byte[]>> checksumSupplier) {
   }
 

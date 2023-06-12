@@ -14,7 +14,6 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -31,6 +30,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -92,19 +92,15 @@ public class DaVinciLiveUpdateSuppressionTest {
   public void testLiveUpdateSuppression(IngestionMode ingestionMode) throws Exception {
     final String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
-      NewStoreResponse response =
-          client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
-      if (response.isError()) {
-        throw new VeniceException(response.getError());
-      }
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-      // Update to hybrid store
+      TestUtils.assertCommand(
+          client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA));
+      cluster.createMetaSystemStore(storeName);
       client.updateStore(
           storeName,
           new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10));
     });
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
@@ -118,8 +114,10 @@ public class DaVinciLiveUpdateSuppressionTest {
     Future[] writerFutures = new Future[KEY_COUNT];
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
-    try (VeniceWriter<Object, Object, byte[]> batchProducer =
-        vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false)) {
+    try (VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+            .setValueSerializer(valueSerializer)
+            .build())) {
       batchProducer.broadcastStartOfPush(Collections.emptyMap());
       for (int i = 0; i < KEY_COUNT; i++) {
         writerFutures[i] = batchProducer.put(i, i, valueSchemaId);
@@ -142,8 +140,10 @@ public class DaVinciLiveUpdateSuppressionTest {
 
     try (CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
-        VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory
-            .createVeniceWriter(Version.composeRealTimeTopic(storeName), keySerializer, valueSerializer, false)) {
+        VeniceWriter<Object, Object, byte[]> realTimeProducer = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build())) {
       client.subscribe(Collections.singleton(0)).get();
       writerFutures = new Future[KEY_COUNT];
       for (int i = 0; i < KEY_COUNT; i++) {

@@ -8,10 +8,10 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import org.apache.hadoop.mapred.JobConf;
 import org.testng.Assert;
@@ -33,33 +34,36 @@ public class TestKafkaInputRecordReader {
   private static final String KAFKA_MESSAGE_KEY_PREFIX = "key_";
   private static final String KAFKA_MESSAGE_VALUE_PREFIX = "value_";
 
-  private KafkaBrokerWrapper kafka;
+  private PubSubBrokerWrapper kafka;
   private TopicManager manager;
-  private ZkServerWrapper zkServer;
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
-    zkServer = ServiceFactory.getZkServer();
-    kafka = ServiceFactory.getKafkaBroker(zkServer);
-    manager = new TopicManager(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100,
-        24 * Time.MS_PER_HOUR,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(kafka));
+    kafka = ServiceFactory.getPubSubBroker();
+    manager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                24 * Time.MS_PER_HOUR,
+                kafka.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
   }
 
   @AfterClass
   public void cleanUp() throws IOException {
     Utils.closeQuietlyWithErrorLogged(manager);
     Utils.closeQuietlyWithErrorLogged(kafka);
-    Utils.closeQuietlyWithErrorLogged(zkServer);
   }
 
   public String getTopic(int numRecord, Pair<Integer, Integer> updateRange, Pair<Integer, Integer> deleteRange) {
     String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
-    manager.createTopic(topicName, 1, 1, true);
+    manager.createTopic(pubSubTopicRepository.getTopic(topicName), 1, 1, true);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
-    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName)) {
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
+        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {
       for (int i = 0; i < numRecord; ++i) {
         byte[] keyBytes = (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes();
         byte[] valueBytes = (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes();

@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import java.util.List;
+import java.util.Optional;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 
 
@@ -24,6 +25,12 @@ public interface OfflinePushAccessor {
    * Read one offline push and its partitions status from persistent storage.
    */
   OfflinePushStatus getOfflinePushStatusAndItsPartitionStatuses(String kafkaTopic);
+
+  /**
+   * Get the creation time of the given offline push ZK path; the creation time is set by {@link System#currentTimeMillis()}.
+   * If the path does not exist or error when trying to get creation time, return an empty Optional.
+   */
+  Optional<Long> getOfflinePushStatusCreationTime(String kafkaTopic);
 
   /**
    * Update status of the given offline push to persistent storage.

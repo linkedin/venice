@@ -126,6 +126,7 @@ public enum Arg {
   AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED(
       "auto-schema-register-push-job-enabled", "asp", true, "whether or not to use auto-schema register for pushjob"
   ),
+  LATEST_SUPERSET_SCHEMA_ID("latest-superset-schema-id", "lssi", true, "the latest superset schema id for this store"),
   REGULAR_VERSION_ETL_ENABLED(
       "regular-version-etl-enabled", "rve", true, "whether or not to enable regular version etl for this store."
   ),
@@ -199,7 +200,7 @@ public enum Arg {
   ),
   KAFKA_TOPIC_RETENTION_IN_MS(
       "kafka-topic-retention-in-ms", "ktrim", true, "Kafka topic retention time in milliseconds"
-  ),
+  ), KAFKA_TOPIC_MIN_IN_SYNC_REPLICA("kafka-topic-min-in-sync-replica", "ktmisr", true, "Kafka topic minISR config"),
   CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED(
       ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, "atc", true,
       "whether child controller consumes admin topic"
@@ -225,6 +226,11 @@ public enum Arg {
   RECOVERY_COMMAND("recovery-command", "rco", true, "command to execute the data recovery"),
   EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
   ENABLE_DISABLED_REPLICA("enable-disabled-replicas", "edr", true, "Reenable disabled replicas"),
+  NON_INTERACTIVE("non-interactive", "nita", false, "non-interactive mode"),
+  INTERVAL(
+      "interval", "itv", true,
+      "monitor data recovery progress at seconds close to the number specified by the interval parameter until tasks are finished"
+  ), DATETIME("datetime", "dtm", true, "Date and time stamp (YYYY-MM-DDTHH:MM:SS) in UTC time zone for data recovery"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
 
   private final String argName;

@@ -16,23 +16,22 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
@@ -69,16 +68,16 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private static final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 12;
   private static final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(5);
 
-  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final PubSubTopicRepository PUBSUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 
-  private final PubSubConsumer consumer;
+  private final PubSubConsumerAdapter consumer;
   private final TopicPartition topicPartition;
   private final PubSubTopicPartition pubSubTopicPartition;
   private final long maxNumberOfRecords;
   private final long startingOffset;
   private long currentOffset;
   private final long endingOffset;
-  private final boolean isChunkingEnabled;
+  private final boolean isSourceVersionChunkingEnabled;
   private final Schema keySchema;
   private ChunkKeyValueTransformer chunkKeyValueTransformer;
   /**
@@ -93,14 +92,15 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         split,
         job,
         reporter,
-        KafkaInputUtils.getConsumerFactory(job)
-            .getConsumer(
-                new Properties(),
-                new KafkaPubSubMessageDeserializer(
-                    new OptimizedKafkaValueSerializer(),
-                    new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-                    new LandFillObjectPool<>(KafkaMessageEnvelope::new))),
-        PUB_SUB_TOPIC_REPOSITORY);
+        new ApacheKafkaConsumerAdapterFactory().create(
+            KafkaInputUtils.getConsumerProperties(job),
+            false,
+            new KafkaPubSubMessageDeserializer(
+                new OptimizedKafkaValueSerializer(),
+                new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
+            null),
+        PUBSUB_TOPIC_REPOSITORY);
   }
 
   /** For unit tests */
@@ -108,7 +108,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
       InputSplit split,
       JobConf job,
       Reporter reporter,
-      PubSubConsumer consumer,
+      PubSubConsumerAdapter consumer,
       PubSubTopicRepository pubSubTopicRepository) {
     if (!(split instanceof KafkaInputSplit)) {
       throw new VeniceException("InputSplit for RecordReader is not valid split type.");
@@ -121,7 +121,8 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     this.startingOffset = inputSplit.getStartingOffset();
     this.currentOffset = inputSplit.getStartingOffset() - 1;
     this.endingOffset = inputSplit.getEndingOffset();
-    this.isChunkingEnabled = job.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
+    this.isSourceVersionChunkingEnabled =
+        job.getBoolean(VenicePushJob.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, false);
     String keySchemaString = job.get(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
     if (keySchemaString == null) {
       throw new VeniceException(
@@ -170,7 +171,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
 
         key.offset = pubSubMessage.getOffset();
-        if (isChunkingEnabled) {
+        if (isSourceVersionChunkingEnabled) {
           RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
               splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
           key.key = rawKeyAndChunkedKeySuffix.getRawKeyBytes();

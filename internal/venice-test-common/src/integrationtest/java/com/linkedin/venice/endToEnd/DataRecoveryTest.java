@@ -3,7 +3,6 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
@@ -32,6 +31,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
@@ -44,6 +44,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -71,17 +72,21 @@ public class DataRecoveryTest {
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
+  private static final int VERSION_ID_UNSET = -1;
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private String clusterName;
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+    // If the delay is too short, dc-1 participant store new leader will skip local VT consumption, switch to remote VT,
+    // replicate duplicate SOP/EOP to local VT and miss TopicSwitch, resulting in stuck participant store push job.
+    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 5L);
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
@@ -89,7 +94,6 @@ public class DataRecoveryTest {
     serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "2");
 
     Properties controllerProps = new Properties();
-    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(ALLOW_CLUSTER_WIPE, "true");
@@ -110,6 +114,18 @@ public class DataRecoveryTest {
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
+
+    try (ControllerClient controllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
+      // Verify the participant store is up and running in dest region.
+      // Participant store is needed for checking kill record existence and dest region readiness for data recovery.
+      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(participantStoreName, 1),
+          controllerClient,
+          2,
+          TimeUnit.MINUTES);
+    }
   }
 
   @AfterClass(alwaysRun = true)
@@ -165,7 +181,9 @@ public class DataRecoveryTest {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         Admin dc1Admin = childDatacenters.get(1).getLeaderController(clusterName).getVeniceAdmin();
         Assert.assertTrue(dc1Admin.getStore(clusterName, storeName).containsVersion(1));
-        Assert.assertTrue(dc1Admin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, 1)));
+        Assert.assertTrue(
+            dc1Admin.getTopicManager()
+                .containsTopic(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1))));
       });
     }
   }
@@ -215,20 +233,16 @@ public class DataRecoveryTest {
           TimeUnit.SECONDS);
       // Prepare dc-1 for data recovery
       Assert.assertFalse(
-          parentControllerClient.prepareDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty()).isError());
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-        ReadyForDataRecoveryResponse readinessResponse =
-            parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
-        Assert.assertTrue(readinessResponse.isReady(), readinessResponse.getReason());
-      });
-      // Initiate data recovery
+          parentControllerClient.prepareDataRecovery("dc-0", "dc-1", storeName, VERSION_ID_UNSET, Optional.empty())
+              .isError());
+      // Initiate data recovery, a new version will be created in dest fabric
       Assert.assertFalse(
-          parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
-      TestUtils.waitForNonDeterministicPushCompletion(
-          versionCreationResponse.getKafkaTopic(),
-          parentControllerClient,
-          60,
-          TimeUnit.SECONDS);
+          parentControllerClient
+              .dataRecovery("dc-0", "dc-1", storeName, VERSION_ID_UNSET, false, true, Optional.empty())
+              .isError());
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        Assert.assertEquals(dc1Client.getStore(storeName).getStore().getCurrentVersion(), 2);
+      });
       try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
               .setVeniceURL(childDatacenters.get(1).getClusters().get(clusterName).getRandomRouterURL()))) {

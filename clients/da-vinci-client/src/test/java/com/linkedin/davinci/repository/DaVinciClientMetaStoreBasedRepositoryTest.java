@@ -140,6 +140,7 @@ public class DaVinciClientMetaStoreBasedRepositoryTest {
   public void testSubscribeAndRefresh() throws InterruptedException, ExecutionException {
     String storeName = "testStore";
     setupAndGetBasicMockMetaClient(storeName);
+    daVinciClientBasedRepository.start();
     daVinciClientBasedRepository.subscribe(storeName);
     Assert.assertNotNull(daVinciClientBasedRepository.getStore(storeName));
     Assert.assertEquals(

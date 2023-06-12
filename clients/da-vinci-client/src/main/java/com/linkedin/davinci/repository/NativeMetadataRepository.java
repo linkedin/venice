@@ -21,6 +21,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -32,7 +33,6 @@ import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
@@ -47,6 +47,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -81,12 +82,36 @@ public abstract class NativeMetadataRepository
   private final Set<StoreDataChangedListener> listeners = new CopyOnWriteArraySet<>();
   private final AtomicLong totalStoreReadQuota = new AtomicLong();
 
+  private final long refreshIntervalInSeconds;
+
+  private AtomicBoolean started = new AtomicBoolean(false);
+
   protected NativeMetadataRepository(ClientConfig clientConfig, VeniceProperties backendConfig) {
-    long refreshIntervalInSeconds = backendConfig.getLong(
+    refreshIntervalInSeconds = backendConfig.getLong(
         CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
         NativeMetadataRepository.DEFAULT_REFRESH_INTERVAL_IN_SECONDS);
-    this.scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
     this.clientConfig = clientConfig;
+  }
+
+  public synchronized void start() {
+    if (started.get() && scheduler.isShutdown()) {
+      // The only way the started flag would be true and the scheduler shutdown would be if we already
+      // started and called 'clear' on this object. So here we abort the call to prevent it being restarted again
+      throw new VeniceException(
+          "Calling start() failed! NativeMetadataRepository has already been cleared and shutdown!");
+    }
+    if (!started.get()) {
+      this.scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
+      started.set(true);
+    }
+  }
+
+  private void throwIfNotStartedOrCleared() {
+    if (!started.get()) {
+      throw new VeniceException("NativeMetadataRepository isn't started yet! Call start() before use.");
+    } else if (scheduler.isShutdown()) {
+      throw new VeniceException("NativeMetadataRepository has already been cleared and shutdown!");
+    }
   }
 
   public static NativeMetadataRepository getInstance(ClientConfig clientConfig, VeniceProperties backendConfig) {
@@ -97,10 +122,6 @@ public abstract class NativeMetadataRepository
       ClientConfig clientConfig,
       VeniceProperties backendConfig,
       ICProvider icProvider) {
-    // Not using a factory pattern here because the different implementations are temporary. Eventually we will only use
-    // DaVinciClientMetaStoreBasedRepository.
-    // If all feature configs are enabled then:
-    // DaVinciClientMetaStoreBasedRepository > ThinClientMetadataStoreBasedRepository.
     if (backendConfig.getBoolean(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, false)) {
       LOGGER.info(
           "Initializing {} with {}",
@@ -130,6 +151,7 @@ public abstract class NativeMetadataRepository
 
   @Override
   public void subscribe(String storeName) throws InterruptedException {
+    throwIfNotStartedOrCleared();
     if (!subscribedStoreMap.containsKey(storeName)) {
       refreshOneStore(storeName);
     }
@@ -333,7 +355,7 @@ public abstract class NativeMetadataRepository
   }
 
   @Override
-  public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
+  public GeneratedSchemaID getDerivedSchemaId(String storeName, String derivedSchemaStr) {
     throw new VeniceException("Derived schema is not included in system store.");
   }
 
@@ -368,7 +390,7 @@ public abstract class NativeMetadataRepository
    * This method will be triggered periodically to keep the store/schema information up-to-date.
    */
   @Override
-  public final void refresh() {
+  public void refresh() {
     LOGGER.debug("Refresh started for {}", getClass().getSimpleName());
     for (String storeName: subscribedStoreMap.keySet()) {
       try {

@@ -25,7 +25,6 @@ import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -45,7 +44,6 @@ import java.util.concurrent.TimeoutException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryEncoder;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
@@ -66,11 +64,6 @@ public class StatTrackingStoreClientTest {
           transportClient,
           needSchemaReader,
           ClientConfig.defaultGenericClientConfig(storeName).setDeserializationExecutor(deserializationExecutor));
-    }
-
-    @Override
-    protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
-      return null;
     }
 
     @Override
@@ -643,9 +636,7 @@ public class StatTrackingStoreClientTest {
           Set<K> keys,
           Schema resultSchema,
           StreamingCallback<K, ComputeGenericRecord> callback,
-          long preRequestTimeInNS,
-          BinaryEncoder reusedEncoder,
-          ByteArrayOutputStream reusedOutputStream) {
+          long preRequestTimeInNS) {
         Thread callbackThread = new Thread(() -> {
           for (int i = 0; i < 10; i += 2) {
             callback.onRecordReceived((K) ("key_" + i), mock(ComputeGenericRecord.class));

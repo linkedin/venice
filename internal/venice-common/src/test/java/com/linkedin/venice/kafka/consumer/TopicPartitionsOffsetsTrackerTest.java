@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
@@ -94,7 +95,7 @@ public class TopicPartitionsOffsetsTrackerTest {
     when(metricValue.metricValue()).thenReturn((double) secondPartitionLag);
     mockMetrics.put(metricName, metricValue);
 
-    topicPartitionsOffsetsTracker.updateEndOffsets(mockRecords, mockMetrics);
+    topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(mockRecords, mockMetrics);
 
     Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_1, PARTITION_ID), firstPartitionLag);
     Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);

@@ -1,0 +1,22 @@
+plugins {
+    id 'com.github.johnrengelman.shadow'
+}
+
+dependencies {
+    implementation project(':internal:venice-common')
+    implementation project(':clients:venice-thin-client')
+    implementation libraries.commonsCli
+
+    implementation libraries.log4j2core
+    implementation libraries.log4j2api
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'com.linkedin.venice.producer.online.ProducerTool'
+    }
+}
+
+ext {
+    jacocoCoverageThreshold = 0.5
+}

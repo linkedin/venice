@@ -7,9 +7,6 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
-import com.linkedin.venice.routerapi.ReplicaState;
-import com.linkedin.venice.utils.MockTestStateModel;
-import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
@@ -24,8 +21,8 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
+import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -62,13 +59,13 @@ public class TestHelixExternalViewRepository {
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(clusterName, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
+    admin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
     admin.addResource(
         clusterName,
         resourceName,
         1,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        LeaderStandbySMD.name,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(clusterName, resourceName, 1);
 
@@ -78,15 +75,15 @@ public class TestHelixExternalViewRepository {
         HelixControllerMain.startHelixController(
             zkAddress,
             clusterName,
-            Utils.getHelixNodeIdentifier(adminPort),
+            Utils.getHelixNodeIdentifier(Utils.getHostName(), adminPort),
             HelixControllerMain.STANDALONE));
 
     manager = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort),
         zkAddress,
         httpPort,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     manager.connect();
     // Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
@@ -112,8 +109,8 @@ public class TestHelixExternalViewRepository {
   @Test
   public void testGetInstances() throws Exception {
 
-    List<Instance> instances = repository.getReadyToServeInstances(resourceName, 0);
-    Assert.assertEquals(1, instances.size());
+    List<Instance> instances = repository.getWorkingInstances(resourceName, 0);
+    Assert.assertEquals(instances.size(), 1);
     Instance instance = instances.get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
     Assert.assertEquals(httpPort, instance.getPort());
@@ -121,39 +118,26 @@ public class TestHelixExternalViewRepository {
     manager.disconnect();
     // Wait for notification.
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      List<Instance> instancesList = repository.getReadyToServeInstances(resourceName, 0);
-      Assert.assertEquals(0, instancesList.size());
+      List<Instance> instancesList = repository.getWorkingInstances(resourceName, 0);
+      Assert.assertEquals(instancesList.size(), 0);
     });
     // No online instance now.
-    instances = repository.getReadyToServeInstances(resourceName, 0);
-    Assert.assertEquals(0, instances.size());
+    instances = repository.getWorkingInstances(resourceName, 0);
+    Assert.assertEquals(instances.size(), 0);
     int newHttpPort = httpPort + 10;
     SafeHelixManager newManager = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(newHttpPort),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), newHttpPort),
         zkAddress,
         newHttpPort,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     newManager.connect();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      List<Instance> instancesList = repository.getReadyToServeInstances(resourceName, 0);
+      List<Instance> instancesList = repository.getWorkingInstances(resourceName, 0);
       Assert.assertEquals(instancesList.size(), 1);
       Assert.assertEquals(instancesList.get(0).getPort(), newHttpPort);
     });
     newManager.disconnect();
-  }
-
-  @Test
-  public void testGetReplicaStates() {
-    List<ReplicaState> replicaStates = repository.getReplicaStates(resourceName, 0);
-    Assert.assertEquals(replicaStates.size(), 1, "Unexpected replication factor");
-    ReplicaState replicaState = replicaStates.iterator().next();
-    Assert.assertEquals(replicaState.getPartition(), 0, "Unexpected partition number");
-    Assert.assertNotNull(replicaState.getParticipantId(), "Participant id should not be null");
-    Assert.assertEquals(replicaState.getExternalViewStatus(), HelixState.ONLINE_STATE);
-    Assert.assertEquals(
-        replicaState.isReadyToServe(),
-        replicaState.getExternalViewStatus().equals(HelixState.ONLINE_STATE));
   }
 
   @Test
@@ -167,7 +151,7 @@ public class TestHelixExternalViewRepository {
     Assert.assertEquals(1, repository.getNumberOfPartitions(resourceName));
   }
 
-  @Test(groups = { "flaky" })
+  @Test
   public void testGetNumberOfPartitionsWhenResourceDropped() throws Exception {
     Assert.assertTrue(admin.getResourcesInCluster(clusterName).contains(resourceName));
     // Wait notification.
@@ -259,7 +243,7 @@ public class TestHelixExternalViewRepository {
     SafeHelixManager newLeader = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(
             clusterName,
-            Utils.getHelixNodeIdentifier(newAdminPort),
+            Utils.getHelixNodeIdentifier(Utils.getHostName(), newAdminPort),
             InstanceType.CONTROLLER,
             zkAddress));
     newLeader.connect();
@@ -276,65 +260,14 @@ public class TestHelixExternalViewRepository {
   @Test
   public void testNodeChanged() {
     // Test initial conditions
-    Assert.assertTrue(repository.getReadyToServeInstances(resourceName, 0).size() > 0);
+    Assert.assertTrue(repository.getWorkingInstances(resourceName, 0).size() > 0);
     Assert.assertTrue(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions() > 0);
 
     manager.disconnect();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      Assert.assertEquals(repository.getReadyToServeInstances(resourceName, 0).size(), 0);
+      Assert.assertEquals(repository.getWorkingInstances(resourceName, 0).size(), 0);
       Assert.assertEquals(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions(), 0);
     });
-  }
-
-  // @Test
-  // TODO: Either delete this test or fix the getBootstrapping instances api to work with L/F (or make an equivalent new
-  // api)
-  public void testGetBootstrapInstances() throws Exception {
-    manager.disconnect();
-    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(
-        clusterName,
-        new ZkClient(zkAddress),
-        new HelixAdapterSerializer(),
-        3,
-        1000);
-    MockTestStateModelFactory factory = new MockTestStateModelFactory(offlinePushStatusAccessor);
-    factory.setBlockTransition(true);
-    manager = TestUtils.getParticipant(
-        clusterName,
-        Utils.getHelixNodeIdentifier(httpPort + 1),
-        zkAddress,
-        httpPort + 1,
-        factory,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
-    manager.connect();
-    Thread.sleep(WAIT_TIME);
-
-    // because bootstrap to online transition is blocked, so there is only one bootstrap instance.
-    Assert.assertEquals(
-        repository.getReadyToServeInstances(resourceName, 0).size(),
-        0,
-        "Transition should be delayed, so there is no online instance.");
-    Assert.assertEquals(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions(), 1);
-    Assert.assertEquals(
-        repository.getPartitionAssignments(resourceName).getPartition(0).getWorkingInstances().size(),
-        1,
-        "One bootstrap instance should be found");
-    // make bootstrap to online transition completed, now there is one online instance.
-    factory.makeTransitionCompleted(resourceName, 0);
-    Thread.sleep(WAIT_TIME);
-    Assert.assertEquals(
-        repository.getReadyToServeInstances(resourceName, 0).size(),
-        1,
-        "One online instance should be found");
-    Assert.assertEquals(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions(), 1);
-    Assert.assertEquals(
-        repository.getPartitionAssignments(resourceName).getPartition(0).getWorkingInstances().size(),
-        1,
-        "One online instance should be found");
-    Assert.assertEquals(
-        repository.getPartitionAssignments(resourceName).getPartition(0).getWorkingInstances().size(),
-        1,
-        "One online instance should be found");
   }
 
   @Test
@@ -344,22 +277,22 @@ public class TestHelixExternalViewRepository {
         clusterName,
         resourceName,
         6,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        LeaderStandbySMD.name,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(clusterName, resourceName, 1);
 
     SafeHelixManager newManager = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort + 1000),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort + 1000),
         zkAddress,
         httpPort + 1000,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     newManager.connect();
 
     Thread.sleep(3000);
     System.out.println(httpPort);
     for (int i = 0; i < 6; i++) {
-      System.out.println(repository.getReadyToServeInstances(resourceName, i).get(0).getNodeId());
+      System.out.println(repository.getWorkingInstances(resourceName, i).get(0).getNodeId());
     }
 
     admin.dropResource(clusterName, resourceName);

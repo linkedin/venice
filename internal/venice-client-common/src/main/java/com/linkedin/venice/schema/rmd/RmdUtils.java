@@ -3,13 +3,13 @@ package com.linkedin.venice.schema.rmd;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
+import org.antlr.v4.runtime.misc.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -21,7 +21,7 @@ import org.apache.avro.generic.GenericRecord;
  */
 public class RmdUtils {
   public static ByteBuffer serializeRmdRecord(final Schema valueSchema, GenericRecord rmdRecord) {
-    byte[] rmdBytes = getRmdSerializer(valueSchema).serialize(rmdRecord, AvroSerializer.REUSE.get());
+    byte[] rmdBytes = getRmdSerializer(valueSchema).serialize(rmdRecord);
     return ByteBuffer.wrap(rmdBytes);
   }
 
@@ -104,5 +104,27 @@ public class RmdUtils {
       return 0L;
     }
     return ((List<Long>) offsetVector).stream().reduce(0L, Long::sum);
+  }
+
+  /**
+   * Checks to see if an offset vector has advanced completely beyond some base offset vector or not.
+   *
+   * @param baseOffset      The vector to compare against.
+   * @param advancedOffset  The vector has should be advanced along.
+   * @return                True if the advancedOffset vector has grown beyond the baseOffset
+   */
+  static public boolean hasOffsetAdvanced(@NotNull List<Long> baseOffset, @NotNull List<Long> advancedOffset) {
+    if (baseOffset.size() > advancedOffset.size()) {
+      // the baseoffset has more entries then the advanced one, meaning that it's seen entries from more colos
+      // meaning that it's automatically further along then the second argument. We break early to avoid any
+      // array out of bounds exception
+      return false;
+    }
+    for (int i = 0; i < baseOffset.size(); i++) {
+      if (advancedOffset.get(i) < baseOffset.get(i)) {
+        return false;
+      }
+    }
+    return true;
   }
 }

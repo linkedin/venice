@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
+import static org.testng.Assert.assertFalse;
 
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.Arg;
@@ -18,6 +19,10 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -140,6 +145,20 @@ public class TestAdminToolEndToEnd {
       MultiStoreResponse multiStoreResponse = controllerClient.queryStoreList(false);
       Assert.assertEquals(multiStoreResponse.getStores().length, 0);
 
+      // Wait until all topics are indeed removed from Kafka service.
+      PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
+      PubSubTopic testStoreTopic1 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(testStoreName1, 1));
+      PubSubTopic testStoreTopic2 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(testStoreName1, 2));
+      PubSubTopic testStoreTopic3 = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(testStoreName2, 1));
+
+      TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        assertFalse(topicManager.containsTopic(testStoreTopic1));
+        assertFalse(topicManager.containsTopic(testStoreTopic2));
+        assertFalse(topicManager.containsTopic(testStoreTopic3));
+      });
+
       // Redo fabric buildup. Create the store and version again.
       newStoreResponse = controllerClient.createNewStore(testStoreName1, "test", "\"string\"", "\"string\"");
       Assert.assertFalse(newStoreResponse.isError());
@@ -154,7 +173,7 @@ public class TestAdminToolEndToEnd {
     VeniceServerWrapper server = venice.getVeniceServers().get(0);
     String[] nodeReplicasReadinessArgs =
         { "--node-replicas-readiness", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
-            clusterName, "--storage-node", Utils.getHelixNodeIdentifier(server.getPort()) };
+            clusterName, "--storage-node", Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()) };
     AdminTool.main(nodeReplicasReadinessArgs);
   }
 }

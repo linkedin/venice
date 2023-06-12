@@ -27,6 +27,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.Date;
 import java.util.HashMap;
@@ -200,7 +201,7 @@ public class ProducerTracker {
   public void validateMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
-      boolean tolerateMissingMsgs) throws DataValidationException {
+      Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
     ReentrantLock partitionLock = getPartitionLock(consumerRecord.getTopicPartition().getPartitionNumber());
     partitionLock.lock();
     try {
@@ -234,7 +235,7 @@ public class ProducerTracker {
       Segment previousSegment,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
-      boolean tolerateMissingMsgs) throws DuplicateDataException {
+      Lazy<Boolean> tolerateMissingMsgs) throws DuplicateDataException {
     int incomingSegmentNumber = consumerRecord.getValue().producerMetadata.segmentNumber;
     if (previousSegment == null) {
       if (incomingSegmentNumber != 0) {
@@ -254,7 +255,7 @@ public class ProducerTracker {
         /** tolerateAnyMessageType should always be false in this scenario, regardless of {@param endOfPushReceived} */
         return initializeNewSegment(consumerRecord, endOfPushReceived, false);
       } else if (incomingSegmentNumber > previousSegmentNumber) {
-        if (tolerateMissingMsgs) {
+        if (tolerateMissingMsgs.get()) {
           return initializeNewSegment(consumerRecord, endOfPushReceived, true);
         } else {
           throw DataFaultType.MISSING.getNewException(previousSegment, consumerRecord);
@@ -372,7 +373,7 @@ public class ProducerTracker {
       Segment segment,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
-      boolean tolerateMissingMsgs,
+      Lazy<Boolean> tolerateMissingMsgs,
       boolean hasPreviousSegment) throws MissingDataException, DuplicateDataException {
 
     int previousSequenceNumber = segment.getSequenceNumber();
@@ -383,7 +384,7 @@ public class ProducerTracker {
       segment.setLastRecordProducerTimestamp(consumerRecord.getValue().producerMetadata.messageTimestamp);
       return;
     } else if (segment.isNewSegment() && incomingSequenceNumber == previousSequenceNumber) {
-      if (segment.getSequenceNumber() > 0 && !tolerateMissingMsgs) {
+      if (segment.getSequenceNumber() > 0 && !tolerateMissingMsgs.get()) {
         throw DataFaultType.MISSING.getNewException(segment, consumerRecord);
       }
       segment.setLastRecordProducerTimestamp(consumerRecord.getValue().producerMetadata.messageTimestamp);
@@ -424,7 +425,7 @@ public class ProducerTracker {
        * 1. The segment was sent by unregistered producers after EOP
        * 2. The topic might have been compacted for the record so that tolerateMissingMsgs is true
        */
-      if ((endOfPushReceived && !segment.isRegistered()) || tolerateMissingMsgs) {
+      if ((endOfPushReceived && !segment.isRegistered()) || tolerateMissingMsgs.get()) {
         /**
          * In this branch of the if, we need to adjust the sequence number, otherwise,
          * this will cause spurious missing data metrics on further events...
@@ -457,7 +458,7 @@ public class ProducerTracker {
       Segment segment,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
-      boolean tolerateMissingMsgs) throws CorruptDataException {
+      Lazy<Boolean> tolerateMissingMsgs) throws CorruptDataException {
     /**
      * {@link Segment#addToCheckSum(KafkaKey, KafkaMessageEnvelope)} is an expensive operation because of the internal
      * memory allocation.
@@ -473,7 +474,7 @@ public class ProducerTracker {
       /**
        * We received user messages after EOS in the same segment.
        */
-      if (!tolerateMissingMsgs) {
+      if (!tolerateMissingMsgs.get()) {
         throw e;
       }
     }
@@ -492,7 +493,7 @@ public class ProducerTracker {
          * 1. The segment was sent by unregistered producers after EOP
          * 2. The topic might have been compacted for the record so that tolerateMissingMsgs is true
          */
-        if ((endOfPushReceived && !segment.isRegistered()) || tolerateMissingMsgs) {
+        if ((endOfPushReceived && !segment.isRegistered()) || tolerateMissingMsgs.get()) {
           segment.end(incomingEndOfSegment.finalSegment);
         } else if (endOfPushReceived) {
           /**
@@ -586,7 +587,7 @@ public class ProducerTracker {
             segments.get(consumerRecord.getTopicPartition().getPartitionNumber()),
             consumerRecord,
             true,
-            false);
+            Lazy.FALSE);
       } catch (DuplicateDataException duplicate) {
         /**
          * Tolerate a segment rewind and not necessary to validate a previous segment;

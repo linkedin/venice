@@ -33,6 +33,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private final ClusterStats clusterStats;
 
   private final int maxAllowedKeyCntInBatchGetReq;
+  private final boolean useStreamingBatchGetAsDefault;
 
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     super(delegate);
@@ -40,6 +41,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     this.clientStatsForBatchGet = clientConfig.getStats(RequestType.MULTI_GET);
     this.clusterStats = clientConfig.getClusterStats();
     this.maxAllowedKeyCntInBatchGetReq = clientConfig.getMaxAllowedKeyCntInBatchGetReq();
+    this.useStreamingBatchGetAsDefault = clientConfig.useStreamingBatchGetAsDefault();
   }
 
   @Override
@@ -49,21 +51,60 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     return recordMetrics(requestContext, 1, innerFuture, startTimeInNS, clientStatsForSingleGet);
   }
 
-  /**
-   * This method is intended to replace the implementation of batchGet once we have some
-   * stabilization in the streaming versions. Once ready , remove the batchGet(keys) method and
-   * then rename this method name to batchGet and remove the existing batchGet method in this Class.
-   * @param requestContext
-   * @param keys
-   * @return
-   * @throws VeniceClientException
-   */
-  protected CompletableFuture<Map<K, V>> batchGetWithStreaming(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
+  protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
+    return this.useStreamingBatchGetAsDefault
+        ? batchGetUsingStreamingBatchGet(requestContext, keys)
+        : batchGetUsingSingleGet(keys);
+  }
+
+  protected CompletableFuture<Map<K, V>> batchGetUsingStreamingBatchGet(
+      BatchGetRequestContext<K, V> requestContext,
+      Set<K> keys) throws VeniceClientException {
     long startTimeInNS = System.nanoTime();
 
     CompletableFuture<Map<K, V>> innerFuture = super.batchGet(requestContext, keys);
     return recordMetrics(requestContext, keys.size(), innerFuture, startTimeInNS, clientStatsForBatchGet);
+  }
+
+  /**
+   *  Leverage single-get implementation here:
+   *  1. Looping through all keys and call get() for each of the keys
+   *  2. Collect the replies and pass it to the caller
+   *
+   *  Transient change to support {@link ClientConfig#useStreamingBatchGetAsDefault}
+   */
+  protected CompletableFuture<Map<K, V>> batchGetUsingSingleGet(Set<K> keys) throws VeniceClientException {
+    if (keys.isEmpty()) {
+      return CompletableFuture.completedFuture(Collections.emptyMap());
+    }
+    int keyCnt = keys.size();
+    if (keyCnt > maxAllowedKeyCntInBatchGetReq) {
+      throw new VeniceClientException(
+          "Currently, the max allowed key count in a batch-get request: " + maxAllowedKeyCntInBatchGetReq
+              + ", but received: " + keyCnt);
+    }
+    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
+    Map<K, CompletableFuture<V>> valueFutures = new HashMap<>();
+    keys.forEach(k -> valueFutures.put(k, (get(k))));
+    CompletableFuture.allOf(valueFutures.values().toArray(new CompletableFuture[keyCnt]))
+        .whenComplete(((aVoid, throwable) -> {
+          if (throwable != null) {
+            resultFuture.completeExceptionally(throwable);
+          }
+          Map<K, V> resultMap = new HashMap<>();
+          valueFutures.forEach((k, f) -> {
+            try {
+              resultMap.put(k, f.get());
+            } catch (Exception e) {
+              resultFuture.completeExceptionally(
+                  new VeniceClientException("Failed to complete future for key: " + k.toString(), e));
+            }
+          });
+          resultFuture.complete(resultMap);
+        }));
+
+    return resultFuture;
   }
 
   @Override
@@ -73,11 +114,11 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       StreamingCallback<K, V> callback) {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<Void> statFuture = new CompletableFuture<>();
-    recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForBatchGet);
     super.streamingBatchGet(
         requestContext,
         keys,
         new StatTrackingStreamingCallBack<>(callback, statFuture, requestContext));
+    recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForBatchGet);
   }
 
   @Override
@@ -112,6 +153,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
+      clientStats.recordRequestKeyCount(numberOfKeys);
 
       if (throwable != null) {
         /**
@@ -156,7 +198,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       if (requestContext.responseDeserializationTime > 0) {
         clientStats.recordResponseDeserializationTime(requestContext.responseDeserializationTime);
       }
-      clientStats.recordRequestKeyCount(numberOfKeys);
       clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get());
 
       /**
@@ -268,50 +309,5 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       }
       inner.onCompletion(exception);
     }
-  }
-
-  /**
-   *
-   *  Leverage single-get implementation here:
-   *  1. Looping through all keys and call get() for each of the keys
-   *  2. Collect the reply and send it back
-   *  3. This is a naive scatter and gather approach.
-   *
-   *  TODO: This function was built before streamingBatchGet() was implemented for a customer
-   *   to support two-key batch-get. Will need to be replaced with streamingBatchGet() once it is validated.
-   *   check {@link #batchGetWithStreaming} for more details.
-   */
-  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    if (keys.isEmpty()) {
-      return CompletableFuture.completedFuture(Collections.emptyMap());
-    }
-    int keyCnt = keys.size();
-    if (keyCnt > maxAllowedKeyCntInBatchGetReq) {
-      throw new VeniceClientException(
-          "Currently, the max allowed key count in a batch-get request: " + maxAllowedKeyCntInBatchGetReq
-              + ", but received: " + keyCnt);
-    }
-    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
-    /* Leverage single-get implementation here */
-    Map<K, CompletableFuture<V>> valueFutures = new HashMap<>();
-    keys.forEach(k -> valueFutures.put(k, (get(k))));
-    CompletableFuture.allOf(valueFutures.values().toArray(new CompletableFuture[keyCnt]))
-        .whenComplete(((aVoid, throwable) -> {
-          if (throwable != null) {
-            resultFuture.completeExceptionally(throwable);
-          }
-          Map<K, V> resultMap = new HashMap<>();
-          valueFutures.forEach((k, f) -> {
-            try {
-              resultMap.put(k, f.get());
-            } catch (Exception e) {
-              resultFuture.completeExceptionally(
-                  new VeniceClientException("Failed to complete future for key: " + k.toString(), e));
-            }
-          });
-          resultFuture.complete(resultMap);
-        }));
-
-    return resultFuture;
   }
 }

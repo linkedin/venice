@@ -38,6 +38,8 @@ dependencyResolutionManagement {
 include 'clients:da-vinci-client'
 include 'clients:venice-admin-tool'
 include 'clients:venice-client'
+include 'clients:venice-producer'
+include 'clients:venice-pulsar'
 include 'clients:venice-push-job'
 include 'clients:venice-samza'
 include 'clients:venice-thin-client'
@@ -46,12 +48,12 @@ include 'clients:venice-thin-client'
 include 'services:venice-controller'
 include 'services:venice-router'
 include 'services:venice-server'
+include 'services:venice-standalone'
 
 // Internal modules
 include 'internal:venice-avro-compatibility-test'
 include 'internal:venice-client-common'
 include 'internal:venice-common'
-include 'internal:venice-consumer'
 include 'internal:venice-jdk-compatibility-test'
 include 'internal:venice-test-common'
 
@@ -67,6 +69,9 @@ include 'internal:alpini:netty4:alpini-netty4-base'
 include 'internal:alpini:router:alpini-router-api'
 include 'internal:alpini:router:alpini-router-base'
 include 'internal:alpini:router:alpini-router-impl'
+
+// integration tests
+include 'tests:venice-pulsar-test'
 
 // Depend-all module
 include 'all-modules'

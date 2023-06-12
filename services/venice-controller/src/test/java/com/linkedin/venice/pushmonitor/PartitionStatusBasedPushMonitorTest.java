@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
@@ -32,6 +33,7 @@ import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,7 +60,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         getAggregateRealTimeSourceKafkaUrl(),
         Collections.emptyList(),
         helixAdminClient,
-        true);
+        getMockControllerConfig(),
+        null);
   }
 
   @Override
@@ -75,7 +78,8 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
         getAggregateRealTimeSourceKafkaUrl(),
         Collections.emptyList(),
         mock(HelixAdminClient.class),
-        true);
+        getMockControllerConfig(),
+        null);
   }
 
   @Test
@@ -166,23 +170,24 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
 
   @Test(timeOut = 30 * Time.MS_PER_SECOND)
   public void testOnExternalViewChangeDisablePartition() {
-    Instance[] instances = { new Instance("a", "a", 1), new Instance("b", "b", 2), new Instance("c", "c", 3),
-        new Instance("d", "d", 4), new Instance("e", "e", 5) };
+    String disabledHostName = "disabled_host";
+    Instance[] instances = { new Instance("a", "a", 1), new Instance(disabledHostName, "disabledHostName", 2),
+        new Instance("b", disabledHostName, 3), new Instance("d", "d", 4), new Instance("e", "e", 5) };
     // Setup a store where two of its partitions has exactly one error replica.
     Store store = getStoreWithCurrentVersion();
     String resourceName = store.getVersion(store.getCurrentVersion()).get().kafkaTopicName();
-    Map<String, List<Instance>> errorStateInstanceMap = new HashMap<>();
-    Map<String, List<Instance>> healthyStateInstanceMap = new HashMap<>();
-    errorStateInstanceMap.put(HelixState.ERROR_STATE, Collections.singletonList(instances[0]));
+    EnumMap<HelixState, List<Instance>> errorStateInstanceMap = new EnumMap<>(HelixState.class);
+    EnumMap<HelixState, List<Instance>> healthyStateInstanceMap = new EnumMap<>(HelixState.class);
+    errorStateInstanceMap.put(HelixState.ERROR, Collections.singletonList(instances[0]));
     // if a replica is error, then the left should be 1 leader and 1 standby.
-    errorStateInstanceMap.put(HelixState.LEADER_STATE, Collections.singletonList(instances[1]));
-    errorStateInstanceMap.put(HelixState.OFFLINE_STATE, Collections.singletonList(instances[2]));
-    healthyStateInstanceMap.put(HelixState.LEADER_STATE, Collections.singletonList(instances[0]));
-    healthyStateInstanceMap.put(HelixState.STANDBY_STATE, Arrays.asList(instances[1], instances[2]));
+    errorStateInstanceMap.put(HelixState.LEADER, Collections.singletonList(instances[1]));
+    errorStateInstanceMap.put(HelixState.OFFLINE, Collections.singletonList(instances[2]));
+    healthyStateInstanceMap.put(HelixState.LEADER, Collections.singletonList(instances[0]));
+    healthyStateInstanceMap.put(HelixState.STANDBY, Arrays.asList(instances[1], instances[2]));
 
-    Partition errorPartition0 = new Partition(0, errorStateInstanceMap);
-    Partition errorPartition1 = new Partition(1, errorStateInstanceMap);
-    Partition healthyPartition2 = new Partition(2, healthyStateInstanceMap);
+    Partition errorPartition0 = new Partition(0, errorStateInstanceMap, new EnumMap<>(ExecutionStatus.class));
+    Partition errorPartition1 = new Partition(1, errorStateInstanceMap, new EnumMap<>(ExecutionStatus.class));
+    Partition healthyPartition2 = new Partition(2, healthyStateInstanceMap, new EnumMap<>(ExecutionStatus.class));
     PartitionAssignment partitionAssignment1 = new PartitionAssignment(resourceName, 3);
     partitionAssignment1.addPartition(errorPartition0);
     partitionAssignment1.addPartition(errorPartition1);
@@ -194,7 +199,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     List<ReplicaStatus> replicaStatuses = new ArrayList<>(3);
     replicaStatuses.add(new ReplicaStatus("a"));
     replicaStatuses.add(new ReplicaStatus("c"));
-    replicaStatuses.add(new ReplicaStatus("b"));
+    replicaStatuses.add(new ReplicaStatus(disabledHostName));
 
     replicaStatuses.get(2).updateStatus(ERROR);
     partitionStatus.setReplicaStatuses(replicaStatuses);
@@ -203,7 +208,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     List<ReplicaStatus> replicaStatuses1 = new ArrayList<>(3);
     replicaStatuses1.add(new ReplicaStatus("a"));
     replicaStatuses1.add(new ReplicaStatus("c"));
-    replicaStatuses1.add(new ReplicaStatus("b"));
+    replicaStatuses1.add(new ReplicaStatus(disabledHostName));
     replicaStatuses1.get(2).updateStatus(ERROR);
     partitionStatus.setReplicaStatuses(replicaStatuses1);
     offlinePushStatus.setPartitionStatus(partitionStatus);
@@ -226,20 +231,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
             .checkPushStatusAndDetailsByPartitionsStatus(offlinePushStatus, partitionAssignment1, null);
     Assert.assertEquals(statusOptionalPair.getFirst(), STARTED);
 
-    // Should be reset 2 times on 2 error replicas
-    verify(helixAdminClient, times(1)).enablePartition(
-        eq(false),
-        anyString(),
-        anyString(),
-        anyString(),
-        eq(Collections.singletonList(HelixUtils.getPartitionName(offlinePushStatus.getKafkaTopic(), 0))));
-    /*    verify(helixAdminClient, times(1)).enablePartition(
-        eq(false),
-        anyString(),
-        anyString(),
-        anyString(),
-        eq(Collections.singletonList(HelixUtils.getPartitionName(offlinePushStatus.getKafkaTopic(), 1)))); */
-
+    verify(helixAdminClient, times(1)).getDisabledPartitionsMap(eq(getClusterName()), eq(disabledHostName));
   }
 
   private Store getStoreWithCurrentVersion() {

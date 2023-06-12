@@ -72,7 +72,8 @@ public abstract class AbstractPollStrategy implements PollStrategy {
            * Skip putValue adjustment since admin consumer is still using {@link com.linkedin.venice.serialization.avro.KafkaValueSerializer}.
            */
           KafkaMessageEnvelope kafkaMessageEnvelope = message.get().value;
-          if (MessageType.valueOf(kafkaMessageEnvelope) == MessageType.PUT && !message.get().isPutValueChanged()) {
+          if (!message.get().key.isControlMessage() && MessageType.valueOf(kafkaMessageEnvelope) == MessageType.PUT
+              && !message.get().isPutValueChanged()) {
             /**
              * This is used to simulate the deserialization in {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}
              * to leave some room in {@link Put#putValue} byte buffer.

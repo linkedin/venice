@@ -7,6 +7,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
+import com.linkedin.venice.utils.AvroRecordUtils;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
@@ -55,7 +56,7 @@ public class VersionImpl implements Version {
       @JsonProperty("partitionCount") int partitionCount,
       @JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig,
       @JsonProperty("dataRecoveryConfig") DataRecoveryVersionConfig dataRecoveryVersionConfig) {
-    this.storeVersion = Store.prefillAvroRecordWithDefaultValue(new StoreVersion());
+    this.storeVersion = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreVersion());
     this.storeVersion.storeName = storeName;
     this.storeVersion.number = number;
     this.storeVersion.createdTime = createdTime;
@@ -80,6 +81,11 @@ public class VersionImpl implements Version {
   @Override
   public final int getNumber() {
     return this.storeVersion.number;
+  }
+
+  @Override
+  public void setNumber(int number) {
+    this.storeVersion.number = number;
   }
 
   @Override
@@ -172,6 +178,11 @@ public class VersionImpl implements Version {
   @Override
   public String getPushJobId() {
     return this.storeVersion.pushJobId.toString();
+  }
+
+  @Override
+  public void setPushJobId(String pushJobId) {
+    this.storeVersion.pushJobId = pushJobId;
   }
 
   @Override

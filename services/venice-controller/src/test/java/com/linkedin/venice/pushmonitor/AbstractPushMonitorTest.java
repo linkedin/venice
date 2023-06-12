@@ -17,9 +17,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -43,9 +45,11 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -63,6 +67,8 @@ public abstract class AbstractPushMonitorTest {
   protected StoreCleaner mockStoreCleaner;
   private AggPushHealthStats mockPushHealthStats;
   protected ClusterLockManager clusterLockManager;
+
+  protected VeniceControllerConfig mockControllerConfig;
 
   private final static String clusterName = Utils.getUniqueString("test_cluster");
   private final static String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
@@ -91,6 +97,12 @@ public abstract class AbstractPushMonitorTest {
     mockRoutingDataRepo = mock(RoutingDataRepository.class);
     mockPushHealthStats = mock(AggPushHealthStats.class);
     clusterLockManager = new ClusterLockManager(clusterName);
+    mockControllerConfig = mock(VeniceControllerConfig.class);
+    when(mockControllerConfig.isErrorLeaderReplicaFailOverEnabled()).thenReturn(true);
+    when(mockControllerConfig.isDaVinciPushStatusEnabled()).thenReturn(true);
+    when(mockControllerConfig.getDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
+    when(mockControllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
+    when(mockControllerConfig.getDaVinciPushStatusScanThreadNumber()).thenReturn(4);
     monitor = getPushMonitor();
   }
 
@@ -109,6 +121,7 @@ public abstract class AbstractPushMonitorTest {
     verify(mockAccessor, atLeastOnce()).createOfflinePushStatusAndItsPartitionStatuses(pushStatus);
     verify(mockAccessor, atLeastOnce()).subscribePartitionStatusChange(pushStatus, monitor);
     verify(mockRoutingDataRepo, atLeastOnce()).subscribeRoutingDataChange(getTopic(), monitor);
+    doReturn(mock(ResourceAssignment.class)).when(mockRoutingDataRepo).getResourceAssignment();
     try {
       monitor.startMonitorOfflinePush(
           topic,
@@ -793,6 +806,22 @@ public abstract class AbstractPushMonitorTest {
     public void topicCleanupWhenPushComplete(String clusterName, String storeName, int versionNumber) {
       // no-op
     }
+
+    @Override
+    public boolean containsHelixResource(String clusterName, String resourceName) {
+      return true;
+    }
+
+    @Override
+    public void deleteHelixResource(String clusterName, String resourceName) {
+      try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
+        try {
+          Thread.sleep(1000);
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+      }
+    }
   }
 
   @Test(timeOut = 30 * Time.MS_PER_SECOND)
@@ -804,11 +833,12 @@ public abstract class AbstractPushMonitorTest {
       final String topic = "test-lock_v1";
       final String instanceId = "test_instance";
       prepareMockStore(topic);
-      Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
-      onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
+      EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+      helixStateToInstancesMap.put(HelixState.LEADER, Collections.singletonList(new Instance(instanceId, "a", 1)));
       // Craft a PartitionAssignment that will trigger the StoreCleaner methods as part of handleCompletedPush.
       PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
-      completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+      completedPartitionAssignment
+          .addPartition(new Partition(0, helixStateToInstancesMap, new EnumMap<>(ExecutionStatus.class)));
       ReplicaStatus status = new ReplicaStatus(instanceId);
       status.updateStatus(ExecutionStatus.COMPLETED);
       ReadOnlyPartitionStatus completedPartitionStatus =
@@ -851,10 +881,11 @@ public abstract class AbstractPushMonitorTest {
       final String instanceId = "test_instance";
 
       prepareMockStore(topic);
-      Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
-      onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
+      EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+      helixStateToInstancesMap.put(HelixState.LEADER, Collections.singletonList(new Instance(instanceId, "a", 1)));
       PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
-      completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+      completedPartitionAssignment
+          .addPartition(new Partition(0, helixStateToInstancesMap, new EnumMap<>(ExecutionStatus.class)));
       doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
       doReturn(completedPartitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
 
@@ -884,6 +915,19 @@ public abstract class AbstractPushMonitorTest {
     }
   }
 
+  @Test
+  public void testGetUncompletedPartitions() {
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Assert.assertEquals(monitor.getUncompletedPartitions(topic).size(), numberOfPartition);
+    OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
+    monitor.updatePushStatus(pushStatus, ExecutionStatus.COMPLETED, Optional.empty());
+    Assert.assertTrue(monitor.getUncompletedPartitions(topic).isEmpty());
+  }
+
   protected Store prepareMockStore(String topic) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
@@ -905,6 +949,10 @@ public abstract class AbstractPushMonitorTest {
 
   protected ReadWriteStoreRepository getMockStoreRepo() {
     return mockStoreRepo;
+  }
+
+  protected VeniceControllerConfig getMockControllerConfig() {
+    return mockControllerConfig;
   }
 
   protected RoutingDataRepository getMockRoutingDataRepo() {

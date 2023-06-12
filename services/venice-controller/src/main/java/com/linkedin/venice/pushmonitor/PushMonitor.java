@@ -4,10 +4,10 @@ import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.Pair;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -72,12 +72,14 @@ public interface PushMonitor {
   /**
    * @return return the current status. If it's in error, some debugging info is also presented.
    */
-  Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic);
+  Pair<ExecutionStatus, String> getPushStatusAndDetails(String topic);
+
+  List<UncompletedPartition> getUncompletedPartitions(String topic);
 
   /**
    * Returns incremental push's status read from (ZooKeeper backed) OfflinePushStatus
    */
-  Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(
+  Pair<ExecutionStatus, String> getIncrementalPushStatusAndDetails(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository);
@@ -85,7 +87,7 @@ public interface PushMonitor {
   /**
    * Returns incremental push's status read from push status store
    */
-  Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(
+  Pair<ExecutionStatus, String> getIncrementalPushStatusFromPushStatusStore(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
@@ -106,21 +108,9 @@ public interface PushMonitor {
   List<String> getTopicsOfOngoingOfflinePushes();
 
   /**
-   * Get the progress of the given offline push.
-   * @return a map which's key is replica id and value is the kafka offset that replica already consumed.
-   */
-  Map<String, Long> getOfflinePushProgress(String topic);
-
-  /**
    * Mark a push to be as error. This is usually called when push is killed.
    */
   void markOfflinePushAsError(String topic, String statusDetails);
-
-  /**
-   * Given a certain partition assignment, identify if a push would fail after that. This is usually called
-   * when we'd like to change the number of storage nodes in the cluster
-   */
-  boolean wouldJobFail(String topic, PartitionAssignment partitionAssignmentAfterRemoving);
 
   /**
    * Here, we refresh the push status, in order to avoid a race condition where a small job could
@@ -141,4 +131,6 @@ public interface PushMonitor {
   void recordPushPreparationDuration(String topic, long offlinePushWaitTimeInSecond);
 
   List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
+
+  boolean isOfflinePushMonitorDaVinciPushStatusEnabled();
 }

@@ -1,7 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.d2.D2Server;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.TestUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -12,7 +12,7 @@ public class MockD2ServerWrapper extends MockHttpServerWrapper {
   private final D2Server d2Server;
 
   static StatefulServiceProvider<MockD2ServerWrapper> generateService(String d2ServiceName) {
-    return (serviceName, dataDirectory) -> new MockD2ServerWrapper(serviceName, Utils.getFreePort(), d2ServiceName);
+    return (serviceName, dataDirectory) -> new MockD2ServerWrapper(serviceName, TestUtils.getFreePort(), d2ServiceName);
   }
 
   public MockD2ServerWrapper(String serviceName, int port, String d2ServiceName) {

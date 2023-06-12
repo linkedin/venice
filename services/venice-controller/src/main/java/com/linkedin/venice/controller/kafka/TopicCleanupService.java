@@ -8,6 +8,8 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Time;
@@ -68,9 +70,14 @@ public class TopicCleanupService extends AbstractVeniceService {
   private final AtomicBoolean stop = new AtomicBoolean(false);
   private boolean isLeaderControllerOfControllerCluster = false;
   private long refreshQueueCycle = Time.MS_PER_MINUTE;
+
+  private PubSubTopicRepository pubSubTopicRepository;
   protected final VeniceControllerMultiClusterConfig multiClusterConfigs;
 
-  public TopicCleanupService(Admin admin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
+  public TopicCleanupService(
+      Admin admin,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.admin = admin;
     this.sleepIntervalBetweenTopicListFetchMs =
         multiClusterConfigs.getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
@@ -78,6 +85,7 @@ public class TopicCleanupService extends AbstractVeniceService {
     this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
     this.cleanupThread = new Thread(new TopicCleanupTask(), "TopicCleanupTask");
     this.multiClusterConfigs = multiClusterConfigs;
+    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   @Override
@@ -146,12 +154,11 @@ public class TopicCleanupService extends AbstractVeniceService {
    * If version topic deletion takes more than certain time it refreshes the entire topic list and start deleting from RT topics again.
     */
   void cleanupVeniceTopics() {
-    PriorityQueue<String> allTopics = new PriorityQueue<>((s1, s2) -> Version.isRealTimeTopic(s1) ? -1 : 0);
+    PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>((s1, s2) -> s1.isRealTime() ? -1 : 0);
     populateDeprecatedTopicQueue(allTopics);
     long refreshTime = System.currentTimeMillis();
-
     while (!allTopics.isEmpty()) {
-      String topic = allTopics.poll();
+      PubSubTopic topic = allTopics.poll();
       /**
        * Until now, we haven't figured out a good way to handle real-time topic cleanup:
        *     1. If {@link TopicCleanupService} doesn't delete real-time topic, the truncated real-time topic could cause inconsistent data problem
@@ -168,7 +175,8 @@ public class TopicCleanupService extends AbstractVeniceService {
           cleanupReplicaStatusesFromMetaSystemStore(topic);
         } catch (Exception e) {
           LOGGER.error(
-              "Received exception while trying to clean up replica statuses from meta system store for topic: {}, but topic deletion will continue",
+              "Received exception: {} while trying to clean up replica statuses from meta system store for topic: {}, but topic deletion will continue",
+              e,
               topic);
         }
         getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
@@ -177,7 +185,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         // No op, will try again in the next cleanup cycle.
       }
 
-      if (!Version.isRealTimeTopic(topic)) {
+      if (!topic.isRealTime()) {
         // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to
         // delete
         if (System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
@@ -192,17 +200,17 @@ public class TopicCleanupService extends AbstractVeniceService {
     }
   }
 
-  private void populateDeprecatedTopicQueue(PriorityQueue<String> topics) {
-    Map<String, Map<String, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(getTopicManager());
+  private void populateDeprecatedTopicQueue(PriorityQueue<PubSubTopic> topics) {
+    Map<String, Map<PubSubTopic, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(getTopicManager());
     allStoreTopics.forEach((storeName, topicRetentions) -> {
-      String realTimeTopic = Version.composeRealTimeTopic(storeName);
+      PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
       if (topicRetentions.containsKey(realTimeTopic)) {
         if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
           topics.offer(realTimeTopic);
         }
         topicRetentions.remove(realTimeTopic);
       }
-      List<String> oldTopicsToDelete =
+      List<PubSubTopic> oldTopicsToDelete =
           extractVersionTopicsToCleanup(admin, topicRetentions, minNumberOfUnusedKafkaTopicsToPreserve, delayFactor);
       if (!oldTopicsToDelete.isEmpty()) {
         topics.addAll(oldTopicsToDelete);
@@ -213,14 +221,14 @@ public class TopicCleanupService extends AbstractVeniceService {
   /**
    * @return a map object that maps from the store name to the Kafka topic name and its configured Kafka retention time.
    */
-  public static Map<String, Map<String, Long>> getAllVeniceStoreTopicsRetentions(TopicManager topicManager) {
-    Map<String, Long> topicsWithRetention = topicManager.getAllTopicRetentions();
-    Map<String, Map<String, Long>> allStoreTopics = new HashMap<>();
+  public static Map<String, Map<PubSubTopic, Long>> getAllVeniceStoreTopicsRetentions(TopicManager topicManager) {
+    Map<PubSubTopic, Long> topicsWithRetention = topicManager.getAllTopicRetentions();
+    Map<String, Map<PubSubTopic, Long>> allStoreTopics = new HashMap<>();
 
-    for (Map.Entry<String, Long> entry: topicsWithRetention.entrySet()) {
-      String topic = entry.getKey();
+    for (Map.Entry<PubSubTopic, Long> entry: topicsWithRetention.entrySet()) {
+      PubSubTopic topic = entry.getKey();
       long retention = entry.getValue();
-      String storeName = Version.parseStoreFromKafkaTopicName(topic);
+      String storeName = topic.getStoreName();
       if (storeName.isEmpty()) {
         // TODO: check whether Venice needs to cleanup topics not belonging to Venice.
         continue;
@@ -248,18 +256,18 @@ public class TopicCleanupService extends AbstractVeniceService {
    * </ol>
    * @return a list that contains topics satisfying all the above conditions.
    */
-  public static List<String> extractVersionTopicsToCleanup(
+  public static List<PubSubTopic> extractVersionTopicsToCleanup(
       Admin admin,
-      Map<String, Long> topicRetentions,
+      Map<PubSubTopic, Long> topicRetentions,
       int minNumberOfUnusedKafkaTopicsToPreserve,
       int delayFactor) {
     if (topicRetentions.isEmpty()) {
       return Collections.emptyList();
     }
-    Set<String> veniceTopics = topicRetentions.keySet();
+    Set<PubSubTopic> veniceTopics = topicRetentions.keySet();
     Optional<Integer> optionalMaxVersion = veniceTopics.stream()
-        .filter(Version::isVersionTopic)
-        .map(Version::parseVersionFromKafkaTopicName)
+        .filter(vt -> Version.isVersionTopic(vt.getName()))
+        .map(vt -> Version.parseVersionFromKafkaTopicName(vt.getName()))
         .max(Integer::compare);
 
     if (!optionalMaxVersion.isPresent()) {
@@ -268,7 +276,7 @@ public class TopicCleanupService extends AbstractVeniceService {
 
     int maxVersion = optionalMaxVersion.get();
 
-    String storeName = Version.parseStoreFromKafkaTopicName(veniceTopics.iterator().next());
+    String storeName = veniceTopics.iterator().next().getStoreName();
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     boolean isStoreZkShared = systemStoreType != null && systemStoreType.isStoreZkShared();
     boolean isStoreDeleted = !isStoreZkShared && !admin.getStoreConfigRepo().getStoreConfig(storeName).isPresent();
@@ -281,7 +289,7 @@ public class TopicCleanupService extends AbstractVeniceService {
         /** Consider only truncated topics */
         .filter(t -> admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(t)))
         /** Always preserve the last {@link #minNumberOfUnusedKafkaTopicsToPreserve} topics, whether they are healthy or not */
-        .filter(t -> Version.parseVersionFromKafkaTopicName(t) <= maxVersionNumberToDelete)
+        .filter(t -> Version.parseVersionFromKafkaTopicName(t.getName()) <= maxVersionNumberToDelete)
         /**
          * Filter out resources, which haven't been fully removed in child fabrics yet. This is only performed in the
          * child fabric because parent fabric don't have storage node helix resources.
@@ -289,15 +297,16 @@ public class TopicCleanupService extends AbstractVeniceService {
          * The reason to filter out still-alive resource is to avoid triggering the non-existing topic issue
          * of Kafka consumer happening in Storage Node.
          */
-        .filter(t -> admin.isParent() || !admin.isResourceStillAlive(t))
+        .filter(t -> admin.isParent() || !admin.isResourceStillAlive(t.getName()))
         .filter(t -> {
-          if (Version.isRealTimeTopic(t)) {
+          if (Version.isRealTimeTopic(t.getName())) {
             return true;
           }
           // delay VT topic deletion as there could be a race condition where the resource is already deleted by venice
           // but kafka still holding on to the deleted topic message in producer buffer which might cause infinite hang
           // in kafka.
-          int remainingFactor = storeToCountdownForDeletion.merge(t, delayFactor, (oldVal, givenVal) -> oldVal - 1);
+          int remainingFactor =
+              storeToCountdownForDeletion.merge(t.getName(), delayFactor, (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
             return false;
           }
@@ -312,18 +321,18 @@ public class TopicCleanupService extends AbstractVeniceService {
    * @param topic
    * @return whether the staled replica status cleanup happens or not.
    */
-  protected boolean cleanupReplicaStatusesFromMetaSystemStore(String topic) {
+  protected boolean cleanupReplicaStatusesFromMetaSystemStore(PubSubTopic topic) {
     if (admin.isParent()) {
       // No op in Parent Controller
       return false;
     }
-    if (!Version.isVersionTopic(topic)) {
+    if (!topic.isVersionTopic()) {
       // Only applicable to version topic
       return false;
     }
 
-    String storeName = Version.parseStoreFromKafkaTopicName(topic);
-    int version = Version.parseVersionFromKafkaTopicName(topic);
+    String storeName = Version.parseStoreFromKafkaTopicName(topic.getName());
+    int version = Version.parseVersionFromKafkaTopicName(topic.getName());
     HelixReadOnlyStoreConfigRepository storeConfigRepository = admin.getStoreConfigRepo();
     Optional<StoreConfig> storeConfig = storeConfigRepository.getStoreConfig(storeName);
     // Get cluster name for current store
@@ -344,15 +353,14 @@ public class TopicCleanupService extends AbstractVeniceService {
      * we won't have access to store repository for every Venice cluster, and the existence of RT topic for
      * meta System store is the way to check whether meta System store is enabled or not.
      */
-    String rtTopicForMetaSystemStore =
-        Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+    PubSubTopic rtTopicForMetaSystemStore = pubSubTopicRepository
+        .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName)));
     TopicManager topicManager = getTopicManager();
     if (topicManager.containsTopic(rtTopicForMetaSystemStore)) {
       /**
        * Find out the total number of partition of version topic, and we will use this info to clean up replica statuses for each partition.
        */
       int partitionCount = topicManager.partitionsFor(topic).size();
-
       MetaStoreWriter metaStoreWriter = admin.getMetaStoreWriter();
       for (int i = 0; i < partitionCount; ++i) {
         metaStoreWriter.deleteStoreReplicaStatus(clusterName, storeName, version, i);

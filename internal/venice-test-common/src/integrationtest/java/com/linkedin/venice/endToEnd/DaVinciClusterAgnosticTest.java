@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -34,6 +35,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -78,7 +80,7 @@ public class DaVinciClusterAgnosticTest {
         3,
         1,
         3,
-        Optional.empty(),
+        Optional.of(new VeniceProperties(Collections.singletonMap(OFFLINE_JOB_START_TIMEOUT_MS, "180000"))),
         Optional.empty(),
         Optional.empty(),
         false);
@@ -97,7 +99,7 @@ public class DaVinciClusterAgnosticTest {
         TestUtils.waitForNonDeterministicPushCompletion(
             Version.composeKafkaTopic(participantStoreName, 1),
             controllerClient,
-            1,
+            5,
             TimeUnit.MINUTES);
       }
     }

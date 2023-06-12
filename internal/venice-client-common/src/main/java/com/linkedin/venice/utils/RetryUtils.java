@@ -240,6 +240,31 @@ public class RetryUtils {
     return Failsafe.with(retryPolicy).get(supplier::get);
   }
 
+  /**
+   * Execute a {@link Supplier} with maximum retries and fix duration per retry attempt. If all attempts are made and
+   * still no success, the last thrown exception will be thrown.
+   *
+   * @param supplier Execution unit which returns something ({@link T})
+   * @param maxRetry Total maximum retries made before giving up.
+   * @param durationPerAttempt Total duration per attempt. The delay after attempt will be the (duration per attempt - time spent in the current attempt).
+   * @param retryFailureTypes Types of failures upon which retry attempt is made. If a failure with type not specified
+   *                          in this list is thrown, it is thrown to the caller.
+   */
+  public static <T> T executeWithMaxRetriesAndFixedAttemptDuration(
+      VeniceCheckedSupplier<T> supplier,
+      final int maxRetry,
+      Duration durationPerAttempt,
+      List<Class<? extends Throwable>> retryFailureTypes) {
+    RetryPolicy<Object> retryPolicy = new RetryPolicy<>().handle(retryFailureTypes)
+        .withDelay(
+            (result, failure, context) -> durationPerAttempt.compareTo(context.getElapsedAttemptTime()) > 0
+                ? durationPerAttempt.minus(context.getElapsedAttemptTime())
+                : Duration.ZERO)
+        .withMaxRetries(maxRetry);
+    retryPolicy.onFailedAttempt(RetryUtils::logAttemptWithFailure);
+    return Failsafe.with(retryPolicy).get(supplier::get);
+  }
+
   private static <T> void logAttemptWithFailure(ExecutionAttemptedEvent<T> executionAttemptedEvent) {
     LOGGER.error(
         "Execution failed with message {} on attempt count {}",

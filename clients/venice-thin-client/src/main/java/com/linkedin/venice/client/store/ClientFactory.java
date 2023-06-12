@@ -90,6 +90,7 @@ public class ClientFactory {
         () -> new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig),
         Optional.empty(),
         clientConfig.getPreferredSchemaFilter(),
+        clientConfig.getSchemaRefreshPeriod(),
         icProvider);
   }
 
@@ -121,9 +122,17 @@ public class ClientFactory {
         throw new VeniceClientException("Must use SSL factory method for client to communicate with https");
       }
 
-      return new HttpsTransportClient(bootstrapUrl, clientConfig.getSslFactory());
+      return new HttpsTransportClient(
+          bootstrapUrl,
+          clientConfig.getMaxConnectionsTotal(),
+          clientConfig.getMaxConnectionsPerRoute(),
+          clientConfig.isHttpClient5Http2Enabled(),
+          clientConfig.getSslFactory());
     } else {
-      return new HttpTransportClient(bootstrapUrl);
+      return new HttpTransportClient(
+          bootstrapUrl,
+          clientConfig.getMaxConnectionsTotal(),
+          clientConfig.getMaxConnectionsPerRoute());
     }
   }
 }

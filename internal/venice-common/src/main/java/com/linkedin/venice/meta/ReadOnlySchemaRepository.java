@@ -1,12 +1,11 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
-import java.util.Optional;
 
 
 public interface ReadOnlySchemaRepository extends VeniceResource {
@@ -37,31 +36,25 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
 
   /**
    * Get the most recent value schema or superset value schema if one exists.
-   * TODO: Either:
-   *    1. Get rid of this method.
-   *    2. Make it only return the latest value schema. To get superset schema. Users should use the getSupersetSchema
-   *       method.
    */
   SchemaEntry getSupersetOrLatestValueSchema(String storeName);
 
   /**
    * Get the superset value schema for a given store. Each store has at most one active superset schema. Specifically a
-   * store must have some features enabled (e.g. read compute) to have a superset value schema which evolves as new value
-   * schemas are added.
+   * store must have some features enabled (e.g. read compute, write compute) to have a superset value schema which
+   * evolves as new value schemas are added.
    *
-   * @return Superset value or {@link Optional#empty()} if store {@param storeName} does not have any superset value schema.
+   * @return Superset value schema or {@code null} if store {@param storeName} does not have any superset value schema.
    */
   SchemaEntry getSupersetSchema(String storeName);
 
   /**
-   * Look up derived schema id and its corresponding value schema id
-   * by given store name and derived schema. This is likely used by
-   * clients that write to Venice
+   * Look up derived schema id and its corresponding value schema id by given store name and derived schema. This is
+   * likely used by clients that write to Venice
    *
-   * @return a pair where the first value is value schema id and the
-   * second value is derived schema id
+   * @return a pair where the first value is value schema id and the second value is derived schema id
    */
-  Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr);
+  GeneratedSchemaID getDerivedSchemaId(String storeName, String derivedSchemaStr);
 
   DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int writeComputeSchemaId);
 

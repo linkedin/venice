@@ -13,7 +13,6 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.PushMonitorNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
-import com.linkedin.davinci.stats.ThreadPoolStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -31,6 +30,7 @@ import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
@@ -100,17 +100,18 @@ public class HelixParticipationService extends AbstractVeniceService
       String zkAddress,
       String clusterName,
       int port,
+      String hostname,
       CompletableFuture<SafeHelixManager> managerFuture) {
     this.ingestionService = storeIngestionService;
     this.storageService = storageService;
     this.clusterName = clusterName;
     // The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
-    this.participantName = Utils.getHelixNodeIdentifier(port);
+    this.participantName = Utils.getHelixNodeIdentifier(hostname, port);
     this.zkAddress = zkAddress;
     this.veniceConfigLoader = veniceConfigLoader;
     this.helixReadOnlyStoreRepository = helixReadOnlyStoreRepository;
     this.metricsRepository = metricsRepository;
-    this.instance = new Instance(participantName, Utils.getHostName(), port);
+    this.instance = new Instance(participantName, hostname, port);
     this.managerFuture = managerFuture;
     this.partitionPushStatusAccessorFuture = new CompletableFuture<>();
     if (!(storeIngestionService instanceof KafkaStoreIngestionService)) {
@@ -223,6 +224,7 @@ public class HelixParticipationService extends AbstractVeniceService
   @Override
   public void stopInner() throws IOException {
     LOGGER.info("Attempting to stop HelixParticipation service.");
+    ingestionBackend.prepareForShutdown();
     if (helixManager != null) {
       try {
         helixManager.disconnect();

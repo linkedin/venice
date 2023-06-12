@@ -110,7 +110,6 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     // Relay the notification to parent service's listener.
     switch (reportType) {
       case COMPLETED:
-        mainIngestionMonitorService.setVersionPartitionToLocalIngestion(topicName, partitionId);
         // Set LeaderState passed from child process to cache.
         LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.valueOf(report.leaderFollowerState);
         notifierHelper(
@@ -174,7 +173,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         StoreVersionState storeVersionState =
             IsolatedIngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
         mainIngestionMonitorService.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
-        LOGGER.info("Updated storeVersionState for topic: {} {}", topicName, storeVersionState.toString());
+        LOGGER.info("Updated storeVersionState: {} for topic: {}", storeVersionState.toString(), topicName);
       }
     }
   }

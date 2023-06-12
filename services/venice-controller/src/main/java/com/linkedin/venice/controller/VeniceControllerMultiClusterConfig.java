@@ -45,6 +45,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getAdminPort();
   }
 
+  public String getAdminHostname() {
+    return getCommonConfig().getAdminHostname();
+  }
+
   public int getAdminSecurePort() {
     return getCommonConfig().getAdminSecurePort();
   }
@@ -147,6 +151,10 @@ public class VeniceControllerMultiClusterConfig {
 
   public Map<String, String> getClusterToD2Map() {
     return getCommonConfig().getClusterToD2Map();
+  }
+
+  public Map<String, String> getClusterToServerD2Map() {
+    return getCommonConfig().getClusterToServerD2Map();
   }
 
   public int getTopicManagerKafkaOperationTimeOutMs() {

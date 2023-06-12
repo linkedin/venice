@@ -23,9 +23,10 @@ import java.util.Set;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.SstFileManager;
 
 
-class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
+public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStorageEngine.class);
 
   public static final String SERVER_CONFIG_FILE_NAME = "rocksdbConfig";
@@ -252,5 +253,18 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   private String getRocksDbEngineConfigPath() {
     return RocksDBUtils.composePartitionDbDir(rocksDbPath, getStoreName(), METADATA_PARTITION_ID) + "/"
         + SERVER_CONFIG_FILE_NAME;
+  }
+
+  @Override
+  public boolean hasMemorySpaceLeft() {
+    SstFileManager sstFileManager = factory.getSstFileManager();
+    if (sstFileManager.isMaxAllowedSpaceReached() || sstFileManager.isMaxAllowedSpaceReachedIncludingCompactions()) {
+      return false;
+    }
+    long currentUsage = sstFileManager.getTotalSize();
+    if (factory.getMemoryLimit() - currentUsage >= 2 * factory.getMemtableSize()) {
+      return true;
+    }
+    return false;
   }
 }

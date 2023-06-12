@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 
@@ -37,7 +36,6 @@ public class KafkaSSLUtils {
     // Listen on two ports, one for ssl one for non-ssl
     properties.put(KafkaConfig.ListenersProp(), "PLAINTEXT://" + host + ":" + port + ",SSL://" + host + ":" + sslPort);
     properties.putAll(getLocalCommonKafkaSSLConfig());
-    properties.put(SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
     return properties;
   }
 
@@ -73,15 +71,17 @@ public class KafkaSSLUtils {
    * @return
    */
   public static boolean isKafkaProtocolValid(String kafkaProtocol) {
-    return kafkaProtocol.equals(SecurityProtocol.PLAINTEXT.name()) || kafkaProtocol.equals(SecurityProtocol.SSL.name());
+    return kafkaProtocol.equals(SecurityProtocol.PLAINTEXT.name()) || kafkaProtocol.equals(SecurityProtocol.SSL.name())
+        || kafkaProtocol.equals(SecurityProtocol.SASL_PLAINTEXT.name())
+        || kafkaProtocol.equals(SecurityProtocol.SASL_SSL.name());
   }
 
   public static boolean isKafkaSSLProtocol(String kafkaProtocol) {
-    return kafkaProtocol.equals(SecurityProtocol.SSL.name());
+    return kafkaProtocol.equals(SecurityProtocol.SSL.name()) || kafkaProtocol.equals(SecurityProtocol.SASL_SSL.name());
   }
 
   public static boolean isKafkaSSLProtocol(SecurityProtocol kafkaProtocol) {
-    return kafkaProtocol == SecurityProtocol.SSL;
+    return kafkaProtocol == SecurityProtocol.SSL || kafkaProtocol == SecurityProtocol.SASL_SSL;
   }
 
   /**

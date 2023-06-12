@@ -9,8 +9,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -24,7 +26,6 @@ import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.systemstore.schemas.storeReplicaStatusesMapOps;
 import com.linkedin.venice.systemstore.schemas.storeValueSchemaIdsWrittenPerStoreVersionListOps;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -38,6 +39,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -62,16 +65,20 @@ public class MetaStoreWriter implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(MetaStoreWriter.class);
 
   private final Map<String, VeniceWriter> metaStoreWriterMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, ReentrantLock> metaStoreWriterLockMap = new VeniceConcurrentHashMap<>();
   private final TopicManager topicManager;
   private final VeniceWriterFactory writerFactory;
   private final Schema derivedComputeSchema;
   private final HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
   private int derivedComputeSchemaId = -1;
 
+  private final PubSubTopicRepository pubSubTopicRepository;
+
   public MetaStoreWriter(
       TopicManager topicManager,
       VeniceWriterFactory writerFactory,
-      HelixReadOnlyZKSharedSchemaRepository schemaRepo) {
+      HelixReadOnlyZKSharedSchemaRepository schemaRepo,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.topicManager = topicManager;
     this.writerFactory = writerFactory;
     /**
@@ -81,6 +88,7 @@ public class MetaStoreWriter implements Closeable {
         .convertFromValueRecordSchema(
             AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
     this.zkSharedSchemaRepository = schemaRepo;
+    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   /**
@@ -297,7 +305,6 @@ public class MetaStoreWriter implements Closeable {
    */
   public void deleteStoreReplicaStatus(String clusterName, String storeName, int version, int partitionId) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VeniceWriter writer = prepareToWrite(metaStoreName);
     StoreMetaKey key = MetaStoreDataType.STORE_REPLICA_STATUSES.getStoreMetaKey(new HashMap<String, String>() {
       {
         put(KEY_STRING_STORE_NAME, storeName);
@@ -306,8 +313,9 @@ public class MetaStoreWriter implements Closeable {
         put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
       }
     });
-    writer.delete(key, null);
-    writer.flush();
+    writeMessageWithRetry(metaStoreName, vw -> {
+      vw.delete(key, null);
+    });
   }
 
   /**
@@ -315,13 +323,12 @@ public class MetaStoreWriter implements Closeable {
    * @param metaStoreName
    */
   public void removeMetaStoreWriter(String metaStoreName) {
-    VeniceWriter writer = metaStoreWriterMap.get(metaStoreName);
+    VeniceWriter writer = getMetaStoreWriterMap().remove(metaStoreName);
     if (writer != null) {
       /**
        * Free the internal resource without sending any extra messages since the store is going to be deleted.
        */
       closeVeniceWriter(metaStoreName, writer, true);
-      metaStoreWriterMap.remove(metaStoreName);
       LOGGER.info("Removed the venice writer for meta store: {}", metaStoreName);
     }
   }
@@ -336,12 +343,12 @@ public class MetaStoreWriter implements Closeable {
       Supplier<Map<String, String>> keyStringSupplier,
       Supplier<StoreMetaValue> valueSupplier) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VeniceWriter writer = prepareToWrite(metaStoreName);
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     StoreMetaValue value = valueSupplier.get();
     value.timestamp = System.currentTimeMillis();
-    writer.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get());
-    writer.flush();
+    writeMessageWithRetry(metaStoreName, vw -> {
+      vw.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get());
+    });
   }
 
   private void update(
@@ -350,39 +357,83 @@ public class MetaStoreWriter implements Closeable {
       Supplier<Map<String, String>> keyStringSupplier,
       Supplier<SpecificRecord> updateSupplier) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VeniceWriter writer = prepareToWrite(metaStoreName);
     if (derivedComputeSchemaId == -1) {
       /**
        * Fetch the derived compute schema id on demand for integration test since the meta system store is being created
        * during cluster initialization.
        */
-      Pair<Integer, Integer> derivedSchemaId = zkSharedSchemaRepository
+      GeneratedSchemaID derivedSchemaId = zkSharedSchemaRepository
           .getDerivedSchemaId(VeniceSystemStoreType.META_STORE.getZkSharedStoreName(), derivedComputeSchema.toString());
-      if (derivedSchemaId.getFirst() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      if (!derivedSchemaId.isValid()) {
         throw new VeniceException(
             "The derived compute schema for meta system store hasn't been registered to Venice yet");
       }
-      this.derivedComputeSchemaId = derivedSchemaId.getSecond();
+      this.derivedComputeSchemaId = derivedSchemaId.getGeneratedSchemaVersion();
     }
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     SpecificRecord update = updateSupplier.get();
-    writer.update(
-        key,
-        update,
-        AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get(),
-        derivedComputeSchemaId,
-        null);
-    writer.flush();
+    writeMessageWithRetry(metaStoreName, vw -> {
+      vw.update(
+          key,
+          update,
+          AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get(),
+          derivedComputeSchemaId,
+          null);
+    });
   }
 
-  private VeniceWriter prepareToWrite(String metaStoreName) {
+  void writeMessageWithRetry(String metaStoreName, Consumer<VeniceWriter> writerConsumer) {
+    ReentrantLock lock = getOrCreateMetaStoreWriterLock(metaStoreName);
+    int messageProduceRetryCount = 0;
+    int maxMessageProduceRetryCount = 3;
+    VeniceWriter writer = null;
+    boolean messageProduced = false;
+    while (!messageProduced) {
+      lock.lock();
+      try {
+        writer = getOrCreateMetaStoreWriter(metaStoreName);
+        writerConsumer.accept(writer);
+        writer.flush();
+        messageProduced = true;
+      } catch (Exception e) {
+        messageProduceRetryCount++;
+        if (messageProduceRetryCount < maxMessageProduceRetryCount) {
+          LOGGER.warn(
+              "Caught exception while trying to write message, will restart Venice Writer and retry {}/{}",
+              messageProduceRetryCount,
+              maxMessageProduceRetryCount);
+          // Defensive coding to make sure close Venice Writer logic won't throw another exception.
+          try {
+            removeMetaStoreWriter(metaStoreName);
+          } catch (Exception ex) {
+            LOGGER.warn("Caught exception while trying to close Venice writer", e);
+          }
+        } else {
+          LOGGER.error("Fail to write message after {} attempts.", maxMessageProduceRetryCount, e);
+          break;
+        }
+      } finally {
+        lock.unlock();
+      }
+    }
+  }
+
+  ReentrantLock getOrCreateMetaStoreWriterLock(String metaStoreName) {
+    return metaStoreWriterLockMap.computeIfAbsent(metaStoreName, k -> new ReentrantLock());
+  }
+
+  Map<String, VeniceWriter> getMetaStoreWriterMap() {
+    return metaStoreWriterMap;
+  }
+
+  VeniceWriter getOrCreateMetaStoreWriter(String metaStoreName) {
     return metaStoreWriterMap.computeIfAbsent(metaStoreName, k -> {
-      String rtTopic = Version.composeRealTimeTopic(metaStoreName);
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
       if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
         throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");
       }
 
-      VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic)
+      VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic.getName())
           .setKeySerializer(
               new VeniceAvroKafkaSerializer(
                   AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()))
@@ -422,7 +473,7 @@ public class MetaStoreWriter implements Closeable {
      * to write a Control Message to the RT topic, and it could hang if the topic doesn't exist.
      * This check is a best-effort since the race condition is still there between topic check and closing VeniceWriter.
      */
-    String rtTopic = Version.composeRealTimeTopic(metaStoreName);
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
     if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
       LOGGER.info(
           "RT topic: {} for meta system store: {} doesn't exist, will only close the internal producer without sending END_OF_SEGMENT control messages",

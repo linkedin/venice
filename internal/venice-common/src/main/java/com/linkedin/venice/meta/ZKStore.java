@@ -9,12 +9,12 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
+import com.linkedin.venice.utils.AvroRecordUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.avro.util.Utf8;
 
@@ -97,7 +97,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
       throw new VeniceException("Invalid store name: " + name);
     }
 
-    this.storeProperties = Store.prefillAvroRecordWithDefaultValue(new StoreProperties());
+    this.storeProperties = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreProperties());
     this.storeProperties.replicationFactor = replicationFactor;
 
     this.storeProperties.name = name;
@@ -218,7 +218,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
     setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
-    setRmdVersionID(store.getRmdVersionID());
+    setRmdVersion(store.getRmdVersion());
     setViewConfigs(store.getViewConfigs());
 
     for (Version storeVersion: store.getVersions()) {
@@ -619,14 +619,13 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
-  public Optional<Integer> getRmdVersionID() {
-    final int rmdVersionID = this.storeProperties.replicationMetadataVersionID;
-    return rmdVersionID == -1 ? Optional.empty() : Optional.of(rmdVersionID);
+  public int getRmdVersion() {
+    return this.storeProperties.replicationMetadataVersionID;
   }
 
   @Override
-  public void setRmdVersionID(Optional<Integer> rmdVersionID) {
-    this.storeProperties.replicationMetadataVersionID = rmdVersionID.orElse(-1);
+  public void setRmdVersion(int rmdVersion) {
+    this.storeProperties.replicationMetadataVersionID = rmdVersion;
   }
 
   @Override

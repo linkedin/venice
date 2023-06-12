@@ -1,5 +1,8 @@
 package com.linkedin.venice.router;
 
+import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+
 import com.linkedin.alpini.base.concurrency.AsyncFuture;
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.alpini.base.concurrency.impl.SuccessAsyncFuture;
@@ -183,21 +186,36 @@ public class RouterServer extends AbstractVeniceService {
     if (args.length != 1) {
       Utils.exit("USAGE: java -jar venice-router-all.jar <router_config_file_path>");
     }
-    VeniceProperties props;
+
     try {
       String routerConfigFilePath = args[0];
-      props = Utils.parseProperties(routerConfigFilePath);
+      run(routerConfigFilePath, true);
     } catch (Exception e) {
       throw new VeniceException("No config file parameter found", e);
     }
+  }
 
+  public static void run(String routerConfigFilePath, boolean runForever) throws Exception {
+
+    VeniceProperties props = Utils.parseProperties(routerConfigFilePath);
     LOGGER.info("Zookeeper: {}", props.getString(ConfigKeys.ZOOKEEPER_ADDRESS));
     LOGGER.info("Cluster: {}", props.getString(ConfigKeys.CLUSTER_NAME));
     LOGGER.info("Port: {}", props.getInt(ConfigKeys.LISTENER_PORT));
     LOGGER.info("SSL Port: {}", props.getInt(ConfigKeys.LISTENER_SSL_PORT));
     LOGGER.info("IO worker count: {}", props.getInt(ConfigKeys.ROUTER_IO_WORKER_COUNT));
 
-    Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+    Optional<SSLFactory> sslFactory;
+    if (props.getBoolean(ConfigKeys.ROUTER_ENABLE_SSL, true)) {
+      if (props.getBoolean(ConfigKeys.ROUTER_USE_LOCAL_SSL_SETTINGS, true)) {
+        sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+      } else {
+        String sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+        sslFactory = Optional.of(SslUtils.getSSLFactory(props.toProperties(), sslFactoryClassName));
+      }
+    } else {
+      sslFactory = Optional.empty();
+    }
+
     RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory);
     server.start();
 
@@ -214,8 +232,10 @@ public class RouterServer extends AbstractVeniceService {
       }
     });
 
-    while (true) {
-      Thread.sleep(TimeUnit.HOURS.toMillis(1));
+    if (runForever) {
+      while (true) {
+        Thread.sleep(TimeUnit.HOURS.toMillis(1));
+      }
     }
   }
 
@@ -282,7 +302,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metaStoreShadowReader = config.isMetaStoreShadowReadEnabled()
         ? Optional.of(new MetaStoreShadowReader(this.schemaRepository))
         : Optional.empty();
-    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager);
+    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager, metadataRepository, false);
     this.hybridStoreQuotaRepository = config.isHelixHybridStoreQuotaEnabled()
         ? Optional.of(new HelixHybridStoreQuotaRepository(manager))
         : Optional.empty();
@@ -384,7 +404,17 @@ public class RouterServer extends AbstractVeniceService {
      */
     timeoutProcessor = new TimeoutProcessor(registry, true, 1);
 
-    Optional<SSLFactory> sslFactoryForRequests = config.isSslToStorageNodes() ? sslFactory : Optional.empty();
+    Optional<SSLFactory> sslFactoryForRequests = Optional.empty();
+    if (config.isSslToStorageNodes()) {
+      if (!sslFactory.isPresent()) {
+        throw new VeniceException("SSLFactory is required when enabling ssl to storage nodes");
+      }
+      if (config.isHttpClientOpensslEnabled()) {
+        sslFactoryForRequests = Optional.of(SslUtils.toSSLFactoryWithOpenSSLSupport(sslFactory.get()));
+      } else {
+        sslFactoryForRequests = sslFactory;
+      }
+    }
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
     Class<? extends AbstractChannel> serverSocketChannelClass;
     boolean useEpoll = true;
@@ -459,11 +489,13 @@ public class RouterServer extends AbstractVeniceService {
         schemaRepository,
         storeConfigRepository,
         config.getClusterToD2Map(),
+        config.getClusterToServerD2Map(),
         metadataRepository,
         hybridStoreQuotaRepository,
         config.getClusterName(),
         config.getZkConnection(),
-        config.getKafkaBootstrapServers());
+        config.getKafkaBootstrapServers(),
+        config.isSslToKafka());
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository, routerStats, healthMonitor);
 
@@ -771,7 +803,7 @@ public class RouterServer extends AbstractVeniceService {
     registry.waitForShutdown();
     LOGGER.info("Other resources managed by local ResourceRegistry have been shutdown completely");
 
-    routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getPort()));
+    routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getHostname(), config.getPort()));
     routersClusterManager.clear();
     routingDataRepository.clear();
     metadataRepository.clear();
@@ -857,7 +889,7 @@ public class RouterServer extends AbstractVeniceService {
           config.getRefreshAttemptsForZkReconnect(),
           config.getRefreshIntervalForZkReconnectInMs());
       routersClusterManager.refresh();
-      routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getPort()));
+      routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getHostname(), config.getPort()));
       routingDataRepository.refresh();
       hybridStoreQuotaRepository.ifPresent(HelixHybridStoreQuotaRepository::refresh);
 
@@ -865,9 +897,8 @@ public class RouterServer extends AbstractVeniceService {
           routersClusterManager,
           metadataRepository,
           routingDataRepository,
-          config.getMaxReadCapacityCu(),
           routerStats.getStatsByType(RequestType.SINGLE_GET),
-          config.getPerStorageNodeReadQuotaBuffer());
+          config);
 
       noopRequestThrottler = new NoopRouterThrottler(
           routersClusterManager,

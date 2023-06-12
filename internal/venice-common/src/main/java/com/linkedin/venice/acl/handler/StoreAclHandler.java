@@ -4,6 +4,7 @@ import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.NettyUtils;
@@ -80,6 +81,14 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
           ctx);
       return;
     }
+
+    // Ignore ACL for requests to /metadata as there's no sensitive information in the response.
+    if (requestParts[1].equals(QueryAction.METADATA.toString().toLowerCase())) {
+      ReferenceCountUtil.retain(req);
+      ctx.fireChannelRead(req);
+      return;
+    }
+
     String storeName = extractStoreName(requestParts[2]);
 
     String method = req.method().name();
@@ -92,6 +101,10 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
         ctx.fireChannelRead(req);
       } else {
         try {
+          /**
+           * TODO: Consider making this the first check, so that we optimize for the hot path. If rejected, then we
+           *       could check whether the request is for a system store, METADATA, etc.
+           */
           if (accessController.hasAccess(clientCert, storeName, method)) {
             // Client has permission. Proceed
             ReferenceCountUtil.retain(req);

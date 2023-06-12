@@ -3,7 +3,6 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
-import java.util.Map;
 
 
 /**
@@ -43,18 +42,6 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
    * Remove the listener for given kafka topic.
    */
   void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener);
-
-  /**
-   * In case any delays for routing data updates, we sometimes refresh the data from zk
-   * to get the latest resource statuses.
-   * @param kafkaTopic
-   */
-  void refreshRoutingDataForResource(String kafkaTopic);
-
-  /**
-   * Get the map contains all live instances which key is instance Id and value is the instance object.
-   */
-  Map<String, Instance> getLiveInstancesMap();
 
   boolean isLiveInstance(String instanceId);
 

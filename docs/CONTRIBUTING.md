@@ -29,7 +29,10 @@ Please read existing GitHub issues or development work that is in progress or in
 
 For any PR, a GitHub issue is required.
 
-If you want to contribute something new, and it's not tracked in existing GitHub issues, please create a new GitHub issue and the community will help review the idea. Please state `why` in your GitHub issue. If you already have a short design in mind, you can provide a one pager in the GitHub issue. If the idea in general make sense, then we can proceed to the design or development work. If the change is not small, an [RFC](https://en.wikipedia.org/wiki/Request_for_Comments) should be reviewed and approved by the team.
+If you want to contribute something new, and it's not tracked in existing GitHub issues, please create a new 
+GitHub issue and the community will help review the idea. Please state `why` in your GitHub issue. 
+If you already have a short design in mind or change is not small please check the 
+[Venice Improvement Proposal](./dev_guide/design_doc.md) 
 
 If you have any feature request, please create a new GitHub issue and the community will collect your feature request and work on it.
 
@@ -48,6 +51,19 @@ Please follow [Venice Workspace Setup](./dev_guide/workspace_setup.md) and
 3. Open an issue first and seek advice for your change before
    submitting a pull request. Large features which have never been
    discussed are unlikely to be accepted.
+
+## Contributor Sync Meeting 
+
+Venice does Contributor sync meeting for the contributors to come togather in a virtual meeting.
+
+1. Meeting Frequency : Bi-weekly on Wednesday at 8 AM Pacific, 11 AM Eastern, 5 PM Central Europe
+2. Meeting Co-ordination : Please join the #contributor-sync channel in the 
+     [public Venice Slack](http://slack.venicedb.org/) 
+3. Meeting Length : One hour 
+4. Agenda : 
+   1. Discuss Venice Improvement Proposals.
+   2. Review and address concerns for any open pull requests.
+   3. Open discussion.
 
 ## Code of Conduct
 

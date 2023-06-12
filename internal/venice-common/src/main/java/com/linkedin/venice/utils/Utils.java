@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Instance;
@@ -19,7 +20,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -139,7 +138,7 @@ public class Utils {
     boolean fileExists = propsFile.exists();
     if (!fileExists) {
       if (isFileOptional) {
-        return new VeniceProperties(new Properties());
+        return VeniceProperties.empty();
       } else {
         String fullFilePath = Utils.getCanonicalPath(propsFilePath);
         throw new ConfigurationException(fullFilePath + " does not exist.");
@@ -249,6 +248,7 @@ public class Utils {
     }
     try {
       String hostName = InetAddress.getLocalHost().getHostName();
+      LOGGER.info("Resolved local hostname from InetAddress.getLocalHost() {}", hostName);
       if (StringUtils.isEmpty(hostName)) {
         throw new VeniceException("Unable to get the hostname.");
       }
@@ -268,13 +268,7 @@ public class Utils {
    * @return true on success and false if sleep was interrupted
    */
   public static boolean sleep(long millis) {
-    try {
-      Thread.sleep(millis);
-      return true;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return false;
-    }
+    return LatencyUtils.sleep(millis);
   }
 
   public static int parseIntFromString(String value, String fieldName) {
@@ -330,8 +324,8 @@ public class Utils {
     }
   }
 
-  public static String getHelixNodeIdentifier(int port) {
-    return Utils.getHostName() + "_" + port;
+  public static String getHelixNodeIdentifier(String hostname, int port) {
+    return hostname + "_" + port;
   }
 
   public static String parseHostFromHelixNodeIdentifier(String nodeId) {
@@ -505,23 +499,6 @@ public class Utils {
     double divider = Math.pow(1000, suffixIndex);
     int prettyNumber = (int) Math.round(doubleNumber / divider);
     return prettyNumber + LARGE_NUMBER_SUFFIXES[suffixIndex];
-  }
-
-  /**
-   * WARNING: The code which generates the free port and uses it must always be called within
-   * a try/catch and a loop. There is no guarantee that the port returned will still be
-   * available at the time it is used. This is best-effort only.
-   *
-   * N.B.: Visibility is package-private on purpose.
-   *
-   * @return a free port to be used by tests.
-   */
-  public static int getFreePort() {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   public static String getUniqueString() {
@@ -792,10 +769,16 @@ public class Utils {
       for (String resourceName: resourceNames) {
         PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
         for (Partition partition: partitionAssignment.getAllPartitions()) {
-          String status = partition.getInstanceStatusById(instanceId);
-          if (status != null) {
+          HelixState helixState = partition.getHelixStateByInstanceId(instanceId);
+          ExecutionStatus executionStatus = partition.getExecutionStatusByInstanceId(instanceId);
+          if (helixState != null || executionStatus != null) {
+            /**
+             * N.B.: We only add the {@link Replica} to the returned list if the partition is hosted on the provided
+             * {@param instanceId}, which we consider to be the case if the {@link Partition} object carries either
+             * an {@link ExecutionStatus} and/or a {@link HelixState} for it.
+             */
             Replica replica = new Replica(Instance.fromNodeId(instanceId), partition.getId(), resourceName);
-            replica.setStatus(status);
+            replica.setStatus(helixState);
             replicas.add(replica);
           }
         }
@@ -896,10 +879,6 @@ public class Utils {
       throw new VeniceException("Store " + storeName + " version " + versionNumber + " does not exist.");
     }
     return storeVersionPair;
-  }
-
-  public static <T> Set<T> newConcurrentSet() {
-    return VeniceConcurrentHashMap.newKeySet();
   }
 
   public static <K, V> Iterator<V> iterateOnMapOfLists(Map<K, List<V>> mapOfLists) {

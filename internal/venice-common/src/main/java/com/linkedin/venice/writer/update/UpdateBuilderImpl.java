@@ -3,6 +3,7 @@ package com.linkedin.venice.writer.update;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaAdapter;
 import com.linkedin.venice.schema.writecompute.WriteComputeConstants;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -10,7 +11,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -47,7 +47,9 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   @Override
   public UpdateBuilder setNewFieldValue(String fieldName, Object newFieldValue) {
     validateNoCollectionMergeOnField(fieldName);
-    updateRecord.put(fieldName, newFieldValue);
+    updateRecord.put(
+        fieldName,
+        SchemaAdapter.adaptToSchema(updateRecord.getSchema().getField(fieldName).schema(), newFieldValue));
     updateFieldNameSet.add(fieldName);
     return this;
   }
@@ -57,7 +59,9 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     validateFieldType(Validate.notNull(listFieldName), Schema.Type.ARRAY);
     validateFieldNotSet(listFieldName);
     if (!elementsToAdd.isEmpty()) {
-      getOrCreateListMergeRecord(listFieldName).put(WriteComputeConstants.SET_UNION, elementsToAdd);
+      getOrCreateListMergeRecord(listFieldName).put(
+          WriteComputeConstants.SET_UNION,
+          SchemaAdapter.adaptToSchema(getCorrespondingValueFieldSchema(listFieldName), elementsToAdd));
       collectionMergeFieldNameSet.add(listFieldName);
     }
     return this;
@@ -79,7 +83,9 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     validateFieldType(Validate.notNull(mapFieldName), Schema.Type.MAP);
     validateFieldNotSet(mapFieldName);
     if (!entriesToAdd.isEmpty()) {
-      getOrCreateMapMergeRecord(mapFieldName).put(WriteComputeConstants.MAP_UNION, entriesToAdd);
+      getOrCreateMapMergeRecord(mapFieldName).put(
+          WriteComputeConstants.MAP_UNION,
+          SchemaAdapter.adaptToSchema(getCorrespondingValueFieldSchema(mapFieldName), entriesToAdd));
       collectionMergeFieldNameSet.add(mapFieldName);
     }
     return this;
@@ -111,7 +117,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
       // This field has no field set and no collection merge.
       updateRecord.put(fieldName, createNoOpRecord(updateField));
     }
-    Exception serializationException = validateUpdateRecordIsSerializable(updateRecord).orElse(null);
+    Exception serializationException = validateUpdateRecordIsSerializable(updateRecord);
     if (serializationException != null) {
       throw new VeniceException(
           "The built partial-update record failed to be serialized. It could be caused by setting "
@@ -121,13 +127,36 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     return updateRecord;
   }
 
-  private Optional<Exception> validateUpdateRecordIsSerializable(GenericRecord updateRecord) {
+  private Exception validateUpdateRecordIsSerializable(GenericRecord updateRecord) {
     try {
       serializer.serialize(updateRecord);
     } catch (Exception serializationException) {
-      return Optional.of(serializationException);
+      return serializationException;
     }
-    return Optional.empty();
+    return null;
+  }
+
+  /**
+   * Given a field from the partial update schema and find the schema of its corresponding value field.
+   *
+   * @param updateField A field from the partial update schema.
+   * @return Schema of its corresponding value field.
+   */
+  private Schema getCorrespondingValueFieldSchema(String updateFieldName) {
+    return getCorrespondingValueFieldSchema(updateRecord.getSchema().getField(updateFieldName));
+  }
+
+  /**
+   * Given a field from the partial update schema and find the schema of its corresponding value field.
+   *
+   * @param updateField A field from the partial update schema.
+   * @return Schema of its corresponding value field.
+   */
+  private Schema getCorrespondingValueFieldSchema(Schema.Field updateField) {
+    // Each field in partial update schema is a union of multiple schemas.
+    List<Schema> updateFieldSchemas = updateField.schema().getTypes();
+    // The last schema in the union is the schema of the field in the corresponding value schema.
+    return updateFieldSchemas.get(updateFieldSchemas.size() - 1);
   }
 
   /**
@@ -137,10 +166,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
    * @return Type of its corresponding value field.
    */
   private Schema.Type getCorrespondingValueFieldType(Schema.Field updateField) {
-    // Each field in partial update schema is a union of multiple schemas.
-    List<Schema> updateFieldSchemas = updateField.schema().getTypes();
-    // The last schema in the union is the schema of the field in the corresponding value schema.
-    return updateFieldSchemas.get(updateFieldSchemas.size() - 1).getType();
+    return getCorrespondingValueFieldSchema(updateField).getType();
   }
 
   private void validateFieldNotSet(String fieldName) {

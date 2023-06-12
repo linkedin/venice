@@ -6,8 +6,11 @@ import static com.linkedin.venice.schema.rmd.RmdTimestampType.PER_FIELD_TIMESTAM
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.getFieldOperationType;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -17,7 +20,6 @@ import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
-import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
@@ -586,12 +588,17 @@ public class MergeConflictResolver {
       ByteBuffer oldValueBytes,
       RmdWithValueSchemaId rmdWithValueSchemaId,
       SchemaEntry readerValueSchemaEntry) {
-    if (oldValueBytes != null && rmdWithValueSchemaId == null) {
-      throw new IllegalArgumentException("If old value bytes present, value schema ID must present too.");
-    }
-    if (oldValueBytes == null && rmdWithValueSchemaId == null) {
-      // Value and RMD both never existed
-      GenericRecord newValue = SchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
+
+    if (rmdWithValueSchemaId == null) {
+      GenericRecord newValue;
+      if (oldValueBytes == null) {
+        // Value and RMD both never existed
+        newValue = SchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
+      } else {
+        int schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
+        Schema writerSchema = getValueSchema(schemaId);
+        newValue = deserializeValue(oldValueBytes, writerSchema, readerValueSchemaEntry.getSchema());
+      }
       GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_NAME, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
       newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<Long>());
@@ -702,9 +709,9 @@ public class MergeConflictResolver {
         if (updateOperationTimestamp >= valueLevelTimestamp) {
           return false;
         }
-        toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);
-        for (String toUpdateFieldName: toUpdateFieldNames) {
-          if (oldValueSchema.getField(toUpdateFieldName) == null) {
+        for (Schema.Field field: writeComputeRecord.getSchema().getFields()) {
+          if (getFieldOperationType(writeComputeRecord.get(field.pos())) != NO_OP_ON_FIELD
+              && oldValueSchema.getField(field.name()) == null) {
             return false; // Write Compute tries to update a non-existing field in the old value (schema).
           }
         }
@@ -712,12 +719,12 @@ public class MergeConflictResolver {
 
       case PER_FIELD_TIMESTAMP:
         GenericRecord timestampRecord = (GenericRecord) oldTimestampObject;
-        toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);
-        for (String toUpdateFieldName: toUpdateFieldNames) {
-          if (timestampRecord.get(toUpdateFieldName) == null) {
+        for (Schema.Field field: writeComputeRecord.getSchema().getFields()) {
+          if (getFieldOperationType(writeComputeRecord.get(field.pos())) != NO_OP_ON_FIELD
+              && timestampRecord.get(field.name()) == null) {
             return false; // Write Compute tries to update a non-existing field.
           }
-          if (isRmdFieldTimestampSmaller(timestampRecord, toUpdateFieldName, updateOperationTimestamp, false)) {
+          if (isRmdFieldTimestampSmaller(timestampRecord, field.name(), updateOperationTimestamp, false)) {
             return false; // One existing field must be updated.
           }
         }

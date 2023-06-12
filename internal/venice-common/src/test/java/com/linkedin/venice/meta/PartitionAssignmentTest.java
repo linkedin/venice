@@ -1,9 +1,9 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import java.util.EnumMap;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -12,11 +12,10 @@ public class PartitionAssignmentTest {
   @Test
   public void testAddAndGetPartition() {
     int partitionCount = 3;
-    Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
-
     PartitionAssignment partitionAssignment = new PartitionAssignment("test", partitionCount);
     for (int i = 0; i < partitionCount; i++) {
-      partitionAssignment.addPartition(new Partition(i, stateToInstancesMap));
+      partitionAssignment
+          .addPartition(new Partition(i, new EnumMap<>(HelixState.class), new EnumMap<>(ExecutionStatus.class)));
     }
     Assert.assertEquals(
         partitionAssignment.getAssignedNumberOfPartitions(),
@@ -30,14 +29,16 @@ public class PartitionAssignmentTest {
     }
 
     try {
-      partitionAssignment.addPartition(new Partition(-1, stateToInstancesMap));
+      partitionAssignment
+          .addPartition(new Partition(-1, new EnumMap<>(HelixState.class), new EnumMap<>(ExecutionStatus.class)));
       Assert.fail("-1 is not a valid partition id.");
     } catch (VeniceException e) {
 
     }
 
     try {
-      partitionAssignment.addPartition(new Partition(partitionCount + 10, stateToInstancesMap));
+      partitionAssignment.addPartition(
+          new Partition(partitionCount + 10, new EnumMap<>(HelixState.class), new EnumMap<>(ExecutionStatus.class)));
       Assert.fail(partitionCount + 10 + " is not a valid partition id.");
     } catch (VeniceException e) {
 
@@ -52,17 +53,5 @@ public class PartitionAssignmentTest {
     } catch (VeniceException e) {
 
     }
-  }
-
-  @Test
-  public void testRemovePartition() {
-    PartitionAssignment partitionAssignment = new PartitionAssignment("test", 2);
-    Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
-    partitionAssignment.addPartition(new Partition(1, stateToInstancesMap));
-    partitionAssignment.removePartition(1);
-    Assert.assertEquals(
-        partitionAssignment.getAssignedNumberOfPartitions(),
-        0,
-        "Partition 1 is deleted, there is no partition assigned.");
   }
 }

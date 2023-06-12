@@ -2,7 +2,7 @@ package com.linkedin.davinci.replication.merge;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
@@ -30,7 +30,7 @@ import org.apache.commons.lang.Validate;
  * 3. Assumes new value to be GenericRecord type, does not support non-record values.
  */
 public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
-  private static final AvroVersion RUNTIME_AVRO_VERSION = AvroCompatibilityHelper.getRuntimeAvroVersion();
+  private static final AvroVersion RUNTIME_AVRO_VERSION = AvroCompatibilityHelperCommon.getRuntimeAvroVersion();
   private final WriteComputeProcessor writeComputeProcessor;
   private final MergeRecordHelper mergeRecordHelper;
 

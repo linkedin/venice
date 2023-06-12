@@ -9,7 +9,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -199,9 +199,9 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
           // Check and register Write Compute schema
           String writeComputeSchema =
               WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(schemaInLocalResources).toString();
-          Pair<Integer, Integer> derivedSchemaInfo =
+          GeneratedSchemaID derivedSchemaInfo =
               admin.getDerivedSchemaId(clusterToInit, systemStoreName, writeComputeSchema);
-          if (derivedSchemaInfo.getFirst() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+          if (!derivedSchemaInfo.isValid()) {
             /**
              * The derived schema doesn't exist right now, try to register it.
              */

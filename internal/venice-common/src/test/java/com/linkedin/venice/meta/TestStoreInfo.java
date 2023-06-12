@@ -1,8 +1,13 @@
 package com.linkedin.venice.meta;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -18,13 +23,21 @@ public class TestStoreInfo {
   public void serializesAndDeserializesWithExtraFields() throws IOException {
     StoreInfo deserializedExtraFieldFasterXml =
         OBJECT_MAPPER.readValue(STORE_INFO_WITH_EXTRA_FIELD_STRING, StoreInfo.class);
-    Assert.assertEquals(deserializedExtraFieldFasterXml.getName(), "store-1498761605131-33801192");
+    assertEquals(deserializedExtraFieldFasterXml.getName(), "store-1498761605131-33801192");
   }
 
   @Test
   public void deserializesWithMissingFields() throws IOException {
     StoreInfo deserializedMissingFieldFasterXml =
         OBJECT_MAPPER.readValue(PRE_HYBRID_STORE_INFO_STRING, StoreInfo.class);
-    Assert.assertNull(deserializedMissingFieldFasterXml.getHybridStoreConfig());
+    assertNull(deserializedMissingFieldFasterXml.getHybridStoreConfig());
+  }
+
+  @Test
+  public void testStoreInfoAlwaysReturnsLFModelEnabledTrue() {
+    Store store = mock(Store.class);
+    when(store.isLeaderFollowerModelEnabled()).thenReturn(false);
+    StoreInfo storeInfo = StoreInfo.fromStore(store);
+    assertTrue(storeInfo.isLeaderFollowerModelEnabled());
   }
 }

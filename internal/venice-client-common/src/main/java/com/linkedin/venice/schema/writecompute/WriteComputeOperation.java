@@ -9,7 +9,6 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import io.tehuti.utils.Utils;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.function.Function;
@@ -93,7 +92,6 @@ public enum WriteComputeOperation {
   }
 
   public static WriteComputeOperation getFieldOperationType(Object writeComputeFieldValue) {
-    Utils.notNull(writeComputeFieldValue);
 
     if (writeComputeFieldValue instanceof IndexedRecord) {
       IndexedRecord writeComputeFieldRecord = (IndexedRecord) writeComputeFieldValue;

@@ -157,7 +157,7 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
    * putOffsetRecord will only put OffsetRecord into in-memory state, without persisting into metadata RocksDB partition.
    */
   public void putOffsetRecord(String topicName, int partitionId, OffsetRecord record) {
-    LOGGER.info("Updating OffsetRecord for {} {} {}", topicName, partitionId, record.getLocalVersionTopicOffset());
+    LOGGER.info("Updating OffsetRecord: {} for topic: {}, partition: {}", record.toString(), topicName, partitionId);
     Map<Integer, OffsetRecord> partitionOffsetRecordMap =
         topicPartitionOffsetRecordMap.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>());
     partitionOffsetRecordMap.put(partitionId, record);

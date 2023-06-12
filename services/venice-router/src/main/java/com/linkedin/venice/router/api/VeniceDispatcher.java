@@ -247,8 +247,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
             path,
             responseFuture::complete,
             responseFuture::completeExceptionally,
-            () -> responseFuture.cancel(false),
-            startTime);
+            () -> responseFuture.cancel(false));
       } catch (Throwable throwable) {
         responseFuture.completeExceptionally(throwable);
       }
@@ -288,7 +287,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
     if (statusCode == HttpStatus.SC_OK) {
       VeniceResponseDecompressor responseDecompressor = path.getResponseDecompressor();
       if (path.isStreamingRequest()) {
-        VeniceChunkedResponse chunkedResponse = path.getChunkedResponse().get();
+        VeniceChunkedResponse chunkedResponse = path.getChunkedResponse();
         if (path.getRequestType().equals(RequestType.MULTI_GET_STREAMING)) {
           Pair<ByteBuf, CompressionStrategy> chunk =
               responseDecompressor.processMultiGetResponseForStreaming(contentCompression, content);

@@ -10,6 +10,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -17,7 +18,6 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
-import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -479,28 +479,18 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public int getValueSchemaIdIgnoreFieldOrder(String storeName, SchemaEntry newSchemaEntry) {
-    for (SchemaEntry schemaEntry: getValueSchemas(storeName)) {
-      if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(schemaEntry.getSchema(), newSchemaEntry.getSchema())) {
-        return schemaEntry.getId();
-      }
-    }
-    return SchemaData.INVALID_VALUE_SCHEMA_ID;
-  }
-
-  @Override
-  public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
+  public GeneratedSchemaID getDerivedSchemaId(String storeName, String derivedSchemaStr) {
     preCheckStoreCondition(storeName);
     Schema derivedSchema = Schema.parse(derivedSchemaStr);
     String derivedSchemaStrToFind = AvroCompatibilityHelper.toParsingForm(derivedSchema);
 
     for (DerivedSchemaEntry derivedSchemaEntry: accessor.getAllDerivedSchemas(storeName)) {
       if (derivedSchemaStrToFind.equals(derivedSchemaEntry.getCanonicalSchemaStr())) {
-        return new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
+        return new GeneratedSchemaID(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
       }
     }
 
-    return new Pair<>(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
+    return GeneratedSchemaID.INVALID;
   }
 
   private Map<Integer, List<DerivedSchemaEntry>> getDerivedSchemaMap(String storeName) {

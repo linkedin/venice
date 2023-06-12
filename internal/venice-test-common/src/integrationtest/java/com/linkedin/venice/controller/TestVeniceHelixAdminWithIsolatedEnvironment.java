@@ -63,7 +63,9 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     VeniceHelixAdmin newAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
-        D2TestUtils.getAndStartD2Client(zkAddress));
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository,
+        pubSubBrokerWrapper.getPubSubClientsFactory());
     // Start stand by controller
     newAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
@@ -109,7 +111,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     TestUtils.waitForNonDeterministicCompletion(
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
         TimeUnit.MILLISECONDS,
-        () -> routing.getReadyToServeInstances(version.kafkaTopicName(), 0).isEmpty());
+        () -> routing.getWorkingInstances(version.kafkaTopicName(), 0).isEmpty());
     startParticipant(true, NODE_ID);
     Thread.sleep(1000l);
     // New leader controller create resource and trigger state transition on participant.
@@ -155,7 +157,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         return false;
       }
       for (int i = 0; i < partitionCount; i++) {
-        if (partitionAssignment.getPartition(i).getReadyToServeInstances().size() != replicationFactor) {
+        if (partitionAssignment.getPartition(i).getWorkingInstances().size() != replicationFactor) {
           return false;
         }
       }
@@ -189,7 +191,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
-      return partitionAssignment.getPartition(0).getReadyToServeInstances().size() == 1;
+      return partitionAssignment.getPartition(0).getWorkingInstances().size() == 1;
     });
 
     NodeRemovableResult result =
@@ -306,7 +308,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
   public void testGetLeaderController() {
     Assert.assertEquals(
         veniceAdmin.getLeaderController(clusterName).getNodeId(),
-        Utils.getHelixNodeIdentifier(controllerConfig.getAdminPort()));
+        Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), controllerConfig.getAdminPort()));
     // Create a new controller and test getLeaderController again.
     int newAdminPort = controllerConfig.getAdminPort() - 10;
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
@@ -315,7 +317,9 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     VeniceHelixAdmin newLeaderAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
-        D2TestUtils.getAndStartD2Client(zkAddress));
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository,
+        pubSubBrokerWrapper.getPubSubClientsFactory());
     newLeaderAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> admins = new ArrayList<>();
     admins.add(veniceAdmin);
@@ -324,18 +328,18 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     if (veniceAdmin.isLeaderControllerFor(clusterName)) {
       Assert.assertEquals(
           veniceAdmin.getLeaderController(clusterName).getNodeId(),
-          Utils.getHelixNodeIdentifier(controllerConfig.getAdminPort()));
+          Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), controllerConfig.getAdminPort()));
     } else {
       Assert.assertEquals(
           veniceAdmin.getLeaderController(clusterName).getNodeId(),
-          Utils.getHelixNodeIdentifier(newAdminPort));
+          Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), newAdminPort));
     }
     newLeaderAdmin.stop(clusterName);
     admins.remove(newLeaderAdmin);
     waitForALeader(admins, clusterName, LEADER_CHANGE_TIMEOUT_MS);
     Assert.assertEquals(
         veniceAdmin.getLeaderController(clusterName).getNodeId(),
-        Utils.getHelixNodeIdentifier(controllerConfig.getAdminPort()),
+        Utils.getHelixNodeIdentifier(controllerConfig.getAdminHostname(), controllerConfig.getAdminPort()),
         "Controller should be back to original one.");
     veniceAdmin.stop(clusterName);
     TestUtils.waitForNonDeterministicCompletion(

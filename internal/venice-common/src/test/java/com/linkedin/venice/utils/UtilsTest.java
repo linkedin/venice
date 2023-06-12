@@ -25,15 +25,24 @@ public class UtilsTest {
   @Test
   public void testGetHelixNodeIdentifier() {
     int port = 1234;
-    String identifier = Utils.getHelixNodeIdentifier(1234);
-    assertEquals(identifier, Utils.getHostName() + "_" + port, "Identifier is not the valid format required by Helix.");
+    assertEquals(
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), 1234),
+        Utils.getHostName() + "_" + port,
+        "Identifier is not the valid format required by Helix.");
+
+    String fixedHostname = "my_host";
+    assertEquals(
+        Utils.getHelixNodeIdentifier(fixedHostname, 1234),
+        fixedHostname + "_" + port,
+        "Identifier is not the valid format required by Helix.");
   }
 
   @Test
   public void testParseHostAndPortFromNodeIdentifier() {
     int port = 1234;
-    String identifier = Utils.getHelixNodeIdentifier(1234);
-    assertEquals(Utils.parseHostFromHelixNodeIdentifier(identifier), Utils.getHostName());
+    String host = Utils.getHostName();
+    String identifier = Utils.getHelixNodeIdentifier(host, 1234);
+    assertEquals(Utils.parseHostFromHelixNodeIdentifier(identifier), host);
     assertEquals(Utils.parsePortFromHelixNodeIdentifier(identifier), port);
 
     identifier = "my_host_" + port;

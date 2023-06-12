@@ -1,8 +1,6 @@
 package com.linkedin.venice.router;
 
 import static com.linkedin.venice.HttpConstants.VENICE_KEY_COUNT;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_COMPUTE;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
@@ -10,6 +8,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
+import com.linkedin.venice.router.api.RouterResourceType;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
@@ -26,7 +25,6 @@ import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.Optional;
 import org.apache.avro.io.OptimizedBinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.logging.log4j.LogManager;
@@ -64,7 +62,8 @@ public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpReque
     }
     VenicePathParserHelper helper = parseRequest(msg);
 
-    if (helper.getResourceType().equals(TYPE_STORAGE) || helper.getResourceType().equals(TYPE_COMPUTE)) {
+    if (helper.getResourceType() == RouterResourceType.TYPE_STORAGE
+        || helper.getResourceType() == RouterResourceType.TYPE_COMPUTE) {
       try {
         int keyCount;
 
@@ -73,10 +72,10 @@ public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpReque
           keyCount = 1;
         } else { // batch-get/compute requests
           BasicFullHttpRequest basicFullHttpRequest = (BasicFullHttpRequest) msg;
-          Optional<CharSequence> keyCountsHeader = basicFullHttpRequest.getRequestHeaders().get(VENICE_KEY_COUNT);
-          if (keyCountsHeader.isPresent()) {
-            keyCount = Integer.parseInt((String) keyCountsHeader.get());
-          } else if (helper.getResourceType().equals(TYPE_STORAGE)) {
+          CharSequence keyCountsHeader = basicFullHttpRequest.getRequestHeaders().get(VENICE_KEY_COUNT);
+          if (keyCountsHeader != null) {
+            keyCount = Integer.parseInt((String) keyCountsHeader);
+          } else if (helper.getResourceType() == RouterResourceType.TYPE_STORAGE) {
             ByteBuf byteBuf = basicFullHttpRequest.content();
             byte[] bytes = new byte[byteBuf.readableBytes()];
             int readerIndex = byteBuf.readerIndex();

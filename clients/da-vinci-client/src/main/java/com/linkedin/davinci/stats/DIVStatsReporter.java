@@ -25,8 +25,6 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
     registerSensor("missing_msg", new DIVStatsCounter(this, () -> (double) getStats().getMissingMsg()));
     registerSensor("corrupted_msg", new DIVStatsCounter(this, () -> (double) getStats().getCorruptedMsg()));
     registerSensor("success_msg", new DIVStatsCounter(this, () -> (double) getStats().getSuccessMsg()));
-    registerSensor("current_idle_time", new DIVStatsCounter(this, () -> (double) getStats().getCurrentIdleTime()));
-    registerSensor("overall_idle_time", new DIVStatsCounter(this, () -> (double) getStats().getOverallIdleTime()));
     registerSensor(
         "benign_leader_offset_rewind_count",
         new DIVStatsCounter(this, () -> (double) getStats().getBenignLeaderOffsetRewindCount()));
@@ -51,7 +49,6 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
       registerLatencySensor("producer_to_local_broker", DIVStats::getProducerLocalBrokerLatencySensor);
       registerLatencySensor("local_broker_to_follower_consumer", DIVStats::getLocalBrokerFollowerConsumerLatencySensor);
       registerLatencySensor("producer_to_follower_consumer", DIVStats::getProducerFollowerConsumerLatencySensor);
-      registerLatencySensor("data_validation", DIVStats::getDataValidationLatencySensor);
       registerLatencySensor("leader_producer_completion", DIVStats::getLeaderProducerCompletionLatencySensor);
     }
   }

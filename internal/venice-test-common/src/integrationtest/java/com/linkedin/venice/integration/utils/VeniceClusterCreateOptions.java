@@ -1,7 +1,9 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_DELAYED_TO_REBALANCE_MS;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_CONTROLLERS;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_ROUTERS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_SERVERS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
@@ -19,11 +21,14 @@ public class VeniceClusterCreateOptions {
   private final String clusterName;
   private final String regionName;
   private final Map<String, String> clusterToD2;
+  private final Map<String, String> clusterToServerD2;
   private final int numberOfControllers;
   private final int numberOfServers;
   private final int numberOfRouters;
   private final int replicationFactor;
   private final int partitionSize;
+  private final int numberOfPartitions;
+  private final int maxNumberOfPartitions;
   private final int minActiveReplica;
   private final long rebalanceDelayMs;
   private final boolean standalone;
@@ -31,23 +36,24 @@ public class VeniceClusterCreateOptions {
   private final boolean enableAutoJoinAllowlist;
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
-  private final boolean isKafkaOpenSSLEnabled;
   private final boolean forkServer;
   private final Properties extraProperties;
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
-  private final KafkaBrokerWrapper kafkaBrokerWrapper;
-  private final String serverD2ServiceName;
+  private final PubSubBrokerWrapper pubSubBrokerWrapper;
 
   private VeniceClusterCreateOptions(Builder builder) {
     this.clusterName = builder.clusterName;
     this.regionName = builder.regionName;
     this.clusterToD2 = builder.clusterToD2;
+    this.clusterToServerD2 = builder.clusterToServerD2;
     this.numberOfControllers = builder.numberOfControllers;
     this.numberOfServers = builder.numberOfServers;
     this.numberOfRouters = builder.numberOfRouters;
     this.replicationFactor = builder.replicationFactor;
     this.partitionSize = builder.partitionSize;
+    this.numberOfPartitions = builder.numberOfPartitions;
+    this.maxNumberOfPartitions = builder.maxNumberOfPartitions;
     this.minActiveReplica = builder.minActiveReplica;
     this.rebalanceDelayMs = builder.rebalanceDelayMs;
     this.standalone = builder.standalone;
@@ -55,13 +61,11 @@ public class VeniceClusterCreateOptions {
     this.enableAutoJoinAllowlist = builder.enableAutoJoinAllowlist;
     this.sslToStorageNodes = builder.sslToStorageNodes;
     this.sslToKafka = builder.sslToKafka;
-    this.isKafkaOpenSSLEnabled = builder.isKafkaOpenSSLEnabled;
     this.forkServer = builder.forkServer;
     this.extraProperties = builder.extraProperties;
     this.kafkaClusterMap = builder.kafkaClusterMap;
     this.zkServerWrapper = builder.zkServerWrapper;
-    this.kafkaBrokerWrapper = builder.kafkaBrokerWrapper;
-    this.serverD2ServiceName = builder.serverD2ServiceName;
+    this.pubSubBrokerWrapper = builder.pubSubBrokerWrapper;
   }
 
   public String getClusterName() {
@@ -74,6 +78,10 @@ public class VeniceClusterCreateOptions {
 
   public Map<String, String> getClusterToD2() {
     return clusterToD2;
+  }
+
+  public Map<String, String> getClusterToServerD2() {
+    return clusterToServerD2;
   }
 
   public int getNumberOfControllers() {
@@ -94,6 +102,14 @@ public class VeniceClusterCreateOptions {
 
   public int getPartitionSize() {
     return partitionSize;
+  }
+
+  public int getNumberOfPartitions() {
+    return numberOfPartitions;
+  }
+
+  public int getMaxNumberOfPartitions() {
+    return maxNumberOfPartitions;
   }
 
   public int getMinActiveReplica() {
@@ -124,10 +140,6 @@ public class VeniceClusterCreateOptions {
     return sslToKafka;
   }
 
-  public boolean isKafkaOpenSSLEnabled() {
-    return isKafkaOpenSSLEnabled;
-  }
-
   public boolean isForkServer() {
     return forkServer;
   }
@@ -144,12 +156,8 @@ public class VeniceClusterCreateOptions {
     return zkServerWrapper;
   }
 
-  public KafkaBrokerWrapper getKafkaBrokerWrapper() {
-    return kafkaBrokerWrapper;
-  }
-
-  public String getServerD2ServiceName() {
-    return serverD2ServiceName;
+  public PubSubBrokerWrapper getKafkaBrokerWrapper() {
+    return pubSubBrokerWrapper;
   }
 
   @Override
@@ -182,6 +190,12 @@ public class VeniceClusterCreateOptions {
         .append("partitionSize:")
         .append(partitionSize)
         .append(", ")
+        .append("numberOfPartitions:")
+        .append(numberOfPartitions)
+        .append(", ")
+        .append("maxNumberOfPartitions:")
+        .append(maxNumberOfPartitions)
+        .append(", ")
         .append("minActiveReplica:")
         .append(minActiveReplica)
         .append(", ")
@@ -197,9 +211,6 @@ public class VeniceClusterCreateOptions {
         .append("sslToKafka:")
         .append(sslToKafka)
         .append(", ")
-        .append("isKafkaOpenSSLEnabled:")
-        .append(isKafkaOpenSSLEnabled)
-        .append(", ")
         .append("forkServer:")
         .append(forkServer)
         .append(", ")
@@ -208,17 +219,18 @@ public class VeniceClusterCreateOptions {
         .append(", ")
         .append("clusterToD2:")
         .append(clusterToD2)
+        .append(",")
+        .append("clusterToServerD2:")
+        .append(clusterToServerD2)
         .append(", ")
         .append("zk:")
         .append(zkServerWrapper == null ? "null" : zkServerWrapper.getAddress())
         .append(", ")
         .append("kafka:")
-        .append(kafkaBrokerWrapper == null ? "null" : kafkaBrokerWrapper.getAddress())
+        .append(pubSubBrokerWrapper == null ? "null" : pubSubBrokerWrapper.getAddress())
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
-        .append("serverD2ServiceName")
-        .append(serverD2ServiceName == null ? "null" : serverD2ServiceName)
         .toString();
   }
 
@@ -226,11 +238,14 @@ public class VeniceClusterCreateOptions {
     private String clusterName;
     private String regionName = "";
     private Map<String, String> clusterToD2 = null;
+    private Map<String, String> clusterToServerD2 = null;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
     private int numberOfServers = DEFAULT_NUMBER_OF_SERVERS;
     private int numberOfRouters = DEFAULT_NUMBER_OF_ROUTERS;
     private int replicationFactor = DEFAULT_REPLICATION_FACTOR;
     private int partitionSize = DEFAULT_PARTITION_SIZE_BYTES;
+    private int numberOfPartitions = DEFAULT_NUMBER_OF_PARTITIONS;
+    private int maxNumberOfPartitions = DEFAULT_MAX_NUMBER_OF_PARTITIONS;
     private int minActiveReplica;
     private long rebalanceDelayMs = DEFAULT_DELAYED_TO_REBALANCE_MS;
     private boolean standalone = true; // set to false for multi-cluster
@@ -238,14 +253,12 @@ public class VeniceClusterCreateOptions {
     private boolean enableAutoJoinAllowlist;
     private boolean sslToStorageNodes = DEFAULT_SSL_TO_STORAGE_NODES;
     private boolean sslToKafka = DEFAULT_SSL_TO_KAFKA;
-    private boolean isKafkaOpenSSLEnabled = false;
     private boolean forkServer;
     private boolean isMinActiveReplicaSet = false;
     private Properties extraProperties;
     private Map<String, Map<String, String>> kafkaClusterMap;
     private ZkServerWrapper zkServerWrapper;
-    private KafkaBrokerWrapper kafkaBrokerWrapper;
-    private String serverD2ServiceName;
+    private PubSubBrokerWrapper pubSubBrokerWrapper;
 
     public Builder clusterName(String clusterName) {
       this.clusterName = clusterName;
@@ -259,6 +272,11 @@ public class VeniceClusterCreateOptions {
 
     public Builder clusterToD2(Map<String, String> clusterToD2) {
       this.clusterToD2 = clusterToD2;
+      return this;
+    }
+
+    public Builder clusterToServerD2(Map<String, String> clusterToServerD2) {
+      this.clusterToServerD2 = clusterToServerD2;
       return this;
     }
 
@@ -284,6 +302,16 @@ public class VeniceClusterCreateOptions {
 
     public Builder partitionSize(int partitionSize) {
       this.partitionSize = partitionSize;
+      return this;
+    }
+
+    public Builder numberOfPartitions(int numberOfPartitions) {
+      this.numberOfPartitions = numberOfPartitions;
+      return this;
+    }
+
+    public Builder maxNumberOfPartitions(int maxNumberOfPartitions) {
+      this.maxNumberOfPartitions = maxNumberOfPartitions;
       return this;
     }
 
@@ -323,11 +351,6 @@ public class VeniceClusterCreateOptions {
       return this;
     }
 
-    public Builder isKafkaOpenSSLEnabled(boolean isKafkaOpenSSLEnabled) {
-      this.isKafkaOpenSSLEnabled = isKafkaOpenSSLEnabled;
-      return this;
-    }
-
     public Builder forkServer(boolean forkServer) {
       this.forkServer = forkServer;
       return this;
@@ -348,13 +371,8 @@ public class VeniceClusterCreateOptions {
       return this;
     }
 
-    public Builder kafkaBrokerWrapper(KafkaBrokerWrapper kafkaBrokerWrapper) {
-      this.kafkaBrokerWrapper = kafkaBrokerWrapper;
-      return this;
-    }
-
-    public Builder serverD2ServiceName(String serverD2ServiceName) {
-      this.serverD2ServiceName = serverD2ServiceName;
+    public Builder kafkaBrokerWrapper(PubSubBrokerWrapper pubSubBrokerWrapper) {
+      this.pubSubBrokerWrapper = pubSubBrokerWrapper;
       return this;
     }
 
@@ -373,9 +391,6 @@ public class VeniceClusterCreateOptions {
       }
       if (kafkaClusterMap == null) {
         kafkaClusterMap = Collections.emptyMap();
-      }
-      if (serverD2ServiceName == null) {
-        serverD2ServiceName = Utils.getUniqueString(clusterName + "_d2");
       }
     }
 

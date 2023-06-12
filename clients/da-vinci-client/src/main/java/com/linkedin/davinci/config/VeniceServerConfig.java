@@ -1,6 +1,7 @@
 package com.linkedin.davinci.config;
 
-import static com.linkedin.davinci.config.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
@@ -8,6 +9,8 @@ import static com.linkedin.venice.ConfigKeys.FAST_AVRO_FIELD_LIMIT_PER_METHOD;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
+import static com.linkedin.venice.ConfigKeys.INGESTION_MLOCK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_METRICS;
@@ -15,6 +18,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_WRITE_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.LISTENER_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
@@ -38,9 +42,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET;
+import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INITIAL_WINDOW_SIZE;
@@ -85,6 +89,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_NON_EXISTING
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
 import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
@@ -104,10 +110,12 @@ import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.IngestionMode;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
@@ -116,16 +124,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * VeniceServerConfig maintains configs specific to Venice Server, Da Vinci client and Isolated Ingestion Service.
  */
 public class VeniceServerConfig extends VeniceClusterConfig {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceServerConfig.class);
   /**
    * Since the RT topic could be consumed by multiple store versions for Hybrid stores, we couldn't share the consumer across
    * different Hybrid store versions.
@@ -135,6 +144,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public static final int MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER = 3;
 
   private final int listenerPort;
+  private final String listernerHostname;
   private final String dataBasePath;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final boolean enableServerAllowList;
@@ -308,7 +318,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final String kafkaAdminClass;
   private final String kafkaWriteOnlyClass;
   private final String kafkaReadOnlyClass;
-  private final boolean kafkaOpenSSLEnabled;
   private final long routerConnectionWarmingDelayMs;
   private final boolean helixHybridStoreQuotaEnabled;
   private final long ssdHealthCheckShutdownTimeMs;
@@ -373,6 +382,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean readOnlyForBatchOnlyStoreEnabled; // TODO: remove this config as its never used in prod
   private final int fastAvroFieldLimitPerMethod;
 
+  /**
+   * The number of threads used to limit the concurrency of ssl handshake for servers. The feature to use a thread pool
+   * executor for handling ssl handshakes is disabled if the value of this config is <= 0. The default value is 0.
+   */
+  private final int sslHandshakeThreadPoolSize;
+
+  /**
+   * The queue capacity for ssl handshake threadpool executor.
+   */
+  private final int sslHandshakeQueueCapacity;
+
+  private final long ingestionMemoryLimit;
+  private final boolean ingestionMlockEnabled;
+  private final List<String> forkedProcessJvmArgList;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -381,6 +405,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       throws ConfigurationException {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
+    listernerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
     dataBasePath = serverProperties.getString(
         DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
@@ -470,9 +495,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
             .put(storeName, Integer.parseInt(thresholdStr.trim())));
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
-    kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, false);
     helixHybridStoreQuotaEnabled = serverProperties.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
     ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
+    sslHandshakeThreadPoolSize = serverProperties.getInt(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 0);
+    sslHandshakeQueueCapacity = serverProperties.getInt(SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY, Integer.MAX_VALUE);
 
     /**
      * In the test of feature store user case, when we did a rolling bounce of storage nodes, the high latency happened
@@ -489,7 +515,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
 
     restServiceEpollEnabled = serverProperties.getBoolean(SERVER_REST_SERVICE_EPOLL_ENABLED, false);
-    kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName());
+    kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName());
     kafkaWriteOnlyClass = serverProperties.getString(KAFKA_WRITE_ONLY_ADMIN_CLASS, kafkaAdminClass);
     kafkaReadOnlyClass = serverProperties.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
@@ -596,10 +622,95 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     unregisterMetricForDeletedStoreEnabled =
         serverProperties.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     fastAvroFieldLimitPerMethod = serverProperties.getInt(FAST_AVRO_FIELD_LIMIT_PER_METHOD, 100);
+
+    forkedProcessJvmArgList =
+        Arrays.asList(serverProperties.getString(SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "").split(";"))
+            .stream()
+            .map(s -> s.trim())
+            .filter(s -> s.length() > 0)
+            .collect(Collectors.toList());
+    ingestionMemoryLimit = extractIngestionMemoryLimit(serverProperties, ingestionMode, forkedProcessJvmArgList);
+    LOGGER.info("Ingestion memory limit: {} after subtracting other usages", ingestionMemoryLimit);
+    ingestionMlockEnabled = serverProperties.getBoolean(INGESTION_MLOCK_ENABLED, false);
+  }
+
+  long extractIngestionMemoryLimit(
+      VeniceProperties serverProperties,
+      IngestionMode configuredIngestionMode,
+      List<String> configuredForkedProcessJvmArgList) {
+    long extractedMemoryLimit = -1;
+    long configuredIngestionMemoryLimit = serverProperties.getSizeInBytes(INGESTION_MEMORY_LIMIT, -1l);
+    if (configuredIngestionMemoryLimit < 0) {
+      return extractedMemoryLimit;
+    }
+    // Check whether it is being used by DaVinci or not
+    if (!isDaVinciClient) {
+      throw new VeniceException(
+          "Config: " + INGESTION_MEMORY_LIMIT
+              + " is only meaningful for DaVinci and please remove this config for Venice Server deployment");
+    }
+    // Check whether rocksdb is using PT or not
+    if (!rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+      throw new VeniceException(
+          "Config: " + INGESTION_MEMORY_LIMIT + " is only meaningful when using RocksDB plaintable format");
+    }
+    long totalMemtableUsage = rocksDBServerConfig.getRocksDBTotalMemtableUsageCapInBytes();
+    // Check ingestion mode
+    if (configuredIngestionMode.equals(IngestionMode.ISOLATED)) {
+      /**
+       * When ingestion isolation is enabled, we need to subtract the usages from the following componnets:
+       * 1. Main process total memtable usage limit.
+       * 2. Heap size of isolated JVM process.
+       * 3. Total memtable usage limit in isolated process.
+       */
+
+      String forkedProcessHeapSizeStr = null;
+      for (String s: configuredForkedProcessJvmArgList) {
+        if (s.toLowerCase().startsWith("-xmx")) {
+          forkedProcessHeapSizeStr = s.toLowerCase().substring(4);
+          break;
+        }
+      }
+      if (forkedProcessHeapSizeStr == null || forkedProcessHeapSizeStr.length() == 0) {
+        throw new VeniceException(
+            "The max heap size of isolated process needs to be configured explicitly when enabling memory limiter");
+      }
+      LOGGER.info("Extracted max heap size of forked process: {} ", forkedProcessHeapSizeStr);
+      long forkedProcessHeapSize = VeniceProperties.convertSizeFromLiteral(forkedProcessHeapSizeStr);
+
+      long totalMemtableUsageInForkedProcess = serverProperties.getSizeInBytes(
+          INGESTION_ISOLATION_CONFIG_PREFIX + "." + ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES,
+          totalMemtableUsage);
+      LOGGER.info(
+          "Extracted total memtable table usage capacity in forked process: {}",
+          totalMemtableUsageInForkedProcess);
+
+      extractedMemoryLimit = configuredIngestionMemoryLimit - totalMemtableUsage - forkedProcessHeapSize
+          - totalMemtableUsageInForkedProcess;
+      if (extractedMemoryLimit <= 0) {
+        throw new VeniceException(
+            "Ingestion memory limit: " + extractedMemoryLimit
+                + " should be positive after subtracting the usage from other components");
+      }
+    } else {
+      // We need to subtract the memtable usage from the configured limit
+      if (configuredIngestionMemoryLimit <= totalMemtableUsage) {
+        throw new VeniceException(
+            "Ingestion memory limit: " + configuredIngestionMemoryLimit
+                + " should be bigger than total memtable usage cap: " + totalMemtableUsage);
+      }
+      extractedMemoryLimit = configuredIngestionMemoryLimit - totalMemtableUsage;
+    }
+
+    return extractedMemoryLimit;
   }
 
   public int getListenerPort() {
     return listenerPort;
+  }
+
+  public String getListenerHostname() {
+    return listernerHostname;
   }
 
   /**
@@ -735,18 +846,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return diskHealthCheckServiceEnabled;
   }
 
-  public BlockingQueue<Runnable> getExecutionQueue(int capacity) {
-    switch (blockingQueueType) {
-      case LINKED_BLOCKING_QUEUE:
-        return new LinkedBlockingQueue<>(capacity);
-      case ARRAY_BLOCKING_QUEUE:
-        if (capacity == Integer.MAX_VALUE) {
-          throw new VeniceException("Queue capacity must be specified when using " + ARRAY_BLOCKING_QUEUE);
-        }
-        return new ArrayBlockingQueue<>(capacity);
-      default:
-        throw new VeniceException("Unknown blocking queue type: " + blockingQueueType);
-    }
+  public BlockingQueueType getBlockingQueueType() {
+    return blockingQueueType;
   }
 
   public boolean isComputeFastAvroEnabled() {
@@ -811,10 +912,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getKafkaReadOnlyClass() {
     return kafkaReadOnlyClass;
-  }
-
-  public boolean isKafkaOpenSSLEnabled() {
-    return kafkaOpenSSLEnabled;
   }
 
   public long getRouterConnectionWarmingDelayMs() {
@@ -999,5 +1096,25 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getFastAvroFieldLimitPerMethod() {
     return fastAvroFieldLimitPerMethod;
+  }
+
+  public int getSslHandshakeThreadPoolSize() {
+    return sslHandshakeThreadPoolSize;
+  }
+
+  public int getSslHandshakeQueueCapacity() {
+    return sslHandshakeQueueCapacity;
+  }
+
+  public long getIngestionMemoryLimit() {
+    return ingestionMemoryLimit;
+  }
+
+  public List<String> getForkedProcessJvmArgList() {
+    return forkedProcessJvmArgList;
+  }
+
+  public boolean isIngestionMlockEnabled() {
+    return ingestionMlockEnabled;
   }
 }

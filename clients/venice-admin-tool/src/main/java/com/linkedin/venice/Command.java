@@ -17,6 +17,7 @@ import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.Arg.DATETIME;
 import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
@@ -43,20 +44,24 @@ import static com.linkedin.venice.Arg.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
 import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.Arg.INTERVAL;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
 import static com.linkedin.venice.Arg.KAFKA_OPERATION_TIMEOUT;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_NAME;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
+import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.Arg.MESSAGE_COUNT;
 import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_SOURCE_FABRIC;
+import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.Arg.OFFSET;
 import static com.linkedin.venice.Arg.OWNER;
@@ -213,7 +218,7 @@ public enum Command {
           FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
-          STORAGE_PERSONA, STORE_VIEW_CONFIGS }
+          STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -386,6 +391,9 @@ public enum Command {
       "list-store-push-info", "List information about current pushes and push history for a specific store.",
       new Arg[] { URL, CLUSTER, STORE }, new Arg[] { PARTITION_DETAIL_ENABLED }
   ),
+  GET_KAFKA_TOPIC_CONFIGS(
+      "get-kafka-topic-configs", "Get configs of a topic through controllers", new Arg[] { URL, KAFKA_TOPIC_NAME }
+  ),
   UPDATE_KAFKA_TOPIC_LOG_COMPACTION(
       "update-kafka-topic-log-compaction", "Update log compaction config of a topic through controllers",
       new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_LOG_COMPACTION_ENABLED }, new Arg[] { CLUSTER }
@@ -393,6 +401,10 @@ public enum Command {
   UPDATE_KAFKA_TOPIC_RETENTION(
       "update-kafka-topic-retention", "Update retention config of a topic through controllers",
       new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_RETENTION_IN_MS }, new Arg[] { CLUSTER }
+  ),
+  UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA(
+      "update-kafka-topic-min-in-sync-replica", "Update minISR of a topic through controllers",
+      new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA }, new Arg[] { CLUSTER }
   ),
   START_FABRIC_BUILDOUT(
       "start-fabric-buildout",
@@ -435,7 +447,16 @@ public enum Command {
   ),
   EXECUTE_DATA_RECOVERY(
       "execute-data-recovery", "Execute data recovery for a group of stores",
-      new Arg[] { RECOVERY_COMMAND, STORES, SOURCE_FABRIC }, new Arg[] { EXTRA_COMMAND_ARGS, DEBUG }
+      new Arg[] { URL, RECOVERY_COMMAND, STORES, SOURCE_FABRIC, DEST_FABRIC, DATETIME },
+      new Arg[] { EXTRA_COMMAND_ARGS, DEBUG, NON_INTERACTIVE }
+  ),
+  ESTIMATE_DATA_RECOVERY_TIME(
+      "estimate-data-recovery-time", "Estimates the time it would take to execute data recovery for a group of stores.",
+      new Arg[] { URL, STORES, DEST_FABRIC }
+  ),
+  MONITOR_DATA_RECOVERY(
+      "monitor-data-recovery", "Monitor data recovery progress for a group of stores",
+      new Arg[] { URL, STORES, DEST_FABRIC, DATETIME }, new Arg[] { INTERVAL }
   );
 
   private final String commandName;

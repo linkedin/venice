@@ -10,12 +10,19 @@ import static com.linkedin.venice.hadoop.VenicePushJob.PARENT_CONTROLLER_REGION_
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_ETL;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -26,18 +33,25 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -49,7 +63,7 @@ import org.testng.annotations.Test;
 /**
  * This class contains only unit tests for VenicePushJob class.
  *
- * For integration tests please refer {@link TestVenicePushJob}
+ * For integration tests please refer to TestVenicePushJob
  *
  * todo: Remove dependency on utils from 'venice-test-common' module
  */
@@ -138,6 +152,33 @@ public class VenicePushJobTest {
     Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
   }
 
+  @Test
+  public void testPushJobPollStatus() {
+    Properties vpjProps = new Properties();
+    vpjProps.setProperty(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
+    ControllerClient client = mock(ControllerClient.class);
+    JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
+    doReturn("UNKNOWN").when(response).getStatus();
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null));
+    VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client);
+    VenicePushJob.PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+    pushJobSetting.jobStatusInUnknownStateTimeoutMs = 10;
+    Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
+    VenicePushJob.TopicInfo topicInfo = new VenicePushJob.TopicInfo();
+    topicInfo.version = 1;
+    topicInfo.topic = "abc";
+    pushJob.storeSetting = new VenicePushJob.StoreSetting();
+    pushJob.storeSetting.storeResponse = new StoreResponse();
+    pushJob.storeSetting.storeResponse.setName("abc");
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setBootstrapToOnlineTimeoutInHours(0);
+    pushJob.storeSetting.storeResponse.setStore(storeInfo);
+    VeniceException exception = Assert.expectThrows(
+        VeniceException.class,
+        () -> pushJob.pollStatusUntilComplete(Optional.empty(), client, pushJobSetting, topicInfo));
+    Assert.assertEquals(exception.getMessage(), "Failing push-job for store abc which is still running after 0 hours.");
+  }
+
   private Properties getRepushReadyProps() {
     Properties repushProps = new Properties();
     repushProps.setProperty(REPUSH_TTL_ENABLE, "true");
@@ -218,6 +259,38 @@ public class VenicePushJobTest {
     keySchemaResponse.setSchemaStr(Schema.create(Schema.Type.STRING).toString());
     doReturn(keySchemaResponse).when(client).getKeySchema(TEST_STORE);
 
+    // mock version creation
+    VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
+    versionCreationResponse.setKafkaTopic("kafka-topic");
+    versionCreationResponse.setVersion(1);
+    versionCreationResponse.setKafkaBootstrapServers("kafka-bootstrap-server");
+    versionCreationResponse.setPartitions(1);
+    versionCreationResponse.setEnableSSL(false);
+    versionCreationResponse.setCompressionStrategy(CompressionStrategy.NO_OP);
+    versionCreationResponse.setDaVinciPushStatusStoreEnabled(false);
+    versionCreationResponse.setPartitionerClass("PartitionerClass");
+    versionCreationResponse.setPartitionerParams(Collections.emptyMap());
+
+    doReturn(versionCreationResponse).when(client)
+        .requestTopicForWrites(
+            anyString(),
+            anyLong(),
+            any(),
+            anyString(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            anyBoolean(),
+            anyLong(),
+            anyBoolean(),
+            any());
+
+    ControllerResponse response = new ControllerResponse();
+    doReturn(response).when(client).writeEndOfPush(anyString(), anyInt());
+    doReturn(response).when(client).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
     return client;
   }
 
@@ -231,11 +304,23 @@ public class VenicePushJobTest {
     storeInfo.setCompressionStrategy(CompressionStrategy.NO_OP);
     storeInfo.setWriteComputationEnabled(false);
     storeInfo.setIncrementalPushEnabled(false);
+    storeInfo.setNativeReplicationSourceFabric("dc-0");
 
     Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
     storeInfo.setVersions(Collections.singletonList(version));
     info.accept(storeInfo);
     return storeInfo;
+  }
+
+  private InputDataInfoProvider getMockInputDataInfoProvider() throws Exception {
+    InputDataInfoProvider provider = mock(InputDataInfoProvider.class);
+    PushJobSchemaInfo pushJobSchemaInfo = new PushJobSchemaInfo();
+    pushJobSchemaInfo.setAvro(false); // skip the validation for the sake of unit testing
+    // Input file size cannot be zero.
+    InputDataInfoProvider.InputDataInfo info =
+        new InputDataInfoProvider.InputDataInfo(pushJobSchemaInfo, 10L, 1, false, System.currentTimeMillis());
+    doReturn(info).when(provider).validateInputAndGetInfo(anyString());
+    return provider;
   }
 
   @Test(expectedExceptions = NullPointerException.class)
@@ -424,5 +509,115 @@ public class VenicePushJobTest {
     assertTrue(VenicePushJob.evaluateCompressionMetricCollectionEnabled(pushJobSetting, true));
     assertFalse(VenicePushJob.evaluateCompressionMetricCollectionEnabled(pushJobSetting, false));
 
+  }
+
+  @Test
+  public void testTargetedRegionPushConfigValidation() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGETED_REGION_PUSH_ENABLED, false);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0");
+    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(e.getMessage(), "Targeted region push list is only supported when targeted region push is enabled");
+    }
+
+    props.put(TARGETED_REGION_PUSH_ENABLED, true);
+    props.remove(TARGETED_REGION_PUSH_LIST);
+    props.put(INCREMENTAL_PUSH, true);
+    ControllerClient client = getClient();
+    VenicePushJob pushJob = getSpyVenicePushJob(props, client);
+    skipVPJValidation(pushJob);
+    try {
+      pushJob.run();
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(e.getMessage(), "Incremental push is not supported while using targeted region push mode");
+    }
+  }
+
+  @Test
+  public void testTargetedRegionPushConfigOverride() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGETED_REGION_PUSH_ENABLED, true);
+    // when targeted region push is enabled, but store doesn't have source fabric set.
+    ControllerClient client = getClient(store -> {
+      store.setNativeReplicationSourceFabric("");
+    });
+    VenicePushJob pushJob = getSpyVenicePushJob(props, client);
+    mockJobStatusQuery(client);
+    skipVPJValidation(pushJob);
+    try {
+      pushJob.run();
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      Assert.assertTrue(
+          e.getMessage()
+              .contains(
+                  "The store either does not have native replication mode enabled or set up default source fabric."));
+    }
+
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
+    client = getClient();
+    pushJob = getSpyVenicePushJob(props, client);
+    mockJobStatusQuery(client);
+    skipVPJValidation(pushJob);
+    pushJob.run();
+    Assert.assertEquals(pushJob.pushJobSetting.targetedRegions, "dc-0, dc-1");
+  }
+
+  @Test
+  public void testTargetedRegionPushReporting() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGETED_REGION_PUSH_ENABLED, true);
+    props.put(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
+    ControllerClient client = getClient();
+    VenicePushJob pushJob = getSpyVenicePushJob(props, client);
+    skipVPJValidation(pushJob);
+
+    JobStatusQueryResponse response = new JobStatusQueryResponse();
+    response.setStatus(ExecutionStatus.COMPLETED.toString());
+    response.setStatusDetails("nothing");
+    response.setVersion(1);
+    response.setName(TEST_STORE);
+    response.setCluster(TEST_CLUSTER);
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+    extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
+    response.setExtraInfo(extraInfo);
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+    // only one region is completed, so should succeed
+    pushJob.run();
+
+    // one of the regions failed, so should fail
+    extraInfo.put("dc-0", ExecutionStatus.NOT_STARTED.toString());
+    try {
+      pushJob.run();
+      Assert.fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertTrue(e.getMessage().contains("Push job error"));
+    }
+  }
+
+  private void mockJobStatusQuery(ControllerClient client) {
+    JobStatusQueryResponse response = new JobStatusQueryResponse();
+    response.setStatus(ExecutionStatus.COMPLETED.toString());
+    response.setStatusDetails("nothing");
+    response.setVersion(1);
+    response.setName(TEST_STORE);
+    response.setCluster(TEST_CLUSTER);
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put("dc-0", ExecutionStatus.COMPLETED.toString());
+    extraInfo.put("dc-1", ExecutionStatus.COMPLETED.toString());
+    response.setExtraInfo(extraInfo);
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+  }
+
+  private void skipVPJValidation(VenicePushJob pushJob) throws Exception {
+    doReturn(getMockInputDataInfoProvider()).when(pushJob).getInputDataInfoProvider();
+    doNothing().when(pushJob).validateKeySchema(any(), any(), any(), any());
+    doNothing().when(pushJob).validateValueSchema(any(), any(), any(), anyBoolean());
+    doNothing().when(pushJob).setupMRConf(any(), any(), any(), any(), any(), any(), anyString(), anyString());
+    doNothing().when(pushJob).runJobAndUpdateStatus();
   }
 }

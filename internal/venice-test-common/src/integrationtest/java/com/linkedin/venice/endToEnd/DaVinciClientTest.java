@@ -75,6 +75,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -296,7 +297,7 @@ public class DaVinciClientTest {
     final GenericRecord value = new GenericData.Record(schema);
     value.put("number", 10);
     String storeName = cluster.createStore(KEY_COUNT, value);
-    cluster.useControllerClient(client -> TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER)));
+    cluster.createMetaSystemStore(storeName);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
@@ -354,7 +355,7 @@ public class DaVinciClientTest {
         throw new VeniceException(response.getError());
       }
     });
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
@@ -374,9 +375,10 @@ public class DaVinciClientTest {
             new DaVinciConfig(),
             extraBackendConfigMap);
 
-    try (
-        VeniceWriter<Object, Object, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+    try (VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+            .setValueSerializer(valueSerializer)
+            .build());
         CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory()) {
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
       writer.broadcastStartOfPush(Collections.emptyMap());
@@ -737,15 +739,17 @@ public class DaVinciClientTest {
       client.subscribeAll().get();
     }
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
-    try (VeniceWriter<Object, Object, byte[]> batchProducer =
-        vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false)) {
+    try (VeniceWriter<Object, Object, byte[]> batchProducer = vwFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+            .setValueSerializer(valueSerializer)
+            .build())) {
       batchProducer.broadcastStartOfPush(Collections.emptyMap());
       Future[] writerFutures = new Future[KEY_COUNT];
       for (int i = 0; i < KEY_COUNT; i++) {
@@ -939,7 +943,7 @@ public class DaVinciClientTest {
     paramsConsumer.accept(params);
     cluster.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
+      cluster.createMetaSystemStore(storeName);
       client.updateStore(storeName, params);
       cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, Stream.of());
       SystemProducer producer = IntegrationTestPushUtils.getSamzaProducer(
@@ -991,11 +995,8 @@ public class DaVinciClientTest {
     paramsConsumer.accept(params);
     try (ControllerClient controllerClient =
         createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, "\"string\"", vpjProperties)) {
-      TestUtils.createMetaSystemStore(controllerClient, storeName, Optional.of(LOGGER));
-      ControllerResponse response = controllerClient.updateStore(storeName, params);
-      Assert.assertFalse(response.isError(), response.getError());
-
-      // Push data through VPJ.
+      cluster.createMetaSystemStore(storeName);
+      TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
       runVPJ(vpjProperties, 1, cluster);
     }
   }
@@ -1011,7 +1012,7 @@ public class DaVinciClientTest {
 
   private String createStoreWithMetaSystemStore(int keyCount) throws Exception {
     String storeName = cluster.createStore(keyCount);
-    cluster.useControllerClient(client -> TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER)));
+    cluster.createMetaSystemStore(storeName);
     return storeName;
   }
 

@@ -13,6 +13,7 @@ import static com.linkedin.venice.utils.TestUtils.writeBatchData;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
@@ -29,6 +30,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -80,7 +82,7 @@ import org.testng.Assert;
 /**
  * This is the whole enchilada:
  * - {@link ZkServerWrapper}
- * - {@link KafkaBrokerWrapper}
+ * - {@link PubSubBrokerWrapper}
  * - {@link VeniceControllerWrapper}
  * - {@link VeniceServerWrapper}
  */
@@ -94,25 +96,19 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public static final String FORKED_PROCESS_ZK_ADDRESS = "zkAddress";
   public static final int NUM_RECORDS = 1_000_000;
 
-  private final String regionName;
-  private final String clusterName;
-  private final boolean standalone;
+  private final VeniceClusterCreateOptions options;
   private final ZkServerWrapper zkServerWrapper;
-  private final KafkaBrokerWrapper kafkaBrokerWrapper;
-
-  private final int defaultReplicaFactor;
-  private final int defaultPartitionSize;
-  private final long defaultDelayToRebalanceMS;
-  private final int defaultMinActiveReplica;
+  private final PubSubBrokerWrapper pubSubBrokerWrapper;
   private final Map<Integer, VeniceControllerWrapper> veniceControllerWrappers;
   private final Map<Integer, VeniceServerWrapper> veniceServerWrappers;
   private final Map<Integer, VeniceRouterWrapper> veniceRouterWrappers;
   private final LazyResettable<ControllerClient> controllerClient =
       LazyResettable.of(this::getControllerClient, ControllerClient::close);
-  private final boolean sslToStorageNodes;
-  private final boolean sslToKafka;
   private final Map<String, String> clusterToD2;
-  private final String serverD2ServiceName;
+  private final Map<String, String> clusterToServerD2;
+
+  // TODO: pass it to every venice component.
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   private static Process veniceClusterProcess;
   // Controller discovery URLs are controllers that's created outside of this cluster wrapper but are overseeing the
@@ -132,40 +128,24 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       new HashSet<>(Arrays.asList(hybridRequiredSystemStores));
 
   VeniceClusterWrapper(
-      String regionName,
-      String clusterName,
-      boolean standalone,
+      VeniceClusterCreateOptions options,
       ZkServerWrapper zkServerWrapper,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
+      PubSubBrokerWrapper pubSubBrokerWrapper,
       Map<Integer, VeniceControllerWrapper> veniceControllerWrappers,
       Map<Integer, VeniceServerWrapper> veniceServerWrappers,
       Map<Integer, VeniceRouterWrapper> veniceRouterWrappers,
-      int defaultReplicaFactor,
-      int defaultPartitionSize,
-      long defaultDelayToRebalanceMS,
-      int mintActiveReplica,
-      boolean sslToStorageNodes,
-      boolean sslToKafka,
       Map<String, String> clusterToD2,
-      String serverD2ServiceName) {
+      Map<String, String> clusterToServerD2) {
 
     super(SERVICE_NAME, null);
-    this.regionName = regionName;
-    this.standalone = standalone;
-    this.clusterName = clusterName;
+    this.options = options;
     this.zkServerWrapper = zkServerWrapper;
-    this.kafkaBrokerWrapper = kafkaBrokerWrapper;
+    this.pubSubBrokerWrapper = pubSubBrokerWrapper;
     this.veniceControllerWrappers = veniceControllerWrappers;
     this.veniceServerWrappers = veniceServerWrappers;
     this.veniceRouterWrappers = veniceRouterWrappers;
-    this.defaultReplicaFactor = defaultReplicaFactor;
-    this.defaultPartitionSize = defaultPartitionSize;
-    this.defaultDelayToRebalanceMS = defaultDelayToRebalanceMS;
-    this.defaultMinActiveReplica = mintActiveReplica;
-    this.sslToStorageNodes = sslToStorageNodes;
-    this.sslToKafka = sslToKafka;
     this.clusterToD2 = clusterToD2;
-    this.serverD2ServiceName = serverD2ServiceName;
+    this.clusterToServerD2 = clusterToServerD2;
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService(VeniceClusterCreateOptions options) {
@@ -180,14 +160,23 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       clusterToD2 = options.getClusterToD2();
     }
 
+    Map<String, String> clusterToServerD2;
+    if (options.getClusterToServerD2() == null || options.getClusterToServerD2().isEmpty()) {
+      clusterToServerD2 =
+          Collections.singletonMap(options.getClusterName(), Utils.getUniqueString("server_d2_service"));
+    } else {
+      clusterToServerD2 = options.getClusterToServerD2();
+    }
+
     ZkServerWrapper zkServerWrapper = options.getZkServerWrapper();
-    KafkaBrokerWrapper kafkaBrokerWrapper = options.getKafkaBrokerWrapper();
+    PubSubBrokerWrapper pubSubBrokerWrapper = options.getKafkaBrokerWrapper();
     try {
       if (zkServerWrapper == null) {
         zkServerWrapper = ServiceFactory.getZkServer();
       }
-      if (kafkaBrokerWrapper == null) {
-        kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+      if (pubSubBrokerWrapper == null) {
+        pubSubBrokerWrapper =
+            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).build());
       }
 
       // Setup D2 for controller
@@ -207,12 +196,15 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         }
 
         VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(options.getClusterName(), zkServerWrapper, kafkaBrokerWrapper)
+            new VeniceControllerCreateOptions.Builder(options.getClusterName(), zkServerWrapper, pubSubBrokerWrapper)
                 .replicationFactor(options.getReplicationFactor())
                 .partitionSize(options.getPartitionSize())
+                .numberOfPartitions(options.getNumberOfPartitions())
+                .maxNumberOfPartitions(options.getMaxNumberOfPartitions())
                 .rebalanceDelayMs(options.getRebalanceDelayMs())
                 .minActiveReplica(options.getMinActiveReplica())
                 .clusterToD2(clusterToD2)
+                .clusterToServerD2(clusterToServerD2)
                 .sslToKafka(options.isSslToKafka())
                 .d2Enabled(true)
                 .regionName(options.getRegionName())
@@ -231,9 +223,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             options.getRegionName(),
             options.getClusterName(),
             zkServerWrapper,
-            kafkaBrokerWrapper,
+            pubSubBrokerWrapper,
             options.isSslToStorageNodes(),
             clusterToD2,
+            clusterToServerD2,
             options.getExtraProperties());
         LOGGER.info(
             "[{}][{}] Created router on port {}",
@@ -259,7 +252,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               .setSslFactory(SslUtils.getVeniceLocalSslFactory());
           featureProperties.put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
-        featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(options.isKafkaOpenSSLEnabled()));
 
         String serverName = "";
         if (!options.getRegionName().isEmpty() && !options.getClusterName().isEmpty()) {
@@ -268,14 +260,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
             options.getRegionName(),
             options.getClusterName(),
-            kafkaBrokerWrapper,
+            pubSubBrokerWrapper,
             zkAddress,
             featureProperties,
             options.getExtraProperties(),
             options.isForkServer(),
             serverName,
             options.getKafkaClusterMap(),
-            options.getServerD2ServiceName());
+            clusterToServerD2.get(options.getClusterName()));
         LOGGER.info(
             "[{}][{}] Created server on port {}",
             options.getRegionName(),
@@ -290,27 +282,19 @@ public class VeniceClusterWrapper extends ProcessWrapper {
        * so we can assume they're reliable enough.
        */
       ZkServerWrapper finalZkServerWrapper = zkServerWrapper;
-      KafkaBrokerWrapper finalKafkaBrokerWrapper = kafkaBrokerWrapper;
+      PubSubBrokerWrapper finalPubSubBrokerWrapper = pubSubBrokerWrapper;
       return (serviceName) -> {
         VeniceClusterWrapper veniceClusterWrapper = null;
         try {
           veniceClusterWrapper = new VeniceClusterWrapper(
-              options.getRegionName(),
-              options.getClusterName(),
-              options.isStandalone(),
+              options,
               finalZkServerWrapper,
-              finalKafkaBrokerWrapper,
+              finalPubSubBrokerWrapper,
               veniceControllerWrappers,
               veniceServerWrappers,
               veniceRouterWrappers,
-              options.getReplicationFactor(),
-              options.getPartitionSize(),
-              options.getRebalanceDelayMs(),
-              options.getMinActiveReplica(),
-              options.isSslToStorageNodes(),
-              options.isSslToKafka(),
               clusterToD2,
-              options.getServerD2ServiceName());
+              clusterToServerD2);
           // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
           // VeniceClusterWrapper to tests.
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
@@ -365,7 +349,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       veniceRouterWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
       veniceServerWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
       veniceControllerWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
-      IOUtils.closeQuietly(kafkaBrokerWrapper);
+      IOUtils.closeQuietly(pubSubBrokerWrapper);
       IOUtils.closeQuietly(zkServerWrapper);
       throw e;
     }
@@ -413,8 +397,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     veniceRouterWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
     veniceServerWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
     veniceControllerWrappers.values().forEach(Utils::closeQuietlyWithErrorLogged);
-    if (standalone) {
-      Utils.closeQuietlyWithErrorLogged(kafkaBrokerWrapper);
+    if (options.isStandalone()) {
+      Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper);
       Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
     }
 
@@ -440,21 +424,22 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   @Override
   public String getComponentTagForLogging() {
-    return new StringBuilder(getComponentTagPrefix(regionName)).append(getComponentTagPrefix(getClusterName()))
+    return new StringBuilder(getComponentTagPrefix(options.getRegionName()))
+        .append(getComponentTagPrefix(getClusterName()))
         .append(getServiceName())
         .toString();
   }
 
   public String getClusterName() {
-    return clusterName;
+    return options.getClusterName();
   }
 
   public ZkServerWrapper getZk() {
     return zkServerWrapper;
   }
 
-  public KafkaBrokerWrapper getKafka() {
-    return kafkaBrokerWrapper;
+  public PubSubBrokerWrapper getKafka() {
+    return pubSubBrokerWrapper;
   }
 
   public synchronized List<VeniceControllerWrapper> getVeniceControllers() {
@@ -512,25 +497,28 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
     while (System.nanoTime() < deadline) {
       for (VeniceControllerWrapper controller: veniceControllerWrappers.values()) {
-        if (controller.isRunning() && controller.isLeaderController(clusterName)) {
+        if (controller.isRunning() && controller.isLeaderController(getClusterName())) {
           return controller;
         }
       }
       Utils.sleep(Time.MS_PER_SECOND);
     }
-    throw new VeniceException("Leader controller does not exist, cluster=" + clusterName);
+    throw new VeniceException("Leader controller does not exist, cluster=" + getClusterName());
   }
 
   public VeniceControllerWrapper addVeniceController(Properties properties) {
     VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(clusterName, zkServerWrapper, kafkaBrokerWrapper)
-            .regionName(regionName)
-            .replicationFactor(defaultReplicaFactor)
-            .partitionSize(defaultPartitionSize)
-            .rebalanceDelayMs(defaultDelayToRebalanceMS)
-            .minActiveReplica(defaultMinActiveReplica)
-            .sslToKafka(sslToKafka)
+        new VeniceControllerCreateOptions.Builder(getClusterName(), zkServerWrapper, pubSubBrokerWrapper)
+            .regionName(options.getRegionName())
+            .replicationFactor(options.getReplicationFactor())
+            .partitionSize(options.getPartitionSize())
+            .numberOfPartitions(options.getNumberOfPartitions())
+            .maxNumberOfPartitions(options.getMaxNumberOfPartitions())
+            .rebalanceDelayMs(options.getRebalanceDelayMs())
+            .minActiveReplica(options.getMinActiveReplica())
+            .sslToKafka(options.isSslToKafka())
             .clusterToD2(clusterToD2)
+            .clusterToServerD2(clusterToServerD2)
             .extraProperties(properties)
             .build());
     synchronized (this) {
@@ -549,12 +537,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public VeniceRouterWrapper addVeniceRouter(Properties properties) {
     VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(
-        regionName,
-        clusterName,
+        options.getRegionName(),
+        getClusterName(),
         zkServerWrapper,
-        kafkaBrokerWrapper,
-        sslToStorageNodes,
+        pubSubBrokerWrapper,
+        options.isSslToStorageNodes(),
         clusterToD2,
+        clusterToServerD2,
         properties);
     synchronized (this) {
       veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
@@ -574,13 +563,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(enableAllowlist));
     featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinAllowList));
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
-        regionName,
-        clusterName,
-        kafkaBrokerWrapper,
+        options.getRegionName(),
+        getClusterName(),
+        pubSubBrokerWrapper,
         zkServerWrapper.getAddress(),
         featureProperties,
         new Properties(),
-        serverD2ServiceName);
+        clusterToServerD2.get(getClusterName()));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -595,13 +584,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    */
   public VeniceServerWrapper addVeniceServer(Properties properties) {
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
-        regionName,
-        clusterName,
-        kafkaBrokerWrapper,
+        options.getRegionName(),
+        getClusterName(),
+        pubSubBrokerWrapper,
         zkServerWrapper.getAddress(),
         new Properties(),
         properties,
-        serverD2ServiceName);
+        clusterToServerD2.get(getClusterName()));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -610,13 +599,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public VeniceServerWrapper addVeniceServer(Properties featureProperties, Properties configProperties) {
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
-        regionName,
-        clusterName,
-        kafkaBrokerWrapper,
+        options.getRegionName(),
+        getClusterName(),
+        pubSubBrokerWrapper,
         zkServerWrapper.getAddress(),
         featureProperties,
         configProperties,
-        serverD2ServiceName);
+        clusterToServerD2.get(getClusterName()));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -676,7 +665,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    */
   public synchronized List<Replica> stopVeniceServer(int port) {
     Admin admin = getLeaderVeniceController().getVeniceAdmin();
-    List<Replica> effectedReplicas = admin.getReplicasOfStorageNode(clusterName, Utils.getHelixNodeIdentifier(port));
+    List<Replica> effectedReplicas =
+        admin.getReplicasOfStorageNode(getClusterName(), Utils.getHelixNodeIdentifier(Utils.getHostName(), port));
     stopVeniceComponent(veniceServerWrappers, port);
     return effectedReplicas;
   }
@@ -748,7 +738,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    */
   @Deprecated
   public final ControllerClient getControllerClient() {
-    return ControllerClient.constructClusterControllerClient(clusterName, getAllControllersURLs());
+    return ControllerClient.constructClusterControllerClient(options.getClusterName(), getAllControllersURLs());
   }
 
   public void useControllerClient(Consumer<ControllerClient> controllerClientConsumer) {
@@ -761,7 +751,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    */
   public VeniceWriter<String, String, byte[]> getVeniceWriter(String storeVersionName) {
     Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
     VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(properties);
     String stringSchema = "\"string\"";
@@ -776,7 +766,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public VeniceWriter<String, String, byte[]> getSslVeniceWriter(String storeVersionName) {
     Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getSSLAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
     properties.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
     VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(properties);
@@ -838,22 +828,24 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         controllerClient.get().createNewStore(storeName, getClass().getName(), keySchema, valueSchema));
   }
 
-  public VersionCreationResponse getNewVersion(String storeName, int dataSize) {
-    return getNewVersion(storeName, dataSize, true);
+  public VersionCreationResponse getNewVersion(String storeName) {
+    return getNewVersion(storeName, true, false);
   }
 
-  public VersionCreationResponse getNewVersion(String storeName, int dataSize, boolean sendStartOfPush) {
+  public VersionCreationResponse getNewVersion(String storeName, boolean sendStartOfPush) {
+    return getNewVersion(storeName, sendStartOfPush, false);
+  }
+
+  public VersionCreationResponse getNewVersion(String storeName, boolean sendStartOfPush, boolean sorted) {
     return assertCommand(
         controllerClient.get()
             .requestTopicForWrites(
                 storeName,
-                dataSize,
+                1024, // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
                 Version.PushType.BATCH,
                 Version.guidBasedDummyPushId(),
                 sendStartOfPush,
-                // This function is expected to be called by tests that bypass the push job and write data directly,
-                // therefore, it's safe to assume that it'll be written in arbitrary order, rather than sorted...
-                false,
+                sorted,
                 false,
                 Optional.empty(),
                 Optional.empty(),
@@ -864,6 +856,18 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public ControllerResponse updateStore(String storeName, UpdateStoreQueryParams params) {
     return assertCommand(controllerClient.get().updateStore(storeName, params));
+  }
+
+  public void createMetaSystemStore(String storeName) {
+    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    assertCommand(controllerClient.get().emptyPush(metaSystemStoreName, "createMetaSystemStore", 1L));
+    waitVersion(metaSystemStoreName, 1);
+  }
+
+  public void createPushStatusSystemStore(String storeName) {
+    String pushStatusSystemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+    assertCommand(controllerClient.get().emptyPush(pushStatusSystemStoreName, "createPushStatusSystemStore", 1L));
+    waitVersion(pushStatusSystemStoreName, 1);
   }
 
   public static final String DEFAULT_KEY_SCHEMA = "\"int\"";
@@ -896,11 +900,15 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public String createStore(int keyCount, GenericRecord record) {
+    return createStore(keyCount, record, CompressionStrategy.NO_OP);
+  }
+
+  public String createStore(int keyCount, GenericRecord record, CompressionStrategy compressionStrategy) {
     return createStore(
         DEFAULT_KEY_SCHEMA,
         record.getSchema().toString(),
         IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record)),
-        CompressionStrategy.NO_OP,
+        compressionStrategy,
         null);
   }
 
@@ -1036,7 +1044,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
       TestWriteUtils.writeSimpleAvroFileWithCustomSize(inputDir, NUM_RECORDS, 10, 20);
 
-      try (ControllerClient client = new ControllerClient(veniceClusterWrapper.clusterName, controllerUrl)) {
+      try (ControllerClient client = new ControllerClient(veniceClusterWrapper.getClusterName(), controllerUrl)) {
         TestUtils.assertCommand(client.createNewStore(storeName, "ownerOf" + storeName, KEY_SCHEMA, VALUE_SCHEMA));
 
         TestUtils.assertCommand(
@@ -1064,10 +1072,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public String getRegionName() {
-    return regionName;
+    return options.getRegionName();
   }
 
-  public String getServerD2ServiceName() {
-    return serverD2ServiceName;
+  public Map<String, String> getClusterToServerD2() {
+    return clusterToServerD2;
+  }
+
+  public PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
   }
 }

@@ -1,9 +1,17 @@
 package com.linkedin.venice.fastclient;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
+
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
@@ -27,7 +35,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -111,8 +118,10 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   /**
    * Creates a batchget request which uses scatter gather to fetch all keys from different replicas.
    */
-  @Test
-  public void testBatchGetGenericClient() throws Exception {
+  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  public void testBatchGetGenericClient(
+      boolean useStreamingBatchGetAsDefault,
+      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -120,10 +129,12 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setDualReadEnabled(false)
             .setMaxAllowedKeyCntInBatchGetReq(recordCnt + 1) // +1 for nonExistingKey
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
-            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1);
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1)
+            .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
 
+    MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
+        getGenericFastClient(clientConfigBuilder, metricsRepository, storeMetadataFetchMode);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -135,15 +146,20 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = results.get(key);
-      Assert.assertEquals(value.get(VALUE_FIELD_NAME), i);
+      assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
+
+    validateMetrics(metricsRepository, useStreamingBatchGetAsDefault, recordCnt + 1, recordCnt);
+
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
     printAllStats();
   }
 
-  @Test
-  public void testBatchGetSpecificClient() throws Exception {
+  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  public void testBatchGetSpecificClient(
+      boolean useStreamingBatchGetAsDefault,
+      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -151,10 +167,12 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setDualReadEnabled(false)
             .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
-            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt)
+            .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
 
+    MetricsRepository metricsRepository = new MetricsRepository();
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
-        getSpecificFastClient(clientConfigBuilder, new MetricsRepository(), true, TestValueSchema.class);
+        getSpecificFastClient(clientConfigBuilder, metricsRepository, TestValueSchema.class, storeMetadataFetchMode);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -165,23 +183,26 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = results.get(key);
-      Assert.assertEquals(value.get(VALUE_FIELD_NAME), i);
+      assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
+
+    validateMetrics(metricsRepository, useStreamingBatchGetAsDefault, recordCnt, recordCnt);
+
     specificFastClient.close();
     printAllStats();
   }
 
-  @Test
-  public void testStreamingBatchGetGenericClient() throws Exception {
+  @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
+  public void testStreamingBatchGetGenericClient(StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(true)
-            .setDualReadEnabled(false)
-            .setMaxAllowedKeyCntInBatchGetReq(2);
+            .setDualReadEnabled(false);
 
+    MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
+        getGenericFastClient(clientConfigBuilder, metricsRepository, storeMetadataFetchMode);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -191,44 +212,47 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
 
     VeniceResponseMap<String, GenericRecord> veniceResponseMap =
         genericFastClient.streamingBatchGet(keys).get(5, TimeUnit.SECONDS);
-    Assert.assertEquals(veniceResponseMap.getNonExistingKeys().size(), 1);
-    Assert.assertTrue(veniceResponseMap.isFullResponse());
-    Assert.assertEquals(veniceResponseMap.getTotalEntryCount(), recordCnt + 1); // 1 for nonExisting key
+    assertEquals(veniceResponseMap.getNonExistingKeys().size(), 1);
+    assertTrue(veniceResponseMap.isFullResponse());
+    assertEquals(veniceResponseMap.getTotalEntryCount(), recordCnt + 1); // 1 for nonExisting key
 
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = veniceResponseMap.get(key);
-      Assert.assertNotNull(value, "Expected non null value but got  null for key " + key);
-      Assert.assertEquals(
+      assertNotNull(value, "Expected non null value but got  null for key " + key);
+      assertEquals(
           value.get(VALUE_FIELD_NAME),
           i,
           "Expected value " + i + " for key " + key + " but got " + value.get(VALUE_FIELD_NAME));
     }
-    Assert.assertEquals(
+    assertEquals(
         veniceResponseMap.size(),
         recordCnt,
         "Incorrect record count . Expected " + recordCnt + " actual " + veniceResponseMap.size());
-    Assert.assertFalse(
+    assertFalse(
         veniceResponseMap.containsKey("nonExisting"),
         " Results contained nonExisting key with value " + veniceResponseMap.get("nonExisting"));
-    Assert.assertNotNull(veniceResponseMap.getNonExistingKeys(), " Expected non existing keys to be not null");
-    Assert.assertEquals(
+    assertNotNull(veniceResponseMap.getNonExistingKeys(), " Expected non existing keys to be not null");
+    assertEquals(
         veniceResponseMap.getNonExistingKeys().size(),
         1,
         "Incorrect non existing key size . Expected  1 got " + veniceResponseMap.getNonExistingKeys().size());
+
+    validateMetrics(metricsRepository, true, recordCnt + 1, recordCnt);
   }
 
-  @Test
-  public void testStreamingBatchGetWithCallbackGenericClient() throws Exception {
+  @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
+  public void testStreamingBatchGetWithCallbackGenericClient(StoreMetadataFetchMode storeMetadataFetchMode)
+      throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(true)
-            .setDualReadEnabled(false)
-            .setMaxAllowedKeyCntInBatchGetReq(2);
+            .setDualReadEnabled(false);
 
+    MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
+        getGenericFastClient(clientConfigBuilder, metricsRepository, storeMetadataFetchMode);
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
       keys.add(keyPrefix + i);
@@ -243,7 +267,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       public void onRecordReceived(String key, GenericRecord value) {
         LOGGER.info("Record received {}:{}", key, value);
         if ("nonExisting".equals(key)) {
-          Assert.assertNull(value);
+          assertNull(value);
         } else {
           if (results.containsKey(key)) {
             isDuplicate.set(true);
@@ -256,7 +280,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       @Override
       public void onCompletion(Optional<Exception> exception) {
         LOGGER.info("Exception received {}", exception);
-        Assert.assertEquals(exception, Optional.empty());
+        assertEquals(exception, Optional.empty());
         isComplete.set(true);
         completeLatch.countDown();
       }
@@ -264,35 +288,33 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
 
     // Wait until isComplete is true or timeout
     if (!completeLatch.await(TIME_OUT_IN_SECONDS, TimeUnit.SECONDS)) {
-      Assert.fail("Test did not complete within timeout");
+      fail("Test did not complete within timeout");
     }
 
-    Assert.assertFalse(isDuplicate.get(), "Duplicate records received");
+    assertFalse(isDuplicate.get(), "Duplicate records received");
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       GenericRecord value = results.get(key);
-      Assert.assertNotNull(value, "Expected non null value but got null for key " + key);
-      Assert.assertEquals(
+      assertNotNull(value, "Expected non null value but got null for key " + key);
+      assertEquals(
           value.get(VALUE_FIELD_NAME),
           i,
           "Expected value " + i + " for key " + key + " but got " + value.get(VALUE_FIELD_NAME));
     }
-    Assert.assertEquals(
+    assertEquals(
         results.size(),
         recordCnt,
         "Incorrect record count . Expected " + recordCnt + " actual " + results.size());
-    Assert.assertFalse(
+    assertFalse(
         results.containsKey("nonExisting"),
         " Results contained nonExisting key with value " + results.get("nonExisting"));
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
-    List<Double> metricValues = stats.getMetricValues("multiget_request_key_count", "Avg");
-    Assert.assertEquals(metricValues.get(0), 101.0);
-    metricValues = stats.getMetricValues("multiget_success_request_key_count", "Avg");
-    Assert.assertEquals(metricValues.get(0), 100.0);
 
     LOGGER.info(
         "STATS: latency -> {}",
         stats.buildSensorStatSummary("multiget_healthy_request_latency", "99thPercentile"));
+
+    validateMetrics(metricsRepository, true, recordCnt + 1, recordCnt);
     printAllStats();
   }
 }

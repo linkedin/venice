@@ -1,0 +1,10 @@
+{
+  "type" : "record",
+  "namespace" : "example.avro",
+  "name" : "ValueRecordName",
+  "fields" : [
+    { "name" : "f0", "type" : "int", "default" : -1 },
+    { "name" : "f1", "type" : "int", "default" : -1 }
+  ],
+  "custom_prop" : "custom_prop_value_for_v1"
+}

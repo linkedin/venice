@@ -30,7 +30,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
@@ -44,8 +43,11 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -57,15 +59,16 @@ import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.BackupVersionOptimizationServiceStats;
 import com.linkedin.venice.stats.DiskHealthStats;
-import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -84,7 +87,7 @@ public class VeniceServer {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServer.class);
 
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
-  private static final String SERVER_SERVICE_NAME = "venice-server";
+  static final String SERVER_SERVICE_NAME = "venice-server";
 
   private final VeniceConfigLoader veniceConfigLoader;
   private final Optional<SSLFactory> sslFactory;
@@ -93,6 +96,7 @@ public class VeniceServer {
   private final Optional<ClientConfig> clientConfigForConsumer;
   private final AtomicBoolean isStarted;
   private final Lazy<List<AbstractVeniceService>> services;
+  private final PubSubClientsFactory pubSubClientsFactory;
   private StorageService storageService;
   private StorageMetadataService storageMetadataService;
   private StorageEngineMetadataService storageEngineMetadataService;
@@ -113,61 +117,10 @@ public class VeniceServer {
   StorageEngineBackedCompressorFactory compressorFactory;
 
   /**
-   * @see #VeniceServer(VeniceConfigLoader)
-   */
-  public VeniceServer(VeniceConfigLoader veniceConfigLoader) throws VeniceException {
-    this(veniceConfigLoader, TehutiUtils.getMetricsRepository(SERVER_SERVICE_NAME));
-  }
-
-  /**
-   * @see #VeniceServer(VeniceConfigLoader, MetricsRepository, Optional, Optional, Optional)
-   */
-  public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository metricsRepository) {
-    this(veniceConfigLoader, metricsRepository, Optional.empty(), Optional.empty(), Optional.empty());
-  }
-
-  /**
-   * @see #VeniceServer(VeniceConfigLoader, MetricsRepository, Optional, Optional, Optional, Optional, ICProvider)
-   */
-  public VeniceServer(
-      VeniceConfigLoader veniceConfigLoader,
-      MetricsRepository metricsRepository,
-      Optional<SSLFactory> sslFactory,
-      Optional<StaticAccessController> routerAccessController,
-      Optional<ClientConfig> clientConfigForConsumer) {
-    this(
-        veniceConfigLoader,
-        metricsRepository,
-        sslFactory,
-        routerAccessController,
-        Optional.empty(),
-        clientConfigForConsumer,
-        null);
-  }
-
-  /**
-   * @see #VeniceServer(VeniceConfigLoader, MetricsRepository, Optional, Optional, Optional, Optional, ICProvider, List<ServiceDiscoveryAnnouncer>)
-   */
-  public VeniceServer(
-      VeniceConfigLoader veniceConfigLoader,
-      MetricsRepository metricsRepository,
-      Optional<SSLFactory> sslFactory,
-      Optional<StaticAccessController> routerAccessController,
-      Optional<DynamicAccessController> storeAccessController,
-      Optional<ClientConfig> clientConfigForConsumer,
-      ICProvider icProvider) {
-    this(
-        veniceConfigLoader,
-        metricsRepository,
-        sslFactory,
-        routerAccessController,
-        storeAccessController,
-        clientConfigForConsumer,
-        icProvider,
-        Collections.emptyList());
-  }
-
-  /**
+   * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
+   *
+   * Constructor kept for maintaining the backward compatibility
+   *
    * Allocates a new {@code VeniceServer} object.
    * @param veniceConfigLoader a config loader to load configs related to cluster and server.
    * @param metricsRepository a registry for reporting metrics.
@@ -180,7 +133,7 @@ public class VeniceServer {
    * @see VeniceConfigLoader
    * @see ServerStoreAclHandler
    */
-
+  @Deprecated
   public VeniceServer(
       VeniceConfigLoader veniceConfigLoader,
       MetricsRepository metricsRepository,
@@ -190,29 +143,48 @@ public class VeniceServer {
       Optional<ClientConfig> clientConfigForConsumer,
       ICProvider icProvider,
       List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers) {
+    this(
+        new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigLoader)
+            .setMetricsRepository(metricsRepository)
+            .setSslFactory(sslFactory.orElse(null))
+            .setRouterAccessController(routerAccessController.orElse(null))
+            .setStoreAccessController(storeAccessController.orElse(null))
+            .setClientConfigForConsumer(clientConfigForConsumer.orElse(null))
+            .setIcProvider(icProvider)
+            .setServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers)
+            .setPubSubClientsFactory(
+                new PubSubClientsFactory(
+                    new ApacheKafkaProducerAdapterFactory(),
+                    new ApacheKafkaConsumerAdapterFactory(),
+                    new ApacheKafkaAdminAdapterFactory()))
+            .build());
+  }
 
+  public VeniceServer(VeniceServerContext ctx) throws VeniceException {
     // force out any potential config errors using a wildcard store name
-    veniceConfigLoader.getStoreConfig("");
+    ctx.getVeniceConfigLoader().getStoreConfig("");
 
     if (!isServerInAllowList(
-        veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
-        veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
-        veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
-        veniceConfigLoader.getVeniceServerConfig().isServerAllowlistEnabled())) {
+        ctx.getVeniceConfigLoader().getVeniceClusterConfig().getZookeeperAddress(),
+        ctx.getVeniceConfigLoader().getVeniceClusterConfig().getClusterName(),
+        ctx.getVeniceConfigLoader().getVeniceServerConfig().getListenerHostname(),
+        ctx.getVeniceConfigLoader().getVeniceServerConfig().getListenerPort(),
+        ctx.getVeniceConfigLoader().getVeniceServerConfig().isServerAllowlistEnabled())) {
       throw new VeniceException(
           "Can not create a venice server because this server has not been added into allowlist.");
     }
 
     this.isStarted = new AtomicBoolean(false);
     this.services = Lazy.of(() -> createServices());
-    this.veniceConfigLoader = veniceConfigLoader;
-    this.metricsRepository = metricsRepository;
-    this.sslFactory = sslFactory;
-    this.routerAccessController = routerAccessController;
-    this.storeAccessController = storeAccessController;
-    this.clientConfigForConsumer = clientConfigForConsumer;
-    this.icProvider = icProvider;
-    this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
+    this.veniceConfigLoader = ctx.getVeniceConfigLoader();
+    this.metricsRepository = ctx.getMetricsRepository();
+    this.icProvider = ctx.getIcProvider();
+    this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
+    this.pubSubClientsFactory = Objects.requireNonNull(ctx.getPubSubClientsFactory(), "PubSubClientsFactory is null");
+    this.sslFactory = Optional.ofNullable(ctx.getSslFactory());
+    this.routerAccessController = Optional.ofNullable(ctx.getRouterAccessController());
+    this.storeAccessController = Optional.ofNullable(ctx.getStoreAccessController());
+    this.clientConfigForConsumer = Optional.ofNullable(ctx.getClientConfigForConsumer());
   }
 
   /**
@@ -366,16 +338,11 @@ public class VeniceServer {
     // needs a routing data repository that relies on a connected helix manager. So we pass the listener service a
     // future that will be completed with a routing data repository once the manager connects.
     CompletableFuture<SafeHelixManager> managerFuture = new CompletableFuture<>();
-    CompletableFuture<RoutingDataRepository> routingRepositoryFuture = managerFuture.thenApply(manager -> {
-      RoutingDataRepository routingData = new HelixExternalViewRepository(manager);
-      routingData.refresh();
-      return routingData;
-    });
 
     CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture =
         managerFuture.thenApply(manager -> {
           HelixCustomizedViewOfflinePushRepository customizedView =
-              new HelixCustomizedViewOfflinePushRepository(manager);
+              new HelixCustomizedViewOfflinePushRepository(manager, metadataRepo, false);
           customizedView.refresh();
           return customizedView;
         });
@@ -407,7 +374,8 @@ public class VeniceServer {
         compressorFactory,
         Optional.empty(),
         false,
-        remoteIngestionRepairService);
+        remoteIngestionRepairService,
+        pubSubClientsFactory);
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     this.diskHealthCheckService = new DiskHealthCheckService(
@@ -445,7 +413,7 @@ public class VeniceServer {
         storageService.getStorageEngineRepository(),
         metadataRepo,
         storeValueSchemasCacheService,
-        routingRepositoryFuture,
+        customizedViewFuture,
         kafkaStoreIngestionService,
         serverConfig,
         metricsRepository,
@@ -471,6 +439,7 @@ public class VeniceServer {
         clusterConfig.getZookeeperAddress(),
         clusterConfig.getClusterName(),
         veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
+        veniceConfigLoader.getVeniceServerConfig().getListenerHostname(),
         managerFuture);
     services.add(helixParticipationService);
 
@@ -596,6 +565,7 @@ public class VeniceServer {
    * */
   public void shutdown() throws VeniceException {
     List<Exception> exceptions = new ArrayList<>();
+    long startTimeMS = System.currentTimeMillis();
     LOGGER.info("Stopping all services");
 
     /* Stop in reverse order */
@@ -626,7 +596,6 @@ public class VeniceServer {
         }
       }
       LOGGER.info("All services have been stopped");
-
       compressorFactory.close();
 
       try {
@@ -643,6 +612,7 @@ public class VeniceServer {
         LOGGER.error("Exception while closing: {}", zkClient.getClass().getSimpleName(), e);
       }
 
+      LOGGER.info("Shutdown completed in {} ms", LatencyUtils.getLatencyInMS(startTimeMS));
       if (exceptions.size() > 0) {
         throw new VeniceException(exceptions.get(0));
       }
@@ -653,6 +623,7 @@ public class VeniceServer {
   protected static boolean isServerInAllowList(
       String zkAddress,
       String clusterName,
+      String hostname,
       int listenPort,
       boolean enableServerAllowlist) {
     if (!enableServerAllowlist) {
@@ -664,7 +635,7 @@ public class VeniceServer {
        * Note: If a server has been added in to the allowlist, then node is failed or shutdown by SRE. once it
        * starts up again, it will automatically join the cluster because it already exists in the allowlist.
        */
-      String participantName = Utils.getHelixNodeIdentifier(listenPort);
+      String participantName = Utils.getHelixNodeIdentifier(hostname, listenPort);
       if (!accessor.isInstanceInAllowlist(clusterName, participantName)) {
         LOGGER.info("{} is not in the allowlist of {}, stop starting venice server", participantName, clusterName);
         return false;
@@ -691,7 +662,7 @@ public class VeniceServer {
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
       ReadOnlySchemaRepository schemaRepository,
-      CompletableFuture<RoutingDataRepository> routingRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       MetadataRetriever metadataRetriever,
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
@@ -705,7 +676,7 @@ public class VeniceServer {
         storageEngineRepository,
         storeMetadataRepository,
         schemaRepository,
-        routingRepository,
+        customizedViewRepository,
         metadataRetriever,
         serverConfig,
         metricsRepository,
@@ -730,22 +701,40 @@ public class VeniceServer {
     } catch (Exception e) {
       LOGGER.error("Error starting Venice Server ", e);
       Utils.exit("Error while loading configuration: " + e.getMessage());
+      return;
     }
+    run(veniceConfigService, true);
+  }
 
-    final VeniceServer server = new VeniceServer(veniceConfigService);
+  public static void run(String configDirectory, boolean joinThread) throws Exception {
+    VeniceConfigLoader veniceConfigService = VeniceConfigLoader.loadFromConfigDirectory(configDirectory);
+    run(veniceConfigService, joinThread);
+  }
+
+  public static void run(VeniceConfigLoader veniceConfigService, boolean joinThread) throws Exception {
+    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
+        new ApacheKafkaProducerAdapterFactory(),
+        new ApacheKafkaConsumerAdapterFactory(),
+        new ApacheKafkaAdminAdapterFactory());
+    VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService)
+        .setPubSubClientsFactory(pubSubClientsFactory)
+        .build();
+    final VeniceServer server = new VeniceServer(serverContext);
     if (!server.isStarted()) {
       server.start();
     }
     addShutdownHook(server);
+
+    if (joinThread) {
+      try {
+        Thread.currentThread().join();
+      } catch (InterruptedException e) {
+        LOGGER.error("Unable to join thread in shutdown hook. ", e);
+      }
+    }
   }
 
   private static void addShutdownHook(VeniceServer server) {
     Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown));
-
-    try {
-      Thread.currentThread().join();
-    } catch (InterruptedException e) {
-      LOGGER.error("Unable to join thread in shutdown hook. ", e);
-    }
   }
 }

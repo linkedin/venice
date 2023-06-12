@@ -41,6 +41,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -167,17 +168,16 @@ public class DaVinciComputeTest {
   // @Test(timeOut = TEST_TIMEOUT * 2)
   public void testComputeOnStoreWithQTFDScompliantSchema() throws Exception {
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(
-              storeName,
-              getClass().getName(),
-              DEFAULT_KEY_SCHEMA,
-              VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(
+                storeName,
+                getClass().getName(),
+                DEFAULT_KEY_SCHEMA,
+                VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD)));
+    cluster.createMetaSystemStore(storeName);
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -204,8 +204,10 @@ public class DaVinciComputeTest {
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> veniceWriter =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> veniceWriter = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
         CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
@@ -275,13 +277,14 @@ public class DaVinciComputeTest {
   public void testReadComputeMissingField() throws Exception {
     // Create DaVinci store
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE))
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    );
+    cluster.createMetaSystemStore(storeName);
+
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -309,8 +312,10 @@ public class DaVinciComputeTest {
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
         CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
@@ -352,7 +357,7 @@ public class DaVinciComputeTest {
         clientMissingField -> TestUtils
             .assertCommand(clientMissingField.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD)));
 
-    VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName);
     String topicForMissingField = newVersionMissingField.getKafkaTopic();
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
@@ -366,8 +371,10 @@ public class DaVinciComputeTest {
             TestUtils.getIngestionIsolationPropertyMap());
 
     try (
-        VeniceWriter<Object, Object, byte[]> writerForMissingField =
-            vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerMissingField, false);
+        VeniceWriter<Object, Object, byte[]> writerForMissingField = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topicForMissingField).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializerMissingField)
+                .build());
         CachingDaVinciClientFactory factoryForMissingFieldClient = daVinciTestContext2.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> clientForMissingField = daVinciTestContext2.getDaVinciClient()) {
 
@@ -404,13 +411,16 @@ public class DaVinciComputeTest {
   public void testReadComputeSwappedFields() throws Exception {
     // Create DaVinci store
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(storeName, getClass().getName(), DEFAULT_KEY_SCHEMA, VALUE_SCHEMA_FOR_COMPUTE_SWAPPED));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(
+                storeName,
+                getClass().getName(),
+                DEFAULT_KEY_SCHEMA,
+                VALUE_SCHEMA_FOR_COMPUTE_SWAPPED)));
+    cluster.createMetaSystemStore(storeName);
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -437,8 +447,10 @@ public class DaVinciComputeTest {
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
         CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
@@ -469,7 +481,7 @@ public class DaVinciComputeTest {
         clientMissingField -> TestUtils
             .assertCommand(clientMissingField.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD)));
 
-    VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName);
     String topicForMissingField = newVersionMissingField.getKafkaTopic();
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
@@ -482,8 +494,10 @@ public class DaVinciComputeTest {
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> writer2 =
-            vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerSwapped, false);
+        VeniceWriter<Object, Object, byte[]> writer2 = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topicForMissingField).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializerSwapped)
+                .build());
         CachingDaVinciClientFactory factory2 = daVinciTestContext2.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client2 = daVinciTestContext2.getDaVinciClient()) {
 
@@ -509,17 +523,16 @@ public class DaVinciComputeTest {
   public void testComputeStreamingExecute() throws ExecutionException, InterruptedException {
     // Setup Store
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(
-              storeName,
-              getClass().getName(),
-              KEY_SCHEMA_STEAMING_COMPUTE,
-              VALUE_SCHEMA_STREAMING_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(
+                storeName,
+                getClass().getName(),
+                KEY_SCHEMA_STEAMING_COMPUTE,
+                VALUE_SCHEMA_STREAMING_COMPUTE)));
+    cluster.createMetaSystemStore(storeName);
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -551,9 +564,10 @@ public class DaVinciComputeTest {
             storeName,
             config,
             TestUtils.getIngestionIsolationPropertyMap());
-    try (
-        VeniceWriter<Object, Object, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+    try (VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+            .setValueSerializer(valueSerializer)
+            .build());
         DaVinciClient<String, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
       // push data to store and subscribe client
@@ -607,17 +621,16 @@ public class DaVinciComputeTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testPartialKeyLookupWithRocksDBBlockBasedTable() throws ExecutionException, InterruptedException {
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(
-              storeName,
-              getClass().getName(),
-              KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
-              VALUE_SCHEMA_FOR_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(
+                storeName,
+                getClass().getName(),
+                KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
+                VALUE_SCHEMA_FOR_COMPUTE)));
+    cluster.createMetaSystemStore(storeName);
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -636,8 +649,10 @@ public class DaVinciComputeTest {
     int numRecords = 100;
 
     try (
-        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
         CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
             d2Client,
             VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
@@ -706,17 +721,16 @@ public class DaVinciComputeTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testPartialKeyLookupWithRocksDBPlainTable() throws ExecutionException, InterruptedException {
     final String storeName = Utils.getUniqueString("store");
-    cluster.useControllerClient(client -> {
-      TestUtils.assertCommand(
-          client.createNewStore(
-              storeName,
-              getClass().getName(),
-              KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
-              VALUE_SCHEMA_FOR_COMPUTE));
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    });
+    cluster.useControllerClient(
+        client -> TestUtils.assertCommand(
+            client.createNewStore(
+                storeName,
+                getClass().getName(),
+                KEY_SCHEMA_PARTIAL_KEY_LOOKUP,
+                VALUE_SCHEMA_FOR_COMPUTE)));
+    cluster.createMetaSystemStore(storeName);
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -735,8 +749,10 @@ public class DaVinciComputeTest {
     int numRecords = 100;
 
     try (
-        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
         CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
             d2Client,
             VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,

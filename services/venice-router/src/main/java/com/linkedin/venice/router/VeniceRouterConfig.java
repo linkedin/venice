@@ -2,12 +2,15 @@ package com.linkedin.venice.router;
 
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.ENFORCE_SECURE_ROUTER;
 import static com.linkedin.venice.ConfigKeys.HEARTBEAT_CYCLE;
 import static com.linkedin.venice.ConfigKeys.HEARTBEAT_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.LISTENER_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
 import static com.linkedin.venice.ConfigKeys.MAX_READ_CAPACITY;
@@ -48,6 +51,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPAYSNCCLIENT_CONNECTION_W
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT5_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT5_TOTAL_IO_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_OPENSSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS;
@@ -71,6 +75,8 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_PENDING_CONNECTION_RESUME_TH
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER;
 import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
 import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
@@ -82,6 +88,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES;
 import static com.linkedin.venice.ConfigKeys.ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE;
 import static com.linkedin.venice.ConfigKeys.ROUTE_DNS_CACHE_HOST_PATTERN;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
@@ -96,8 +103,10 @@ import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -115,6 +124,7 @@ public class VeniceRouterConfig {
   private String clusterName;
   private String zkConnection;
   private int port;
+  private String hostname;
   private int sslPort;
   private double heartbeatTimeoutMs;
   private long heartbeatCycleMs;
@@ -131,6 +141,7 @@ public class VeniceRouterConfig {
   private int maxOutgoingConnPerRoute;
   private int maxOutgoingConn;
   private Map<String, String> clusterToD2Map;
+  private Map<String, String> clusterToServerD2Map;
   private double perStorageNodeReadQuotaBuffer;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
@@ -158,6 +169,7 @@ public class VeniceRouterConfig {
   private long leakedFutureCleanupPollIntervalMs;
   private long leakedFutureCleanupThresholdMs;
   private String kafkaBootstrapServers;
+  private boolean sslToKafka;
   private boolean idleConnectionToServerCleanupEnabled;
   private long idleConnectionToServerCleanupThresholdMins;
   private long fullPendingQueueServerOORMs;
@@ -198,6 +210,9 @@ public class VeniceRouterConfig {
   private boolean metaStoreShadowReadEnabled;
   private boolean unregisterMetricForDeletedStoreEnabled;
   private int routerIOWorkerCount;
+  private boolean perRouterStorageNodeThrottlerEnabled;
+  private double perStoreRouterQuotaBuffer;
+  private boolean httpClientOpensslEnabled;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -213,9 +228,11 @@ public class VeniceRouterConfig {
   private void checkProperties(VeniceProperties props) {
     clusterName = props.getString(CLUSTER_NAME);
     port = props.getInt(LISTENER_PORT);
+    hostname = props.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
     sslPort = props.getInt(LISTENER_SSL_PORT);
     zkConnection = props.getString(ZOOKEEPER_ADDRESS);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
+    sslToKafka = props.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false);
     heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1));
     heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5));
     sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false);
@@ -236,6 +253,7 @@ public class VeniceRouterConfig {
     maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
     maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
+    clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
     perStorageNodeReadQuotaBuffer = props.getDouble(ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER, 1.0);
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
@@ -371,6 +389,13 @@ public class VeniceRouterConfig {
      * should consider to use some number, which is proportional to the available cores.
      */
     routerIOWorkerCount = props.getInt(ROUTER_IO_WORKER_COUNT, 24);
+    perRouterStorageNodeThrottlerEnabled = props.getBoolean(ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED, true);
+    perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 1.5);
+    httpClientOpensslEnabled = props.getBoolean(ROUTER_HTTP_CLIENT_OPENSSL_ENABLED, true);
+  }
+
+  public double getPerStoreRouterQuotaBuffer() {
+    return perStoreRouterQuotaBuffer;
   }
 
   public String getClusterName() {
@@ -383,6 +408,10 @@ public class VeniceRouterConfig {
 
   public int getPort() {
     return port;
+  }
+
+  public String getHostname() {
+    return hostname;
   }
 
   public int getSslPort() {
@@ -415,6 +444,10 @@ public class VeniceRouterConfig {
 
   public Map<String, String> getClusterToD2Map() {
     return clusterToD2Map;
+  }
+
+  public Map<String, String> getClusterToServerD2Map() {
+    return clusterToServerD2Map;
   }
 
   public int getConnectionLimit() {
@@ -559,6 +592,10 @@ public class VeniceRouterConfig {
 
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
+  }
+
+  public boolean isSslToKafka() {
+    return sslToKafka;
   }
 
   public boolean isIdleConnectionToServerCleanupEnabled() {
@@ -796,5 +833,13 @@ public class VeniceRouterConfig {
 
   public int getRouterIOWorkerCount() {
     return routerIOWorkerCount;
+  }
+
+  public boolean isPerRouterStorageNodeThrottlerEnabled() {
+    return perRouterStorageNodeThrottlerEnabled;
+  }
+
+  public boolean isHttpClientOpensslEnabled() {
+    return httpClientOpensslEnabled;
   }
 }

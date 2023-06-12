@@ -1,14 +1,19 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
+import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_NOT_CREATED;
 
 import com.linkedin.venice.controller.HelixAdminClient;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -17,6 +22,8 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.meta.UncompletedPartition;
+import com.linkedin.venice.meta.UncompletedReplica;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
@@ -36,6 +43,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -72,6 +80,11 @@ public abstract class AbstractPushMonitor
   private final HelixAdminClient helixAdminClient;
   private final EventThrottler helixClientThrottler;
   private final boolean disableErrorLeaderReplica;
+  private final long offlineJobResourceAssignmentWaitTimeInMilliseconds;
+
+  private final PushStatusCollector pushStatusCollector;
+
+  private final boolean isOfflinePushMonitorDaVinciPushStatusEnabled;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -85,7 +98,8 @@ public abstract class AbstractPushMonitor
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
-      boolean disableErrorLeaderReplica) {
+      VeniceControllerConfig controllerConfig,
+      PushStatusStoreReader pushStatusStoreReader) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -97,9 +111,22 @@ public abstract class AbstractPushMonitor
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
     this.helixAdminClient = helixAdminClient;
-    this.disableErrorLeaderReplica = disableErrorLeaderReplica;
+    this.disableErrorLeaderReplica = controllerConfig.isErrorLeaderReplicaFailOverEnabled();
     this.helixClientThrottler =
         new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
+    this.offlineJobResourceAssignmentWaitTimeInMilliseconds = controllerConfig.getOffLineJobWaitTimeInMilliseconds();
+    this.pushStatusCollector = new PushStatusCollector(
+        metadataRepository,
+        pushStatusStoreReader,
+        (topic) -> handleCompletedPush(getOfflinePush(topic)),
+        (topic, details) -> handleErrorPush(getOfflinePush(topic), details),
+        controllerConfig.isDaVinciPushStatusScanEnabled(),
+        controllerConfig.getDaVinciPushStatusScanIntervalInSeconds(),
+        controllerConfig.getDaVinciPushStatusScanThreadNumber(),
+        controllerConfig.getDaVinciPushStatusScanNoReportRetryMaxAttempt(),
+        controllerConfig.getDaVinciPushStatusScanMaxOfflineInstance());
+    this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
+    pushStatusCollector.start();
   }
 
   @Override
@@ -113,6 +140,7 @@ public abstract class AbstractPushMonitor
   }
 
   public void loadAllPushes(List<OfflinePushStatus> offlinePushStatusList) {
+    pushStatusCollector.start();
     try (AutoCloseableLock ignore = clusterLockManager.createClusterWriteLock()) {
       LOGGER.info("Load all pushes started for cluster {}'s {}", clusterName, getClass().getSimpleName());
       // Subscribe to changes first
@@ -148,6 +176,7 @@ public abstract class AbstractPushMonitor
           if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
             String topic = offlinePushStatus.getKafkaTopic();
             if (routingDataRepository.containsKafkaTopic(topic)) {
+              pushStatusCollector.subscribeTopic(topic, offlinePushStatus.getNumberOfPartition());
               Pair<ExecutionStatus, Optional<String>> status =
                   checkPushStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(topic), null);
               if (status.getFirst().isTerminal()) {
@@ -226,6 +255,7 @@ public abstract class AbstractPushMonitor
       topicToPushMap.put(kafkaTopic, pushStatus);
       offlinePushAccessor.subscribePartitionStatusChange(pushStatus, this);
       routingDataRepository.subscribeRoutingDataChange(kafkaTopic, this);
+      pushStatusCollector.subscribeTopic(kafkaTopic, numberOfPartition);
       LOGGER.info("Started monitoring push on topic:{}", kafkaTopic);
     }
   }
@@ -247,6 +277,7 @@ public abstract class AbstractPushMonitor
       } else {
         cleanupPushStatus(pushStatus, deletePushStatus);
       }
+      pushStatusCollector.unsubscribeTopic(kafkaTopic);
       LOGGER.info("Stopped monitoring push on topic: {}", kafkaTopic);
     }
   }
@@ -260,6 +291,7 @@ public abstract class AbstractPushMonitor
         stopMonitorOfflinePush(kafkaTopic, false, false);
       }
       LOGGER.info("Successfully stopped monitoring push for all topics.");
+      pushStatusCollector.clear();
     } catch (Exception e) {
       LOGGER.error("Error when stopping monitoring push for all topics", e);
     }
@@ -295,13 +327,13 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(
+  public Pair<ExecutionStatus, String> getIncrementalPushStatusAndDetails(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
     OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
     if (pushStatus == null) {
-      return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
+      return new Pair<>(ExecutionStatus.NOT_CREATED, "Offline job hasn't been created yet.");
     }
     Map<Integer, Map<CharSequence, Integer>> pushStatusMap = pushStatus.getIncrementalPushStatus(
         getRoutingDataRepository().getPartitionAssignments(kafkaTopic),
@@ -316,18 +348,18 @@ public abstract class AbstractPushMonitor
             incrementalPushVersion,
             pushStatus.getNumberOfPartition(),
             pushStatus.getReplicationFactor()),
-        Optional.empty());
+        null);
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(
+  public Pair<ExecutionStatus, String> getIncrementalPushStatusFromPushStatusStore(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
       PushStatusStoreReader pushStatusStoreReader) {
     OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
     if (pushStatus == null) {
-      return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
+      return new Pair<>(ExecutionStatus.NOT_CREATED, "Offline job hasn't been created yet.");
     }
     return getIncrementalPushStatusFromPushStatusStore(
         kafkaTopic,
@@ -338,7 +370,7 @@ public abstract class AbstractPushMonitor
         pushStatus.getReplicationFactor());
   }
 
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(
+  public Pair<ExecutionStatus, String> getIncrementalPushStatusFromPushStatusStore(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
@@ -359,7 +391,7 @@ public abstract class AbstractPushMonitor
             incrementalPushVersion,
             numberOfPartitions,
             replicationFactor),
-        Optional.empty());
+        null);
   }
 
   private ExecutionStatus checkIncrementalPushStatus(
@@ -460,12 +492,49 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic) {
+  public Pair<ExecutionStatus, String> getPushStatusAndDetails(String topic) {
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     if (pushStatus == null) {
-      return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
+      return new Pair<>(ExecutionStatus.NOT_CREATED, "Offline job hasn't been created yet.");
     }
-    return new Pair<>(pushStatus.getCurrentStatus(), pushStatus.getOptionalStatusDetails());
+    ExecutionStatus currentPushStatus = pushStatus.getCurrentStatus();
+    if (currentPushStatus.equals(ExecutionStatus.NOT_STARTED) || currentPushStatus.equals(ExecutionStatus.STARTED)) {
+      // Check whether resource assignment has completed; if yes, continue; if no:
+      // 1. if the push duration hasn't passed the resource assignment wait timeout, log the current status
+      // 2. if the duration has passed the wait timeout, terminate the push
+      final ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+      final OfflinePushStrategy strategy = pushStatus.getStrategy();
+      final int replicationFactor = pushStatus.getReplicationFactor();
+      final PushStatusDecider statusDecider = PushStatusDecider.getDecider(strategy);
+      Optional<String> notReadyReason =
+          statusDecider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment, Optional.empty());
+      if (notReadyReason.isPresent()) {
+        final long elapsedTimeInSec = getDurationInSec(pushStatus);
+        if (elapsedTimeInSec < TimeUnit.MILLISECONDS.toSeconds(offlineJobResourceAssignmentWaitTimeInMilliseconds)) {
+          LOGGER.info(
+              "After waiting for " + elapsedTimeInSec + " seconds, resource assignment for: " + topic
+                  + " is still not complete, strategy=" + strategy.toString() + ", replicationFactor="
+                  + replicationFactor + ", reason=" + notReadyReason.get());
+        } else {
+          // early termination
+          // Time out, after waiting maxWaitTimeMs, there are not enough nodes assigned.
+          recordPushPreparationDuration(topic, elapsedTimeInSec);
+          String errorMsg = "After waiting for " + elapsedTimeInSec + " seconds, resource assignment for: " + topic
+              + " timed out, strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason="
+              + notReadyReason.get();
+          handleOfflinePushUpdate(pushStatus, ERROR, Optional.of(errorMsg));
+          return new Pair<>(ExecutionStatus.ERROR, errorMsg);
+        }
+      } else {
+        // Update the status details if this is the first time finding out Helix assignment completes
+        Optional<String> statusDetails = pushStatus.getOptionalStatusDetails();
+        if (statusDetails.isPresent() && Objects.equals(statusDetails.get(), HELIX_RESOURCE_NOT_CREATED)) {
+          refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of(HELIX_ASSIGNMENT_COMPLETED));
+          recordPushPreparationDuration(topic, getDurationInSec(pushStatus));
+        }
+      }
+    }
+    return new Pair<>(currentPushStatus, pushStatus.getStatusDetails());
   }
 
   @Override
@@ -481,16 +550,34 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public Map<String, Long> getOfflinePushProgress(String topic) {
+  public List<UncompletedPartition> getUncompletedPartitions(String topic) {
     OfflinePushStatus pushStatus = getOfflinePush(topic);
-    if (pushStatus == null) {
-      return Collections.emptyMap();
+    if (pushStatus == null || pushStatus.getCurrentStatus().equals(COMPLETED)) {
+      return Collections.emptyList();
     }
-    Map<String, Long> progress = new HashMap<>(pushStatus.getProgress());
-    progress.keySet()
-        .removeIf(
-            replicaId -> !routingDataRepository.isLiveInstance(ReplicaStatus.getInstanceIdFromReplicaId(replicaId)));
-    return progress;
+    PushStatusDecider decider = PushStatusDecider.getDecider(pushStatus.getStrategy());
+    List<UncompletedPartition> uncompletedPartitions = new ArrayList<>();
+    for (PartitionStatus partitionStatus: pushStatus.getPartitionStatuses()) {
+      int completedReplicaInPartition = 0;
+      List<UncompletedReplica> uncompletedReplicas = new ArrayList<>();
+      for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
+        ExecutionStatus currentStatus = PushStatusDecider.getReplicaCurrentStatus(replicaStatus.getStatusHistory());
+        if (currentStatus.equals(COMPLETED)) {
+          completedReplicaInPartition++;
+        } else {
+          UncompletedReplica uncompletedReplica = new UncompletedReplica(
+              replicaStatus.getInstanceId(),
+              currentStatus,
+              replicaStatus.getCurrentProgress(),
+              replicaStatus.getIncrementalPushVersion());
+          uncompletedReplicas.add(uncompletedReplica);
+        }
+      }
+      if (!decider.hasEnoughReplicasForOnePartition(completedReplicaInPartition, pushStatus.getReplicationFactor())) {
+        uncompletedPartitions.add(new UncompletedPartition(partitionStatus.getPartitionId(), uncompletedReplicas));
+      }
+    }
+    return uncompletedPartitions;
   }
 
   @Override
@@ -553,21 +640,6 @@ public abstract class AbstractPushMonitor
       versionNums.remove(Integer.valueOf(errorVersion));
 
       cleanupPushStatus(errorPushStatus, true);
-    }
-  }
-
-  public boolean wouldJobFail(String topic, PartitionAssignment partitionAssignmentAfterRemoving) {
-    String storeName = Version.parseStoreFromKafkaTopicName(topic);
-    try (AutoCloseableLock ignore = clusterLockManager.createStoreReadLock(storeName)) {
-      if (!topicToPushMap.containsKey(topic)) {
-        // the offline push has been terminated and archived.
-        return false;
-      } else {
-        OfflinePushStatus offlinePush = getOfflinePush(topic);
-        Pair<ExecutionStatus, Optional<String>> status = PushStatusDecider.getDecider(offlinePush.getStrategy())
-            .checkPushStatusAndDetails(offlinePush, partitionAssignmentAfterRemoving);
-        return status.getFirst().equals(ExecutionStatus.ERROR);
-      }
     }
   }
 
@@ -773,7 +845,7 @@ public abstract class AbstractPushMonitor
     if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
       String statusDetails = "Helix resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.";
       LOGGER.info(statusDetails);
-      handleErrorPush(pushStatus, statusDetails);
+      handleOfflinePushUpdate(pushStatus, ExecutionStatus.ERROR, Optional.of(statusDetails));
     }
   }
 
@@ -834,10 +906,8 @@ public abstract class AbstractPushMonitor
       OfflinePushStatus pushStatus,
       ExecutionStatus status,
       Optional<String> statusDetails) {
-    routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
-
     if (status.equals(ExecutionStatus.COMPLETED)) {
-      handleCompletedPush(pushStatus);
+      pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), COMPLETED, null);
     } else if (status.equals(ExecutionStatus.ERROR)) {
       String statusDetailsString = "STATUS DETAILS ABSENT.";
       if (statusDetails.isPresent()) {
@@ -847,11 +917,12 @@ public abstract class AbstractPushMonitor
             "Status details should be provided in order to terminateOfflinePush, but they are missing.",
             new VeniceException("Exception not thrown, for stacktrace logging purposes."));
       }
-      handleErrorPush(pushStatus, statusDetailsString);
+      pushStatusCollector.handleServerPushStatusUpdate(pushStatus.getKafkaTopic(), ERROR, statusDetailsString);
     }
   }
 
   protected void handleCompletedPush(OfflinePushStatus pushStatus) {
+    routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
     LOGGER.info(
         "Updating offline push status, push for: {} old status: {}, new status: {}",
         pushStatus.getKafkaTopic(),
@@ -876,7 +947,7 @@ public abstract class AbstractPushMonitor
       storeCleaner.topicCleanupWhenPushComplete(clusterName, storeName, versionNumber);
     } catch (Exception e) {
       LOGGER.warn(
-          "Couldn't perform topic cleanup when push job completed for topic: {} in cluster: ",
+          "Couldn't perform topic cleanup when push job completed for topic: {} in cluster: {}",
           topic,
           clusterName,
           e);
@@ -890,6 +961,7 @@ public abstract class AbstractPushMonitor
   }
 
   protected void handleErrorPush(OfflinePushStatus pushStatus, String statusDetails) {
+    routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
     LOGGER.info(
         "Updating offline push status, push for: {} is now {}, new status: {}, statusDetails: {}",
         pushStatus.getKafkaTopic(),
@@ -988,5 +1060,10 @@ public abstract class AbstractPushMonitor
 
   public RealTimeTopicSwitcher getRealTimeTopicSwitcher() {
     return realTimeTopicSwitcher;
+  }
+
+  @Override
+  public boolean isOfflinePushMonitorDaVinciPushStatusEnabled() {
+    return isOfflinePushMonitorDaVinciPushStatusEnabled;
   }
 }

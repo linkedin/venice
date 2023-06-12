@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEFER_VER
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEST_FABRIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_DISABLED_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXPECTED_ROUTER_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
@@ -18,8 +19,10 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
@@ -59,6 +62,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CON
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_CONFIG_VALUE_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
@@ -70,6 +74,7 @@ import static com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
@@ -77,10 +82,12 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
+import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -133,19 +140,31 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  /**
+   * @deprecated Use {@link ControllerClientFactory#discoverAndConstructControllerClient}
+   */
+  @Deprecated
   public static ControllerClient discoverAndConstructControllerClient(
       String storeName,
       String discoveryUrls,
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
-    String clusterName = discoverCluster(discoveryUrls, storeName, sslFactory, retryAttempts).getCluster();
-    return constructClusterControllerClient(clusterName, discoveryUrls, sslFactory);
+    return ControllerClientFactory
+        .discoverAndConstructControllerClient(storeName, discoveryUrls, sslFactory, retryAttempts);
   }
 
+  /**
+   * @deprecated Use {@link ControllerClientFactory#getControllerClient}
+   */
+  @Deprecated
   public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls) {
     return constructClusterControllerClient(clusterName, discoveryUrls, Optional.empty());
   }
 
+  /**
+   * @deprecated Use {@link ControllerClientFactory#getControllerClient}
+   */
+  @Deprecated
   public static ControllerClient constructClusterControllerClient(
       String clusterName,
       String discoveryUrls,
@@ -168,6 +187,7 @@ public class ControllerClient implements Closeable {
     List<String> urls = new ArrayList<>(this.controllerDiscoveryUrls);
     Collections.shuffle(urls);
 
+    Exception lastConnectException = null;
     Exception lastException = null;
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url: urls) {
@@ -179,10 +199,28 @@ public class ControllerClient implements Closeable {
           return leaderControllerUrl;
         } catch (Exception e) {
           LOGGER.warn("Unable to discover leader controller from {}", url);
-          lastException = e;
+          if (ExceptionUtils.recursiveClassEquals(e, ConnectException.class)) {
+            lastConnectException = e;
+          } else {
+            lastException = e;
+          }
         }
       }
     }
+
+    /**
+     * During normal operation, some hosts might be down for maintenance. Over time, the host list might even get
+     * stale. So, when requests are made to hosts which no longer host venice controllers or routers,
+     * {@link ConnectException} will be thrown. When the request actually leads to an error, all active hosts in
+     * the host list will throw this error and the inactive hosts will throw the {@link ConnectException}. In such
+     * cases, the {@link ConnectException} is not actionable by the user. If after trying all controllers and routers,
+     * we still don't have any other non-{@link ConnectException}, the {@link ConnectException} is the most actionable
+     * exception, and we throw that.
+     */
+    if (lastException == null) {
+      lastException = lastConnectException;
+    }
+
     String message = "Unable to discover leader controller from " + this.controllerDiscoveryUrls;
     LOGGER.error(message, lastException);
     throw new VeniceException(message, lastException);
@@ -247,7 +285,39 @@ public class ControllerClient implements Closeable {
         sourceGridFabric,
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
-        false);
+        false,
+        null);
+  }
+
+  public VersionCreationResponse requestTopicForWrites(
+      String storeName,
+      long storeSize,
+      PushType pushType,
+      String pushJobId,
+      boolean sendStartOfPush,
+      boolean sorted,
+      boolean wcEnabled,
+      Optional<String> partitioners,
+      Optional<String> compressionDictionary,
+      Optional<String> sourceGridFabric,
+      boolean batchJobHeartbeatEnabled,
+      long rewindTimeInSecondsOverride,
+      boolean deferVersionSwap) {
+    return requestTopicForWrites(
+        storeName,
+        storeSize,
+        pushType,
+        pushJobId,
+        sendStartOfPush,
+        sorted,
+        wcEnabled,
+        partitioners,
+        compressionDictionary,
+        sourceGridFabric,
+        batchJobHeartbeatEnabled,
+        rewindTimeInSecondsOverride,
+        deferVersionSwap,
+        null);
   }
 
   /**
@@ -268,7 +338,8 @@ public class ControllerClient implements Closeable {
    * @param batchJobHeartbeatEnabled whether batch push job enables the heartbeat
    * @param rewindTimeInSecondsOverride if a valid value is specified (>=0) for hybrid store, this param will override
    *                                       the default store-level rewindTimeInSeconds config.
-   *
+   * @param deferVersionSwap whether to defer version swap after the push is done
+   * @param targetedRegions the list of regions that is separated by comma for targeted region push.
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(
@@ -284,8 +355,10 @@ public class ControllerClient implements Closeable {
       Optional<String> sourceGridFabric,
       boolean batchJobHeartbeatEnabled,
       long rewindTimeInSecondsOverride,
-      boolean deferVersionSwap) {
+      boolean deferVersionSwap,
+      String targetedRegions) {
     QueryParams params = newParams().add(NAME, storeName)
+        // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
         .add(PUSH_JOB_ID, pushJobId)
         .add(PUSH_TYPE, pushType.toString())
@@ -298,6 +371,9 @@ public class ControllerClient implements Closeable {
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
         .add(DEFER_VERSION_SWAP, deferVersionSwap);
+    if (StringUtils.isNotEmpty(targetedRegions)) {
+      params.add(TARGETED_REGIONS, targetedRegions);
+    }
 
     return request(ControllerRoute.REQUEST_TOPIC, params, VersionCreationResponse.class);
   }
@@ -434,6 +510,7 @@ public class ControllerClient implements Closeable {
   }
 
   public VersionCreationResponse emptyPush(String storeName, String pushJobId, long storeSize) {
+    // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
     QueryParams params =
         newParams().add(NAME, storeName).add(PUSH_JOB_ID, pushJobId).add(STORE_SIZE, Long.toString(storeSize));
     return request(ControllerRoute.EMPTY_PUSH, params, VersionCreationResponse.class);
@@ -456,6 +533,15 @@ public class ControllerClient implements Closeable {
         .add(KEY_SCHEMA, keySchema)
         .add(VALUE_SCHEMA, valueSchema)
         .add(ACCESS_PERMISSION, accessPermissions);
+    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+  }
+
+  public NewStoreResponse createNewSystemStore(String storeName, String owner, String keySchema, String valueSchema) {
+    QueryParams params = newParams().add(NAME, storeName)
+        .add(OWNER, owner)
+        .add(KEY_SCHEMA, keySchema)
+        .add(VALUE_SCHEMA, valueSchema)
+        .add(IS_SYSTEM_STORE, true);
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
   }
 
@@ -537,6 +623,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.SKIP_ADMIN, params, ControllerResponse.class);
   }
 
+  public PubSubTopicConfigResponse getKafkaTopicConfigs(String kafkaTopicName) {
+    QueryParams params = newParams().add(TOPIC, kafkaTopicName);
+    return request(ControllerRoute.GET_KAFKA_TOPIC_CONFIGS, params, PubSubTopicConfigResponse.class);
+  }
+
   public ControllerResponse updateKafkaTopicLogCompaction(String kafkaTopicName, boolean logCompactionEnabled) {
     QueryParams params =
         newParams().add(TOPIC, kafkaTopicName).add(KAFKA_TOPIC_LOG_COMPACTION_ENABLED, logCompactionEnabled);
@@ -548,8 +639,20 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION, params, ControllerResponse.class);
   }
 
+  public ControllerResponse updateKafkaTopicMinInSyncReplica(String kafkaTopicName, int minISR) {
+    QueryParams params = newParams().add(TOPIC, kafkaTopicName).add(KAFKA_TOPIC_MIN_IN_SYNC_REPLICA, minISR);
+    return request(ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA, params, ControllerResponse.class);
+  }
+
   public <R extends ControllerResponse> R retryableRequest(int totalAttempts, Function<ControllerClient, R> request) {
-    return retryableRequest(this, totalAttempts, request);
+    return retryableRequest(this, totalAttempts, request, r -> false);
+  }
+
+  public <R extends ControllerResponse> R retryableRequest(
+      int totalAttempts,
+      Function<ControllerClient, R> request,
+      Function<R, Boolean> abortRetryCondition) {
+    return retryableRequest(this, totalAttempts, request, abortRetryCondition);
   }
 
   /**
@@ -559,6 +662,14 @@ public class ControllerClient implements Closeable {
       C client,
       int totalAttempts,
       Function<C, R> request) {
+    return retryableRequest(client, totalAttempts, request, r -> false);
+  }
+
+  public static <C extends ControllerClient, R extends ControllerResponse> R retryableRequest(
+      C client,
+      int totalAttempts,
+      Function<C, R> request,
+      Function<R, Boolean> abortRetryCondition) {
     if (totalAttempts < 1) {
       throw new VeniceException(
           "Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
@@ -568,7 +679,8 @@ public class ControllerClient implements Closeable {
       R response = request.apply(client);
       // Do not retry if value schema is not found. TODO: Ideally response should not be an error but should return
       // INVALID schema ID in the response.
-      if (!response.isError() || currentAttempt == totalAttempts || valueSchemaNotFoundSchemaResponse(response)) {
+      if (!response.isError() || currentAttempt == totalAttempts || valueSchemaNotFoundSchemaResponse(response)
+          || abortRetryCondition.apply(response)) {
         return response;
       } else {
         LOGGER.warn(
@@ -592,13 +704,24 @@ public class ControllerClient implements Closeable {
    * extended timeout is meant for the parent controller to query each colo's child controller for the job status and
    * aggregate the results. Use {@link ControllerClient#queryJobStatus(String, Optional)} instead if the target is a
    * child controller.
+   * @param kafkaTopic, the version topic name of the push job.
+   * @param incrementalPushVersion, the optional incremental push version of the push job.
+   * @param targetedRegions, the list of regions that is separated by comma for targeted region push.
+   * @return
    */
+  public JobStatusQueryResponse queryOverallJobStatus(
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
+      String targetedRegions) {
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, 5 * QUERY_JOB_STATUS_TIMEOUT, targetedRegions);
+  }
+
   public JobStatusQueryResponse queryOverallJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, 5 * QUERY_JOB_STATUS_TIMEOUT);
+    return queryOverallJobStatus(kafkaTopic, incrementalPushVersion, null);
   }
 
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
-    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT);
+    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT, null);
   }
 
   /**
@@ -607,18 +730,42 @@ public class ControllerClient implements Closeable {
    * target is a parent controller.
    */
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
-    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT);
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, null);
   }
 
   public JobStatusQueryResponse queryJobStatus(
       String kafkaTopic,
       Optional<String> incrementalPushVersion,
-      int timeoutMs) {
+      String targetedRegions) {
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT, targetedRegions);
+  }
+
+  public JobStatusQueryResponse queryJobStatus(
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
+      int timeoutMs,
+      String targetedRegions) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     QueryParams params =
         newParams().add(NAME, storeName).add(VERSION, version).add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion);
+
+    if (StringUtils.isNotEmpty(targetedRegions)) {
+      params.add(TARGETED_REGIONS, targetedRegions);
+    }
     return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null);
+  }
+
+  /**
+   * This method will retrieve detailed job status, including uncompleted partitions and replicas from a child region.
+   * If the request is sent to a parent controller, it will be forwarded to a child controller in the specified region.
+   * This method is used for data recovery progress monitoring.
+   */
+  public JobStatusQueryResponse queryDetailedJobStatus(String kafkaTopic, String region) {
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    QueryParams params = newParams().add(NAME, storeName).add(VERSION, version).add(FABRIC, region);
+    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, QUERY_JOB_STATUS_TIMEOUT, 1, null);
   }
 
   // TODO remove passing PushJobDetails as JSON string once all VPJ plugins are updated.
@@ -720,8 +867,12 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
   }
 
-  public MultiNodesStatusResponse listInstancesStatuses() {
-    return request(ControllerRoute.ClUSTER_HEALTH_INSTANCES, newParams(), MultiNodesStatusResponse.class);
+  public MultiNodesStatusResponse listInstancesStatuses(boolean enableReplicas) {
+    QueryParams params = newParams();
+    if (enableReplicas) {
+      params.add(ENABLE_DISABLED_REPLICAS, "true");
+    }
+    return request(ControllerRoute.ClUSTER_HEALTH_INSTANCES, params, MultiNodesStatusResponse.class);
   }
 
   public MultiReplicaResponse listReplicas(String storeName, int version) {
@@ -936,7 +1087,7 @@ public class ControllerClient implements Closeable {
           ClusterStaleDataAuditResponse.class);
     } catch (Exception e) {
       return makeErrorResponse(
-          "controllerapi:ControllerClient:getClusterStaleStores - ",
+          "Failed to get stale stores in cluster: " + clusterName,
           e,
           ClusterStaleDataAuditResponse.class);
     }
@@ -967,7 +1118,7 @@ public class ControllerClient implements Closeable {
       String storeName,
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
-    try (ControllerClient client = new ControllerClient("*", discoveryUrls, sslFactory)) {
+    try (ControllerClient client = ControllerClientFactory.getControllerClient("*", discoveryUrls, sslFactory)) {
       return retryableRequest(client, retryAttempts, c -> c.discoverCluster(storeName));
     }
   }
@@ -976,28 +1127,64 @@ public class ControllerClient implements Closeable {
     List<String> urls = new ArrayList<>(this.controllerDiscoveryUrls);
     Collections.shuffle(urls);
 
+    Exception lastConnectException = null;
     Exception lastException = null;
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url: urls) {
         try {
           // Because the way to get parameter is different between controller and router, in order to support query
-          // cluster
-          // from both cluster and router, we send the path "/discover_cluster?storename=$storeName" at first, if it
-          // does
-          // not work, try "/discover_cluster/$storeName"
+          // cluster from both cluster and router, we send the path "/discover_cluster?storename=$storeName" at first,
+          // if it does not work, try "/discover_cluster/$storeName"
           try {
             QueryParams params = getQueryParamsToDiscoverCluster(storeName);
             return transport.request(url, ControllerRoute.CLUSTER_DISCOVERY, params, D2ServiceDiscoveryResponse.class);
           } catch (VeniceHttpException e) {
+            // TODO: Routers also support fetching the store name via query params. So, once sufficient time has passed,
+            // this check can be changed to break out of the loop on non-5XX errors.
+
+            // Do not attempt querying further if host explicitly returns that store was not found.
+            // If Controllers have been upgraded to recent versions, they will return the proper STORE_NOT_FOUND
+            // ErrorType.
+            if (e.getErrorType() == ErrorType.STORE_NOT_FOUND) {
+              lastException = e;
+              break;
+            }
+
+            // If Controllers have not been upgraded recently, they will return a 404 status with GENERAL_ERROR as the
+            // ErrorType.
+            if (e.getErrorType() == ErrorType.GENERAL_ERROR && e.getHttpStatusCode() == 404) {
+              lastException =
+                  new VeniceHttpException(e.getHttpStatusCode(), e.getMessage(), e, ErrorType.STORE_NOT_FOUND);
+              break;
+            }
+
             String routerPath = ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName;
             return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
           }
         } catch (Exception e) {
           LOGGER.warn("Unable to discover cluster for store {} from {}", storeName, url);
-          lastException = e;
+          if (ExceptionUtils.recursiveClassEquals(e, ConnectException.class)) {
+            lastConnectException = e;
+          } else {
+            lastException = e;
+          }
         }
       }
     }
+
+    /**
+     * During normal operation, some hosts might be down for maintenance. Over time, the host list might even get
+     * stale. So, when requests are made to hosts which no longer host venice controllers or routers,
+     * {@link ConnectException} will be thrown. When the request actually leads to an error, all active hosts in
+     * the host list will throw this error and the inactive hosts will throw the {@link ConnectException}. In such
+     * cases, the {@link ConnectException} is not actionable by the user. If after trying all controllers and routers,
+     * we still don't have any other non-{@link ConnectException}, the {@link ConnectException} is the most actionable
+     * exception, and we throw that.
+     */
+    if (lastException == null) {
+      lastException = lastConnectException;
+    }
+
     String message = "Unable to discover cluster for store " + storeName + " from " + this.controllerDiscoveryUrls;
     return makeErrorResponse(message, lastException, D2ServiceDiscoveryResponse.class);
   }
@@ -1203,7 +1390,6 @@ public class ControllerClient implements Closeable {
               "Retrying controller request, attempt = {}/{}, controller = {}, route = {}, params = {}, timeout = {}",
               attempt,
               maxAttempts,
-              timeoutMs,
               this.leaderControllerUrl,
               route.getPath(),
               params.getNameValuePairs(),

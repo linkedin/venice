@@ -2,19 +2,22 @@ package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
-import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 
 
 public class HttpsTransportClient extends HttpTransportClient {
-  private SSLFactory sslFactory;
+  private boolean requireHTTP2;
 
-  public HttpsTransportClient(String routerUrl, SSLFactory sslFactory) {
-    this(
-        routerUrl,
-        HttpAsyncClients.custom().setSSLStrategy(new SSLIOSessionStrategy(sslFactory.getSSLContext())).build());
-    this.sslFactory = sslFactory;
+  public HttpsTransportClient(
+      String routerUrl,
+      int maxConnectionsTotal,
+      int maxConnectionsPerRoute,
+      boolean requireHTTP2,
+      SSLFactory sslFactory) {
+    this(routerUrl, buildClient(routerUrl, maxConnectionsTotal, maxConnectionsPerRoute, requireHTTP2, sslFactory));
+    this.maxConnectionsTotal = maxConnectionsTotal;
+    this.maxConnectionsPerRoute = maxConnectionsPerRoute;
+    this.requireHTTP2 = requireHTTP2;
   }
 
   public HttpsTransportClient(String routerUrl, CloseableHttpAsyncClient client) {
@@ -24,12 +27,7 @@ public class HttpsTransportClient extends HttpTransportClient {
     }
   }
 
-  /**
-   * The same {@link CloseableHttpAsyncClient} could not be used to send out another request in its own callback function.
-   * @return
-   */
-  @Override
-  public TransportClient getCopyIfNotUsableInCallback() {
-    return new HttpsTransportClient(routerUrl, sslFactory);
+  public boolean isRequireHTTP2() {
+    return requireHTTP2;
   }
 }

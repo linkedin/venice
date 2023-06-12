@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -49,13 +50,14 @@ public class TestInstanceRemovable {
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testIsInstanceRemovableDuringPush() {
-    String storeName = Utils.getUniqueString("testLeaderControllerFailover");
+    String storeName = Utils.getUniqueString("testIsInstanceRemovableDuringPush");
     int partitionCount = 2;
-    int dataSize = partitionCount * partitionSize;
+    long storageQuota = (long) partitionCount * partitionSize;
 
     cluster.getNewStore(storeName);
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
 
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
 
@@ -79,20 +81,26 @@ public class TestInstanceRemovable {
       int serverPort3 = cluster.getVeniceServers().get(2).getPort();
 
       try (ControllerClient client = new ControllerClient(clusterName, urls)) {
-        Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort1)).isRemovable());
-        Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
-        Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
+        Assert.assertTrue(
+            client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1)).isRemovable());
+        Assert.assertTrue(
+            client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
+        Assert.assertTrue(
+            client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3)).isRemovable());
 
         /*
          * This is the same scenario as we would do later in the following test steps.
          * If hosts serverPort1 and serverPort2 were stopped, host serverPort3 would still be removable.
          */
-        Assert.assertTrue(
-            client
-                .isNodeRemovable(
-                    Utils.getHelixNodeIdentifier(serverPort3),
-                    Arrays.asList(Utils.getHelixNodeIdentifier(serverPort1), Utils.getHelixNodeIdentifier(serverPort2)))
-                .isRemovable());
+        Assert
+            .assertTrue(
+                client
+                    .isNodeRemovable(
+                        Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3),
+                        Arrays.asList(
+                            Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1),
+                            Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)))
+                    .isRemovable());
 
         // stop a server during push
         cluster.stopVeniceServer(serverPort1);
@@ -101,8 +109,10 @@ public class TestInstanceRemovable {
             TimeUnit.SECONDS,
             () -> cluster.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 4);
         // could remove the rest of nodes as well
-        Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
-        Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
+        Assert.assertTrue(
+            client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
+        Assert.assertTrue(
+            client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3)).isRemovable());
         // stop one more server
         cluster.stopVeniceServer(serverPort2);
         TestUtils.waitForNonDeterministicCompletion(
@@ -110,7 +120,8 @@ public class TestInstanceRemovable {
             TimeUnit.SECONDS,
             () -> cluster.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 2);
         // Even if there are no alive storage nodes, push should not fail.
-        Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
+        Assert.assertTrue(
+            client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3)).isRemovable());
         // Add the storage servers back and the ingestion should still be able to complete.
         cluster.addVeniceServer(new Properties(), new Properties());
         cluster.addVeniceServer(new Properties(), new Properties());
@@ -129,13 +140,14 @@ public class TestInstanceRemovable {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testIsInstanceRemovableAfterPush() {
-    String storeName = Utils.getUniqueString("testLeaderControllerFailover");
+    String storeName = Utils.getUniqueString("testIsInstanceRemovableAfterPush");
     int partitionCount = 2;
-    int dataSize = partitionCount * partitionSize;
+    long storageQuota = (long) partitionCount * partitionSize;
 
     cluster.getNewStore(storeName);
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
 
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
 
@@ -168,18 +180,19 @@ public class TestInstanceRemovable {
      * 3. If serverPort1 were stopped, host serverPort3 is non-removable.
      */
     try (ControllerClient client = new ControllerClient(clusterName, urls)) {
-      Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort1)).isRemovable());
+      Assert.assertTrue(
+          client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1)).isRemovable());
       Assert.assertFalse(
           client
               .isNodeRemovable(
-                  Utils.getHelixNodeIdentifier(serverPort2),
-                  Arrays.asList(Utils.getHelixNodeIdentifier(serverPort1)))
+                  Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2),
+                  Arrays.asList(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1)))
               .isRemovable());
       Assert.assertFalse(
           client
               .isNodeRemovable(
-                  Utils.getHelixNodeIdentifier(serverPort3),
-                  Arrays.asList(Utils.getHelixNodeIdentifier(serverPort1)))
+                  Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3),
+                  Arrays.asList(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1)))
               .isRemovable());
     }
 
@@ -190,9 +203,12 @@ public class TestInstanceRemovable {
         () -> cluster.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 4);
     // Can not remove node cause, it will trigger re-balance.
     try (ControllerClient client = new ControllerClient(clusterName, urls)) {
-      Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort1)).isRemovable());
-      Assert.assertFalse(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
-      Assert.assertFalse(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
+      Assert.assertTrue(
+          client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1)).isRemovable());
+      Assert.assertFalse(
+          client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
+      Assert.assertFalse(
+          client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3)).isRemovable());
 
       VeniceServerWrapper newServer = cluster.addVeniceServer(false, false);
       int serverPort4 = newServer.getPort();
@@ -201,31 +217,34 @@ public class TestInstanceRemovable {
           TimeUnit.SECONDS,
           () -> cluster.getLeaderVeniceController()
               .getVeniceAdmin()
-              .getReplicasOfStorageNode(clusterName, Utils.getHelixNodeIdentifier(serverPort4))
+              .getReplicasOfStorageNode(clusterName, Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort4))
               .size() == 2);
       // After replica number back to 3, all of node could be removed.
-      Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
-      Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
-      Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort4)).isRemovable());
+      Assert.assertTrue(
+          client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2)).isRemovable());
+      Assert.assertTrue(
+          client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3)).isRemovable());
+      Assert.assertTrue(
+          client.isNodeRemovable(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort4)).isRemovable());
 
       // After adding a new server, all servers are removable, even serverPort1 is still stopped.
       Assert.assertTrue(
           client
               .isNodeRemovable(
-                  Utils.getHelixNodeIdentifier(serverPort2),
-                  Arrays.asList(Utils.getHelixNodeIdentifier(serverPort1)))
+                  Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2),
+                  Arrays.asList(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1)))
               .isRemovable());
       Assert.assertTrue(
           client
               .isNodeRemovable(
-                  Utils.getHelixNodeIdentifier(serverPort3),
-                  Arrays.asList(Utils.getHelixNodeIdentifier(serverPort1)))
+                  Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3),
+                  Arrays.asList(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1)))
               .isRemovable());
       Assert.assertTrue(
           client
               .isNodeRemovable(
-                  Utils.getHelixNodeIdentifier(serverPort4),
-                  Arrays.asList(Utils.getHelixNodeIdentifier(serverPort1)))
+                  Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort4),
+                  Arrays.asList(Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1)))
               .isRemovable());
 
       // Test if all instances of a partition are removed via a combination of locked instances and the requested node.
@@ -233,11 +252,11 @@ public class TestInstanceRemovable {
           .assertFalse(
               client
                   .isNodeRemovable(
-                      Utils.getHelixNodeIdentifier(serverPort4),
+                      Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort4),
                       Arrays.asList(
-                          Utils.getHelixNodeIdentifier(serverPort1),
-                          Utils.getHelixNodeIdentifier(serverPort2),
-                          Utils.getHelixNodeIdentifier(serverPort3)))
+                          Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort1),
+                          Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort2),
+                          Utils.getHelixNodeIdentifier(Utils.getHostName(), serverPort3)))
                   .isRemovable());
     }
   }

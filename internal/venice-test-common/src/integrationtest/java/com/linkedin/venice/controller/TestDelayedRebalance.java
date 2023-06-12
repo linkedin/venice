@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
@@ -107,7 +108,8 @@ public class TestDelayedRebalance {
     PartitionAssignment partitionAssignment =
         cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     Assert.assertNull(
-        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)));
+        partitionAssignment.getPartition(0)
+            .getHelixStateByInstanceId(Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort)));
   }
 
   @Test
@@ -157,9 +159,11 @@ public class TestDelayedRebalance {
       RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
       Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
       Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 2);
-      String instanceId = Utils.getHelixNodeIdentifier(failServerPort);
+      String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort);
       Assert.assertNull(
-          routingDataRepository.getPartitionAssignments(topicName).getPartition(0).getInstanceStatusById(instanceId));
+          routingDataRepository.getPartitionAssignments(topicName)
+              .getPartition(0)
+              .getHelixStateByInstanceId(instanceId));
     });
   }
 
@@ -200,8 +204,9 @@ public class TestDelayedRebalance {
         cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     // The restart server get the original replica and become ONLINE again.
     Assert.assertEquals(
-        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)),
-        ExecutionStatus.COMPLETED.name());
+        partitionAssignment.getPartition(0)
+            .getExecutionStatusByInstanceId(Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort)),
+        ExecutionStatus.COMPLETED);
   }
 
   private int stopAServer(String topicName) {
@@ -214,10 +219,12 @@ public class TestDelayedRebalance {
   private String createVersionAndPushData() {
     String storeName = Utils.getUniqueString("TestDelayedRebalance");
     int partitionCount = 1;
-    int dataSize = partitionCount * partitionSize;
 
     cluster.getNewStore(storeName);
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    cluster.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setStorageQuotaInByte((long) partitionCount * partitionSize));
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
 

@@ -29,6 +29,9 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -54,7 +57,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   private final MainIngestionRequestClient mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
+  private final ExecutorService completionReportHandlingExecutor = Executors.newFixedThreadPool(10);
   private Process isolatedIngestionServiceProcess;
+  private AtomicBoolean isShuttingDown = new AtomicBoolean(false);
 
   public IsolatedIngestionBackend(
       VeniceConfigLoader configLoader,
@@ -110,7 +115,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         topicName,
         partition,
         STOP_CONSUMPTION,
-        () -> mainIngestionRequestClient.stopConsumption(storeConfig.getStoreVersionName(), partition),
+        () -> getMainIngestionRequestClient().stopConsumption(storeConfig.getStoreVersionName(), partition),
         () -> super.stopConsumption(storeConfig, partition));
   }
 
@@ -151,21 +156,24 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
-    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
-    executeCommandWithRetry(
-        topicName,
-        partition,
-        REMOVE_PARTITION,
-        () -> mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition),
-        () -> {
-          super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
-          // Clean up the topic partition ingestion status.
-          mainIngestionRequestClient.resetTopicPartition(topicName, partition);
-        });
-    if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
+    executeCommandWithRetry(topicName, partition, REMOVE_PARTITION, () -> {
+      boolean result = getMainIngestionRequestClient().removeTopicPartition(topicName, partition);
+      // We will only clean up topic partition status if the remote execution is successful.
+      if (result) {
+        getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
+        getMainIngestionRequestClient().resetTopicPartition(topicName, partition);
+      }
+      return result;
+    }, () -> {
+      removeTopicPartitionLocally(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
+      // We will only clean up topic partition status if the local execution is successful.
+      getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
+      getMainIngestionRequestClient().resetTopicPartition(topicName, partition);
+    });
+    if (getMainIngestionMonitorService().getTopicPartitionCount(topicName) == 0) {
       LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
-      mainIngestionRequestClient.removeStorageEngine(topicName);
-      mainIngestionMonitorService.cleanupTopicState(topicName);
+      getMainIngestionMonitorService().cleanupTopicState(topicName);
+      getMainIngestionRequestClient().removeStorageEngine(topicName);
     }
   }
 
@@ -180,6 +188,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   public void killConsumptionTask(String topicName) {
     mainIngestionRequestClient.killConsumptionTask(topicName);
     super.killConsumptionTask(topicName);
+    mainIngestionMonitorService.cleanupTopicState(topicName);
+  }
+
+  @Override
+  public void shutdownIngestionTask(String topicName) {
+    mainIngestionRequestClient.shutdownIngestionTask(topicName);
+    super.shutdownIngestionTask(topicName);
     mainIngestionMonitorService.cleanupTopicState(topicName);
   }
 
@@ -215,6 +230,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     }
   }
 
+  @Override
+  public void prepareForShutdown() {
+    isShuttingDown.set(true);
+  }
+
   public void setIsolatedIngestionServiceProcess(Process process) {
     isolatedIngestionServiceProcess = process;
   }
@@ -227,8 +247,25 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     return mainIngestionMonitorService;
   }
 
+  public MainIngestionRequestClient getMainIngestionRequestClient() {
+    return mainIngestionRequestClient;
+  }
+
+  public boolean isShuttingDown() {
+    return isShuttingDown.get();
+  }
+
+  void removeTopicPartitionLocally(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      int timeoutInSeconds,
+      boolean removeEmptyStorageEngine) {
+    super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
+  }
+
   public void close() {
     try {
+      completionReportHandlingExecutor.shutdownNow();
       mainIngestionMonitorService.stopInner();
       mainIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.KAFKA_INGESTION_SERVICE);
       mainIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.STORAGE_SERVICE);
@@ -240,17 +277,32 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     }
   }
 
-  private boolean isTopicPartitionHostedInMainProcess(String topicName, int partition) {
+  boolean isTopicPartitionHostedInMainProcess(String topicName, int partition) {
     return getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.MAIN);
   }
 
-  private boolean isTopicPartitionIngesting(String topicName, int partition) {
+  boolean isTopicPartitionHosted(String topicName, int partition) {
     return !getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.NOT_EXIST);
   }
 
-  private VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
+  ExecutorService getCompletionHandlingExecutor() {
+    return completionReportHandlingExecutor;
+  }
+
+  VeniceConfigLoader getConfigLoader() {
+    return configLoader;
+  }
+
+  void startConsumptionLocally(
+      VeniceStoreVersionConfig storeVersionConfig,
+      int partition,
+      Optional<LeaderFollowerStateType> leaderState) {
+    super.startConsumption(storeVersionConfig, partition, leaderState);
+  }
+
+  VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
       public void completed(
@@ -259,12 +311,28 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
           long offset,
           String message,
           Optional<LeaderFollowerStateType> leaderState) {
-        if (isTopicPartitionIngesting(kafkaTopic, partition)) {
-          VeniceStoreVersionConfig config = configLoader.getStoreConfig(kafkaTopic);
-          config.setRestoreDataPartitions(false);
-          config.setRestoreMetadataPartition(false);
-          // Start partition consumption locally.
-          startConsumption(config, partition, leaderState);
+        // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
+        if (isTopicPartitionHosted(kafkaTopic, partition)) {
+          getCompletionHandlingExecutor().submit(() -> {
+            /**
+             * Start partition consumption locally.
+             * If any error happens when starting the consumption, error will be reported.
+             */
+            try {
+              VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
+              config.setRestoreDataPartitions(false);
+              config.setRestoreMetadataPartition(false);
+              startConsumptionLocally(config, partition, leaderState);
+            } catch (Exception e) {
+              notifier.error(
+                  kafkaTopic,
+                  partition,
+                  "Failed to resume the ingestion in main process for topic: " + kafkaTopic,
+                  e);
+            } finally {
+              getMainIngestionMonitorService().setVersionPartitionToLocalIngestion(kafkaTopic, partition);
+            }
+          });
         } else {
           LOGGER.error(
               "Partition: {} of topic: {} is not assigned to this host, will not resume the ingestion on main process.",
@@ -283,7 +351,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       Runnable localCommandRunnable) {
     do {
       if (isTopicPartitionHostedInMainProcess(topicName, partition)
-          || (!isTopicPartitionIngesting(topicName, partition) && command != START_CONSUMPTION)) {
+          || (!isTopicPartitionHosted(topicName, partition) && command != START_CONSUMPTION)) {
         LOGGER.info(
             "Executing command {} of topic: {}, partition: {} in main process process.",
             command,
@@ -338,6 +406,19 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         localCommandRunnable.run();
         return;
       }
+      /**
+       * This is an extra safeguard during server shutdown to make sure we will not stuck in any state transition when
+       * resource metadata is out of sync between main and child process. We will log and skip the stopConsumption action.
+       * In fact, the resources will actually be stopped when {@link KafkaStoreIngestionService} is stopped in both
+       * processed.
+       */
+      if (isShuttingDown()) {
+        LOGGER.warn(
+            "Command {} rejected by remote ingestion process, but will not retry since server is shutting down.",
+            command);
+        return;
+      }
+
       LOGGER.info(
           "Command {} rejected by remote ingestion process, will retry in {} ms.",
           command,

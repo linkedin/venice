@@ -19,7 +19,6 @@ import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -68,9 +67,17 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private RecordSerializer<MultiGetRouterRequestKeyV1> multiGetSerializer;
 
   public DispatchingAvroGenericStoreClient(StoreMetadata metadata, ClientConfig config) {
+    this(metadata, config, new R2TransportClient(config.getR2Client()));
+  }
+
+  // Visible for testing
+  public DispatchingAvroGenericStoreClient(
+      StoreMetadata metadata,
+      ClientConfig config,
+      TransportClient transportClient) {
     this.metadata = metadata;
     this.config = config;
-    this.transportClient = new R2TransportClient(config.getR2Client());
+    this.transportClient = transportClient;
 
     if (config.isSpeculativeQueryEnabled()) {
       this.requiredReplicaCount = 2;
@@ -90,7 +97,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     int currentVersion = getCurrentVersion();
     String resourceName = getResourceName(currentVersion);
     long beforeSerializationTimeStamp = System.nanoTime();
-    byte[] keyBytes = keySerializer.serialize(key, AvroSerializer.REUSE.get());
+    byte[] keyBytes = keySerializer.serialize(key);
     requestContext.requestSerializationTime = getLatencyInNS(beforeSerializationTimeStamp);
     int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
     String b64EncodedKeyBytes = EncodingUtils.base64EncodeToString(keyBytes);
@@ -127,6 +134,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+    verifyMetadataInitialized();
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
     if (requestContext.requestUri == null) {
       /**
@@ -273,16 +281,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   /**
-   * This implementation is for future use. It will get wired in via
-   * InternalAvroStoreClient.batchGet(Set<K> keys)
-   * @param requestContext
-   * @param keys
-   * @return
-   * @throws VeniceClientException
+   * batchGet using streamingBatchGet implementation
    */
   @Override
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
+    verifyMetadataInitialized();
     CompletableFuture<Map<K, V>> responseFuture = new CompletableFuture<>();
     CompletableFuture<VeniceResponseMap<K, V>> streamingResponseFuture = streamingBatchGet(requestContext, keys);
     streamingResponseFuture.whenComplete((response, throwable) -> {
@@ -308,6 +312,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) throws VeniceClientException {
+    verifyMetadataInitialized();
     // keys that do not exist in the storage nodes
     Queue<K> nonExistingKeys = new ConcurrentLinkedQueue<>();
     VeniceConcurrentHashMap<K, V> valueMap = new VeniceConcurrentHashMap<>();
@@ -321,6 +326,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         if (value == null) {
           nonExistingKeys.add(key);
         } else {
+          requestContext.successRequestKeyCount.incrementAndGet();
           valueMap.put(key, value);
         }
       }
@@ -353,7 +359,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) {
-
+    verifyMetadataInitialized();
     /* This implementation is intentionally designed to separate the request phase (scatter) and the response handling
      * phase (gather). These internal methods help to keep this separation and leaves room for future fine-grained control. */
     streamingBatchGetInternal(requestContext, keys, (transportClientResponse, throwable) -> {
@@ -395,9 +401,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     String uriForBatchGetRequest = composeURIForBatchGetRequest(requestContext);
     int currentVersion = requestContext.currentVersion;
     Map<Integer, List<String>> partitionRouteMap = new HashMap<>();
-    RecordSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
     for (K key: keys) {
-      byte[] keyBytes = keySerializer.serialize(key, reusableObjects);
+      byte[] keyBytes = keySerializer.serialize(key);
       // For each key determine partition
       int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
       // Find routes for each partition
@@ -576,12 +581,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   private byte[] serializeMultiGetRequest(List<BatchGetRequestContext.KeyInfo<K>> keyList) {
     List<MultiGetRouterRequestKeyV1> routerRequestKeys = new ArrayList<>(keyList.size());
-    AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
     BatchGetRequestContext.KeyInfo<K> keyInfo;
     for (int i = 0; i < keyList.size(); i++) {
       keyInfo = keyList.get(i);
       MultiGetRouterRequestKeyV1 routerRequestKey = new MultiGetRouterRequestKeyV1();
-      byte[] keyBytes = keySerializer.serialize(keyInfo.getKey(), reusableObjects);
+      byte[] keyBytes = keySerializer.serialize(keyInfo.getKey());
       ByteBuffer keyByteBuffer = ByteBuffer.wrap(keyBytes);
       routerRequestKey.keyBytes = keyByteBuffer;
       routerRequestKey.keyIndex = i;
@@ -595,11 +599,20 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return System.nanoTime() - startTimeStamp;
   }
 
+  public void verifyMetadataInitialized() throws VeniceClientException {
+    if (!metadata.isReady()) {
+      throw new VeniceClientException(metadata.getStoreName() + " metadata is not ready, attempting to re-initialize");
+    }
+    // initialize keySerializer here as it depends on the metadata's key schema
+    if (keySerializer == null) {
+      keySerializer = getKeySerializer(getKeySchema());
+    }
+  }
+
   @Override
   public void start() throws VeniceClientException {
     metadata.start();
-    // Initialize key serializer after metadata.start().
-    this.keySerializer = getKeySerializer(getKeySchema());
+
     this.multiGetSerializer =
         FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
   }
@@ -632,4 +645,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return metadata.getLatestValueSchema();
   }
 
+  // Visible for testing
+  public RecordSerializer<K> getKeySerializer() {
+    return keySerializer;
+  }
+
+  // Visible for testing
+  public RecordSerializer<MultiGetRouterRequestKeyV1> getMultiGetSerializer() {
+    return multiGetSerializer;
+  }
 }

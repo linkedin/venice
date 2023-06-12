@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
@@ -22,11 +21,15 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -37,6 +40,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.io.IOException;
@@ -56,8 +60,9 @@ public interface Admin extends AutoCloseable, Closeable {
   class OfflinePushStatusInfo {
     private ExecutionStatus executionStatus;
     private Map<String, String> extraInfo;
-    private Optional<String> statusDetails;
+    private String statusDetails;
     private Map<String, String> extraDetails;
+    private List<UncompletedPartition> uncompletedPartitions;
 
     /** N.B.: Test-only constructor ): */
     public OfflinePushStatusInfo(ExecutionStatus executionStatus) {
@@ -66,11 +71,11 @@ public interface Admin extends AutoCloseable, Closeable {
 
     /** N.B.: Test-only constructor ): */
     public OfflinePushStatusInfo(ExecutionStatus executionStatus, Map<String, String> extraInfo) {
-      this(executionStatus, extraInfo, Optional.empty(), new HashMap<>());
+      this(executionStatus, extraInfo, null, new HashMap<>());
     }
 
     /** Used by single datacenter (child) controllers, hence, no extra info nor extra details */
-    public OfflinePushStatusInfo(ExecutionStatus executionStatus, Optional<String> statusDetails) {
+    public OfflinePushStatusInfo(ExecutionStatus executionStatus, String statusDetails) {
       this(executionStatus, new HashMap<>(), statusDetails, new HashMap<>());
     }
 
@@ -78,7 +83,7 @@ public interface Admin extends AutoCloseable, Closeable {
     public OfflinePushStatusInfo(
         ExecutionStatus executionStatus,
         Map<String, String> extraInfo,
-        Optional<String> statusDetails,
+        String statusDetails,
         Map<String, String> extraDetails) {
       this.executionStatus = executionStatus;
       this.extraInfo = extraInfo;
@@ -94,12 +99,20 @@ public interface Admin extends AutoCloseable, Closeable {
       return extraInfo;
     }
 
-    public Optional<String> getStatusDetails() {
+    public String getStatusDetails() {
       return statusDetails;
     }
 
     public Map<String, String> getExtraDetails() {
       return extraDetails;
+    }
+
+    public List<UncompletedPartition> getUncompletedPartitions() {
+      return uncompletedPartitions;
+    }
+
+    public void setUncompletedPartitions(List<UncompletedPartition> uncompletedPartitions) {
+      this.uncompletedPartitions = uncompletedPartitions;
     }
   }
 
@@ -196,7 +209,41 @@ public interface Admin extends AutoCloseable, Closeable {
         Optional.empty(),
         -1,
         Optional.empty(),
-        false);
+        false,
+        null);
+  }
+
+  default Version incrementVersionIdempotent(
+      String clusterName,
+      String storeName,
+      String pushJobId,
+      int numberOfPartitions,
+      int replicationFactor,
+      Version.PushType pushType,
+      boolean sendStartOfPush,
+      boolean sorted,
+      String compressionDictionary,
+      Optional<String> sourceGridFabric,
+      Optional<X509Certificate> requesterCert,
+      long rewindTimeInSecondsOverride,
+      Optional<String> emergencySourceRegion,
+      boolean versionSwapDeferred) {
+    return incrementVersionIdempotent(
+        clusterName,
+        storeName,
+        pushJobId,
+        numberOfPartitions,
+        replicationFactor,
+        pushType,
+        sendStartOfPush,
+        sorted,
+        compressionDictionary,
+        sourceGridFabric,
+        requesterCert,
+        rewindTimeInSecondsOverride,
+        emergencySourceRegion,
+        versionSwapDeferred,
+        null);
   }
 
   Version incrementVersionIdempotent(
@@ -213,7 +260,8 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
-      boolean versionSwapDeferred);
+      boolean versionSwapDeferred,
+      String targetedRegions);
 
   String getRealTimeTopic(String clusterName, String storeName);
 
@@ -282,7 +330,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr);
 
-  Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr);
+  GeneratedSchemaID getDerivedSchemaId(String clusterName, String storeName, String schemaStr);
 
   SchemaEntry getValueSchema(String clusterName, String storeName, int id);
 
@@ -402,9 +450,9 @@ public interface Admin extends AutoCloseable, Closeable {
   OfflinePushStatusInfo getOffLinePushStatus(
       String clusterName,
       String kafkaTopic,
-      Optional<String> incrementalPushVersion);
-
-  Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic);
+      Optional<String> incrementalPushVersion,
+      String region,
+      String targetedRegions);
 
   /**
    * Return the ssl or non-ssl bootstrap servers based on the given flag.
@@ -418,7 +466,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String clusterName,
       Store store,
       Optional<String> sourceGridFabric,
-      Optional<String> emergencySourceRegion);
+      Optional<String> emergencySourceRegion,
+      String targetedRegions);
 
   /**
    * Return whether ssl is enabled for the given store for push.
@@ -440,9 +489,9 @@ public interface Admin extends AutoCloseable, Closeable {
   boolean isLeaderControllerFor(String clusterName);
 
   /**
-  * Calculate how many partitions are needed for the given store and size.
+  * Calculate how many partitions are needed for the given store.
   */
-  int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize);
+  int calculateNumberOfPartitions(String clusterName, String storeName);
 
   int getReplicationFactor(String clusterName, String storeName);
 
@@ -561,13 +610,20 @@ public interface Admin extends AutoCloseable, Closeable {
   Pair<String, String> discoverCluster(String storeName);
 
   /**
+   * Find the server d2 service associated with a given cluster name.
+   */
+  String getServerD2Service(String clusterName);
+
+  /**
    * Find the store versions which have at least one bootstrap replica.
    */
   Map<String, String> findAllBootstrappingVersions(String clusterName);
 
   VeniceWriterFactory getVeniceWriterFactory();
 
-  ControllerKafkaClientFactory getVeniceConsumerFactory();
+  PubSubConsumerAdapterFactory getVeniceConsumerFactory();
+
+  VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress);
 
   void close();
 
@@ -874,4 +930,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   default void clearInstanceMonitor(String clusterName) {
   }
+
+  Optional<PushStatusStoreReader> getPushStatusStoreReader();
 }

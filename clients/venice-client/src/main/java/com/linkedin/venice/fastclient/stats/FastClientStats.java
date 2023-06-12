@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient.stats;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.StatsUtils;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -40,6 +41,9 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   private final Sensor longTailRetryRequestSensor;
   private final Sensor errorRetryRequestSensor;
   private final Sensor retryRequestWinSensor;
+
+  private final Sensor metadataStalenessSensor;
+  private long cacheTimeStampInMs = 0;
 
   // Routing stats
   private final Map<String, RouteStats> perRouteStats = new VeniceConcurrentHashMap<>();
@@ -80,6 +84,14 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     this.longTailRetryRequestSensor = registerSensor("long_tail_retry_request", new OccurrenceRate());
     this.errorRetryRequestSensor = registerSensor("error_retry_request", new OccurrenceRate());
     this.retryRequestWinSensor = registerSensor("retry_request_win", new OccurrenceRate());
+
+    this.metadataStalenessSensor = registerSensor("metadata_staleness_high_watermark_ms", new Gauge(() -> {
+      if (this.cacheTimeStampInMs == 0) {
+        return Double.NaN;
+      } else {
+        return System.currentTimeMillis() - this.cacheTimeStampInMs;
+      }
+    }));
   }
 
   public void recordNoAvailableReplicaRequest() {
@@ -154,6 +166,10 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
 
   public void recordRetryRequestWin() {
     retryRequestWinSensor.record();
+  }
+
+  public void updateCacheTimestamp(long cacheTimeStampInMs) {
+    this.cacheTimeStampInMs = cacheTimeStampInMs;
   }
 
   /**

@@ -195,11 +195,19 @@ public class ControllerApiConstants {
 
   public static final String KAFKA_TOPIC_LOG_COMPACTION_ENABLED = "kafka.topic.log.compaction.enabled";
   public static final String KAFKA_TOPIC_RETENTION_IN_MS = "kafka.topic.retention.in.ms";
-
+  public static final String KAFKA_TOPIC_MIN_IN_SYNC_REPLICA = "kafka.topic.min.in.sync.replica";
   public static final String UPSTREAM_OFFSET = "upstream_offset";
 
   public static final String PERSONA_NAME = "persona_name";
   public static final String PERSONA_OWNERS = "persona_owners";
   public static final String PERSONA_STORES = "persona_stores";
   public static final String PERSONA_QUOTA = "persona_quota";
+  public static final String LATEST_SUPERSET_SCHEMA_ID = "latest_superset_schema_id";
+  public static final String ENABLE_DISABLED_REPLICAS = "enable_disabled_replicas";
+
+  /**
+   * String representation of the list of regions that is separated by comma for targeted region push
+   */
+  public static final String TARGETED_REGIONS = "targeted_regions";
+
 }

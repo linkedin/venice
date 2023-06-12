@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
@@ -17,6 +18,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_P
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
@@ -63,9 +66,13 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -121,7 +128,7 @@ public class TestPushJobWithNativeReplication {
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
                                                                                                          // "venice-cluster1",
                                                                                                          // ...];
-  private final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
+  private static final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
 
   private static final String VPJ_HEARTBEAT_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"
   private static final String VPJ_HEARTBEAT_STORE_NAME =
@@ -130,6 +137,8 @@ public class TestPushJobWithNativeReplication {
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -152,10 +161,12 @@ public class TestPushJobWithNativeReplication {
     serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "1");
 
     Properties controllerProps = new Properties();
-    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
+    // This property is required for test stores that have 10 partitions
+    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10);
     controllerProps
         .put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_CLUSTER);
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
+    controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-0");
 
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
@@ -181,6 +192,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
   public void testNativeReplicationForBatchPush(int recordCount, int partitionCount) throws Exception {
     motherOfAllTests(
+        "testNativeReplicationForBatchPush",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount).setAmplificationFactor(2),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -225,10 +237,12 @@ public class TestPushJobWithNativeReplication {
             Assert.assertFalse(partitionIds.isEmpty());
             int partitionId = partitionIds.iterator().next();
             // Get the end offset of the selected partition from version topic
+            PubSubTopicPartition versionTopicPartition =
+                new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), partitionId);
             long latestOffsetInVersionTopic = childDataCenter.getRandomController()
                 .getVeniceAdmin()
                 .getTopicManager()
-                .getPartitionLatestOffsetAndRetry(versionTopic, partitionId, 5);
+                .getPartitionLatestOffsetAndRetry(versionTopicPartition, 5);
             // Get the offset metadata of the selected partition from storage node
             StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
             OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);
@@ -242,6 +256,7 @@ public class TestPushJobWithNativeReplication {
   public void testNativeReplicationWithLeadershipHandover() throws Exception {
     int recordCount = 10000;
     motherOfAllTests(
+        "testNativeReplicationWithLeadershipHandover",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1).setAmplificationFactor(2),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -302,6 +317,7 @@ public class TestPushJobWithNativeReplication {
   public void testNativeReplicationWithIngestionIsolationInDaVinci() throws Exception {
     int recordCount = 100;
     motherOfAllTests(
+        "testNativeReplicationWithIngestionIsolationInDaVinci",
         updateStoreParams -> updateStoreParams.setPartitionCount(2).setAmplificationFactor(2),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -310,9 +326,6 @@ public class TestPushJobWithNativeReplication {
             // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
             Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
           }
-
-          // Setup meta system store for Da Vinci usage.
-          TestUtils.createMetaSystemStore(parentControllerClient, storeName, Optional.of(LOGGER));
 
           // Test Da-vinci client is able to consume from NR region which is consuming remotely
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
@@ -335,6 +348,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT)
   public void testNativeReplicationForHybrid() throws Exception {
     motherOfAllTests(
+        "testNativeReplicationForHybrid",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setAmplificationFactor(2)
             .setHybridRewindSeconds(TEST_TIMEOUT)
@@ -414,6 +428,7 @@ public class TestPushJobWithNativeReplication {
     File inputDirInc = getTempDataDirectory();
 
     motherOfAllTests(
+        "testNativeReplicationForIncrementalPush",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridOffsetLagThreshold(TEST_TIMEOUT)
             .setHybridRewindSeconds(2L)
@@ -441,6 +456,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
   public void testActiveActiveForHeartbeatSystemStores(int recordCount, int partitionCount) throws Exception {
     motherOfAllTests(
+        "testActiveActiveForHeartbeatSystemStores",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount)
             .setIncrementalPushEnabled(true),
         recordCount,
@@ -509,26 +525,9 @@ public class TestPushJobWithNativeReplication {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testNativeReplicationForSourceOverride() throws Exception {
-    motherOfAllTests(
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
-        100,
-        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          UpdateStoreQueryParams updateStoreParams =
-              new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc-1");
-          TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
-
-          try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
-            job.run();
-            // Verify the kafka URL being returned to the push job is the same as dc-1 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
-          }
-        });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void testClusterLevelAdminCommandForNativeReplication() throws Exception {
     motherOfAllTests(
+        "testClusterLevelAdminCommandForNativeReplication",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         10,
         (parentControllerClient, clusterName, batchOnlyStoreName, props, inputDir) -> {
@@ -694,6 +693,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT)
   public void testMultiDataCenterRePushWithIncrementalPush() throws Exception {
     motherOfAllTests(
+        "testMultiDataCenterRePushWithIncrementalPush",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -780,13 +780,15 @@ public class TestPushJobWithNativeReplication {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testEmptyPush(boolean toParent) {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = Utils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("testEmptyPush");
     String parentControllerUrl = parentControllers.get(0).getControllerUrl();
     String childControllerUrl = childDatacenters.get(0).getControllerConnectString();
 
     // Create store first
     try (ControllerClient controllerClientToParent = new ControllerClient(clusterName, parentControllerUrl)) {
       assertCommand(controllerClientToParent.createNewStore(storeName, "test_owner", "\"int\"", "\"int\""));
+      assertCommand(
+          controllerClientToParent.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(1000)));
     }
 
     try (ControllerClient controllerClient =
@@ -807,7 +809,7 @@ public class TestPushJobWithNativeReplication {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("testPushDirectlyToChildColo");
     Properties props = IntegrationTestPushUtils.defaultVPJProps(childDatacenters.get(0), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
@@ -817,7 +819,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT)
   public void testControllerBlocksConcurrentBatchPush() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = Utils.getUniqueString("blocksConcurrentBatchPush");
+    String storeName = Utils.getUniqueString("testControllerBlocksConcurrentBatchPush");
     String pushId1 = Utils.getUniqueString(storeName + "_push");
     String pushId2 = Utils.getUniqueString(storeName + "_push");
     String parentControllerUrl = parentControllers.get(0).getControllerUrl();
@@ -825,6 +827,7 @@ public class TestPushJobWithNativeReplication {
     // Create store first
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl)) {
       controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+      controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(100));
 
       assertCommand(
           controllerClient.requestTopicForWrites(
@@ -860,6 +863,91 @@ public class TestPushJobWithNativeReplication {
     }
   }
 
+  /**
+   * The targeted region push should only push to the source region defined in the native replication, other regions should
+   * not receive any data.
+   * @throws IOException
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testTargetedRegionPushJob() throws Exception {
+    motherOfAllTests(
+        "testTargetedRegionPushJob",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        100,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+          // start a regular push job
+          try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
+            job.run();
+            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
+            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              // Current version should become 1 at both 2 data centers
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 1);
+              }
+            });
+          }
+
+          // start a targeted region push which should only increase the version to 2 in dc-0
+          props.put(TARGETED_REGION_PUSH_ENABLED, true);
+          try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              Map<String, Integer> coloVersions =
+                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+              coloVersions.forEach((colo, version) -> {
+                if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
+                  Assert.assertEquals((int) version, 2);
+                } else {
+                  Assert.assertEquals((int) version, 1);
+                }
+              });
+            });
+          }
+
+          // specify two regions, so both dc-0 and dc-1 is updated to version 3
+          props.setProperty(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
+          try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              // Current version should become 1 at both 2 data centers
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 3);
+              }
+            });
+          }
+
+          // emergency source is dc-0 so dc-1 isn't selected to be the source fabric but the push should still complete
+          props.setProperty(TARGETED_REGION_PUSH_LIST, "dc-1");
+          try (VenicePushJob job = new VenicePushJob("Test push job 4", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              Map<String, Integer> coloVersions =
+                  parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+              coloVersions.forEach((colo, version) -> {
+                if (colo.equals("dc-1")) {
+                  Assert.assertEquals((int) version, 4);
+                } else {
+                  Assert.assertEquals((int) version, 3);
+                }
+              });
+            });
+          }
+        });
+  }
+
   private interface NativeReplicationTest {
     void run(
         ControllerClient parentControllerClient,
@@ -870,6 +958,7 @@ public class TestPushJobWithNativeReplication {
   }
 
   private void motherOfAllTests(
+      String storeNamePrefix,
       Function<UpdateStoreQueryParams, UpdateStoreQueryParams> updateStoreParamsTransformer,
       int recordCount,
       NativeReplicationTest test) throws Exception {
@@ -877,7 +966,7 @@ public class TestPushJobWithNativeReplication {
     File inputDir = getTempDataDirectory();
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
+    String storeName = Utils.getUniqueString(storeNamePrefix);
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
@@ -902,12 +991,12 @@ public class TestPushJobWithNativeReplication {
                   .useControllerClient(
                       dc1Client -> TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
                         // verify the update store command has taken effect before starting the push job.
-                        Assert.assertEquals(
-                            dc0Client.getStore(storeName).getStore().getStorageQuotaInByte(),
-                            Store.UNLIMITED_STORAGE_QUOTA);
-                        Assert.assertEquals(
-                            dc1Client.getStore(storeName).getStore().getStorageQuotaInByte(),
-                            Store.UNLIMITED_STORAGE_QUOTA);
+                        StoreInfo store = dc0Client.getStore(storeName).getStore();
+                        Assert.assertNotNull(store);
+                        Assert.assertEquals(store.getStorageQuotaInByte(), Store.UNLIMITED_STORAGE_QUOTA);
+                        store = dc1Client.getStore(storeName).getStore();
+                        Assert.assertNotNull(store);
+                        Assert.assertEquals(store.getStorageQuotaInByte(), Store.UNLIMITED_STORAGE_QUOTA);
                       })));
 
       makeSureSystemStoreIsPushed(clusterName, storeName);

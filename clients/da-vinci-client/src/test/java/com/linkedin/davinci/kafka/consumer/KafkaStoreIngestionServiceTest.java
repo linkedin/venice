@@ -26,6 +26,7 @@ import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -42,6 +43,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -51,6 +54,7 @@ import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
@@ -77,6 +81,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
   private HelixInstanceConfigRepository mockHelixInstanceConfigRepository;
   private ReadOnlyLiveClusterConfigRepository mockLiveClusterConfigRepo;
+  private PubSubClientsFactory mockPubSubClientsFactory;
   private StorageEngineBackedCompressorFactory compressorFactory;
 
   private KafkaStoreIngestionService kafkaStoreIngestionService;
@@ -92,6 +97,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     mockHelixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
     mockLiveClusterConfigRepo = mock(ReadOnlyLiveClusterConfigRepository.class);
+    mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     setupMockConfig();
@@ -117,7 +123,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(dummyKafkaUrl).when(mockVeniceServerConfig).getKafkaBootstrapServers();
     Function<String, String> kafkaClusterUrlResolver = String::toString;
     doReturn(kafkaClusterUrlResolver).when(mockVeniceServerConfig).getKafkaClusterUrlResolver();
-    doReturn(new VeniceProperties()).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
+    doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     doReturn(getConsumerAssignmentStrategy()).when(mockVeniceServerConfig).getSharedConsumerAssignmentStrategy();
     doReturn(1).when(mockVeniceServerConfig).getConsumerPoolSizePerKafkaCluster();
     doReturn(SecurityProtocol.PLAINTEXT).when(mockVeniceServerConfig).getKafkaSecurityProtocol(dummyKafkaUrl);
@@ -128,6 +134,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     properties.put(KAFKA_BOOTSTRAP_SERVERS, dummyKafkaUrl);
     VeniceProperties mockVeniceProperties = new VeniceProperties(properties);
     doReturn(mockVeniceProperties).when(mockVeniceClusterConfig).getClusterProperties();
+    doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getClusterProperties();
 
     doReturn(mockVeniceServerConfig).when(mockVeniceConfigLoader).getVeniceServerConfig();
     doReturn(mockVeniceClusterConfig).when(mockVeniceConfigLoader).getVeniceClusterConfig();
@@ -155,7 +162,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         compressorFactory,
         Optional.empty(),
         false,
-        null);
+        null,
+        mockPubSubClientsFactory);
 
     String mockStoreName = "test";
     String mockSimilarStoreName = "testTest";
@@ -237,7 +245,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         compressorFactory,
         Optional.empty(),
         false,
-        null);
+        null,
+        mockPubSubClientsFactory);
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
     String invalidTopic = "invalid-store_v1";
@@ -323,7 +332,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         compressorFactory,
         Optional.empty(),
         false,
-        null);
+        null,
+        mockPubSubClientsFactory);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -386,7 +396,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         compressorFactory,
         Optional.empty(),
         false,
-        null);
+        null,
+        mockPubSubClientsFactory);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -446,7 +457,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         compressorFactory,
         Optional.empty(),
         false,
-        null);
+        null,
+        mockPubSubClientsFactory);
     String topicName = "test-store_v" + (isCurrentVersion ? "0" : "1");
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -464,7 +476,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     resourceAssignment.setPartitionAssignment(topicName, null);
 
     PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
-    partitionAssignment.addPartition(new Partition(0, Collections.emptyMap()));
+    partitionAssignment
+        .addPartition(new Partition(0, new EnumMap<>(HelixState.class), new EnumMap<>(ExecutionStatus.class)));
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
     Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, "{\"type\" : \"string\"}"));
     Mockito.when(mockSchemaRepo.getValueSchemas(storeName)).thenReturn(Collections.emptyList());

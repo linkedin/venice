@@ -38,6 +38,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -73,6 +74,7 @@ public class StorageService extends AbstractVeniceService {
    * @param storeRepository supports readonly operations to access stores
    * @param restoreDataPartitions indicates if store data needs to be restored.
    * @param restoreMetadataPartitions indicates if meta data needs to be restored.
+   * @param checkWhetherStorageEngineShouldBeKeptOrNot check whether the local storage engine should be kept or not.
    */
   public StorageService(
       VeniceConfigLoader configLoader,
@@ -82,7 +84,8 @@ public class StorageService extends AbstractVeniceService {
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       ReadOnlyStoreRepository storeRepository,
       boolean restoreDataPartitions,
-      boolean restoreMetadataPartitions) {
+      boolean restoreMetadataPartitions,
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot) {
 
     String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
     if (!Utils.directoryExists(dataPath)) {
@@ -109,8 +112,33 @@ public class StorageService extends AbstractVeniceService {
     this.storeRepository = storeRepository;
     initInternalStorageEngineFactories();
     if (restoreDataPartitions || restoreMetadataPartitions) {
-      restoreAllStores(configLoader, restoreDataPartitions, restoreMetadataPartitions);
+      restoreAllStores(
+          configLoader,
+          restoreDataPartitions,
+          restoreMetadataPartitions,
+          checkWhetherStorageEngineShouldBeKeptOrNot);
     }
+  }
+
+  public StorageService(
+      VeniceConfigLoader configLoader,
+      AggVersionedStorageEngineStats storageEngineStats,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      ReadOnlyStoreRepository storeRepository,
+      boolean restoreDataPartitions,
+      boolean restoreMetadataPartitions) {
+    this(
+        configLoader,
+        storageEngineStats,
+        rocksDBMemoryStats,
+        storeVersionStateSerializer,
+        partitionStateSerializer,
+        storeRepository,
+        restoreDataPartitions,
+        restoreMetadataPartitions,
+        s -> true);
   }
 
   /**
@@ -153,7 +181,8 @@ public class StorageService extends AbstractVeniceService {
   private void restoreAllStores(
       VeniceConfigLoader configLoader,
       boolean restoreDataPartitions,
-      boolean restoreMetadataPartitions) {
+      boolean restoreMetadataPartitions,
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot) {
     LOGGER.info("Start restoring all the stores persisted previously");
     for (Map.Entry<PersistenceType, StorageEngineFactory> entry: persistenceTypeToStorageEngineFactoryMap.entrySet()) {
       PersistenceType pType = entry.getKey();
@@ -171,23 +200,29 @@ public class StorageService extends AbstractVeniceService {
         storeConfig.setRestoreMetadataPartition(restoreMetadataPartitions);
         AbstractStorageEngine storageEngine;
 
-        try {
-          storageEngine = openStore(storeConfig, () -> null);
-        } catch (Exception e) {
-          if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
-            LOGGER.error("Could not load the following store : " + storeName, e);
-            aggVersionedStorageEngineStats.recordRocksDBOpenFailure(storeName);
-            continue;
+        if (checkWhetherStorageEngineShouldBeKeptOrNot.apply(storeName)) {
+          try {
+            storageEngine = openStore(storeConfig, () -> null);
+          } catch (Exception e) {
+            if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
+              LOGGER.error("Could not load the following store : " + storeName, e);
+              aggVersionedStorageEngineStats.recordRocksDBOpenFailure(storeName);
+              continue;
+            }
+            throw new VeniceException("Error caught during opening store " + storeName, e);
           }
-          throw new VeniceException("Error caught during opening store " + storeName, e);
-        }
 
-        Set<Integer> partitionIds = storageEngine.getPartitionIds();
-        LOGGER.info(
-            "Loaded the following partitions: {}, for store: {}",
-            Arrays.toString(partitionIds.toArray()),
-            storeName);
-        LOGGER.info("Done restoring store: {} with type: {}", storeName, pType);
+          Set<Integer> partitionIds = storageEngine.getPartitionIds();
+          LOGGER.info(
+              "Loaded the following partitions: {}, for store: {}",
+              Arrays.toString(partitionIds.toArray()),
+              storeName);
+          LOGGER.info("Done restoring store: {} with type: {}", storeName, pType);
+        } else {
+          LOGGER.info("Starting deleting local storage engine: {} with type: {}", storeName, pType);
+          factory.removeStorageEngine(storeName);
+          LOGGER.info("Done deleting local storage engine: {} with type: {}", storeName, pType);
+        }
       }
       LOGGER.info("Done restoring all the stores with type: {}", pType);
     }
@@ -366,7 +401,7 @@ public class StorageService extends AbstractVeniceService {
   public void cleanupAllStores(VeniceConfigLoader configLoader) {
     // Load local storage and delete them safely.
     // TODO Just clean the data dir in case loading and deleting is too slow.
-    restoreAllStores(configLoader, true, true);
+    restoreAllStores(configLoader, true, true, s -> true);
     LOGGER.info("Start cleaning up all the stores persisted previously");
     storageEngineRepository.getAllLocalStorageEngines().stream().forEach(storageEngine -> {
       String storeName = storageEngine.getStoreName();

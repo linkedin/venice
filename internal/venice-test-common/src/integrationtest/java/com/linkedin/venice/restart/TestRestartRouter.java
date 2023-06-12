@@ -72,7 +72,7 @@ public class TestRestartRouter {
 
     // Choose another router to handle request. Cluster will help us to find another running router and send the request
     // to.
-    VersionCreationResponse response = cluster.getNewVersion(storeName, 100);
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     int versionNum = response.getVersion();
     Assert.assertEquals(versionNum, 1);
     // restart

@@ -5,7 +5,7 @@ import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -22,19 +22,27 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.io.File;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -42,6 +50,7 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
@@ -72,7 +81,7 @@ public class TestHybridQuota {
     sharedVenice.addVeniceRouter(routerProperties);
     // Added a server with shared consumer enabled.
     Properties serverPropertiesWithSharedConsumer = new Properties();
-    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
+    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA_LEGACY, "false");
     extraProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
     extraProperties.put(HYBRID_QUOTA_ENFORCEMENT_ENABLED, true);
     extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
@@ -106,7 +115,6 @@ public class TestHybridQuota {
   public void testHybridStoreQuota(boolean chunkingEnabled, boolean isStreamReprocessing, boolean recoverFromViolation)
       throws Exception {
     SystemProducer veniceProducer = null;
-
     long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
 
@@ -123,11 +131,15 @@ public class TestHybridQuota {
     try (
         ControllerClient controllerClient =
             createStoreForJob(sharedVenice.getClusterName(), recordSchema, vpjProperties);
-        TopicManager topicManager = new TopicManager(
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-            100,
-            0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(sharedVenice.getKafka()))) {
+        TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    100L,
+                    0L,
+                    sharedVenice.getKafka().getAddress(),
+                    sharedVenice.getPubSubTopicRepository())
+                .getTopicManager()) {
 
       // Setting the hybrid store quota here will cause the VPJ push failed.
       ControllerResponse response = controllerClient.updateStore(
@@ -157,20 +169,43 @@ public class TestHybridQuota {
               InstanceType.SPECTATOR,
               sharedVenice.getZk().getAddress()));
       readManager.connect();
-      offlinePushRepository = new HelixCustomizedViewOfflinePushRepository(readManager);
+      String zkAddress = sharedVenice.getZk().getAddress();
+      ZkClient zkClient = ZkClientFactory.newZkClient(zkAddress);
+      HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+      HelixReadWriteStoreRepository writeStoreRepository = new HelixReadWriteStoreRepository(
+          zkClient,
+          adapter,
+          zkAddress,
+          Optional.empty(),
+          new ClusterLockManager(sharedVenice.getClusterName()));
+
+      Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+      store.setPartitionCount(3);
+      Version version = new VersionImpl(storeName, 1, "pushId");
+      version.setPartitionCount(3);
+      store.addVersion(version);
+      version = new VersionImpl(storeName, 2, "pushId");
+      version.setPartitionCount(3);
+      store.addVersion(version);
+      version = new VersionImpl(storeName, 3, "pushId");
+      version.setPartitionCount(3);
+      store.addVersion(version);
+      writeStoreRepository.addStore(store);
+      offlinePushRepository = new HelixCustomizedViewOfflinePushRepository(readManager, writeStoreRepository, false);
       hybridStoreQuotaOnlyRepository = new HelixHybridStoreQuotaRepository(readManager);
       offlinePushRepository.refresh();
       hybridStoreQuotaOnlyRepository.refresh();
 
-      // Do an VPJ push
+      // Do a VPJ push
       runVPJ(vpjProperties, 1, controllerClient);
       String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
 
-      // Do an VPJ push
+      // Do a VPJ push
       runVPJ(vpjProperties, 2, controllerClient);
       String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
       Assert.assertTrue(
-          topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
+          topicManager
+              .isTopicCompactionEnabled(sharedVenice.getPubSubTopicRepository().getTopic(topicForStoreVersion1)),
           "topic: " + topicForStoreVersion1 + " should have compaction enabled");
       // We did not do any STREAM push here. For a version topic, it should have both hybrid store quota status and
       // offline
@@ -184,7 +219,7 @@ public class TestHybridQuota {
           HybridStoreQuotaStatus.QUOTA_NOT_VIOLATED);
       assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion2));
 
-      // Do an VPJ push
+      // Do a VPJ push
       runVPJ(vpjProperties, 3, controllerClient);
       String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
       long storageQuotaInByte = 60000; // A small quota, easily violated.

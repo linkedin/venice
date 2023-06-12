@@ -25,7 +25,7 @@ public class TestPushJobHeartbeatSender {
   public void testHeartbeatSenderCreation() {
     String kafkaUrl = "localhost:1234";
     String heartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
-    VeniceProperties properties = new VeniceProperties();
+    VeniceProperties properties = VeniceProperties.empty();
     Optional<Properties> sslProperties = Optional.empty();
     DefaultPushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
 

@@ -268,7 +268,8 @@ public class OffsetRecord {
 
   @Override
   public String toString() {
-    return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset() + ", offsetLag=" + getOffsetLag()
+    return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset() + ", upstreamOffset="
+        + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
         + ", eventTimeEpochMs=" + getEventTimeEpochMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
         + getDatabaseInfo() + '}';

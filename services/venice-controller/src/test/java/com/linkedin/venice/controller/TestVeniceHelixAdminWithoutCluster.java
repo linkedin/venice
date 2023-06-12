@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -18,6 +19,8 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
@@ -32,6 +35,8 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceHelixAdminWithoutCluster {
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @Test
   public void canMergeNewHybridConfigValuesToOldStore() {
     String storeName = Utils.getUniqueString("storeName");
@@ -123,9 +128,10 @@ public class TestVeniceHelixAdminWithoutCluster {
   public void testCheckResourceCleanupBeforeStoreCreationWhenSomeVersionTopicStillExists() {
     String clusterName = "cluster1";
     String storeName = Utils.getUniqueString("test_store_recreation");
-    Set<String> topics = new HashSet<>();
-    topics.add(Version.composeKafkaTopic(storeName, 1));
-    topics.add("unknown_store_v1");
+    Set<PubSubTopic> topics = new HashSet<>();
+
+    topics.add(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1)));
+    topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,
         storeName,
@@ -140,9 +146,9 @@ public class TestVeniceHelixAdminWithoutCluster {
   public void testCheckResourceCleanupBeforeStoreCreationWhenRTTopicStillExists() {
     String clusterName = "cluster1";
     String storeName = Utils.getUniqueString("test_store_recreation");
-    Set<String> topics = new HashSet<>();
-    topics.add(Version.composeRealTimeTopic(storeName));
-    topics.add("unknown_store_v1");
+    Set<PubSubTopic> topics = new HashSet<>();
+    topics.add(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)));
+    topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,
         storeName,
@@ -157,9 +163,11 @@ public class TestVeniceHelixAdminWithoutCluster {
   public void testCheckResourceCleanupBeforeStoreCreationWhenSomeSystemStoreTopicStillExists() {
     String clusterName = "cluster1";
     String storeName = Utils.getUniqueString("test_store_recreation");
-    Set<String> topics = new HashSet<>();
-    topics.add(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName)));
-    topics.add("unknown_store_v1");
+    Set<PubSubTopic> topics = new HashSet<>();
+    topics.add(
+        pubSubTopicRepository
+            .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName))));
+    topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,
         storeName,
@@ -209,7 +217,7 @@ public class TestVeniceHelixAdminWithoutCluster {
       String storeName,
       Optional<StoreConfig> storeConfig,
       Optional<Store> store,
-      Set<String> topics,
+      Set<PubSubTopic> topics,
       List<String> helixResources,
       Consumer<VeniceHelixAdmin> testExecution) {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
@@ -234,5 +242,70 @@ public class TestVeniceHelixAdminWithoutCluster {
         .checkKafkaTopicAndHelixResource(anyString(), anyString(), anyBoolean(), anyBoolean(), anyBoolean());
 
     testExecution.accept(admin);
+  }
+
+  @Test
+  public void testSourceRegionSelectionForTargetedRegionPush() {
+    // cluster config setup
+    VeniceControllerMultiClusterConfig multiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
+    VeniceControllerConfig config = mock(VeniceControllerConfig.class);
+    doReturn(config).when(multiClusterConfigs).getControllerConfig("test_cluster");
+    doReturn("dc-4").when(config).getNativeReplicationSourceFabric();
+
+    // store setup
+    Store store = mock(Store.class);
+    doReturn("dc-3").when(store).getNativeReplicationSourceFabric();
+
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(admin).getNativeReplicationSourceFabric(anyString(), any(), any(), any(), any());
+    doReturn(multiClusterConfigs).when(admin).getMultiClusterConfigs();
+
+    // Note that for some weird reasons, if this test case is moved below the store cannot return mocked response
+    // even if the reference doesn't change.
+    // store config (dc-3) is specified as 4th priority
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.empty(), Optional.empty(), null),
+        "dc-3");
+
+    // emergencySourceRegion (dc-0) is specified as 1st priority
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.of("dc-2"), Optional.of("dc-0"), "dc-1"),
+        "dc-0");
+
+    // VPJ plugin targeted region config (dc-1) is specified as 2nd priority
+    doReturn(null).when(store).getNativeReplicationSourceFabric();
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.of("dc-2"), Optional.empty(), "dc-1"),
+        "dc-1");
+
+    // VPJ source fabric (dc-2) is specified as 3rd priority
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.of("dc-2"), Optional.empty(), null),
+        "dc-2");
+
+    // cluster config (dc-4) is specified as 5th priority
+    doReturn(null).when(store).getNativeReplicationSourceFabric();
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric("test_cluster", store, Optional.empty(), Optional.empty(), null),
+        "dc-4");
+
+    /**
+     * When we have the following setup:
+     * source fabric is dc-1,
+     * store config is dc-3,
+     * cluster config is dc-4,
+     * targeted regions is dc-0, dc-2, dc-4, dc-99
+     *
+     * we should pick dc-4 as the source fabric even though it has lower priority than dc-3, but it's in the targeted list
+     */
+    doReturn("dc-3").when(store).getNativeReplicationSourceFabric();
+    Assert.assertEquals(
+        admin.getNativeReplicationSourceFabric(
+            "test_cluster",
+            store,
+            Optional.of("dc-1"),
+            Optional.empty(),
+            "dc-99, dc-0, dc-4, dc-2"),
+        "dc-4");
   }
 }

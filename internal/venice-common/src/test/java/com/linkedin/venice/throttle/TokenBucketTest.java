@@ -28,16 +28,26 @@ public class TokenBucketTest {
         tokenBucket.getStaleTokenCount(),
         20,
         "After consuming tokens, the remaining tokens in the bucket must be reduced");
+    assertEquals(
+        tokenBucket.getStaleUsageRatio(),
+        (double) 80 / (double) 100,
+        "No new consumption or refill since last consumption of 80, usage ratio should be 80/100");
     assertFalse(tokenBucket.tryConsume(40), "TokenBucket must not allow consuming more tokens than available");
     assertEquals(
         tokenBucket.getStaleTokenCount(),
         20,
         "After failing to consume tokens, the remaining tokens in the bucket must be unchanged");
-
+    assertEquals(
+        tokenBucket.getStaleUsageRatio(),
+        (double) 80 / (double) 100,
+        "After failing to consume tokens, the usage ratio should remain to be 80/100");
     doReturn(start + 3500).when(mockClock).millis(); // 3 refills of 10 each puts bucket at 50.
 
     assertTrue(tokenBucket.tryConsume(40), "After refill, bucket must support consumption");
     assertEquals(tokenBucket.getStaleTokenCount(), 10, "After refill and consumption, bucket must have correct tokens");
-
+    assertEquals(
+        tokenBucket.getStaleUsageRatio(),
+        (double) 40 / (double) 50,
+        "After 3 refills and the most recent consumption of 40 the usage ratio should be 40/50");
   }
 }

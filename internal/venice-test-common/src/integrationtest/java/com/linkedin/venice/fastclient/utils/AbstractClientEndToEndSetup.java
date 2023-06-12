@@ -5,14 +5,20 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.fastclient.utils.ClientTestUtils.FASTCLIENT_HTTP_VARIANTS;
+import static com.linkedin.venice.fastclient.utils.ClientTestUtils.STORE_METADATA_FETCH_MODES;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.AssertJUnit.assertNotNull;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
+import com.google.common.collect.ImmutableList;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -26,11 +32,12 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
-import com.linkedin.venice.fastclient.meta.StoreMetadata;
+import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -48,9 +55,12 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -71,26 +81,21 @@ public abstract class AbstractClientEndToEndSetup {
   protected String storeVersionName;
   protected int valueSchemaId;
   protected String storeName;
+  protected String dataPath;
 
   protected VeniceKafkaSerializer keySerializer;
   protected VeniceKafkaSerializer valueSerializer;
   private VeniceWriter<Object, Object, Object> veniceWriter;
   protected Client r2Client;
-  private VeniceProperties daVinciBackendConfig;
-  private D2Client d2Client;
+  protected D2Client d2Client;
 
-  /**
-   * daVinci based metadata
-   */
-  // Client factory
+  // da-vinci client for the da-vinci client based metadata
+  private VeniceProperties daVinciBackendConfig;
   CachingDaVinciClientFactory daVinciClientFactory = null;
-  // daVinciClient for the daVinciClient based metastore
   protected DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = null;
 
-  /**
-   * router based metadata
-   */
-  StoreMetadata routerBasedStoreMetadata = null;
+  // thin client for the thin client based metadata
+  protected AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore = null;
 
   protected ClientConfig clientConfig;
 
@@ -115,23 +120,89 @@ public abstract class AbstractClientEndToEndSetup {
    * is faster than the counter decrement following a successful get, so some get() calls will
    * not be sent due to blocked instances. Setting this variable to be 100 from the tests for now.
    * This needs to be discussed further.
-    */
-  public final Object[] BATCH_GET_KEY_SIZE = { 2, /*recordCnt*/ };
+   */
+  protected static final ImmutableList<Object> BATCH_GET_KEY_SIZE = ImmutableList.of(2, recordCnt);
 
-  // useDaVinciClientBasedMetadata is true/false. Testing both legacy and the current implementation
-  @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
-  public Object[][] fourBooleanAndANumber() {
-    return DataProviderUtils.allPermutationGenerator(
-        DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
-        BATCH_GET_KEY_SIZE);
+  @DataProvider(name = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode")
+  public Object[][] fourBooleanANumberStoreMetadataFetchMode() {
+    return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean batchGet = (boolean) permutation[2];
+      boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
+      int batchGetKeySize = (int) permutation[4];
+      if (!batchGet) {
+        if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
+          // these parameters are related only to batchGet, so just allowing 1 set
+          // to avoid duplicate tests
+          return false;
+        }
+      }
+      return true;
+    },
+        DataProviderUtils.BOOLEAN, // dualRead
+        DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
+        DataProviderUtils.BOOLEAN, // batchGet
+        DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
+        BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
+        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
 
-  @DataProvider(name = "useDaVinciClientBasedMetadata")
-  public static Object[][] useDaVinciClientBasedMetadata() {
-    return new Object[][] { { false }, { true } };
+  @DataProvider(name = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode")
+  public Object[][] twoBooleanStoreMetadataFetchMode() {
+    return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean batchGet = (boolean) permutation[0];
+      boolean useStreamingBatchGetAsDefault = (boolean) permutation[1];
+      if (!batchGet) {
+        if (useStreamingBatchGetAsDefault) {
+          // this parameter is related only to batchGet, so just allowing 1 set
+          // to avoid duplicate tests
+          return false;
+        }
+      }
+      return true;
+    },
+        DataProviderUtils.BOOLEAN, // batchGet
+        DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
+        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
+  }
+
+  @DataProvider(name = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode")
+  public Object[][] oneBooleanStoreMetadataFetchMode() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
+  }
+
+  @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
+  public Object[][] threeBooleanAndANumber() {
+    return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean batchGet = (boolean) permutation[0];
+      int batchGetKeySize = (int) permutation[3];
+      if (!batchGet) {
+        if (batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
+          // these parameters are related only to batchGet, so just allowing 1 set
+          // to avoid duplicate tests
+          return false;
+        }
+      }
+      return true;
+    },
+        DataProviderUtils.BOOLEAN, // batchGet
+        DataProviderUtils.BOOLEAN, // dualRead
+        DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
+        BATCH_GET_KEY_SIZE.toArray());
+  }
+
+  @DataProvider(name = "FastClient-One-Boolean")
+  public Object[][] oneBoolean() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN);
+  }
+
+  @DataProvider(name = "fastClientHTTPVariantsAndStoreMetadataFetchModes")
+  public static Object[][] httpVariantsAndStoreMetadataFetchModes() {
+    return DataProviderUtils.allPermutationGenerator(FASTCLIENT_HTTP_VARIANTS, STORE_METADATA_FETCH_MODES);
+  }
+
+  @DataProvider(name = "StoreMetadataFetchModes")
+  public static Object[][] storeMetadataFetchModes() {
+    return DataProviderUtils.allPermutationGenerator(STORE_METADATA_FETCH_MODES);
   }
 
   @BeforeClass(alwaysRun = true)
@@ -139,14 +210,27 @@ public abstract class AbstractClientEndToEndSetup {
     Utils.thisIsLocalhost();
     Properties props = new Properties();
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, props);
+    props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
+    VeniceClusterCreateOptions createOptions = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(true)
+        .sslToKafka(false)
+        .extraProperties(props)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(createOptions);
 
     r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5);
 
-    d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
+    d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
+
+    dataPath = Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString();
 
     prepareData();
     prepareMetaSystemStore();
+    waitForRouterD2();
   }
 
   protected void prepareData() throws Exception {
@@ -200,12 +284,14 @@ public abstract class AbstractClientEndToEndSetup {
           controllerClient,
           30,
           TimeUnit.SECONDS);
-      daVinciBackendConfig = new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-          .put(PERSISTENCE_TYPE, ROCKS_DB)
-          .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-          .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
-          .build();
     });
+
+    daVinciBackendConfig = new PropertyBuilder().put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
+        .put(DATA_BASE_PATH, dataPath)
+        .build();
 
     // Verify meta system store received the snapshot writes.
     try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> metaClient =
@@ -225,19 +311,37 @@ public abstract class AbstractClientEndToEndSetup {
               put(KEY_STRING_PARTITION_ID, "0");
             }
           });
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        assertNotNull(metaClient.get(replicaStatusKey).get());
-      });
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertNotNull(metaClient.get(replicaStatusKey).get()));
     }
+  }
+
+  private void waitForRouterD2() {
+    AvroGenericStoreClient<String, GenericRecord> thinClient =
+        com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
+            com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
+                .setVeniceURL(veniceCluster.getRandomRouterSslURL())
+                .setSslFactory(SslUtils.getVeniceLocalSslFactory())
+                .setD2Client(d2Client)
+                .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME));
+
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        true,
+        () -> assertNotNull(thinClient.get(keyPrefix + "0")));
   }
 
   protected AvroGenericStoreClient<String, Object> getGenericFastVsonClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
-      boolean useDaVinciClientBasedMetadata,
-      Optional<AvroGenericStoreClient> vsonThinClient) throws IOException {
+      Optional<AvroGenericStoreClient> vsonThinClient,
+      StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
     clientConfigBuilder.setVsonStore(true);
-    setupStoreMetadata(clientConfigBuilder, useDaVinciClientBasedMetadata);
+    setupStoreMetadata(clientConfigBuilder, storeMetadataFetchMode);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -250,16 +354,14 @@ public abstract class AbstractClientEndToEndSetup {
 
     clientConfig = clientConfigBuilder.build();
 
-    return useDaVinciClientBasedMetadata
-        ? ClientFactory.getAndStartGenericStoreClient(clientConfig)
-        : ClientFactory.getAndStartGenericStoreClient(routerBasedStoreMetadata, clientConfig);
+    return ClientFactory.getAndStartGenericStoreClient(clientConfig);
   }
 
   protected AvroGenericStoreClient<String, GenericRecord> getGenericFastClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
-      boolean useDaVinciClientBasedMetadata) throws IOException {
-    setupStoreMetadata(clientConfigBuilder, useDaVinciClientBasedMetadata);
+      StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, storeMetadataFetchMode);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -267,17 +369,15 @@ public abstract class AbstractClientEndToEndSetup {
 
     clientConfig = clientConfigBuilder.build();
 
-    return useDaVinciClientBasedMetadata
-        ? ClientFactory.getAndStartGenericStoreClient(clientConfig)
-        : ClientFactory.getAndStartGenericStoreClient(routerBasedStoreMetadata, clientConfig);
+    return ClientFactory.getAndStartGenericStoreClient(clientConfig);
   }
 
   protected AvroSpecificStoreClient<String, TestValueSchema> getSpecificFastClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
-      boolean useDaVinciClientBasedMetadata,
-      Class specificValueClass) throws IOException {
-    setupStoreMetadata(clientConfigBuilder, useDaVinciClientBasedMetadata);
+      Class specificValueClass,
+      StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, storeMetadataFetchMode);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -286,23 +386,41 @@ public abstract class AbstractClientEndToEndSetup {
 
     clientConfig = clientConfigBuilder.build();
 
-    return useDaVinciClientBasedMetadata
-        ? ClientFactory.getAndStartSpecificStoreClient(clientConfig)
-        : ClientFactory.getAndStartSpecificStoreClient(routerBasedStoreMetadata, clientConfig);
+    return ClientFactory.getAndStartSpecificStoreClient(clientConfig);
   }
 
   protected void setupStoreMetadata(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      boolean useDaVinciClientBasedMetadata) throws IOException {
-    if (useDaVinciClientBasedMetadata) {
-      setupDaVinciClientForMetaStore();
-      clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
-    } else {
-      setupRouterBasedStoreMetadata(clientConfigBuilder);
+      StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
+    clientConfigBuilder.setStoreMetadataFetchMode(storeMetadataFetchMode);
+    switch (storeMetadataFetchMode) {
+      case SERVER_BASED_METADATA:
+        clientConfigBuilder.setD2Client(d2Client);
+        clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+        clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+        break;
+      case THIN_CLIENT_BASED_METADATA:
+        setupThinClientBasedStoreMetadata();
+        clientConfigBuilder.setThinClientForMetaStore(thinClientForMetaStore);
+        break;
+      case DA_VINCI_CLIENT_BASED_METADATA:
+        setupDaVinciClientForMetaStore();
+        clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
     }
   }
 
-  // Helper for runTest()
+  private void setupThinClientBasedStoreMetadata() {
+    if (thinClientForMetaStore == null) {
+      thinClientForMetaStore = com.linkedin.venice.client.store.ClientFactory.getAndStartSpecificAvroClient(
+          com.linkedin.venice.client.store.ClientConfig
+              .defaultSpecificClientConfig(
+                  VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
+                  StoreMetaValue.class)
+              .setVeniceURL(veniceCluster.getRandomRouterURL())
+              .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+    }
+  }
+
   private void setupDaVinciClientForMetaStore() {
     cleanupDaVinciClientForMetaStore();
     daVinciClientFactory = new CachingDaVinciClientFactory(
@@ -335,23 +453,12 @@ public abstract class AbstractClientEndToEndSetup {
     }
   }
 
-  private void setupRouterBasedStoreMetadata(ClientConfig.ClientConfigBuilder clientConfigBuilder) throws IOException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    ClientConfig clientConfig = clientConfigBuilder.build();
-    VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
-    routerBasedStoreMetadata = new RouterBasedStoreMetadata(
-        routerWrapper.getMetaDataRepository(),
-        routerWrapper.getSchemaRepository(),
-        routerWrapper.getRoutingDataRepository(),
-        storeName,
-        clientConfig);
-  }
-
-  protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient() {
+  protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient(MetricsRepository metricsRepository) {
     return com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
         com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(veniceCluster.getRandomRouterSslURL())
-            .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory())
+            .setMetricsRepository(metricsRepository));
   }
 
   protected AvroGenericStoreClient<String, Object> getGenericVsonThinClient() {
@@ -370,10 +477,48 @@ public abstract class AbstractClientEndToEndSetup {
             .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
   }
 
+  protected void validateMetrics(
+      MetricsRepository metricsRepository,
+      boolean useStreamingBatchGetAsDefault,
+      int expectedBatchGetKeySizeMetricsCount,
+      int expectedBatchGetKeySizeSuccessMetricsCount) {
+    String metricPrefix = useStreamingBatchGetAsDefault ? "--multiget_" : "--";
+    double keyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeMetricsCount : 1;
+    double successKeyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeSuccessMetricsCount : 1;
+    Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+    // counters are incremented in an async manner, so adding non-deterministic wait
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      assertTrue(
+          metrics.get("." + storeName + metricPrefix + "request_key_count.Rate").value() > 0,
+          "Respective request_key_count should have been incremented");
+      assertEquals(
+          metrics.get("." + storeName + metricPrefix + "request_key_count.Max").value(),
+          keyCount,
+          "Respective request_key_count should have been incremented");
+      assertTrue(
+          metrics.get("." + storeName + metricPrefix + "success_request_key_count.Rate").value() > 0,
+          "Respective success_request_key_count should have been incremented");
+      assertEquals(
+          metrics.get("." + storeName + metricPrefix + "success_request_key_count.Max").value(),
+          successKeyCount,
+          "Respective success_request_key_count should have been incremented");
+    });
+    // incorrect metric should not be incremented
+    assertFalse(
+        metrics.get("." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
+            .value() > 0,
+        "Incorrect request_key_count should not be incremented");
+
+    // no retry should be triggered as it's not expected to be configured when calling this function
+    metrics.forEach((mName, metric) -> {
+      if (mName.contains("long_tail_retry_request")) {
+        assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
+      }
+    });
+  }
+
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    cleanupDaVinciClientForMetaStore();
-
     if (r2Client != null) {
       r2Client.shutdown(null);
     }

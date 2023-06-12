@@ -1,13 +1,16 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
@@ -53,9 +56,9 @@ public class TestHolisticSeverHealthCheck {
     cluster.close();
   }
 
-  private boolean verifyNodeReplicasState(String nodeId, NodeReplicasReadinessState state) {
-    NodeReplicasReadinessResponse response = controllerClient.nodeReplicasReadiness(nodeId);
-    return !response.isError() && response.getNodeState() == state;
+  private void verifyNodeReplicasState(String nodeId, NodeReplicasReadinessState state) {
+    NodeReplicasReadinessResponse response = assertCommand(controllerClient.nodeReplicasReadiness(nodeId));
+    assertEquals(response.getNodeState(), state);
   }
 
   private boolean verifyNodeIsError(String nodeId) {
@@ -66,16 +69,16 @@ public class TestHolisticSeverHealthCheck {
   private void verifyNodesAreReady() {
     String wrongNodeId = "incorrect_node_id";
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
-      String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
-      Assert.assertTrue(verifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
+      String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
+      verifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY);
       Assert.assertTrue(verifyNodeIsError(wrongNodeId));
     }
   }
 
   private void verifyNodesAreInExpectedState(NodeReplicasReadinessState state) {
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
-      String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
-      Assert.assertTrue(verifyNodeReplicasState(nodeId, state));
+      String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
+      verifyNodeReplicasState(nodeId, state);
     }
   }
 
@@ -106,17 +109,18 @@ public class TestHolisticSeverHealthCheck {
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testHealthServiceAfterServerRestart() throws Exception {
     String storeName = Utils.getUniqueString("testHealthServiceAfterServerRestart");
-    int dataSize = 2000;
+    long storageQuota = 2000;
 
     // Assert both servers are in the ready state before the push.
     verifyNodesAreReady();
 
     cluster.getNewStore(storeName);
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
 
     String topicName = response.getKafkaTopic();
     Assert.assertEquals(response.getReplicas(), replicaFactor);
-    Assert.assertEquals(response.getPartitions(), dataSize / partitionSize);
+    Assert.assertEquals(response.getPartitions(), storageQuota / partitionSize);
 
     try (VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName)) {
       veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -157,8 +161,8 @@ public class TestHolisticSeverHealthCheck {
 
     // Wait until the servers are in the ready state again.
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
-      String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
-      TestUtils.waitForNonDeterministicCompletion(
+      String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
+      TestUtils.waitForNonDeterministicAssertion(
           120,
           TimeUnit.SECONDS,
           () -> verifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));

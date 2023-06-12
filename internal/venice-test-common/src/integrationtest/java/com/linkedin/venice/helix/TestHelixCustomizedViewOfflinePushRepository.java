@@ -6,19 +6,23 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
@@ -28,7 +32,9 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
+import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -46,7 +52,8 @@ public class TestHelixCustomizedViewOfflinePushRepository {
   private SafeHelixManager controller;
   private HelixAdmin admin;
   private String clusterName = "UnitTestCLuster";
-  private String resourceName = "UnitTest";
+  private String resourceName = "storeName_v1";
+  private String storeName = "storeName";
   private String zkAddress;
   private int httpPort0, httpPort1;
   private int adminPort;
@@ -65,16 +72,16 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     admin.addCluster(clusterName);
     HelixConfigScope configScope =
         new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
-    Map<String, String> helixClusterProperties = new HashMap<String, String>();
+    Map<String, String> helixClusterProperties = new HashMap<>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(clusterName, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
+    admin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
     admin.addResource(
         clusterName,
         resourceName,
         3,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        LeaderStandbySMD.name,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(clusterName, resourceName, 2);
 
@@ -92,25 +99,25 @@ public class TestHelixCustomizedViewOfflinePushRepository {
         HelixControllerMain.startHelixController(
             zkAddress,
             clusterName,
-            Utils.getHelixNodeIdentifier(adminPort),
+            Utils.getHelixNodeIdentifier(Utils.getHostName(), adminPort),
             HelixControllerMain.STANDALONE));
 
     manager0 = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort0),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort0),
         zkAddress,
         httpPort0,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     manager0.connect();
     Thread.sleep(WAIT_TIME);
     accessor0 = new HelixPartitionStatusAccessor(manager0.getOriginalManager(), manager0.getInstanceName(), false);
 
     manager1 = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort1),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort1),
         zkAddress,
         httpPort1,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     manager1.connect();
 
     Thread.sleep(WAIT_TIME);
@@ -120,7 +127,21 @@ public class TestHelixCustomizedViewOfflinePushRepository {
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress));
     readManager.connect();
     hybridStoreQuotaOnlyRepository = new HelixHybridStoreQuotaRepository(readManager);
-    offlinePushOnlyRepository = new HelixCustomizedViewOfflinePushRepository(readManager);
+    ZkClient zkClient = ZkClientFactory.newZkClient(zkAddress);
+    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+    HelixReadWriteStoreRepository writeStoreRepository = new HelixReadWriteStoreRepository(
+        zkClient,
+        adapter,
+        clusterName,
+        Optional.empty(),
+        new ClusterLockManager(clusterName));
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setPartitionCount(3);
+    Version version = new VersionImpl(storeName, 1, "pushId");
+    version.setPartitionCount(3);
+    store.addVersion(version);
+    writeStoreRepository.addStore(store);
+    offlinePushOnlyRepository = new HelixCustomizedViewOfflinePushRepository(readManager, writeStoreRepository, false);
     hybridStoreQuotaOnlyRepository.refresh();
     offlinePushOnlyRepository.refresh();
     // Update customized state for each partition on each instance
@@ -230,10 +251,10 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     int newHttpPort = httpPort0 + 10;
     SafeHelixManager newManager = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(newHttpPort),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), newHttpPort),
         zkAddress,
         newHttpPort,
-        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+        LeaderStandbySMD.name);
     newManager.connect();
     HelixPartitionStatusAccessor newAccessor =
         new HelixPartitionStatusAccessor(newManager.getOriginalManager(), newManager.getInstanceName(), true);
@@ -255,9 +276,12 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     for (ReplicaState replicaState: replicaStates) {
       Assert.assertEquals(replicaState.getPartition(), partitionId0, "Unexpected partition number");
       Assert.assertNotNull(replicaState.getParticipantId(), "Participant id should not be null");
+      boolean readyToServe = replicaState.isReadyToServe();
+      ExecutionStatus pushStatus = replicaState.getVenicePushStatus();
       Assert.assertEquals(
           replicaState.isReadyToServe(),
-          replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name()));
+          pushStatus.equals(ExecutionStatus.COMPLETED),
+          "readyToServe == " + readyToServe + " but the push status is: " + pushStatus);
     }
   }
 
@@ -303,14 +327,11 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     Assert.assertEquals(2, customizedPartitionAssignment.getAssignedNumberOfPartitions());
     Assert.assertEquals(
         1,
-        customizedPartitionAssignment.getPartition(partitionId0)
-            .getInstancesInState(ExecutionStatus.COMPLETED.name())
-            .size());
+        customizedPartitionAssignment.getPartition(partitionId0).getInstancesInState(ExecutionStatus.COMPLETED).size());
     Assert.assertEquals(0, customizedPartitionAssignment.getPartition(partitionId0).getWorkingInstances().size());
 
-    Instance instance = customizedPartitionAssignment.getPartition(partitionId0)
-        .getInstancesInState(ExecutionStatus.COMPLETED.name())
-        .get(0);
+    Instance instance =
+        customizedPartitionAssignment.getPartition(partitionId0).getInstancesInState(ExecutionStatus.COMPLETED).get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
     Assert.assertEquals(httpPort0, instance.getPort());
 
@@ -328,9 +349,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     Assert.assertEquals(2, customizedPartitionAssignment.getAssignedNumberOfPartitions());
     Assert.assertEquals(
         0,
-        customizedPartitionAssignment.getPartition(partitionId0)
-            .getInstancesInState(ExecutionStatus.COMPLETED.name())
-            .size());
+        customizedPartitionAssignment.getPartition(partitionId0).getInstancesInState(ExecutionStatus.COMPLETED).size());
   }
 
   @Test
@@ -361,10 +380,10 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     offlinePushOnlyRepository.unSubscribeRoutingDataChange(resourceName, listener);
     // Wait notification.
     Thread.sleep(WAIT_TIME);
-    Assert.assertEquals(isNoticed[0], false, "Should not get notification after un-registering.");
-    Assert.assertEquals(isNoticed[1], false, "Should not get notification after un-registering.");
-    Assert.assertEquals(isNoticed[2], false, "Should not get notification after un-registering.");
-    Assert.assertEquals(isNoticed[3], false, "Should not get notification after un-registering.");
+    Assert.assertFalse(isNoticed[0], "Should not get notification after un-registering.");
+    Assert.assertFalse(isNoticed[1], "Should not get notification after un-registering.");
+    Assert.assertFalse(isNoticed[2], "Should not get notification after un-registering.");
+    Assert.assertFalse(isNoticed[3], "Should not get notification after un-registering.");
 
     offlinePushOnlyRepository.subscribeRoutingDataChange(resourceName, listener);
 
@@ -375,9 +394,9 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     // Wait notification.
     Thread.sleep(WAIT_TIME);
 
-    Assert.assertEquals(isNoticed[0], false, "Should not get notification after resource is deleted.");
-    Assert.assertEquals(isNoticed[1], false, "Should not get notification after resource is deleted.");
-    Assert.assertEquals(isNoticed[2], false, "Should not get notification after resource is deleted.");
-    Assert.assertEquals(isNoticed[3], true, "There is a resource deleted.");
+    Assert.assertFalse(isNoticed[0], "Should not get notification after resource is deleted.");
+    Assert.assertFalse(isNoticed[1], "Should not get notification after resource is deleted.");
+    Assert.assertFalse(isNoticed[2], "Should not get notification after resource is deleted.");
+    Assert.assertTrue(isNoticed[3], "There is a resource deleted.");
   }
 }

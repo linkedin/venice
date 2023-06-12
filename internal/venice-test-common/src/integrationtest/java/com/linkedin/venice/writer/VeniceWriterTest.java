@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
@@ -11,10 +12,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -23,11 +22,21 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
@@ -38,22 +47,19 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -63,33 +69,42 @@ import org.testng.annotations.Test;
 
 @Test
 public class VeniceWriterTest {
-  private KafkaBrokerWrapper kafka;
+  private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager topicManager;
-  private KafkaClientFactory kafkaClientFactory;
-  private ZkServerWrapper zkServer;
+  private PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory;
+
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
-    zkServer = ServiceFactory.getZkServer();
-    kafka = ServiceFactory.getKafkaBroker(zkServer);
-    kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(kafka);
-    topicManager = new TopicManager(kafkaClientFactory);
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
+    pubSubConsumerAdapterFactory = IntegrationTestPushUtils.getVeniceConsumerFactory();
+    topicManager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                0L,
+                pubSubBrokerWrapper.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
   }
 
   @AfterClass
   public void cleanUp() throws IOException {
-    Utils.closeQuietlyWithErrorLogged(topicManager, kafka, zkServer);
+    Utils.closeQuietlyWithErrorLogged(topicManager, pubSubBrokerWrapper);
   }
 
   private void testThreadSafety(
       int numberOfThreads,
       java.util.function.Consumer<VeniceWriter<KafkaKey, byte[], byte[]>> veniceWriterTask)
       throws ExecutionException, InterruptedException {
-    String topicName = Utils.getUniqueString("topic-for-vw-thread-safety");
+    String topicName = TestUtils.getUniqueTopicString("topic-for-vw-thread-safety");
     int partitionCount = 1;
-    topicManager.createTopic(topicName, partitionCount, 1, true);
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
+    topicManager.createTopic(pubSubTopic, partitionCount, 1, true);
     Properties properties = new Properties();
-    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
 
     ExecutorService executorService = null;
@@ -109,34 +124,40 @@ public class VeniceWriterTest {
     } finally {
       TestUtils.shutdownExecutor(executorService);
     }
-
-    try (Consumer<KafkaKey, KafkaMessageEnvelope> consumer = kafkaClientFactory.getRecordKafkaConsumer()) {
-      List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(topicName, 0));
-      consumer.assign(partitions);
-      consumer.seekToBeginning(partitions);
+    KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
+    KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
+        kafkaValueSerializer,
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    try (PubSubConsumerAdapter consumer = pubSubConsumerAdapterFactory
+        .create(new VeniceProperties(properties), false, pubSubDeserializer, pubSubBrokerWrapper.getAddress())) {
+      PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+      consumer.subscribe(pubSubTopicPartition, -1);
       int lastSeenSequenceNumber = -1;
       int lastSeenSegmentNumber = -1;
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records;
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages;
       do {
-        records = consumer.poll(10 * Time.MS_PER_SECOND);
-        for (final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
-          ProducerMetadata producerMetadata = record.value().producerMetadata;
-          int currentSegmentNumber = producerMetadata.segmentNumber;
-          int currentSequenceNumber = producerMetadata.messageSequenceNumber;
+        messages = consumer.poll(10 * Time.MS_PER_SECOND);
+        if (messages.containsKey(pubSubTopicPartition)) {
+          for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages.get(pubSubTopicPartition)) {
+            ProducerMetadata producerMetadata = message.getValue().producerMetadata;
+            int currentSegmentNumber = producerMetadata.segmentNumber;
+            int currentSequenceNumber = producerMetadata.messageSequenceNumber;
 
-          if (currentSegmentNumber == lastSeenSegmentNumber && currentSequenceNumber == lastSeenSequenceNumber + 1) {
-            lastSeenSequenceNumber = currentSequenceNumber;
-          } else if (currentSegmentNumber == lastSeenSegmentNumber + 1 && currentSequenceNumber == 0) {
-            lastSeenSegmentNumber = currentSegmentNumber;
-            lastSeenSequenceNumber = currentSequenceNumber;
-          } else {
-            Assert.fail(
-                "DIV Error caught.\n" + "Last segment Number: " + lastSeenSegmentNumber + ". Current segment number: "
-                    + currentSegmentNumber + ".\n" + "Last sequence Number: " + lastSeenSequenceNumber
-                    + ". Current sequence number: " + currentSequenceNumber + ".");
+            if (currentSegmentNumber == lastSeenSegmentNumber && currentSequenceNumber == lastSeenSequenceNumber + 1) {
+              lastSeenSequenceNumber = currentSequenceNumber;
+            } else if (currentSegmentNumber == lastSeenSegmentNumber + 1 && currentSequenceNumber == 0) {
+              lastSeenSegmentNumber = currentSegmentNumber;
+              lastSeenSequenceNumber = currentSequenceNumber;
+            } else {
+              Assert.fail(
+                  "DIV Error caught.\n" + "Last segment Number: " + lastSeenSegmentNumber + ". Current segment number: "
+                      + currentSegmentNumber + ".\n" + "Last sequence Number: " + lastSeenSequenceNumber
+                      + ". Current sequence number: " + currentSequenceNumber + ".");
+            }
           }
         }
-      } while (!records.isEmpty());
+      } while (!messages.isEmpty());
     }
   }
 
@@ -300,7 +321,7 @@ public class VeniceWriterTest {
         .setRmdChunkingEnabled(true)
         .build();
     VeniceWriter<Object, Object, Object> writer =
-        new VeniceWriter(veniceWriterOptions, new VeniceProperties(new Properties()), mockedProducer);
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
 
     ByteBuffer replicationMetadata = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
     PutMetadata putMetadata = new PutMetadata(1, replicationMetadata);

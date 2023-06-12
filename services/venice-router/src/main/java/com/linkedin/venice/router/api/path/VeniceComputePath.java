@@ -7,7 +7,6 @@ import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.router.api.RouterException;
-import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
@@ -17,10 +16,9 @@ import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
@@ -41,6 +39,8 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   private final int computeRequestVersion;
 
   public VeniceComputePath(
+      String storeName,
+      int versionNumber,
       String resourceName,
       BasicFullHttpRequest request,
       VenicePartitionFinder partitionFinder,
@@ -50,6 +50,8 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
       boolean useFastAvro,
       int longTailRetryMaxRouteForMultiKeyReq) throws RouterException {
     super(
+        storeName,
+        versionNumber,
         resourceName,
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
@@ -57,8 +59,8 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
 
     // Get API version
     computeRequestVersion = Integer.parseInt(request.headers().get(HttpConstants.VENICE_API_VERSION));
-    Optional<CharSequence> schemaHeader = request.getRequestHeaders().get(VENICE_COMPUTE_VALUE_SCHEMA_ID);
-    valueSchemaId = schemaHeader.map(charSequence -> Integer.parseInt((String) charSequence)).orElse(-1);
+    CharSequence schemaHeader = request.getRequestHeaders().get(VENICE_COMPUTE_VALUE_SCHEMA_ID);
+    valueSchemaId = schemaHeader == null ? -1 : Integer.parseInt((String) schemaHeader);
 
     if (computeRequestVersion <= 0 || computeRequestVersion > LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
@@ -69,7 +71,6 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
               + LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
     }
 
-    Iterable<ByteBuffer> keys = null;
     requestContent = new byte[request.content().readableBytes()];
     request.content().readBytes(requestContent);
 
@@ -93,17 +94,18 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
     }
 
     // deserialize the second part of the request content using the same decoder
-    RecordDeserializer<ByteBuffer> keyDeserializer = SerializerDeserializerFactory
+    RecordDeserializer<ByteBuffer> keyDeserializer = FastSerializerDeserializerFactory
         .getAvroGenericDeserializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
-    keys = keyDeserializer.deserializeObjects(decoder);
+    Iterable<ByteBuffer> keys = keyDeserializer.deserializeObjects(decoder);
 
-    initialize(resourceName, keys, partitionFinder, maxKeyCount, Optional.empty());
+    initialize(storeName, resourceName, keys, partitionFinder, maxKeyCount, null);
   }
 
   private VeniceComputePath(
+      String storeName,
+      int versionNumber,
       String resourceName,
       Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap,
-      Map<Integer, RouterKey> keyIdxToRouterKey,
       ComputeRequestWrapper computeRequestWrapper,
       byte[] requestContent,
       int computeRequestLengthInBytes,
@@ -112,11 +114,12 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
       int smartLongTailRetryAbortThresholdMs,
       int longTailRetryMaxRouteForMultiKeyReq) {
     super(
+        storeName,
+        versionNumber,
         resourceName,
         smartLongTailRetryEnabled,
         smartLongTailRetryAbortThresholdMs,
         routerKeyMap,
-        keyIdxToRouterKey,
         longTailRetryMaxRouteForMultiKeyReq);
     this.computeRequestWrapper = computeRequestWrapper;
     this.requestContent = requestContent;
@@ -135,25 +138,28 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
 
   @Override
   public final RequestType getRequestType() {
-    return isStreamingRequest() ? RequestType.COMPUTE_STREAMING : RequestType.COMPUTE;
+    return isStreamingRequest() ? getStreamingRequestType() : RequestType.COMPUTE;
+  }
+
+  @Override
+  public final RequestType getStreamingRequestType() {
+    return RequestType.COMPUTE_STREAMING;
   }
 
   /**
-   * If the parent request is a retry request, the sub-request generated by scattering-gathering logic
-   * should be retry request as well.
+   * If the parent request is a retry request, the sub-request generated by scattering-gathering logic should be retry
+   * request as well.
    *
    * @param routerKeyMap
-   * @param keyIdxToRouterKey
    * @return
    */
   @Override
-  protected VeniceComputePath fixRetryRequestForSubPath(
-      Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap,
-      Map<Integer, RouterKey> keyIdxToRouterKey) {
+  protected VeniceComputePath fixRetryRequestForSubPath(Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap) {
     VeniceComputePath subPath = new VeniceComputePath(
+        storeName,
+        versionNumber,
         getResourceName(),
         routerKeyMap,
-        keyIdxToRouterKey,
         this.computeRequestWrapper,
         this.requestContent,
         this.computeRequestLengthInBytes,
@@ -176,24 +182,12 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   }
 
   @Override
-  protected int getKeyIndex(ComputeRouterRequestKeyV1 routerRequestKey) {
-    return routerRequestKey.keyIndex;
-  }
-
-  @Override
   protected byte[] serializeRouterRequest() {
     RecordSerializer<ComputeRouterRequestKeyV1> serializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRouterRequestKeyV1.getClassSchema());
+        FastSerializerDeserializerFactory.getAvroGenericSerializer(ComputeRouterRequestKeyV1.getClassSchema());
 
-    return serializer.serializeObjects(
-        routerKeyMap.values(),
-        ByteBuffer.wrap(requestContent, 0, computeRequestLengthInBytes),
-        AvroSerializer.REUSE.get());
-  }
-
-  @Override
-  public void setRestRequestEntity(RestRequestBuilder builder) {
-    builder.setEntity(serializeRouterRequest());
+    return serializer
+        .serializeObjects(routerKeyMap.values(), ByteBuffer.wrap(requestContent, 0, computeRequestLengthInBytes));
   }
 
   public int getValueSchemaId() {

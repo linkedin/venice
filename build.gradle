@@ -5,7 +5,6 @@ import org.gradle.internal.logging.text.StyledTextOutputFactory
 
 import java.nio.file.Files
 
-
 plugins {
   id 'idea'
   id 'java'
@@ -16,6 +15,9 @@ plugins {
   id 'com.github.spotbugs' version '4.8.0' apply false
   id 'org.gradle.test-retry' version '1.5.0' apply false
   id 'com.form.diff-coverage' version '0.9.5' apply false
+  id 'me.champeau.jmh' version '0.6.7' apply false
+  id 'io.github.lhotari.gradle-nar-plugin' version '0.5.1' apply false
+  id 'com.google.protobuf' version '0.9.3'
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -37,12 +39,15 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 }
 
 def avroVersion = '1.9.2'
-def avroUtilVersion = '0.2.136'
+def avroUtilVersion = '0.2.150'
+def grpcVersion = '1.54.1'
 def kafkaGroup = 'com.linkedin.kafka'
 def kafkaVersion = '2.4.1.65'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
+def protobufVersion = '3.21.7'
 def jacksonVersion = '2.13.3'
+
 
 ext.libraries = [
     avro: 'org.apache.avro:avro:' + avroVersion,
@@ -60,7 +65,7 @@ ext.libraries = [
     commonsIo: 'commons-io:commons-io:2.11.0',
     commonsCli: 'commons-cli:commons-cli:1.5.0',
     commonsLang: 'commons-lang:commons-lang:2.6',
-    conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
+    conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.5.2',
     d2: 'com.linkedin.pegasus:d2:' + pegasusVersion,
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
@@ -78,8 +83,6 @@ ext.libraries = [
     javax: 'javax.servlet:javax.servlet-api:3.1.0',
     javaxActivation: 'com.sun.activation:javax.activation:1.2.0',
     jdom: 'org.jdom:jdom:1.1',
-    jmhCore: 'org.openjdk.jmh:jmh-core:1.28',
-    jmhGenerator: 'org.openjdk.jmh:jmh-generator-annprocess:1.28',
     jna: 'net.java.dev.jna:jna:4.5.1',
     jsr305: 'com.google.code.findbugs:jsr305:3.0.2',
     joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
@@ -94,21 +97,32 @@ ext.libraries = [
     mockito: 'org.mockito:mockito-core:3.3.3',
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
+    pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
+    pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
+    pulsarIoCommon: "${pulsarGroup}:pulsar-io-common:${pulsarVersion}",
     r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
     restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
-    rocksdbjni: 'org.rocksdb:rocksdbjni:7.0.3',
+    rocksdbjni: 'org.rocksdb:rocksdbjni:7.9.2',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
+    slf4j: 'org.slf4j:slf4j:1.7.36',
+    slf4jApi: 'org.slf4j:slf4j-api:1.7.36',
+    slf4jSimple: 'org.slf4j:slf4j-simple:1.7.36',
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4',
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.9.2',
+    tehuti: 'io.tehuti:tehuti:0.10.0',
+    testcontainers: 'org.testcontainers:testcontainers:1.18.0',
     testng: 'org.testng:testng:6.14.3',
     // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
     xalan: 'xalan:xalan:2.7.1',
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.5.9',
-    zstd: 'com.github.luben:zstd-jni:1.5.2-3'
+    zstd: 'com.github.luben:zstd-jni:1.5.2-3',
+    grpcNettyShaded: 'io.grpc:grpc-netty-shaded:' + grpcVersion,
+    grpcProtobuf: 'io.grpc:grpc-protobuf:' + grpcVersion,
+    grpcStub: 'io.grpc:grpc-stub:' + grpcVersion,
+    tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
 ]
 
 group = 'com.linkedin.venice'
@@ -129,18 +143,30 @@ publishing {
   }
 }
 
+def parser = new XmlSlurper()
+parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
+parser.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+
 subprojects {
   //apply group and version to all submodules
   group = rootProject.group
   version = rootProject.version
 
+  def isLeafSubModule = project.childProjects.isEmpty()
+
   apply {
     plugin 'idea'
-    plugin 'jacoco'
-    plugin 'com.form.diff-coverage'
     plugin 'java-library'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
+    plugin 'com.google.protobuf'
+  }
+
+  if (isLeafSubModule) {
+    apply {
+      plugin 'jacoco'
+      plugin 'com.form.diff-coverage'
+    }
   }
 
   if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
@@ -153,6 +179,22 @@ subprojects {
     withSourcesJar()
     // TODO: Enable after we have valid javadocs
     //withJavadocJar()
+  }
+
+  protobuf {
+    protoc {
+      artifact = 'com.google.protobuf:protoc:' + protobufVersion
+    }
+    plugins {
+      grpc {
+        artifact = 'io.grpc:protoc-gen-grpc-java:' + grpcVersion
+      }
+    }
+    generateProtoTasks {
+      all()*.plugins {
+        grpc {}
+      }
+    }
   }
 
   configurations {
@@ -209,6 +251,10 @@ subprojects {
     avroCompiler libraries.avroCompiler
     avroCompiler libraries.avroUtilBuilder
     avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
+    runtimeOnly libraries.grpcNettyShaded
+    implementation libraries.grpcProtobuf
+    implementation libraries.grpcStub
+    compileOnly libraries.tomcatAnnotations
   }
 
   idea {
@@ -311,6 +357,8 @@ subprojects {
 
   def ALPINI_TEST_FILTER = 'com.linkedin.alpini.*'
   def ALPINI_NETTY_TEST_FILTER = 'io.netty.*'
+  def ALPINI_UNIT_TEST_TASK_NAME = 'alpiniUnitTest'
+  def ALPINI_FUNCTIONAL_TEST_TASK_NAME = 'alpiniFunctionalTest'
 
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
@@ -333,6 +381,9 @@ subprojects {
     maxParallelForks = Integer.valueOf(System.getProperty('maxParallelForks', '4'))
     minHeapSize = System.getProperty('minHeapSize', '1g')
     maxHeapSize = System.getProperty('maxHeapSize', '4g')
+
+    systemProperty 'pubSubBrokerFactory', System.getProperty('pubSubBrokerFactory', "com.linkedin.venice.integration.utils.KafkaBrokerFactory")
+
     System.getProperty('jvmArgs')?.eachMatch(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/) { jvmArgs it }
 
     doFirst {
@@ -341,10 +392,12 @@ subprojects {
       println "jvmArgs=$allJvmArgs"
     }
 
-    filter {
-      excludeTestsMatching ALPINI_TEST_FILTER
-      excludeTestsMatching ALPINI_NETTY_TEST_FILTER
-      failOnNoMatchingTests = false
+    if (name != ALPINI_UNIT_TEST_TASK_NAME && name != ALPINI_FUNCTIONAL_TEST_TASK_NAME) {
+      filter {
+        excludeTestsMatching ALPINI_TEST_FILTER
+        excludeTestsMatching ALPINI_NETTY_TEST_FILTER
+        failOnNoMatchingTests = false
+      }
     }
 
     useTestNG {
@@ -377,40 +430,60 @@ subprojects {
     }
   }
 
-  jacocoTestReport {
-    dependsOn test // tests are required to run before generating the report
-  }
+  if (isLeafSubModule) {
+    jacocoTestReport {
+      dependsOn test // tests are required to run before generating the report
 
-  afterEvaluate {
-    jacocoTestCoverageVerification {
-      dependsOn jacocoTestReport
+      reports {
+        xml.enabled = true
+        html.enabled = true
+      }
 
-      violationRules {
-        rule {
-          def threshold = project.ext.has('jacocoCoverageThreshold') ?
-              project.ext.jacocoCoverageThreshold : 0.6
-
-          limit {
-            counter = 'BRANCH'
-            value = 'COVEREDRATIO'
-            minimum = threshold
-          }
-        }
+      doLast {
+        parseJacocoXml("$buildDir/reports/jacoco/test/jacocoTestReport.xml")
       }
     }
 
-    diffCoverageReport {
-      diffSource.file = createDiffFile()
+    afterEvaluate {
+      jacocoTestCoverageVerification {
+        dependsOn jacocoTestReport
 
-      // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
-      reports {
-        html = true
+        violationRules {
+          rule {
+            def threshold = project.ext.has('jacocoCoverageThreshold') ? project.ext.jacocoCoverageThreshold : 0.6
+
+            limit {
+              counter = 'BRANCH'
+              value = 'COVEREDRATIO'
+              minimum = threshold
+            }
+          }
+        }
       }
 
-      violationRules {
-        minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.33
-        failOnViolation = true
+      diffCoverageReport {
+        diffSource.file = createDiffFile()
+
+        // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
+        reports {
+          html = true
+          xml = true
+        }
+
+        violationRules {
+          minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.33
+          failOnViolation = true
+        }
       }
+
+      task logDiffCoverage {
+        doLast {
+          parseJacocoXml("$buildDir/reports/jacoco/diffCoverage/report.xml")
+        }
+      }
+
+      diffCoverage.dependsOn jacocoTestReport
+      diffCoverage.finalizedBy logDiffCoverage
     }
   }
 
@@ -420,8 +493,21 @@ subprojects {
     }
   }
 
-  task alpiniTest(type: Test) {
-    useTestNG()
+  task "$ALPINI_UNIT_TEST_TASK_NAME"(type: Test) {
+    useTestNG() {
+      includeGroups 'unit'
+    }
+    filter {
+      includeTestsMatching ALPINI_TEST_FILTER
+      includeTestsMatching ALPINI_NETTY_TEST_FILTER
+      failOnNoMatchingTests = false
+    }
+  }
+
+  task "$ALPINI_FUNCTIONAL_TEST_TASK_NAME"(type: Test) {
+    useTestNG() {
+      includeGroups 'functional'
+    }
     filter {
       includeTestsMatching ALPINI_TEST_FILTER
       includeTestsMatching ALPINI_NETTY_TEST_FILTER
@@ -441,9 +527,21 @@ subprojects {
   }
 
   // Only publish artifacts for projects that are at the leaf level
-  if (project.childProjects.isEmpty()) {
+  if (isLeafSubModule) {
     publishing.configureArtifactPublishing(project, testJar)
   }
+}
+
+task aggregateJavadoc(type: Javadoc) {
+  source subprojects.collect { project ->
+    project.sourceSets.main.allJava
+  }
+  classpath = files(subprojects.collect { project ->
+    project.sourceSets.main.compileClasspath
+  })
+  // generate javadoc with no warnings
+  getOptions().addStringOption('Xdoclint:none', '-quiet')
+  destinationDir = new File(buildDir, 'javadoc')
 }
 
 spotless {
@@ -575,7 +673,20 @@ ext.createDiffFile = { ->
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java',
         ':!internal/venice-test-common/*',
-        ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java'
+        ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java',
+        ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/init/*',
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceController.java',
+        ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',
+        ':!services/venice-router/src/main/java/com/linkedin/venice/router/streaming/VeniceChunkedResponse.java',
+        ':!services/venice-standalone/*', // exclude the entire standalone project
+        ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
+        ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',
+        ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/OnlineProducerFactory.java',
+        ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/ProducerTool.java',
+
+        // Other files that have tests but are not executed in the regular unit test task
+        ':!internal/alpini/*'
   ]
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"
@@ -591,4 +702,22 @@ ext.createDiffFile = { ->
   }
 
   return file
+}
+
+// for a given xml jacoco report, parse it and print out the branch coverage
+ext.parseJacocoXml = { filePath ->
+  try {
+    def jacocoReport = parser.parse(filePath).children()
+    def branchCoverage = jacocoReport.find { it.name() == 'counter' && it.@type == 'BRANCH' }
+    def branchCoverageRatio = branchCoverage.@covered.toDouble() / (branchCoverage.@missed.toDouble() + branchCoverage.@covered.toDouble())
+    println "Branch coverage: ${(branchCoverageRatio * 100.0).round(2)}%"
+  } catch (Exception e) {
+    // failure to retrieve numbers should not fail the build
+    project.logger.debug("Branch coverage: N/A. There's either no branch coverage or " +
+        "the jacoco report is not generated.", e)
+  }
+}
+
+allprojects {
+  task printAllDependencies(type: DependencyReportTask) {}
 }

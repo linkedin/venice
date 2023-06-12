@@ -21,8 +21,9 @@ import org.testng.collections.Lists;
  * make sure your test case has "test" dependency on "venice-test-common" module.
  */
 public class DataProviderUtils {
-  public static final Object[] BOOLEAN_TRUE = { true };
   public static final Object[] BOOLEAN = { false, true };
+  public static final Object[] BOOLEAN_FALSE = { false };
+  public static final Object[] BOOLEAN_TRUE = { true };
   public static final Object[] COMPRESSION_STRATEGIES = { NO_OP, GZIP, ZSTD_WITH_DICT };
   public static final Object[] PARTITION_COUNTS = { 1, 2, 3, 4, 8, 10, 16, 19, 92, 128 };
 
@@ -33,6 +34,11 @@ public class DataProviderUtils {
   @DataProvider(name = "True-and-False")
   public static Object[][] trueAndFalseProvider() {
     return new Object[][] { { false }, { true } };
+  }
+
+  @DataProvider(name = "Compression-Strategies")
+  public static Object[][] compressionProvider() {
+    return allPermutationGenerator(COMPRESSION_STRATEGIES);
   }
 
   @DataProvider(name = "Two-True-and-False")
@@ -58,6 +64,7 @@ public class DataProviderUtils {
   @DataProvider(name = "dv-client-config-provider")
   public static Object[][] daVinciConfigProvider() {
     DaVinciConfig defaultDaVinciConfig = new DaVinciConfig();
+    defaultDaVinciConfig.setReadMetricsEnabled(true);
 
     DaVinciConfig cachingDaVinciConfig = new DaVinciConfig();
     cachingDaVinciConfig.setCacheConfig(new ObjectCacheConfig());

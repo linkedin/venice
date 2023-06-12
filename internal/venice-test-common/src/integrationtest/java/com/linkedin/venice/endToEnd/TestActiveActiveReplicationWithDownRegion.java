@@ -1,7 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
@@ -90,7 +89,6 @@ public class TestActiveActiveReplicationWithDownRegion {
 
     Properties controllerProps = new Properties();
     controllerProps.put(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC, 10L);
-    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
@@ -115,7 +113,8 @@ public class TestActiveActiveReplicationWithDownRegion {
     // TODO: This takes FOREVER when we close a kafka broker prematurely, BUT it does finish... There seems to be a
     // problem
     // with how we handle processes that are closed are already.
-    // KafkaAdminClient that bemoans it's lost broker for a long time before timing out and giving up (I think in the
+    // ApacheKafkaAdminAdapter that bemoans it's lost broker for a long time before timing out and giving up (I think in
+    // the
     // controller).
     multiRegionMultiClusterWrapper.close();
   }

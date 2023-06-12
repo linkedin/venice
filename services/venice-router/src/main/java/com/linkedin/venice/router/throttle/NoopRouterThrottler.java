@@ -7,7 +7,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import java.util.List;
-import java.util.Optional;
 
 
 public class NoopRouterThrottler
@@ -29,7 +28,7 @@ public class NoopRouterThrottler
   }
 
   @Override
-  public void mayThrottleRead(String storeName, double readCapacityUnit, Optional<String> storageNodeId) {
+  public void mayThrottleRead(String storeName, double readCapacityUnit, String storageNodeId) {
     // noop
   }
 
@@ -46,12 +45,8 @@ public class NoopRouterThrottler
   }
 
   private void buildStoreReadQuotaStats(String storeName, long storeReadQuota) {
-    int routerCount = zkRoutersManager.isQuotaRebalanceEnabled()
-        ? zkRoutersManager.getLiveRoutersCount()
-        : zkRoutersManager.getExpectedRoutersCount();
-
+    int routerCount = zkRoutersManager.getLiveRoutersCount();
     long storeQuotaPerRouter = routerCount > 0 ? storeReadQuota / routerCount : 0;
-
     stats.recordQuota(storeName, storeQuotaPerRouter);
   }
 
