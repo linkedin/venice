@@ -2,7 +2,6 @@ package com.linkedin.davinci.repository;
 
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
@@ -12,7 +11,6 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepositoryAdapter;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
-import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
@@ -99,40 +97,17 @@ public class VeniceMetadataRepositoryBuilder {
 
   private void initDaVinciStoreAndSchemaRepository() {
     VeniceProperties veniceProperties = configLoader.getCombinedProperties();
-    boolean useSystemStore = veniceProperties.getBoolean(ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY, false);
-    if (useSystemStore) {
-      LOGGER.info(
-          "Initializing meta system store based store repository with {}",
-          NativeMetadataRepository.class.getSimpleName());
-      NativeMetadataRepository systemStoreBasedRepository =
-          NativeMetadataRepository.getInstance(clientConfig, veniceProperties, icProvider);
-      systemStoreBasedRepository.start();
-      systemStoreBasedRepository.refresh();
-      clusterInfoProvider = systemStoreBasedRepository;
-      storeRepo = systemStoreBasedRepository;
-      schemaRepo = systemStoreBasedRepository;
-      liveClusterConfigRepo = null;
-    } else {
-      LOGGER.info(
-          "Initializing ZK based store repository with {}",
-          SubscriptionBasedStoreRepository.class.getSimpleName());
-
-      // Create ZkClient
-      HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-      zkClient = ZkClientFactory.newZkClient(configLoader.getVeniceClusterConfig().getZookeeperAddress());
-      String zkClientNamePrefix = isIngestionIsolation ? "ingestion-isolation-" : "";
-      zkClient
-          .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, zkClientNamePrefix + "da-vinci-zk-client"));
-
-      String clusterName = configLoader.getVeniceClusterConfig().getClusterName();
-      clusterInfoProvider = new StaticClusterInfoProvider(Collections.singleton(clusterName));
-      storeRepo = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);
-      storeRepo.refresh();
-      schemaRepo = new HelixReadOnlySchemaRepository(storeRepo, zkClient, adapter, clusterName, 3, 1000);
-      schemaRepo.refresh();
-      liveClusterConfigRepo = new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapter, clusterName);
-      liveClusterConfigRepo.refresh();
-    }
+    LOGGER.info(
+        "Initializing meta system store based store repository with {}",
+        NativeMetadataRepository.class.getSimpleName());
+    NativeMetadataRepository systemStoreBasedRepository =
+        NativeMetadataRepository.getInstance(clientConfig, veniceProperties, icProvider);
+    systemStoreBasedRepository.start();
+    systemStoreBasedRepository.refresh();
+    clusterInfoProvider = systemStoreBasedRepository;
+    storeRepo = systemStoreBasedRepository;
+    schemaRepo = systemStoreBasedRepository;
+    liveClusterConfigRepo = null;
   }
 
   private void initServerStoreAndSchemaRepository() {

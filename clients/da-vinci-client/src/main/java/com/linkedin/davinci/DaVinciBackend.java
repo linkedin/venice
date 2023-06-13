@@ -74,7 +74,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -82,7 +81,6 @@ import org.apache.logging.log4j.Logger;
 public class DaVinciBackend implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
 
-  private final ZkClient zkClient;
   private final VeniceConfigLoader configLoader;
   private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -124,7 +122,6 @@ public class DaVinciBackend implements Closeable {
       }
       storeRepository = (SubscriptionBasedReadOnlyStoreRepository) readOnlyStoreRepository;
       schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
-      zkClient = veniceMetadataRepositoryBuilder.getZkClient();
 
       VeniceProperties backendProps = backendConfig.getClusterProperties();
 
@@ -444,9 +441,6 @@ public class DaVinciBackend implements Closeable {
       ingestionBackend.close();
       ingestionService.stop();
       storageService.stop();
-      if (zkClient != null) {
-        zkClient.close();
-      }
       metricsRepository.close();
       storeRepository.clear();
       schemaRepository.clear();
