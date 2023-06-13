@@ -15,12 +15,14 @@ import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngineFactory;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -116,7 +118,7 @@ public class StorageService extends AbstractVeniceService {
           configLoader,
           restoreDataPartitions,
           restoreMetadataPartitions,
-          checkWhetherStorageEngineShouldBeKeptOrNot);
+          functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
     }
   }
 
@@ -176,6 +178,31 @@ public class StorageService extends AbstractVeniceService {
             storeVersionStateSerializer,
             partitionStateSerializer));
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
+  }
+
+  private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
+    return storageEngineName -> {
+      String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
+      if (VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
+        return true;
+      }
+      Store store;
+      try {
+        store = storeRepository.getStoreOrThrow(storeName);
+      } catch (VeniceNoStoreException e) {
+        // The store does not exist in Venice anymore, so it will be deleted.
+        LOGGER.warn("Store does not exist, will delete invalid local version: {}", storageEngineName);
+        removeStorageEngine(storeName);
+        return false;
+      }
+
+      int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
+      if (!store.getVersion(versionNumber).isPresent() && versionNumber < store.getCurrentVersion()) {
+        removeStorageEngine(storeName);
+        return false;
+      }
+      return true;
+    };
   }
 
   private void restoreAllStores(
