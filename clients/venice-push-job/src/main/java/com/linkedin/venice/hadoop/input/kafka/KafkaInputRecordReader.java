@@ -19,9 +19,9 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Utils;
@@ -95,7 +95,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         new ApacheKafkaConsumerAdapterFactory().create(
             KafkaInputUtils.getConsumerProperties(job),
             false,
-            new KafkaPubSubMessageDeserializer(
+            new PubSubMessageDeserializer(
                 new OptimizedKafkaValueSerializer(),
                 new LandFillObjectPool<>(KafkaMessageEnvelope::new),
                 new LandFillObjectPool<>(KafkaMessageEnvelope::new)),

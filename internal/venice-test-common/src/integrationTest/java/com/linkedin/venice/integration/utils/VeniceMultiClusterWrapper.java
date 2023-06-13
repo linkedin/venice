@@ -8,7 +8,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -120,7 +120,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       // Specify the system store cluster name
       Properties extraProperties = options.getVeniceProperties().toProperties();
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
-      extraProperties.putAll(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
+      extraProperties.putAll(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       VeniceClusterCreateOptions.Builder vccBuilder =
           new VeniceClusterCreateOptions.Builder().regionName(options.getRegionName())
               .standalone(false)

@@ -11,9 +11,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.SystemTime;
@@ -51,7 +51,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
-  private final KafkaPubSubMessageDeserializer pubSubDeserializer;
+  private final PubSubMessageDeserializer pubSubDeserializer;
   private final TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier;
 
   public AggKafkaConsumerService(
@@ -63,7 +63,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
       TopicExistenceChecker topicExistenceChecker,
-      KafkaPubSubMessageDeserializer pubSubDeserializer) {
+      final PubSubMessageDeserializer pubSubDeserializer) {
     this.consumerFactory = consumerFactory;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.numOfConsumersPerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();

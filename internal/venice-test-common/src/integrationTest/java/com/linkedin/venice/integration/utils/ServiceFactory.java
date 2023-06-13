@@ -56,7 +56,7 @@ public class ServiceFactory {
   // System property key for the fully qualified class name of the PubSubBrokerFactory implementation
   private static final String PUBSUB_BROKER_FACTORY_FQCN = "pubSubBrokerFactory";
   // PubSubBrokerFactory implementation to use for tests
-  private static final PubSubBrokerFactory PUBSUB_BROKER_FACTORY;
+  private static final PubSubBrokerFactory<PubSubBrokerWrapper> PUBSUB_BROKER_FACTORY;
   private static final PubSubBrokerConfigs PUBSUB_BROKER_EMPTY_CONFIGS = new PubSubBrokerConfigs.Builder().build();
 
   /**
@@ -475,7 +475,7 @@ public class ServiceFactory {
     return getService(HelixAsAServiceWrapper.SERVICE_NAME, HelixAsAServiceWrapper.generateService(zkAddress));
   }
 
-  private static <S extends ProcessWrapper> S getStatefulService(
+  protected static <S extends ProcessWrapper> S getStatefulService(
       String serviceName,
       StatefulServiceProvider<S> serviceProvider) {
     return getService(serviceName, serviceProvider);
