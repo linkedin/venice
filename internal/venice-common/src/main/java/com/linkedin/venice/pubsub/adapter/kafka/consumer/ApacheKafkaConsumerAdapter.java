@@ -390,7 +390,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    * Deserialize the {@link ConsumerRecord} into {@link PubSubMessage}.
    * @param consumerRecord the {@link ConsumerRecord} to deserialize
    * @param topicPartition the {@link PubSubTopicPartition} of the {@link ConsumerRecord}
-   * @return
+   * @return the deserialized {@link PubSubMessage}
    */
   private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> deserialize(
       ConsumerRecord<byte[], byte[]> consumerRecord,
