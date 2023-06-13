@@ -336,6 +336,13 @@ public class HelixUtils {
     }
   }
 
+  /**
+   * If a cluster is in maintenance mode it returns all the signals associated with it regarding the reason
+   * and other details for creating the maintenance mode.
+   * @param clusterName
+   * @param manager
+   * @return the maintenance mode signal if the cluster is in maintenance mode, otherwise returns null.
+   */
   public static MaintenanceSignal getClusterMaintenanceSignal(String clusterName, SafeHelixManager manager) {
     PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
     SafeHelixDataAccessor accessor = manager.getHelixDataAccessor();
