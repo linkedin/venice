@@ -48,7 +48,6 @@ public class PubSubMessageDeserializerTest {
   public void testDeserializerFailsWhenValueFormatIsInvalid() {
     KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
     KafkaKeySerializer keySerializer = new KafkaKeySerializer();
-    keySerializer.serialize("test", key);
     pubSubMessageDeserializer.deserialize(
         pubSubTopicPartition,
         keySerializer.serialize("test", key),
@@ -62,18 +61,7 @@ public class PubSubMessageDeserializerTest {
   public void testDeserializer() {
     KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
     KafkaKeySerializer keySerializer = new KafkaKeySerializer();
-    keySerializer.serialize("test", key);
-
-    KafkaMessageEnvelope value = new KafkaMessageEnvelope();
-    value.producerMetadata = new ProducerMetadata();
-    value.producerMetadata.messageTimestamp = 0;
-    value.producerMetadata.messageSequenceNumber = 0;
-    value.producerMetadata.segmentNumber = 0;
-    value.producerMetadata.producerGUID = new GUID();
-    Put put = new Put();
-    put.putValue = ByteBuffer.allocate(1024);
-    put.replicationMetadataPayload = ByteBuffer.allocate(0);
-    value.payloadUnion = put;
+    KafkaMessageEnvelope value = getDummyValue();
 
     KafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();
 
@@ -91,5 +79,19 @@ public class PubSubMessageDeserializerTest {
     assertEquals(actualKey.getKey(), key.getKey());
     assertEquals(message.getValue(), value);
     assertEquals((long) message.getOffset(), 11);
+  }
+
+  private KafkaMessageEnvelope getDummyValue() {
+    KafkaMessageEnvelope value = new KafkaMessageEnvelope();
+    value.producerMetadata = new ProducerMetadata();
+    value.producerMetadata.messageTimestamp = 0;
+    value.producerMetadata.messageSequenceNumber = 0;
+    value.producerMetadata.segmentNumber = 0;
+    value.producerMetadata.producerGUID = new GUID();
+    Put put = new Put();
+    put.putValue = ByteBuffer.allocate(1024);
+    put.replicationMetadataPayload = ByteBuffer.allocate(0);
+    value.payloadUnion = put;
+    return value;
   }
 }

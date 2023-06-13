@@ -176,7 +176,6 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
     KafkaKeySerializer keySerializer = new KafkaKeySerializer();
-    keySerializer.serialize("test", key);
     ConsumerRecord<byte[], byte[]> record =
         new ConsumerRecord<>("test", 42, 75, keySerializer.serialize("test", key), "value".getBytes());
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(
@@ -195,7 +194,6 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
     KafkaKeySerializer keySerializer = new KafkaKeySerializer();
-    keySerializer.serialize("test", key);
 
     KafkaMessageEnvelope value = new KafkaMessageEnvelope();
     value.producerMetadata = new ProducerMetadata();
