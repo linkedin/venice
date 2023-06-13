@@ -22,7 +22,11 @@ public class VeniceGrpcServer {
     try {
       server.start();
     } catch (IllegalStateException | IOException illegalStateException) {
-      LOGGER.error("Failed to start {}", VeniceGrpcServer.class.getSimpleName(), illegalStateException);
+      LOGGER.error(
+          "Failed to start {} on port {}",
+          VeniceGrpcServer.class.getSimpleName(),
+          server.getPort(),
+          illegalStateException);
       throw new RuntimeException(illegalStateException);
     }
   }
