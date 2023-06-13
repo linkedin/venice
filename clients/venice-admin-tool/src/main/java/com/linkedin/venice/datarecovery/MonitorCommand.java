@@ -35,6 +35,10 @@ public class MonitorCommand extends Command {
     this.params = params;
   }
 
+  public MonitorCommand.Params getParams() {
+    return this.params;
+  }
+
   // For unit test only.
   public void setOngoingOfflinePushDetected(boolean val) {
     this.isOngoingOfflinePushDetected = val;
@@ -52,13 +56,14 @@ public class MonitorCommand extends Command {
 
   @Override
   public void execute() {
-    String storeName = params.store;
+    String storeName = getParams().store;
 
     // Find out cluster name.
-    String clusterName = params.pCtrlCliWithoutCluster.discoverCluster(storeName).getCluster();
+    String clusterName = getParams().getPCtrlCliWithoutCluster().discoverCluster(storeName).getCluster();
 
     // Create a new controller client with cluster name specified.
-    try (ControllerClient parentCtrlCli = buildControllerClient(clusterName, params.parentUrl, params.sslFactory)) {
+    try (ControllerClient parentCtrlCli =
+        buildControllerClient(clusterName, getParams().parentUrl, getParams().sslFactory)) {
       StoreResponse storeResponse = parentCtrlCli.getStore(storeName);
       if (storeResponse.isError()) {
         completeCoreWorkWithError(storeResponse.getError());
@@ -69,13 +74,13 @@ public class MonitorCommand extends Command {
 
       if (!isOngoingOfflinePushDetected) {
         LocalDateTime currentVersionStartDateTime = retrieveCurrentVersionDateTime(parentCtrlCli);
-        if (currentVersionStartDateTime.isAfter(params.dateTime)) {
+        if (currentVersionStartDateTime.isAfter(getParams().dateTime)) {
           // If we have a current version for the given store started after the given date time, claim done.
           completeCoreWorkWithMessage(
               String.format(
                   "current ver is newer (%s) than date time (%s)",
                   currentVersionStartDateTime,
-                  params.dateTime));
+                  getParams().dateTime));
           return;
         }
 
@@ -85,17 +90,17 @@ public class MonitorCommand extends Command {
          */
         MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, storeName);
 
-        if (!response.getStoreStatusMap().containsKey(params.targetRegion)) {
-          completeCoreWorkWithError(String.format("No status for region: %s", params.targetRegion));
+        if (!response.getStoreStatusMap().containsKey(getParams().targetRegion)) {
+          completeCoreWorkWithError(String.format("No status for region: %s", getParams().targetRegion));
           return;
         }
 
-        int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(params.targetRegion));
+        int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(getParams().targetRegion));
         if (futureVersion == Store.NON_EXISTING_VERSION) {
           result.setMessage(
               String.format(
                   "No ongoing offline pushes detected after given date time (%s), keep polling",
-                  params.dateTime));
+                  getParams().dateTime));
           return;
         }
 
@@ -107,7 +112,7 @@ public class MonitorCommand extends Command {
 
       // Query job status.
       JobStatusQueryResponse jobStatusQueryResponse =
-          parentCtrlCli.queryDetailedJobStatus(result.kafKaTopic, params.targetRegion);
+          parentCtrlCli.queryDetailedJobStatus(result.kafKaTopic, getParams().targetRegion);
 
       if (jobStatusQueryResponse.isError()
           || jobStatusQueryResponse.getStatus().equalsIgnoreCase(ExecutionStatus.ERROR.toString())) {
@@ -130,8 +135,8 @@ public class MonitorCommand extends Command {
 
   // Retrieve the store's current version info.
   private LocalDateTime retrieveCurrentVersionDateTime(ControllerClient parentCtrlCli) {
-    StoreHealthAuditResponse storeHealth = parentCtrlCli.listStorePushInfo(params.store, false);
-    RegionPushDetails targetRegion = storeHealth.getRegionPushDetails().get(params.targetRegion);
+    StoreHealthAuditResponse storeHealth = parentCtrlCli.listStorePushInfo(getParams().store, false);
+    RegionPushDetails targetRegion = storeHealth.getRegionPushDetails().get(getParams().targetRegion);
     String dateTime = targetRegion.getPushStartTimestamp();
     return LocalDateTime.parse(dateTime, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
   }
@@ -169,27 +174,90 @@ public class MonitorCommand extends Command {
     private ControllerClient pCtrlCliWithoutCluster;
     private String parentUrl;
     private Optional<SSLFactory> sslFactory;
-
     private LocalDateTime dateTime;
 
-    public void setTargetRegion(String fabric) {
-      this.targetRegion = fabric;
+    public String getTargetRegion() {
+      return targetRegion;
     }
 
-    public void setParentUrl(String parentUrl) {
-      this.parentUrl = parentUrl;
+    public ControllerClient getPCtrlCliWithoutCluster() {
+      return pCtrlCliWithoutCluster;
     }
 
-    public void setPCtrlCliWithoutCluster(ControllerClient parentCtrlCli) {
-      this.pCtrlCliWithoutCluster = parentCtrlCli;
+    public String getParentUrl() {
+      return parentUrl;
     }
 
-    public void setSSLFactory(Optional<SSLFactory> sslFactory) {
-      this.sslFactory = sslFactory;
+    public Optional<SSLFactory> getSSLFactory() {
+      return sslFactory;
     }
 
-    public void setDateTime(LocalDateTime dataTime) {
-      this.dateTime = dataTime;
+    public LocalDateTime getDateTime() {
+      return dateTime;
+    }
+
+    public static class Builder {
+      private String targetRegion;
+      private ControllerClient pCtrlCliWithoutCluster;
+      private String parentUrl;
+      private Optional<SSLFactory> sslFactory;
+      private LocalDateTime dateTime;
+
+      public Builder() {
+      }
+
+      public Builder(
+          String targetRegion,
+          ControllerClient controllerClient,
+          String parentUrl,
+          Optional<SSLFactory> sslFactory,
+          LocalDateTime dateTime) {
+        this.setTargetRegion(targetRegion)
+            .setPCtrlCliWithoutCluster(controllerClient)
+            .setParentUrl(parentUrl)
+            .setSSLFactory(sslFactory)
+            .setDateTime(dateTime);
+      }
+
+      public Builder(MonitorCommand.Params p) {
+        this(p.targetRegion, p.pCtrlCliWithoutCluster, p.parentUrl, p.sslFactory, p.dateTime);
+      }
+
+      public MonitorCommand.Params build() {
+        MonitorCommand.Params ret = new MonitorCommand.Params();
+        ret.targetRegion = targetRegion;
+        ret.pCtrlCliWithoutCluster = pCtrlCliWithoutCluster;
+        ret.parentUrl = parentUrl;
+        ret.sslFactory = sslFactory;
+        ret.dateTime = dateTime;
+        return ret;
+      }
+
+      public MonitorCommand.Params.Builder setTargetRegion(String targetRegion) {
+        this.targetRegion = targetRegion;
+        return this;
+      }
+
+      public MonitorCommand.Params.Builder setPCtrlCliWithoutCluster(ControllerClient pCtrlCliWithoutCluster) {
+        this.pCtrlCliWithoutCluster = pCtrlCliWithoutCluster;
+        return this;
+      }
+
+      public MonitorCommand.Params.Builder setParentUrl(String parentUrl) {
+        this.parentUrl = parentUrl;
+        return this;
+      }
+
+      public MonitorCommand.Params.Builder setSSLFactory(Optional<SSLFactory> sslFactory) {
+        this.sslFactory = sslFactory;
+        return this;
+      }
+
+      public MonitorCommand.Params.Builder setDateTime(LocalDateTime dateTime) {
+        this.dateTime = dateTime;
+        return this;
+      }
+
     }
   }
 
