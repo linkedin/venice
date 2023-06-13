@@ -79,7 +79,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
@@ -2870,12 +2870,12 @@ public class AdminTool {
   }
 
   private static PubSubConsumerAdapter getConsumer(Properties consumerProps) {
-    KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     return new ApacheKafkaConsumerAdapterFactory()
-        .create(new VeniceProperties(consumerProps), false, kafkaPubSubMessageDeserializer, "");
+        .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "admin-tool-topic-dumper");
   }
 
 }

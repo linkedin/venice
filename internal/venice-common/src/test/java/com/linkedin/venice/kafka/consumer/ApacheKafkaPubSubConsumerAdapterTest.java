@@ -1,28 +1,48 @@
 package com.linkedin.venice.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
+import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
@@ -45,18 +65,18 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "broker address");
-    KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = mock(KafkaPubSubMessageDeserializer.class);
+    PubSubMessageDeserializer pubSubMessageDeserializer = mock(PubSubMessageDeserializer.class);
     apacheKafkaConsumerWithOffsetTrackingDisabled = new ApacheKafkaConsumerAdapter(
         delegateKafkaConsumer,
         new VeniceProperties(properties),
         false,
-        kafkaPubSubMessageDeserializer);
+        pubSubMessageDeserializer);
 
     apacheKafkaConsumerWithOffsetTrackingEnabled = new ApacheKafkaConsumerAdapter(
         delegateKafkaConsumer,
         new VeniceProperties(properties),
         true,
-        kafkaPubSubMessageDeserializer);
+        pubSubMessageDeserializer);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -122,7 +142,7 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
     }
     doReturn(allTopicPartitions).when(delegateKafkaConsumer).assignment();
     Assert.assertTrue(consumer.hasSubscription(pubSubTopicPartition));
-    Assert.assertEquals(consumer.getAssignment(), allPubSubTopicPartitions);
+    assertEquals(consumer.getAssignment(), allPubSubTopicPartitions);
     consumer.batchUnsubscribe(pubSubTopicPartitionsToUnSub);
     verify(delegateKafkaConsumer).assign(topicPartitionsLeft);
 
@@ -131,4 +151,91 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
     verify(delegateKafkaConsumer).close(eq(Duration.ZERO));
   }
 
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*Illegal key header byte.*")
+  public void testDeserializerFailsWhenKeyFormatIsInvalid() {
+    Consumer<byte[], byte[]> consumer = mock(Consumer.class);
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    ConsumerRecords<byte[], byte[]> consumerRecords = new ConsumerRecords<>(
+        Collections.singletonMap(
+            new TopicPartition("test", 42),
+            Collections.singletonList(new ConsumerRecord<>("test", 42, 75, "key".getBytes(), "value".getBytes()))));
+    doReturn(consumerRecords).when(consumer).poll(any());
+    new ApacheKafkaConsumerAdapter(consumer, new VeniceProperties(new Properties()), false, pubSubMessageDeserializer)
+        .poll(Long.MAX_VALUE);
+  }
+
+  @Test(expectedExceptions = VeniceMessageException.class, expectedExceptionsMessageRegExp = ".*The only supported Magic Byte for this.*")
+  public void testDeserializerFailsWhenValueFormatIsInvalid() {
+    Consumer<byte[], byte[]> consumer = mock(Consumer.class);
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
+    KafkaKeySerializer keySerializer = new KafkaKeySerializer();
+    ConsumerRecord<byte[], byte[]> record =
+        new ConsumerRecord<>("test", 42, 75, keySerializer.serialize("test", key), "value".getBytes());
+    ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(
+        Collections.singletonMap(new TopicPartition("test", 42), Collections.singletonList(record)));
+    doReturn(records).when(consumer).poll(any());
+    new ApacheKafkaConsumerAdapter(consumer, new VeniceProperties(new Properties()), false, pubSubMessageDeserializer)
+        .poll(Long.MAX_VALUE);
+  }
+
+  @Test
+  public void testDeserializer() {
+    Consumer<byte[], byte[]> consumer = mock(Consumer.class);
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    KafkaKey key = new KafkaKey(MessageType.PUT, "key".getBytes());
+    KafkaKeySerializer keySerializer = new KafkaKeySerializer();
+
+    KafkaMessageEnvelope value = new KafkaMessageEnvelope();
+    value.producerMetadata = new ProducerMetadata();
+    value.producerMetadata.messageTimestamp = 0;
+    value.producerMetadata.messageSequenceNumber = 0;
+    value.producerMetadata.segmentNumber = 0;
+    value.producerMetadata.producerGUID = new GUID();
+    Put put = new Put();
+    put.putValue = ByteBuffer.allocate(1024);
+    put.replicationMetadataPayload = ByteBuffer.allocate(0);
+    value.payloadUnion = put;
+
+    KafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();
+    ConsumerRecord<byte[], byte[]> record = new ConsumerRecord<>(
+        "test",
+        42,
+        75,
+        keySerializer.serialize("test", key),
+        valueSerializer.serialize("test", value));
+    ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(
+        Collections.singletonMap(new TopicPartition("test", 42), Collections.singletonList(record)));
+    doReturn(records).when(consumer).poll(any());
+
+    ApacheKafkaConsumerAdapter consumerAdapter = new ApacheKafkaConsumerAdapter(
+        consumer,
+        new VeniceProperties(new Properties()),
+        false,
+        pubSubMessageDeserializer);
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 42);
+    // add partition to assignments
+    consumerAdapter.subscribe(pubSubTopicPartition, -1);
+    // poll
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+        consumerAdapter.poll(Long.MAX_VALUE);
+
+    // verify
+    assertEquals(messages.size(), 1);
+    assertEquals(messages.get(pubSubTopicPartition).size(), 1);
+    KafkaKey actualKey = messages.get(pubSubTopicPartition).get(0).getKey();
+    assertEquals(actualKey.getKeyHeaderByte(), key.getKeyHeaderByte());
+    assertEquals(actualKey.getKey(), key.getKey());
+    assertEquals(messages.get(pubSubTopicPartition).get(0).getValue(), value);
+  }
 }

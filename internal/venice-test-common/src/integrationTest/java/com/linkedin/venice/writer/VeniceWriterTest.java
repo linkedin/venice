@@ -27,10 +27,10 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -125,7 +125,7 @@ public class VeniceWriterTest {
       TestUtils.shutdownExecutor(executorService);
     }
     KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
-    KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
+    PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));

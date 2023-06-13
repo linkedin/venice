@@ -21,8 +21,8 @@ public class ApacheKafkaProducerCallback implements Callback {
 
   /**
    *
-   * @param metadata The metadata for the record that was sent (i.e. the partition and offset). An empty metadata
-   *                 with -1 value for all fields except for topicPartition will be returned if an error occurred.
+   * @param metadata The metadata for the record that was sent (i.e. the partition and offset).
+   *                 NULL if an error occurred.
    * @param exception The exception thrown during processing of this record. Null if no error occurred.
    *                  Possible thrown exceptions include:
    *
@@ -46,10 +46,11 @@ public class ApacheKafkaProducerCallback implements Callback {
    */
   @Override
   public void onCompletion(RecordMetadata metadata, Exception exception) {
-    PubSubProduceResult produceResult = metadata != null ? new ApacheKafkaProduceResult(metadata) : null;
+    PubSubProduceResult produceResult = null;
     if (exception != null) {
       produceResultFuture.completeExceptionally(exception);
     } else {
+      produceResult = new ApacheKafkaProduceResult(metadata);
       produceResultFuture.complete(produceResult);
     }
     if (pubsubProducerCallback != null) {

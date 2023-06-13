@@ -3,7 +3,7 @@ package com.linkedin.venice.kafka.partitionoffset;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -21,7 +21,7 @@ public class PartitionOffsetFetcherFactory {
       Lazy<PubSubAdminAdapter> kafkaAdminWrapper,
       long kafkaOperationTimeoutMs,
       Optional<MetricsRepository> optionalMetricsRepository) {
-    KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         new KafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
@@ -29,7 +29,7 @@ public class PartitionOffsetFetcherFactory {
         kafkaAdminWrapper,
         Lazy.of(
             () -> pubSubConsumerAdapterFactory
-                .create(veniceProperties, false, kafkaPubSubMessageDeserializer, pubSubBootstrapServers)),
+                .create(veniceProperties, false, pubSubMessageDeserializer, pubSubBootstrapServers)),
         kafkaOperationTimeoutMs,
         pubSubBootstrapServers);
     if (optionalMetricsRepository.isPresent()) {

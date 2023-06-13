@@ -7,7 +7,8 @@ import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFac
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
-import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.SslUtils.VeniceTlsConfiguration;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -27,7 +28,7 @@ import scala.collection.JavaConverters;
 import scala.collection.Seq;
 
 
-class KafkaBrokerFactory implements PubSubBrokerFactory {
+class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.KafkaBrokerWrapper> {
   private static final Logger LOGGER = LogManager.getLogger(ServiceFactory.class);
   // Class-level state and APIs
   public static final String SERVICE_NAME = "Kafka";
@@ -44,7 +45,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
    * @return a function which yields a {@link KafkaBrokerWrapper} instance
    */
   @Override
-  public StatefulServiceProvider<PubSubBrokerWrapper> generateService(PubSubBrokerConfigs configs) {
+  public StatefulServiceProvider<KafkaBrokerWrapper> generateService(PubSubBrokerConfigs configs) {
     return (String serviceName, File dir) -> {
       int port = TestUtils.getFreePort();
       int sslPort = TestUtils.getFreePort();
@@ -75,7 +76,11 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
       configMap.put(KafkaConfig.LogCleanerEnableProp(), LOG_CLEANER_ENABLE);
 
       // Setup ssl related configs for kafka.
-      Properties sslConfig = KafkaSSLUtils.getLocalKafkaBrokerSSlConfig(DEFAULT_HOST_NAME, port, sslPort);
+
+      VeniceTlsConfiguration tlsConfiguration = SslUtils.getTlsConfiguration();
+      Properties sslConfig =
+          KafkaTestUtils.getLocalKafkaBrokerSSlConfig(tlsConfiguration, DEFAULT_HOST_NAME, port, sslPort);
+
       sslConfig.entrySet().stream().forEach(entry -> configMap.put((String) entry.getKey(), entry.getValue()));
       configs.getAdditionalBrokerConfiguration().forEach((key, value) -> {
         String replace = value.replace("$PORT", port + "").replace("$HOSTNAME", DEFAULT_HOST_NAME);
@@ -93,6 +98,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
           zkServerWrapper,
           shouldCloseZkServer,
           configs.getMockTime(),
+          tlsConfiguration,
           sslPort);
     };
   }
@@ -111,7 +117,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
    * This class contains a Kafka Broker, and provides facilities for cleaning up
    * its side effects when we're done using it.
    */
-  private static class KafkaBrokerWrapper extends PubSubBrokerWrapper {
+  protected static class KafkaBrokerWrapper extends PubSubBrokerWrapper {
     private static final Logger LOGGER = LogManager.getLogger(KafkaBrokerWrapper.class);
     private final int sslPort;
     // Instance-level state and APIs
@@ -121,6 +127,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
     private final ZkServerWrapper zkServerWrapper;
     private final boolean shouldCloseZkServer;
     private final PubSubClientsFactory pubSubClientsFactory;
+    private final VeniceTlsConfiguration tlsConfiguration;
 
     /**
      * The constructor is private because {@link KafkaBrokerFactory#generateService(PubSubBrokerConfigs)} should be
@@ -129,25 +136,31 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
      * @param kafkaServer the Kafka instance to wrap
      * @param dataDirectory where Kafka keeps its log
      */
-    private KafkaBrokerWrapper(
+    protected KafkaBrokerWrapper(
         KafkaConfig kafkaConfig,
         KafkaServer kafkaServer,
         File dataDirectory,
         ZkServerWrapper zkServerWrapper,
         boolean shouldCloseZkServer,
         TestMockTime mockTime,
+        VeniceTlsConfiguration tlsConfiguration,
         int sslPort) {
       super(SERVICE_NAME, dataDirectory);
       this.kafkaConfig = kafkaConfig;
       this.kafkaServer = kafkaServer;
       this.mockTime = mockTime;
+      this.tlsConfiguration = tlsConfiguration;
       this.sslPort = sslPort;
       this.zkServerWrapper = zkServerWrapper;
       this.shouldCloseZkServer = shouldCloseZkServer;
-      pubSubClientsFactory = new PubSubClientsFactory(
+      this.pubSubClientsFactory = new PubSubClientsFactory(
           new ApacheKafkaProducerAdapterFactory(),
           new ApacheKafkaConsumerAdapterFactory(),
           new ApacheKafkaAdminAdapterFactory());
+    }
+
+    public String getZkAddress() {
+      return zkServerWrapper.getAddress();
     }
 
     @Override
@@ -163,6 +176,11 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
     @Override
     public int getSslPort() {
       return sslPort;
+    }
+
+    @Override
+    public VeniceTlsConfiguration getTlsConfiguration() {
+      return tlsConfiguration;
     }
 
     @Override

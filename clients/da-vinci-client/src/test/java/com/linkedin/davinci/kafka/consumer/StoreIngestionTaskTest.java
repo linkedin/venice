@@ -123,11 +123,11 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
@@ -237,7 +237,7 @@ public abstract class StoreIngestionTaskTest {
   private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   // TODO: Test other permutations of these params
-  private static final KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
+  private static final PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
       new OptimizedKafkaValueSerializer(),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new));

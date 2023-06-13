@@ -16,7 +16,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -66,7 +66,7 @@ public class TestAdminConsumerService {
     AdminConsumerService adminConsumerService1 = null;
     AdminConsumerService adminConsumerService2 = null;
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
