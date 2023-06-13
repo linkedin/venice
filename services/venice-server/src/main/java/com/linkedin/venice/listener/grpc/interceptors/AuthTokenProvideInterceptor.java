@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener.grpc.interceptors;
 
+import com.linkedin.venice.protocols.VeniceClientRequest;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
@@ -18,9 +19,25 @@ public class AuthTokenProvideInterceptor implements ClientInterceptor {
       final Channel channel) {
     return new ForwardingClientCall.SimpleForwardingClientCall<ReqT, RespT>(
         channel.newCall(methodDescriptor, callOptions)) {
+      String authToken;
+      private Metadata headers;
+
       @Override
-      public void start(Listener<RespT> responseListener, Metadata headers) {
-        headers.put(Key.of("auth_token", Metadata.ASCII_STRING_MARSHALLER), "valid_token");
+      public void sendMessage(ReqT message) {
+        String key = ((VeniceClientRequest) message).getKey();
+        if (key.equals("invalid")) {
+          authToken = "invalid";
+        } else {
+          authToken = "valid_token";
+        }
+
+        this.headers.put(Key.of("auth_token", Metadata.ASCII_STRING_MARSHALLER), authToken);
+        super.sendMessage(message);
+      }
+
+      @Override
+      public void start(final Listener<RespT> responseListener, final Metadata headers) {
+        this.headers = headers;
         super.start(responseListener, headers);
       }
     };

@@ -1,26 +1,43 @@
 package com.linkedin.venice.listener.grpc;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.grpc.interceptors.AuthTokenProvideInterceptor;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import io.grpc.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class VeniceReadServiceClient {
-  public static void main(String[] args) {
-    final ManagedChannel originChannel = ManagedChannelBuilder.forTarget("localhost:8080").usePlaintext().build();
+  private final ManagedChannel originChannel;
+  private final static Logger LOGGER = LogManager.getLogger(VeniceReadServiceClient.class);
+
+  private final VeniceReadServiceGrpc.VeniceReadServiceBlockingStub stub;
+
+  public VeniceReadServiceClient(String address) {
+    originChannel = ManagedChannelBuilder.forTarget(address).usePlaintext().build();
     ClientInterceptor interceptor = new AuthTokenProvideInterceptor();
-
     Channel newChannel = ClientInterceptors.intercept(originChannel, interceptor);
-    VeniceReadServiceGrpc.VeniceReadServiceBlockingStub stub = VeniceReadServiceGrpc.newBlockingStub(newChannel);
-    VeniceClientRequest request = VeniceClientRequest.newBuilder().setKey("this is a key :)").build();
+    stub = VeniceReadServiceGrpc.newBlockingStub(newChannel);
+  }
 
-    VeniceServerResponse response = stub.get(request);
+  public String get(String key) {
+    VeniceClientRequest request = VeniceClientRequest.newBuilder().setKey(key).build();
+    VeniceServerResponse response;
 
-    System.out.println("[client] key: " + request.getKey());
-    System.out.println("[client] returned val: " + response.getValue());
+    try {
+      response = stub.get(request);
+    } catch (Exception e) {
+      LOGGER.error("Fail to get value for key: {}", key, e);
+      throw new VeniceException(e);
+    }
 
+    return response.getValue();
+  }
+
+  public void shutdown() {
     originChannel.shutdown();
   }
 }

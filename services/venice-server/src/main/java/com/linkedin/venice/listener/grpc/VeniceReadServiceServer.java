@@ -1,20 +1,18 @@
 package com.linkedin.venice.listener.grpc;
 
+import com.linkedin.venice.grpc.VeniceGrpcServer;
+import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
 import com.linkedin.venice.listener.grpc.interceptors.AuthorizationInterceptor;
-import io.grpc.*;
+import io.grpc.InsecureServerCredentials;
 
 
-public class VeniceReadServiceServer {
-  public static void main(String[] args) throws Exception {
-
-    int port = 8080;
-
-    Server server = Grpc.newServerBuilderForPort(8080, InsecureServerCredentials.create())
-        .addService(ServerInterceptors.intercept(new VeniceReadServiceImpl(), new AuthorizationInterceptor()))
-        .build()
-        .start();
-
-    System.out.println("[server] Server started");
-    server.awaitTermination();
+public class VeniceReadServiceServer extends VeniceGrpcServer {
+  public VeniceReadServiceServer(int port) {
+    super(
+        new VeniceGrpcServerConfig.Builder().setPort(port)
+            .setCredentials(InsecureServerCredentials.create())
+            .setService(new VeniceReadServiceImpl())
+            .setInterceptor(new AuthorizationInterceptor())
+            .build());
   }
 }

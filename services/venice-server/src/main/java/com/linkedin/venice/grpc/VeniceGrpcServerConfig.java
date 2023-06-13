@@ -1,6 +1,7 @@
 package com.linkedin.venice.grpc;
 
 import io.grpc.BindableService;
+import io.grpc.InsecureServerCredentials;
 import io.grpc.ServerCredentials;
 import io.grpc.ServerInterceptor;
 import java.util.Collections;
@@ -13,7 +14,7 @@ public class VeniceGrpcServerConfig {
   private final BindableService service;
   private final List<? extends ServerInterceptor> interceptors;
 
-  VeniceGrpcServerConfig(Builder builder) {
+  private VeniceGrpcServerConfig(Builder builder) {
     port = builder.port;
     credentials = builder.credentials;
     service = builder.service;
@@ -38,7 +39,7 @@ public class VeniceGrpcServerConfig {
 
   @Override
   public String toString() {
-    return "";
+    return "VeniceGrpcServerConfig{" + "port=" + port + ", service=" + service + "}";
   }
 
   public static class Builder {
@@ -47,14 +48,7 @@ public class VeniceGrpcServerConfig {
     private BindableService service;
     private List<? extends ServerInterceptor> interceptors;
 
-    public Builder() {
-      port = 0;
-      credentials = null;
-      service = null;
-      interceptors = null;
-    }
-
-    public Builder port(int port) {
+    public Builder setPort(int port) {
       this.port = port;
       return this;
     }
@@ -89,7 +83,7 @@ public class VeniceGrpcServerConfig {
         throw new IllegalArgumentException("Port must be set");
       }
       if (credentials == null) {
-        throw new IllegalArgumentException("Credentials must be set");
+        credentials = InsecureServerCredentials.create();
       }
       if (service == null) {
         throw new IllegalArgumentException("Service must be set");
@@ -97,5 +91,3 @@ public class VeniceGrpcServerConfig {
     }
   }
 }
-
-// todo remove this from everyplace except setter method
