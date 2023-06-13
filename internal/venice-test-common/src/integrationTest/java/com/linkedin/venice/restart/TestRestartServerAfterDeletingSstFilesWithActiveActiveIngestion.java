@@ -151,7 +151,8 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true)
         .setBackupVersionRetentionMs(1)
-        .setIncrementalPushEnabled(true);
+        .setIncrementalPushEnabled(true)
+        .setPartitionCount(1);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
   }
 

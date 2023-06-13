@@ -537,7 +537,7 @@ public class VeniceParentHelixAdmin implements Admin {
           PUSH_JOB_DETAILS_STORE_DESCRIPTOR + VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           PushJobStatusRecordKey.getClassSchema().toString(),
           PushJobDetails.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(clusterName).getNumberOfPartition(),
+          getMultiClusterConfigs().getControllerConfig(clusterName).getMinNumberOfPartitions(),
           updateStoreQueryParams);
     }
 
@@ -558,7 +558,7 @@ public class VeniceParentHelixAdmin implements Admin {
           BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR + batchJobHeartbeatStoreName,
           BatchJobHeartbeatKey.getClassSchema().toString(),
           BatchJobHeartbeatValue.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(currClusterName).getNumberOfPartition(),
+          getMultiClusterConfigs().getControllerConfig(currClusterName).getMinNumberOfPartitions(),
           updateStoreQueryParams);
     } else {
       LOGGER.info(
@@ -667,6 +667,9 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         if (!updateStoreQueryParams.getHybridRewindSeconds().isPresent()) {
           updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
+        }
+        if (!updateStoreQueryParams.getPartitionCount().isPresent()) {
+          updateStoreQueryParams.setPartitionCount(partitionCount);
         }
         updateStore(clusterName, storeName, updateStoreQueryParams);
         store = getStore(clusterName, storeName);
@@ -2123,7 +2126,7 @@ public class VeniceParentHelixAdmin implements Admin {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
       int maxPartitionNum =
-          getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
+          getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartitions();
       if (partitionCount > maxPartitionNum) {
         throw new ConfigurationException(
             "Partition count: " + partitionCount + " should be less than max: " + maxPartitionNum);
@@ -2615,14 +2618,23 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (!veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
-          && veniceHelixAdmin.isHybrid(setStore.hybridStoreConfig) && setStore.partitionNum == 0) {
-        // This is a new hybrid store and partition count is not specified. Use default hybrid store partition count.
-        setStore.partitionNum = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
-            .getConfig()
-            .getNumberOfPartitionForHybrid();
+          && veniceHelixAdmin.isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
+        // This is a new hybrid store and partition count is not specified.
+        VeniceControllerClusterConfig config =
+            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
+        setStore.setPartitionNum(
+            PartitionUtils.calculatePartitionCount(
+                storeName,
+                setStore.getStorageQuotaInByte(),
+                0,
+                config.getPartitionSize(),
+                config.getMinNumberOfPartitionsForHybrid(),
+                config.getMaxNumberOfPartitions(),
+                config.isPartitionCountRoundUpEnabled(),
+                config.getPartitionCountRoundUpSize()));
         LOGGER.info(
             "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
-            setStore.partitionNum,
+            setStore.getPartitionNum(),
             storeName);
         updatedConfigsList.add(PARTITION_COUNT);
       }
