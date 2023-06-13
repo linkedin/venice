@@ -64,8 +64,6 @@ public class HttpTransportClient extends TransportClient {
 
     if (requireHHtp2) {
       // HTTP2 only client doesn't allow you to configure the ConnectionManager, 1 connection is enough
-      // this is kind of problem for K8S deployment, where we have multiple pods
-      // but we access the router via a single Service
       LOGGER.info("Creating a TLS HTTP2 only client to {}", routerUrl);
       return new HttpClient5Utils.HttpClient5Builder().setHttp1(false)
           .setSslContext(sslFactory.getSSLContext())
