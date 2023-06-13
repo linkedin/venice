@@ -159,8 +159,8 @@ public class PubSubSharedProducerAdapterFactoryTest {
         new KafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumerAdapter pubSubConsumer =
-        pubSubConsumerAdapterFactory.create(new VeniceProperties(properties), false, pubSubMessageDeserializer, "")) {
+    try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory
+        .create(new VeniceProperties(properties), false, pubSubMessageDeserializer, "TestConsumer")) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(existingTopic, 0);
       Long end = pubSubConsumer.endOffset(pubSubTopicPartition);
       Assert.assertTrue(end > 100L); // to account for the SOP that VW sends internally.

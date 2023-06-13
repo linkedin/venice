@@ -42,8 +42,8 @@ public class DictionaryUtils {
         new KafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumerAdapter pubSubConsumer =
-        pubSubConsumerAdapterFactory.create(getKafkaConsumerProps(props), false, pubSubMessageDeserializer, null)) {
+    try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory
+        .create(getKafkaConsumerProps(props), false, pubSubMessageDeserializer, "DictionaryUtilsConsumer")) {
       return DictionaryUtils.readDictionaryFromKafka(topicName, pubSubConsumer, pubSubTopicRepository);
     }
   }

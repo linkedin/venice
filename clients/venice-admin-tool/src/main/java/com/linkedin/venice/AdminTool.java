@@ -2875,7 +2875,7 @@ public class AdminTool {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     return new ApacheKafkaConsumerAdapterFactory()
-        .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "");
+        .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "admin-tool-topic-dumper");
   }
 
 }
