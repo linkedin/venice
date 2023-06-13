@@ -2,15 +2,19 @@ package com.linkedin.venice.listener;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -22,12 +26,14 @@ import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -69,6 +75,9 @@ public class ReadQuotaEnforcementHandlerTest {
    */
   @Test
   public void testQuotaEnforcementHandlerAtNodeLevel() {
+    Store store = mock(Store.class);
+    doReturn(true).when(store).isStorageNodeReadQuotaEnabled();
+    doReturn(store).when(storeRepository).getStore(any());
 
     runTest(
         "dummyStore_v1",
@@ -104,6 +113,7 @@ public class ReadQuotaEnforcementHandlerTest {
 
     long storeReadQuota = 5; // rcu per second
     Store store = mock(Store.class);
+    doReturn(true).when(store).isStorageNodeReadQuotaEnabled();
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
@@ -147,12 +157,97 @@ public class ReadQuotaEnforcementHandlerTest {
 
     long storeReadQuota = 6; // rcu per second, only half will be supported on this node
     Store store = mock(Store.class);
+    doReturn(true).when(store).isStorageNodeReadQuotaEnabled();
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
     quotaEnforcer.onCustomizedViewChange(pa);
 
     runTest(topic, storeReadQuota / 2 * 5 * 10, storeReadQuota / 2 * 10, 10000);
+  }
+
+  /**
+   * Test requests with invalid resource names are rejected with BAD_REQUEST
+   */
+  @Test
+  public void testInvalidResourceNames() {
+    String invalidResourceName = Version.composeKafkaTopic("store_dne", 1);
+    RouterRequest request = mock(RouterRequest.class);
+    doReturn(invalidResourceName).when(request).getResourceName();
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    quotaEnforcer.channelRead0(ctx, request);
+    ArgumentCaptor<Object> responseCaptor = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).writeAndFlush(responseCaptor.capture());
+    Object response = responseCaptor.getValue();
+    assertTrue(response instanceof HttpShortcutResponse);
+    assertEquals(((HttpShortcutResponse) response).getStatus(), HttpResponseStatus.BAD_REQUEST);
+  }
+
+  /**
+   * Test enforcement of storage node read quota is only enabled for specific stores
+   */
+  @Test
+  public void testStoreLevelStorageNodeReadQuotaEnabled() {
+    String quotaEnabledStoreName = Utils.getUniqueString("quotaEnabled");
+    String quotaDisabledStoreName = Utils.getUniqueString("quotaDisabled");
+
+    String quotaEnabledTopic = Version.composeKafkaTopic(quotaEnabledStoreName, 1);
+    String quotaDisabledTopic = Version.composeKafkaTopic(quotaDisabledStoreName, 1);
+
+    Instance thisInstance = mock(Instance.class);
+    doReturn(thisNodeId).when(thisInstance).getNodeId();
+
+    Partition partition = mock(Partition.class);
+    doReturn(0).when(partition).getId();
+
+    List<ReplicaState> replicaStates = new ArrayList<>();
+    ReplicaState thisReplicaState = mock(ReplicaState.class);
+    doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
+    doReturn(true).when(thisReplicaState).isReadyToServe();
+    replicaStates.add(thisReplicaState);
+    when(customizedViewRepository.getReplicaStates(quotaEnabledTopic, partition.getId())).thenReturn(replicaStates);
+
+    PartitionAssignment pa = mock(PartitionAssignment.class);
+    doReturn(quotaEnabledTopic).when(pa).getTopic();
+    doReturn(Collections.singletonList(partition)).when(pa).getAllPartitions();
+
+    long storeReadQuota = 1;
+    Store store = mock(Store.class);
+    Store quotaDisabledStore = mock(Store.class);
+    doReturn(true).when(store).isStorageNodeReadQuotaEnabled();
+    doReturn(storeReadQuota).when(store).getReadQuotaInCU();
+    doReturn(store).when(storeRepository).getStore(eq(quotaEnabledStoreName));
+    doReturn(storeReadQuota).when(quotaDisabledStore).getReadQuotaInCU();
+    doReturn(quotaDisabledStore).when(storeRepository).getStore(eq(quotaDisabledStoreName));
+
+    quotaEnforcer.onExternalViewChange(pa);
+
+    AtomicInteger allowed = new AtomicInteger(0);
+    AtomicInteger blocked = new AtomicInteger(0);
+
+    RouterRequest request = mock(RouterRequest.class);
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    setUpRequestMocks(ctx, request, allowed, blocked, quotaEnabledTopic);
+    long capacity = storeReadQuota * 5 * 10;
+    for (int i = 0; i < capacity; i++) {
+      quotaEnforcer.channelRead0(ctx, request);
+    }
+    assertEquals(allowed.get(), capacity);
+    assertEquals(blocked.get(), 0);
+    quotaEnforcer.channelRead0(ctx, request);
+    assertEquals(blocked.get(), 1);
+
+    allowed.set(0);
+    blocked.set(0);
+    RouterRequest quotaDisabledRequest = mock(RouterRequest.class);
+    ChannelHandlerContext quotaDisabledCtx = mock(ChannelHandlerContext.class);
+    setUpRequestMocks(quotaDisabledCtx, quotaDisabledRequest, allowed, blocked, quotaDisabledTopic);
+    for (int i = 0; i < capacity * 2; i++) {
+      quotaEnforcer.channelRead0(quotaDisabledCtx, quotaDisabledRequest);
+    }
+    // Store that have storage node read quota disabled should not be blocked
+    assertEquals(allowed.get(), capacity * 2);
+    assertEquals(blocked.get(), 0);
   }
 
   /**
@@ -170,17 +265,8 @@ public class ReadQuotaEnforcementHandlerTest {
     AtomicInteger blocked = new AtomicInteger(0);
 
     RouterRequest request = mock(RouterRequest.class);
-    doReturn(resourceName).when(request).getResourceName();
-    doReturn(RequestType.SINGLE_GET).when(request).getRequestType();
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
-    doAnswer((a) -> {
-      blocked.incrementAndGet();
-      return null;
-    }).when(ctx).writeAndFlush(any());
-    doAnswer((a) -> {
-      allowed.incrementAndGet();
-      return null;
-    }).when(ctx).fireChannelRead(any());
+    setUpRequestMocks(ctx, request, allowed, blocked, resourceName);
     for (int i = 0; i < capacity; i++) {
       quotaEnforcer.channelRead0(ctx, request);
     }
@@ -209,5 +295,23 @@ public class ReadQuotaEnforcementHandlerTest {
         blocked.get(),
         1,
         "After exhausting refill of " + refillAmount + " next read should have been blocked");
+  }
+
+  void setUpRequestMocks(
+      ChannelHandlerContext ctx,
+      RouterRequest request,
+      AtomicInteger allowed,
+      AtomicInteger blocked,
+      String resourceName) {
+    doReturn(resourceName).when(request).getResourceName();
+    doReturn(RequestType.SINGLE_GET).when(request).getRequestType();
+    doAnswer((a) -> {
+      blocked.incrementAndGet();
+      return null;
+    }).when(ctx).writeAndFlush(any());
+    doAnswer((a) -> {
+      allowed.incrementAndGet();
+      return null;
+    }).when(ctx).fireChannelRead(any());
   }
 }

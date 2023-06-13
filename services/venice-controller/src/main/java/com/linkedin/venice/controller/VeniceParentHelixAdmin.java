@@ -42,6 +42,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
@@ -2286,6 +2287,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * configs should be replicated to children too.
        */
       Optional<Boolean> replicateAll = params.getReplicateAllConfigs();
+      Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
       List<CharSequence> updatedConfigsList = new LinkedList<>();
       String errorMessagePrefix = "Store update error for " + storeName + " in cluster: " + clusterName + ": ";
@@ -2552,6 +2554,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.latestSuperSetValueSchemaId =
           latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigsList, LATEST_SUPERSET_SCHEMA_ID))
               .orElseGet(currStore::getLatestSuperSetValueSchemaId);
+      setStore.storageNodeReadQuotaEnabled =
+          storageNodeReadQuotaEnabled.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_NODE_READ_QUOTA_ENABLED))
+              .orElseGet(currStore::isStorageNodeReadQuotaEnabled);
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();

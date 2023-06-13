@@ -220,6 +220,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
     setRmdVersion(store.getRmdVersion());
     setViewConfigs(store.getViewConfigs());
+    setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -813,6 +814,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setDaVinciPushStatusStoreEnabled(boolean daVinciPushStatusStoreEnabled) {
     this.storeProperties.daVinciPushStatusStoreEnabled = daVinciPushStatusStoreEnabled;
+  }
+
+  @Override
+  public boolean isStorageNodeReadQuotaEnabled() {
+    return this.storeProperties.storageNodeReadQuotaEnabled;
+  }
+
+  @Override
+  public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
+    this.storeProperties.storageNodeReadQuotaEnabled = storageNodeReadQuotaEnabled;
   }
 
   /**

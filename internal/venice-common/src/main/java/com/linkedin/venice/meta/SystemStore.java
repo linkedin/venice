@@ -600,6 +600,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isStorageNodeReadQuotaEnabled() {
+    return zkSharedStore.isStorageNodeReadQuotaEnabled();
+  }
+
+  @Override
+  public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
+    throwUnsupportedOperationException("setStorageNodeReadQuotaEnabled");
+  }
+
+  @Override
   public Store cloneStore() {
     return new SystemStore(zkSharedStore.cloneStore(), systemStoreType, veniceStore.cloneStore());
   }
