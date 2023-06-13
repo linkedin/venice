@@ -5660,6 +5660,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  @Override
+  public String getRegionName() {
+    return multiClusterConfigs.getRegionName();
+  }
+
   /**
    * @return KafkaUrl for the given fabric.
    * @see ConfigKeys#CHILD_DATA_CENTER_KAFKA_URL_PREFIX

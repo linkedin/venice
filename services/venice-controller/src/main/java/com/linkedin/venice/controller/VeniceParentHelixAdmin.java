@@ -1600,7 +1600,9 @@ public class VeniceParentHelixAdmin implements Admin {
     if (pushType.isIncremental()) {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
     } else {
-      validateTargetedRegions(targetedRegions, clusterName);
+      if (StringUtils.isNotEmpty(targetedRegions)) {
+        validateTargetedRegions(targetedRegions, clusterName);
+      }
 
       newVersion = addVersionAndTopicOnly(
           clusterName,
@@ -3580,6 +3582,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public String getKafkaBootstrapServers(boolean isSSL) {
     return getVeniceHelixAdmin().getKafkaBootstrapServers(isSSL);
+  }
+
+  @Override
+  public String getRegionName() {
+    return getVeniceHelixAdmin().getRegionName();
   }
 
   /**
