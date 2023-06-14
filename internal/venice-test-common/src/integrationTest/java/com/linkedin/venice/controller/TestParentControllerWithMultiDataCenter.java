@@ -112,7 +112,8 @@ public class TestParentControllerWithMultiDataCenter {
           .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
           .setChunkingEnabled(true)
           .setRmdChunkingEnabled(true)
-          .setAmplificationFactor(2);
+          .setAmplificationFactor(2)
+          .setStorageNodeReadQuotaEnabled(true);
 
       TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
@@ -144,6 +145,7 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertTrue(storeInfo.isChunkingEnabled());
           Assert.assertTrue(storeInfo.isRmdChunkingEnabled());
           Assert.assertEquals(storeInfo.getPartitionCount(), 2); // hybrid partition count from the config
+          Assert.assertTrue(storeInfo.isStorageNodeReadQuotaEnabled());
         }
       });
 

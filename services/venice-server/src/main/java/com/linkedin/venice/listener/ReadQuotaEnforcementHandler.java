@@ -126,7 +126,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, RouterRequest request) {
-    String storeName = Version.parseStoreFromKafkaTopicName(request.getResourceName());
+    String storeName = request.getStoreName();
     Store store = storeRepository.getStore(storeName);
     if (store == null) {
       ctx.writeAndFlush(

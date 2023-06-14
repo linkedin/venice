@@ -171,9 +171,9 @@ public class ReadQuotaEnforcementHandlerTest {
    */
   @Test
   public void testInvalidResourceNames() {
-    String invalidResourceName = Version.composeKafkaTopic("store_dne", 1);
+    String invalidStoreName = "store_dne";
     RouterRequest request = mock(RouterRequest.class);
-    doReturn(invalidResourceName).when(request).getResourceName();
+    doReturn(invalidStoreName).when(request).getStoreName();
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
     quotaEnforcer.channelRead0(ctx, request);
     ArgumentCaptor<Object> responseCaptor = ArgumentCaptor.forClass(Object.class);
@@ -303,6 +303,7 @@ public class ReadQuotaEnforcementHandlerTest {
       AtomicInteger allowed,
       AtomicInteger blocked,
       String resourceName) {
+    doReturn(Version.parseStoreFromKafkaTopicName(resourceName)).when(request).getStoreName();
     doReturn(resourceName).when(request).getResourceName();
     doReturn(RequestType.SINGLE_GET).when(request).getRequestType();
     doAnswer((a) -> {
