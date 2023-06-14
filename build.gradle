@@ -17,7 +17,7 @@ plugins {
   id 'com.form.diff-coverage' version '0.9.5' apply false
   id 'me.champeau.jmh' version '0.6.7' apply false
   id 'io.github.lhotari.gradle-nar-plugin' version '0.5.1' apply false
-  id 'com.google.protobuf' version '0.9.3'
+  id 'com.google.protobuf' version '0.9.3' apply false
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -159,13 +159,13 @@ subprojects {
     plugin 'java-library'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
-    plugin 'com.google.protobuf'
   }
 
   if (isLeafSubModule) {
     apply {
       plugin 'jacoco'
       plugin 'com.form.diff-coverage'
+      plugin 'com.google.protobuf'
     }
   }
 
@@ -181,18 +181,20 @@ subprojects {
     //withJavadocJar()
   }
 
-  protobuf {
-    protoc {
-      artifact = 'com.google.protobuf:protoc:' + protobufVersion
-    }
-    plugins {
-      grpc {
-        artifact = 'io.grpc:protoc-gen-grpc-java:' + grpcVersion
+  if (isLeafSubModule) {
+    protobuf {
+      protoc {
+        artifact = 'com.google.protobuf:protoc:' + protobufVersion
       }
-    }
-    generateProtoTasks {
-      all()*.plugins {
-        grpc {}
+      plugins {
+        grpc {
+          artifact = 'io.grpc:protoc-gen-grpc-java:' + grpcVersion
+        }
+      }
+      generateProtoTasks {
+        ofSourceSet('main')*.plugins {
+          grpc {}
+        }
       }
     }
   }

@@ -28,6 +28,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -62,9 +63,12 @@ public class TestDataRecoveryClient {
   private void verifyEstimationResults() {
     Long expectedRecoveryTime = 7200L;
     Long result = 0L;
+    Set<String> storeNames = new HashSet<>();
     for (DataRecoveryTask t: estimator.getTasks()) {
       result += ((EstimateDataRecoveryTimeCommand.Result) t.getTaskResult().getCmdResult())
           .getEstimatedRecoveryTimeInSeconds();
+      Assert.assertFalse(storeNames.contains(t.getTaskParams().getStore()));
+      storeNames.add(t.getTaskParams().getStore());
     }
     Assert.assertEquals(result, expectedRecoveryTime);
   }
@@ -76,6 +80,13 @@ public class TestDataRecoveryClient {
       // Verify all stores are executed successfully.
       for (int i = 0; i < numOfStores; i++) {
         Assert.assertFalse(executor.getTasks().get(i).getTaskResult().isError());
+      }
+      Set<String> storeNames = new HashSet<>();
+      // Double-check the stores recovered. We do not want to see duplicates in the final report.
+      for (int i = 0; i < numOfStores; i++) {
+        String storeName = executor.getTasks().get(i).getTaskParams().getCmdParams().getStore();
+        Assert.assertFalse(storeNames.contains(storeName));
+        storeNames.add(storeName);
       }
     } else {
       // Verify all stores are executed unsuccessfully.
@@ -96,12 +107,14 @@ public class TestDataRecoveryClient {
     ControllerClient controllerClient = mock(ControllerClient.class);
 
     Set<String> storeNames = new HashSet<>(Arrays.asList("store1", "store2"));
-    EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
-    cmdParams.setTargetRegion("region1");
-    cmdParams.setParentUrl("https://localhost:7036");
-    cmdParams.setPCtrlCliWithoutCluster(controllerClient);
+    EstimateDataRecoveryTimeCommand.Params.Builder builder =
+        new EstimateDataRecoveryTimeCommand.Params.Builder().setTargetRegion("region1")
+            .setParentUrl("https://localhost:7036")
+            .setPCtrlCliWithoutCluster(controllerClient)
+            .setSSLFactory(Optional.empty());
+    EstimateDataRecoveryTimeCommand.Params cmdParams = builder.build();
     EstimateDataRecoveryTimeCommand mockCmd = spy(EstimateDataRecoveryTimeCommand.class);
-    List<DataRecoveryTask> tasks = buildTasks(storeNames, mockCmd, cmdParams);
+    List<DataRecoveryTask> tasks = buildEstimateDataRecoveryTasks(storeNames, mockCmd, cmdParams);
     doReturn(cmdParams).when(mockCmd).getParams();
     D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
     r.setCluster("test");
@@ -131,21 +144,23 @@ public class TestDataRecoveryClient {
 
     doReturn(mockResponse).when(controllerClient).listStorePushInfo(anyString(), anyBoolean());
     doReturn("test").when(controllerClient).getClusterName();
+    doReturn(cmdParams).when(mockCmd).getParams();
 
     dataRecoveryClient.estimateRecoveryTime(new DataRecoveryClient.DataRecoveryParams("store1,store2"), cmdParams);
   }
 
   private void executeRecovery(boolean isSuccess) {
     ControllerClient controllerClient = mock(ControllerClient.class);
-    StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
-    cmdParams.setCommand("cmd");
-    cmdParams.setExtraCommandArgs("args");
-    cmdParams.setPCtrlCliWithoutCluster(controllerClient);
-    cmdParams.setUrl("https://localhost:7036");
-    cmdParams.setTimestamp("2999-12-31T00:00:00");
-    cmdParams.setSSLFactory(Optional.empty());
-    cmdParams.setDestFabric("ei-ltx1");
-    cmdParams.setSourceFabric("ei-ltx1");
+    StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder().setCommand("cmd")
+        .setExtraCommandArgs("args")
+        .setPCtrlCliWithoutCluster(controllerClient)
+        .setUrl("https://localhost:7036")
+        .setTimestamp(LocalDateTime.parse("2999-12-31T00:00:00", DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+        .setSSLFactory(Optional.empty())
+        .setDestFabric("ei-ltx1")
+        .setSourceFabric("ei-ltx1");
+
+    StoreRepushCommand.Params cmdParams = builder.build();
 
     D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
     r.setCluster("test");
@@ -170,7 +185,7 @@ public class TestDataRecoveryClient {
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));
-    List<DataRecoveryTask> tasks = buildTasks(storeName, mockStoreRepushCmd, cmdParams);
+    List<DataRecoveryTask> tasks = buildExecuteDataRecoveryTasks(storeName, mockStoreRepushCmd, cmdParams);
     doReturn(tasks).when(executor).buildTasks(any(), any());
 
     // Store filtering mocks
@@ -204,7 +219,7 @@ public class TestDataRecoveryClient {
     // testing repush with invalid timestamps
 
     storeStatusMap.put("ei-ltx1", "7");
-    cmdParams.setTimestamp("1999-12-31T00:00:00");
+    builder.setTimestamp(LocalDateTime.parse("1999-12-31T00:00:00", DateTimeFormatter.ISO_LOCAL_DATE_TIME));
     doReturn("2999-12-31T23:59:59.171961").when(regionPushDetailsMock).getPushStartTimestamp();
     Assert.assertEquals(
         storeHealthInfoMock.getRegionPushDetails().get("ei-ltx1").getPushStartTimestamp(),
@@ -213,11 +228,53 @@ public class TestDataRecoveryClient {
     Assert.assertEquals(dataRecoveryClient.getExecutor().getSkippedStores().contains("store3"), true);
   }
 
-  private List<DataRecoveryTask> buildTasks(Set<String> storeNames, Command cmd, Command.Params params) {
+  private List<DataRecoveryTask> buildExecuteDataRecoveryTasks(
+      Set<String> storeNames,
+      Command cmd,
+      StoreRepushCommand.Params params) {
     List<DataRecoveryTask> tasks = new ArrayList<>();
+    StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder(params);
     for (String name: storeNames) {
-      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, params);
+      StoreRepushCommand.Params p = builder.build();
+      p.setStore(name);
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
       tasks.add(new DataRecoveryTask(cmd, taskParams));
+    }
+    return tasks;
+  }
+
+  private List<DataRecoveryTask> buildEstimateDataRecoveryTasks(
+      Set<String> storeNames,
+      Command cmd,
+      EstimateDataRecoveryTimeCommand.Params params) {
+    List<DataRecoveryTask> tasks = new ArrayList<>();
+    EstimateDataRecoveryTimeCommand.Params.Builder builder = new EstimateDataRecoveryTimeCommand.Params.Builder(params);
+    for (String name: storeNames) {
+      EstimateDataRecoveryTimeCommand.Params p = builder.build();
+      p.setStore(name);
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
+      EstimateDataRecoveryTimeCommand newCmd = spy(EstimateDataRecoveryTimeCommand.class);
+      doReturn(p).when(newCmd).getParams();
+      doReturn(p.getPCtrlCliWithoutCluster()).when(newCmd).buildControllerClient(anyString(), anyString(), any());
+      tasks.add(new DataRecoveryTask(newCmd, taskParams));
+    }
+    return tasks;
+  }
+
+  private List<DataRecoveryTask> buildMonitorDataRecoveryTasks(
+      Set<String> storeNames,
+      Command cmd,
+      MonitorCommand.Params params) {
+    List<DataRecoveryTask> tasks = new ArrayList<>();
+    MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder(params);
+    for (String name: storeNames) {
+      MonitorCommand.Params p = builder.build();
+      p.setStore(name);
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
+      MonitorCommand newCmd = spy(MonitorCommand.class);
+      doReturn(p).when(newCmd).getParams();
+      doReturn(p.getPCtrlCliWithoutCluster()).when(newCmd).buildControllerClient(anyString(), anyString(), any());
+      tasks.add(new DataRecoveryTask(newCmd, taskParams));
     }
     return tasks;
   }
@@ -265,19 +322,23 @@ public class TestDataRecoveryClient {
     doReturn(monitor).when(dataRecoveryClient).getMonitor();
     doCallRealMethod().when(dataRecoveryClient).monitor(any(), any());
 
-    MonitorCommand.Params monitorParams = new MonitorCommand.Params();
-    monitorParams.setTargetRegion(region);
-    monitorParams.setDateTime(now);
-    monitorParams.setPCtrlCliWithoutCluster(mockedCli);
+    MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder().setTargetRegion(region)
+        .setDateTime(now)
+        .setPCtrlCliWithoutCluster(mockedCli)
+        .setParentUrl("https://localhost:7036")
+        .setSSLFactory(Optional.empty());
+    MonitorCommand.Params monitorParams = builder.build();
 
     MonitorCommand mockMonitorCmd = spy(MonitorCommand.class);
     mockMonitorCmd.setParams(monitorParams);
     mockMonitorCmd.setOngoingOfflinePushDetected(false);
-    doReturn(mockedCli).when(mockMonitorCmd).buildControllerClient(any(), any(), any());
+    doReturn(mockedCli).when(mockMonitorCmd).buildControllerClient(anyString(), anyString(), any());
+
+    doReturn(monitorParams).when(mockMonitorCmd).getParams();
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));
-    List<DataRecoveryTask> tasks = buildTasks(storeName, mockMonitorCmd, monitorParams);
+    List<DataRecoveryTask> tasks = buildMonitorDataRecoveryTasks(storeName, mockMonitorCmd, monitorParams);
     doReturn(tasks).when(monitor).buildTasks(any(), any());
 
     // client monitors three store recovery progress.
@@ -362,6 +423,14 @@ public class TestDataRecoveryClient {
         Assert.assertTrue(monitor.getTasks().get(i).getTaskResult().isError());
         Assert.assertNull(monitor.getTasks().get(i).getTaskResult().getMessage());
       }
+    }
+
+    // duplicate check
+
+    Set<String> storeNames = new HashSet<>();
+    for (int i = 0; i < numOfStores; i++) {
+      Assert.assertFalse(storeNames.contains(monitor.getTasks().get(i).getTaskParams().getStore()));
+      storeNames.add(monitor.getTasks().get(i).getTaskParams().getStore());
     }
   }
 }

@@ -23,12 +23,13 @@ public class DataRecoveryExecutor extends DataRecoveryWorker {
   @Override
   public List<DataRecoveryTask> buildTasks(Set<String> storeNames, Command.Params params) {
     List<DataRecoveryTask> tasks = new ArrayList<>();
+    StoreRepushCommand.Params.Builder builder =
+        new StoreRepushCommand.Params.Builder((StoreRepushCommand.Params) params);
     for (String name: storeNames) {
-      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, params);
-      tasks.add(
-          new DataRecoveryTask(
-              new StoreRepushCommand((StoreRepushCommand.Params) taskParams.getCmdParams()),
-              taskParams));
+      StoreRepushCommand.Params p = builder.build();
+      p.setStore(name);
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
+      tasks.add(new DataRecoveryTask(new StoreRepushCommand(p), taskParams));
     }
     return tasks;
   }
