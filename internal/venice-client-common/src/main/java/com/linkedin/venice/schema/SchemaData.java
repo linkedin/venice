@@ -3,14 +3,11 @@ package com.linkedin.venice.schema;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.SortedMap;
-import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.ConcurrentSkipListSet;
-import org.apache.avro.Schema;
 
 
 /**
@@ -23,39 +20,43 @@ import org.apache.avro.Schema;
 public final class SchemaData {
   private final String storeName;
   private SchemaEntry keySchema;
-  private final SortedMap<Integer, SchemaEntry> valueSchemaMap;
+  private final SparseConcurrentList<SchemaEntry> valueSchemaMap;
   private final Map<SchemaEntry, Integer> valueSchemaRMap;
   private final Map<GeneratedSchemaID, DerivedSchemaEntry> updateSchemaMap;
   private final Map<String, GeneratedSchemaID> updateSchemaRMap;
   private final Map<RmdVersionId, RmdSchemaEntry> rmdSchemaMap;
-  private final Map<Schema, RmdVersionId> rmdSchemaRMap;
+  private final List<Object> updateSchemaExistenceSet;
+  private final List<Object> rmdSchemaExistenceSet;
 
-  private final Set<Integer> updateSchemaExistenceSet;
-  private final Set<Integer> rmdSchemaExistenceSet;
+  private volatile int maxValueSchemaId;
 
   public final static int UNKNOWN_SCHEMA_ID = 0;
   public final static int INVALID_VALUE_SCHEMA_ID = -1;
   public final static int DUPLICATE_VALUE_SCHEMA_CODE = -2;
 
-  public SchemaData(String storeName) {
+  public SchemaData(String storeName, SchemaEntry keySchema) {
     this.storeName = storeName;
-    this.valueSchemaMap = new ConcurrentSkipListMap<>();
+    this.keySchema = keySchema;
+    this.maxValueSchemaId = INVALID_VALUE_SCHEMA_ID;
+    this.valueSchemaMap = new SparseConcurrentList<>();
     this.valueSchemaRMap = new VeniceConcurrentHashMap<>();
 
     this.updateSchemaMap = new VeniceConcurrentHashMap<>();
     this.updateSchemaRMap = new VeniceConcurrentHashMap<>();
 
     this.rmdSchemaMap = new VeniceConcurrentHashMap<>();
-    this.rmdSchemaRMap = new VeniceConcurrentHashMap<>();
 
-    this.updateSchemaExistenceSet = new ConcurrentSkipListSet<>();
-    this.rmdSchemaExistenceSet = new ConcurrentSkipListSet<>();
+    this.updateSchemaExistenceSet = new SparseConcurrentList<>();
+    this.rmdSchemaExistenceSet = new SparseConcurrentList<>();
   }
 
   public String getStoreName() {
     return storeName;
   }
 
+  /**
+   * @return the key {@link SchemaEntry}, which may temporarily be null soon after store initialization...
+   */
   public SchemaEntry getKeySchema() {
     return keySchema;
   }
@@ -65,14 +66,14 @@ public final class SchemaData {
   }
 
   public SchemaEntry getValueSchema(int id) {
-    return valueSchemaMap.get(Integer.valueOf(id));
+    return valueSchemaMap.get(id);
   }
 
   public void addValueSchema(SchemaEntry valueSchema) {
     // value schema should be unique in store level, same as schema id
-    Integer id = Integer.valueOf(valueSchema.getId());
-    valueSchemaMap.put(id, valueSchema);
-    valueSchemaRMap.put(valueSchema, id);
+    this.maxValueSchemaId = Math.max(valueSchema.getId(), this.maxValueSchemaId);
+    this.valueSchemaMap.set(valueSchema.getId(), valueSchema);
+    this.valueSchemaRMap.put(valueSchema, Integer.valueOf(valueSchema.getId()));
   }
 
   public DerivedSchemaEntry getDerivedSchema(int valueSchemaId, int derivedSchemaId) {
@@ -92,14 +93,11 @@ public final class SchemaData {
         new GeneratedSchemaID(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
     updateSchemaMap.put(derivedSchemaId, derivedSchemaEntry);
     updateSchemaRMap.put(derivedSchemaEntry.getSchemaStr(), derivedSchemaId);
-    updateSchemaExistenceSet.add(derivedSchemaEntry.getValueSchemaID());
+    updateSchemaExistenceSet.set(derivedSchemaEntry.getValueSchemaID(), new Object());
   }
 
   public int getMaxValueSchemaId() {
-    if (valueSchemaMap.isEmpty()) {
-      return INVALID_VALUE_SCHEMA_ID;
-    }
-    return valueSchemaMap.lastKey();
+    return maxValueSchemaId;
   }
 
   public int getSchemaID(SchemaEntry entry) {
@@ -118,26 +116,17 @@ public final class SchemaData {
     return rmdSchemaMap.values();
   }
 
-  public RmdVersionId getReplicationMetadataVersionId(RmdSchemaEntry entry) {
-    RmdVersionId rmdVersionId = rmdSchemaRMap.get(entry.getSchema());
-    if (rmdVersionId == null) {
-      rmdVersionId = new RmdVersionId(INVALID_VALUE_SCHEMA_ID, INVALID_VALUE_SCHEMA_ID);
-    }
-    return rmdVersionId;
-  }
-
   public void addReplicationMetadataSchema(RmdSchemaEntry rmdSchemaEntry) {
     RmdVersionId rmdVersionId = new RmdVersionId(rmdSchemaEntry.getValueSchemaID(), rmdSchemaEntry.getId());
     rmdSchemaMap.put(rmdVersionId, rmdSchemaEntry);
-    rmdSchemaRMap.put(rmdSchemaEntry.getSchema(), rmdVersionId);
-    rmdSchemaExistenceSet.add(rmdSchemaEntry.getValueSchemaID());
+    rmdSchemaExistenceSet.set(rmdSchemaEntry.getValueSchemaID(), new Object());
   }
 
   public boolean hasUpdateSchema(int valueSchemaId) {
-    return updateSchemaExistenceSet.contains(valueSchemaId);
+    return updateSchemaExistenceSet.get(valueSchemaId) != null;
   }
 
   public boolean hasRmdSchema(int valueSchemaId) {
-    return rmdSchemaExistenceSet.contains(valueSchemaId);
+    return rmdSchemaExistenceSet.get(valueSchemaId) != null;
   }
 }

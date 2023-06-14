@@ -69,7 +69,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     when(schemaAccessor.getAllDerivedSchemas(storeName)).thenReturn(Collections.singletonList(derivedSchemaEntry));
     when(schemaAccessor.getAllReplicationMetadataSchemas(storeName))
         .thenReturn(Collections.singletonList(rmdSchemaEntry));
-    SchemaData schemaData = new SchemaData(storeName);
+    SchemaData schemaData = new SchemaData(storeName, null);
 
     schemaRepository.maybeRegisterAndPopulateUpdateSchema(store, schemaData);
     verify(schemaAccessor, times(1)).subscribeDerivedSchemaCreationChange(anyString(), any());
@@ -90,7 +90,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     when(store.getName()).thenReturn(storeName);
     when(store.isWriteComputationEnabled()).thenReturn(false);
     when(store.isActiveActiveReplicationEnabled()).thenReturn(false);
-    SchemaData schemaData = new SchemaData(storeName);
+    SchemaData schemaData = new SchemaData(storeName, null);
 
     SchemaEntry schemaEntry = new SchemaEntry(1, VALUE_SCHEMA.toString());
     DerivedSchemaEntry derivedSchemaEntry = new DerivedSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
@@ -118,7 +118,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     when(schemaRepository.getStoreRepository()).thenReturn(storeRepository);
 
     Map<String, SchemaData> schemaDataMap = new VeniceConcurrentHashMap<>();
-    schemaDataMap.put(storeName, new SchemaData(storeName));
+    schemaDataMap.put(storeName, new SchemaData(storeName, null));
     when(schemaRepository.getSupersetSchema(storeName)).thenCallRealMethod();
     when(schemaRepository.isSupersetSchemaReadyToServe(any(), any(), anyInt())).thenCallRealMethod();
     doCallRealMethod().when(schemaRepository).forceRefreshSupersetSchemaWithRetry(anyString());

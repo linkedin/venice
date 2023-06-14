@@ -38,6 +38,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdUtils;
+import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -76,13 +77,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final CompressorFactory compressorFactory = new CompressorFactory();
 
   protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
+  private final AvroStoreDeserializerCache<V> storeDeserializerCache;
+  private final AvroStoreDeserializerCache<RecordChangeEvent> recordChangeEventDeserializerCache;
 
   protected ThinClientMetaStoreBasedRepository storeRepository;
 
-  protected final ReadOnlySchemaRepository recordChangeEventSchemaRepository;
-
   protected final AbstractAvroChunkingAdapter<RecordChangeEvent> recordChangeEventChunkingAdapter =
-      new SpecificRecordChunkingAdapter<>(RecordChangeEvent.class);
+      new SpecificRecordChunkingAdapter<>();
 
   protected final AbstractAvroChunkingAdapter<V> userEventChunkingAdapter;
 
@@ -142,13 +143,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         changelogClientConfig.getInnerClientConfig(),
         VeniceProperties.empty(),
         null);
-    recordChangeEventSchemaRepository = new RecordChangeEventReadOnlySchemaRepository(this.storeRepository);
-    Class<V> valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
-    if (valueClass != null) {
+    this.recordChangeEventDeserializerCache = new AvroStoreDeserializerCache<>(
+        new RecordChangeEventReadOnlySchemaRepository(this.storeRepository),
+        storeName,
+        true);
+    if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
       // If a value class is supplied, we'll use a Specific record adapter
-      userEventChunkingAdapter = new SpecificRecordChunkingAdapter(valueClass);
+      Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
+      this.userEventChunkingAdapter = new SpecificRecordChunkingAdapter();
+      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(
+          id -> storeRepository.getValueSchema(storeName, id).getSchema(),
+          (writerSchema, readerSchema) -> FastSerializerDeserializerFactory
+              .getFastAvroSpecificDeserializer(writerSchema, valueClass));
     } else {
-      userEventChunkingAdapter = GenericChunkingAdapter.INSTANCE;
+      this.userEventChunkingAdapter = GenericChunkingAdapter.INSTANCE;
+      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
     }
     LOGGER.info(
         "Start a change log consumer client for store: {}, with partition count: {} and view class: {} ",
@@ -551,8 +560,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       long recordOffset,
       AbstractAvroChunkingAdapter<T> chunkingAdapter,
       Lazy<RecordDeserializer<T>> recordDeserializer,
-      int readerSchemaId,
-      ReadOnlySchemaRepository schemaRepository) {
+      AvroStoreDeserializerCache<T> deserializerCache,
+      int readerSchemaId) {
     T assembledRecord = null;
     // Select compressor. We'll only construct compressors for version topics so this will return null for
     // events from change capture. This is fine as today they are not compressed.
@@ -582,17 +591,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       try {
         assembledRecord = chunkingAdapter.get(
             inMemoryStorageEngine,
-            readerSchemaId,
             pubSubTopicPartition.getPartitionNumber(),
             ByteBuffer.wrap(keyBytes),
             false,
             null,
             null,
             null,
-            compressor.getCompressionStrategy(),
-            true,
-            schemaRepository,
-            storeName,
+            readerSchemaId,
+            deserializerCache,
             compressor);
       } catch (Exception ex) {
         // We might get an exception if we haven't persisted all the chunks for a given key. This
@@ -636,18 +642,19 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       AbstractAvroChunkingAdapter chunkingAdapter;
       int readerSchemaId;
       ReadOnlySchemaRepository schemaRepo;
+      AvroStoreDeserializerCache deserializerCache;
       if (pubSubTopicPartition.getPubSubTopic().isVersionTopic()) {
         Schema valueSchema = schemaReader.getValueSchema(put.schemaId);
         deserializerProvider =
             Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema));
         chunkingAdapter = userEventChunkingAdapter;
         readerSchemaId = AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersion();
-        schemaRepo = storeRepository;
+        deserializerCache = this.storeDeserializerCache;
       } else {
         deserializerProvider = Lazy.of(() -> recordChangeDeserializer);
         chunkingAdapter = recordChangeEventChunkingAdapter;
         readerSchemaId = this.schemaReader.getLatestValueSchemaId();
-        schemaRepo = recordChangeEventSchemaRepository;
+        deserializerCache = recordChangeEventDeserializerCache;
       }
       assembledObject = bufferAndAssembleRecordChangeEvent(
           pubSubTopicPartition,
@@ -657,8 +664,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           message.getOffset(),
           chunkingAdapter,
           deserializerProvider,
-          readerSchemaId,
-          schemaRepo);
+          deserializerCache,
+          readerSchemaId);
       if (assembledObject == null) {
         // bufferAndAssembleRecordChangeEvent may have only buffered records and not returned anything yet because
         // it's waiting for more input. In this case, just return an empty optional for now.

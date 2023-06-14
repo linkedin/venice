@@ -30,8 +30,14 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   private static final String ROUTER_REQUEST_VERSION =
       Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion());
 
+  private static final RecordSerializer<MultiGetRouterRequestKeyV1> MULTI_GET_ROUTER_REQUEST_KEY_V1_SERIALIZER =
+      FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.getClassSchema());
+
   protected static final ReadAvroProtocolDefinition EXPECTED_PROTOCOL =
       ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1;
+
+  private static final RecordDeserializer<ByteBuffer> EXPECTED_PROTOCOL_DESERIALIZER =
+      FastSerializerDeserializerFactory.getAvroGenericDeserializer(EXPECTED_PROTOCOL.getSchema());
 
   public VeniceMultiGetPath(
       String storeName,
@@ -144,15 +150,11 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
 
   @Override
   protected byte[] serializeRouterRequest() {
-    RecordSerializer<MultiGetRouterRequestKeyV1> serializer =
-        FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.getClassSchema());
-    return serializer.serializeObjects(routerKeyMap.values());
+    return MULTI_GET_ROUTER_REQUEST_KEY_V1_SERIALIZER.serializeObjects(routerKeyMap.values());
   }
 
   private static Iterable<ByteBuffer> deserialize(byte[] content) {
-    RecordDeserializer<ByteBuffer> deserializer =
-        FastSerializerDeserializerFactory.getAvroGenericDeserializer(EXPECTED_PROTOCOL.getSchema());
-    return deserializer.deserializeObjects(
+    return EXPECTED_PROTOCOL_DESERIALIZER.deserializeObjects(
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
   }
 

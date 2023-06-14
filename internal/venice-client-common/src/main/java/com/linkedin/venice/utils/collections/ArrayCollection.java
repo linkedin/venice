@@ -1,8 +1,7 @@
-package com.linkedin.venice.utils;
+package com.linkedin.venice.utils.collections;
 
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.NoSuchElementException;
 import java.util.function.IntSupplier;
 
 
@@ -73,7 +72,7 @@ public class ArrayCollection<E> implements Collection<E> {
 
   @Override
   public Iterator<E> iterator() {
-    return new ArrayCollectionIterator();
+    return new ArrayBackedNullSkippingIterator<>(this.array);
   }
 
   @Override
@@ -149,42 +148,6 @@ public class ArrayCollection<E> implements Collection<E> {
       if (!it.hasNext())
         return sb.append(']').toString();
       sb.append(',').append(' ');
-    }
-  }
-
-  /**
-   * This iterator traverses the entire backing array, while skipping over null entries.
-   *
-   * The null skipping is handled both in {@link #hasNext()} and {@link #next()}, so that various usages of
-   * iterators work as expected.
-   */
-  class ArrayCollectionIterator implements Iterator<E> {
-    /** Index within the backing array */
-    private int index = 0;
-    private E nextElement = null;
-
-    @Override
-    public boolean hasNext() {
-      populateNext();
-      return this.nextElement != null;
-    }
-
-    @Override
-    public E next() {
-      populateNext();
-      E elementToReturn = this.nextElement;
-      if (elementToReturn == null) {
-        // We've reached the end of the backing array.
-        throw new NoSuchElementException();
-      }
-      this.nextElement = null;
-      return elementToReturn;
-    }
-
-    private void populateNext() {
-      while (this.nextElement == null && this.index < ArrayCollection.this.array.length) {
-        this.nextElement = ArrayCollection.this.array[this.index++];
-      }
     }
   }
 }

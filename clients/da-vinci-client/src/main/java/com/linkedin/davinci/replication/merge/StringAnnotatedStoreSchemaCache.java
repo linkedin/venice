@@ -8,8 +8,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.Map;
+import com.linkedin.venice.utils.SparseConcurrentList;
 import org.apache.avro.util.Utf8;
 
 
@@ -24,9 +23,11 @@ import org.apache.avro.util.Utf8;
 public class StringAnnotatedStoreSchemaCache {
   private final ReadOnlySchemaRepository internalSchemaRepo;
   private final String storeName;
-  private final Map<Integer, SchemaEntry> valueSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
-  private final Map<String, DerivedSchemaEntry> partialUpdateSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
-  private final Map<String, RmdSchemaEntry> rmdSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
+  private final SparseConcurrentList<SchemaEntry> valueSchemaEntryMapCache = new SparseConcurrentList<>();
+  private final SparseConcurrentList<SparseConcurrentList<DerivedSchemaEntry>> partialUpdateSchemaEntryMapCache =
+      new SparseConcurrentList<>();
+  private final SparseConcurrentList<SparseConcurrentList<RmdSchemaEntry>> rmdSchemaEntryMapCache =
+      new SparseConcurrentList<>();
 
   public StringAnnotatedStoreSchemaCache(String storeName, ReadOnlySchemaRepository internalSchemaRepo) {
     this.storeName = storeName;
@@ -78,8 +79,9 @@ public class StringAnnotatedStoreSchemaCache {
    * The annotation will only be done once in the repository's lifetime as the result is cached.
    */
   public DerivedSchemaEntry getDerivedSchema(int valueSchemaId, int partialUpdateProtocolId) {
-    String partialUpdateSchemaId = valueSchemaId + "-" + partialUpdateProtocolId;
-    return partialUpdateSchemaEntryMapCache.computeIfAbsent(partialUpdateSchemaId, k -> {
+    SparseConcurrentList<DerivedSchemaEntry> innerList =
+        partialUpdateSchemaEntryMapCache.computeIfAbsent(valueSchemaId, SparseConcurrentList.SUPPLIER);
+    return innerList.computeIfAbsent(partialUpdateProtocolId, k -> {
       DerivedSchemaEntry derivedSchemaEntry =
           internalSchemaRepo.getDerivedSchema(storeName, valueSchemaId, partialUpdateProtocolId);
       if (derivedSchemaEntry == null) {
@@ -94,8 +96,9 @@ public class StringAnnotatedStoreSchemaCache {
    * The annotation will only be done once in the repository's lifetime as the result is cached.
    */
   public RmdSchemaEntry getRmdSchema(int valueSchemaId, int rmdSchemaProtocolId) {
-    String rmdSchemaId = valueSchemaId + "-" + rmdSchemaProtocolId;
-    return rmdSchemaEntryMapCache.computeIfAbsent(rmdSchemaId, k -> {
+    SparseConcurrentList<RmdSchemaEntry> innerList =
+        rmdSchemaEntryMapCache.computeIfAbsent(valueSchemaId, SparseConcurrentList.SUPPLIER);
+    return innerList.computeIfAbsent(rmdSchemaProtocolId, k -> {
       RmdSchemaEntry rmdSchemaEntry =
           internalSchemaRepo.getReplicationMetadataSchema(storeName, valueSchemaId, rmdSchemaProtocolId);
       if (rmdSchemaEntry == null) {

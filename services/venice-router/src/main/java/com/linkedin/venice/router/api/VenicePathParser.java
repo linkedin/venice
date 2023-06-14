@@ -175,7 +175,6 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               getBatchGetLimit(storeName),
               routerConfig.isSmartLongTailRetryEnabled(),
               routerConfig.getSmartLongTailRetryAbortThresholdMs(),
-              routerConfig.isComputeFastAvroEnabled(),
               routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
         } else {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(

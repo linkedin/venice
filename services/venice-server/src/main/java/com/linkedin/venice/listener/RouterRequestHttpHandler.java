@@ -36,16 +36,11 @@ import java.util.stream.Collectors;
  */
 public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private final StatsHandler statsHandler;
-  private final boolean useFastAvro;
   private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
 
-  public RouterRequestHttpHandler(
-      StatsHandler handler,
-      boolean useFastAvro,
-      Map<String, Integer> storeToEarlyTerminationThresholdMSMap) {
+  public RouterRequestHttpHandler(StatsHandler handler, Map<String, Integer> storeToEarlyTerminationThresholdMSMap) {
     super();
     this.statsHandler = handler;
-    this.useFastAvro = useFastAvro;
     this.storeToEarlyTerminationThresholdMSMap = storeToEarlyTerminationThresholdMSMap;
   }
 
@@ -95,8 +90,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case COMPUTE: // compute request
           if (req.method().equals(HttpMethod.POST)) {
-            ComputeRouterRequestWrapper computeRouterReq =
-                ComputeRouterRequestWrapper.parseComputeRequest(req, useFastAvro);
+            ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req);
             setupRequestTimeout(computeRouterReq);
             statsHandler.setRequestInfo(computeRouterReq);
             ctx.fireChannelRead(computeRouterReq);
