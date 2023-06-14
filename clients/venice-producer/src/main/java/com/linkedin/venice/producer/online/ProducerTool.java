@@ -4,6 +4,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.LogConfigurator;
 import com.linkedin.venice.client.schema.RouterBasedStoreSchemaFetcher;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -27,9 +28,6 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.lang.StringUtils;
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.core.config.Configurator;
 
 
 public class ProducerTool {
@@ -76,8 +74,7 @@ public class ProducerTool {
       .addOption(HELP_OPTION);
 
   public static void main(String[] args) throws Exception {
-    // Disable Logging
-    Configurator.setAllLevels(LogManager.getRootLogger().getName(), Level.OFF);
+    LogConfigurator.disableLog();
 
     if (checkForHelp(args)) {
       printHelp();

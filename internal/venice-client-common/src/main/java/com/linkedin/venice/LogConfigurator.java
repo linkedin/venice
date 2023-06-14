@@ -10,11 +10,11 @@ import org.apache.commons.io.FileUtils;
 public class LogConfigurator {
   private static final String TMP_DIR = FileUtils.getTempDirectoryPath();
   private static final String LOG4J_PATH =
-      Paths.get(TMP_DIR, "venice-admin-tool-log4j.properties").toAbsolutePath().toString();
+      Paths.get(TMP_DIR, "venice-shell-tool-log4j.properties").toAbsolutePath().toString();
   private static final String LOG4J2_PATH =
-      Paths.get(TMP_DIR, "venice-admin-tool-log4j2.properties").toAbsolutePath().toString();
+      Paths.get(TMP_DIR, "venice-shell-tool-log4j2.properties").toAbsolutePath().toString();
 
-  static void disableLog() throws IOException {
+  public static void disableLog() throws IOException {
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(LOG4J_PATH))) {
       writer.write("log4j.rootLogger=off");
     } catch (IOException e) {
