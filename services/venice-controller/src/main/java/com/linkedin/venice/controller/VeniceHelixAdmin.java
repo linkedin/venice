@@ -5409,7 +5409,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     MaintenanceSignal maintenanceSignal =
         HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
 
-    // Check if cluster is in maintenance mode due to too many offline instances
+    // Check if cluster is in maintenance mode due to too many offline instances or too many partitions per instance
     if (maintenanceSignal != null && maintenanceSignal
         .getAutoTriggerReason() == MaintenanceSignal.AutoTriggerReason.MAX_OFFLINE_INSTANCES_EXCEEDED) {
       String msg = "Push errored out for " + kafkaTopic + "due to too many offline instances. Reason: "
@@ -5428,9 +5428,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
       StringBuilder moreDetailsBuilder = new StringBuilder(details == null ? "" : details + " and ");
 
-      // Check whether cluster is in manually triggered maintenance mode or not
-      if (maintenanceSignal != null
-          && maintenanceSignal.getTriggeringEntity() != MaintenanceSignal.TriggeringEntity.CONTROLLER) {
+      // Check whether cluster is in maintenance mode or not
+      if (maintenanceSignal != null) {
         moreDetailsBuilder.append("Cluster: ").append(clusterName).append(" is in maintenance mode");
       } else {
         moreDetailsBuilder.append("Version creation for topic: ").append(kafkaTopic).append(" got delayed");
