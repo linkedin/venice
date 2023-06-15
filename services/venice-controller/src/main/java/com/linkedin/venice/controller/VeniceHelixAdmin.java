@@ -3653,7 +3653,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (partitionCount != 0) {
         store.setPartitionCount(partitionCount);
       } else {
-        store.setPartitionCount(clusterConfig.getNumberOfPartition());
+        store.setPartitionCount(clusterConfig.getMinNumberOfPartitions());
       }
 
       return store;
@@ -3686,7 +3686,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
     }
 
-    int maxPartitionNum = clusterConfig.getMaxNumberOfPartition();
+    int maxPartitionNum = clusterConfig.getMaxNumberOfPartitions();
     if (newPartitionCount > maxPartitionNum) {
       String errorMessage =
           errorMessagePrefix + "Partition count: " + newPartitionCount + " should be less than max: " + maxPartitionNum;
@@ -5820,8 +5820,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store.getStorageQuotaInByte(),
         store.getPartitionCount(),
         config.getPartitionSize(),
-        config.getNumberOfPartition(),
-        config.getMaxNumberOfPartition(),
+        config.getMinNumberOfPartitions(),
+        config.getMaxNumberOfPartitions(),
         config.isPartitionCountRoundUpEnabled(),
         config.getPartitionCountRoundUpSize());
   }
