@@ -330,6 +330,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       } else {
         this.numberOfPartitions = this.producerAdapter.getNumberOfPartitions(topicName, 30, TimeUnit.SECONDS);
       }
+      if (this.numberOfPartitions <= 0) {
+        throw new VeniceException("Invalid number of partitions: " + this.numberOfPartitions);
+      }
       this.segmentsCreationTimeArray = new long[this.numberOfPartitions];
       // Prepare locks for all partitions instead of using map to avoid the searching and creation cost during
       // ingestion.

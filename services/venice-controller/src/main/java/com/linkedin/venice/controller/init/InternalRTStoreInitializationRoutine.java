@@ -64,7 +64,7 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
     }
 
     if (store.getCurrentVersion() <= 0) {
-      int partitionCount = multiClusterConfigs.getControllerConfig(clusterName).getNumberOfPartition();
+      int partitionCount = multiClusterConfigs.getControllerConfig(clusterName).getMinNumberOfPartitions();
       int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
       Version version = admin.incrementVersionIdempotent(
           clusterName,

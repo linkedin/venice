@@ -193,8 +193,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
   public void testGetNumberOfPartition() {
     long partitionSize = controllerConfig.getPartitionSize();
-    int maxPartitionNumber = controllerConfig.getMaxNumberOfPartition();
-    int minPartitionNumber = controllerConfig.getNumberOfPartition();
+    int maxPartitionNumber = controllerConfig.getMaxNumberOfPartitions();
+    int minPartitionNumber = controllerConfig.getMinNumberOfPartitions();
     String storeName = Utils.getUniqueString("test");
 
     veniceAdmin.createStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
@@ -235,8 +235,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
   public void testGetNumberOfPartitionsFromStoreLevelConfig() {
     long partitionSize = controllerConfig.getPartitionSize();
-    int maxPartitionNumber = controllerConfig.getMaxNumberOfPartition();
-    int minPartitionNumber = controllerConfig.getNumberOfPartition();
+    int maxPartitionNumber = controllerConfig.getMaxNumberOfPartitions();
+    int minPartitionNumber = controllerConfig.getMinNumberOfPartitions();
     String storeName = Utils.getUniqueString("test");
 
     veniceAdmin.createStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
