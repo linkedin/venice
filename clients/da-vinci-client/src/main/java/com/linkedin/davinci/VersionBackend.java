@@ -128,7 +128,18 @@ public class VersionBackend {
     close();
     final String topicName = version.kafkaTopicName();
     try {
-      backend.getIngestionBackend().removeStorageEngine(topicName);
+      try {
+        backend.getIngestionBackend().removeStorageEngine(topicName);
+      } catch (Exception e) {
+        // defensive coding
+        LOGGER.error("Encountered exception while removing storage engine: {}", topicName, e);
+      }
+      /**
+       * The following function is used to forcibly clean up any leaking data partitions, which are not
+       * visibile to the corresponding {@link AbstractStorageEngine} since some data partitions can fail
+       * to open because of DaVinci memory limiter.
+        */
+      backend.getStorageService().forceStorageEngineCleanup(topicName);
       backend.getCompressorFactory().removeVersionSpecificCompressor(topicName);
     } catch (VeniceException e) {
       LOGGER.error("Encounter exception when removing version storage of topic {}", topicName, e);

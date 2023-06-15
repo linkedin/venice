@@ -124,7 +124,8 @@ public class PushStatusCollector {
       if (!pushStatus.isMonitoring()) {
         continue;
       }
-      if (pushStatus.getDaVinciStatus() != null && pushStatus.getDaVinciStatus().getStatus().isTerminal()) {
+      if (pushStatus.getDaVinciStatus() != null && pushStatus.getDaVinciStatus().getStatus().isTerminal()
+          && !pushStatus.getDaVinciStatus().isNoDaVinciStatusReport()) {
         resultList.add(CompletableFuture.completedFuture(pushStatus));
       } else {
         resultList.add(CompletableFuture.supplyAsync(() -> {
@@ -150,6 +151,7 @@ public class PushStatusCollector {
       }
       ExecutionStatusWithDetails daVinciStatus = pushStatus.getDaVinciStatus();
       if (daVinciStatus.isNoDaVinciStatusReport()) {
+        LOGGER.info("Received empty DaVinci status report for topic: {}", pushStatus.topicName);
         // poll DaVinci status more
         int noDaVinciStatusRetryAttempts = topicToNoDaVinciStatusRetryCountMap.compute(pushStatus.topicName, (k, v) -> {
           if (v == null) {
@@ -166,6 +168,11 @@ public class PushStatusCollector {
       } else {
         topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
       }
+      LOGGER.info(
+          "Received DaVinci status: {} with details: {} for topic: {}",
+          daVinciStatus.getStatus(),
+          daVinciStatus.getDetails(),
+          pushStatus.topicName);
       ExecutionStatusWithDetails serverStatus = pushStatus.getServerStatus();
       if (serverStatus == null) {
         continue;

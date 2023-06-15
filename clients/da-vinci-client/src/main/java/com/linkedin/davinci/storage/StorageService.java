@@ -383,6 +383,16 @@ public class StorageService extends AbstractVeniceService {
     factory.removeStorageEngine(storageEngine);
   }
 
+  /**
+   * This function is used to forcely clean up all the databases belonging to {@param kafkaTopic}.
+   * This function will only be used when the {@link #removeStorageEngine(String)} function can't
+   * handle some edge case, such as some partitions are lingering, which are not visible to the corresponding
+   * {@link AbstractStorageEngine}
+   */
+  public synchronized void forceStorageEngineCleanup(String kafkaTopic) {
+    persistenceTypeToStorageEngineFactoryMap.values().forEach(factory -> factory.removeStorageEngine(kafkaTopic));
+  }
+
   public synchronized void closeStorageEngine(String kafkaTopic) {
     AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
