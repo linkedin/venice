@@ -317,7 +317,9 @@ public class Utils {
   public static Map<String, String> parseCommaSeparatedStringMapFromString(String value, String fieldName) {
     try {
       Map<String, String> map = new HashMap<>();
-      Arrays.stream(value.split(",")).map(s -> s.split("=")).forEach(strings -> map.put(strings[0], strings[1]));
+      if (!value.isEmpty()) {
+        Arrays.stream(value.split(",")).map(s -> s.split("=")).forEach(strings -> map.put(strings[0], strings[1]));
+      }
       return map;
     } catch (Exception e) {
       throw new VeniceException(fieldName + " must be key value pairs separated by comma, but value: " + value);
