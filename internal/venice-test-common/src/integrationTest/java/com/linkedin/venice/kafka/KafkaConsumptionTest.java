@@ -107,7 +107,7 @@ public class KafkaConsumptionTest {
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100L,
                 MIN_COMPACTION_LAG,
-                localPubSubBroker.getAddress(),
+                localPubSubBroker,
                 pubSubTopicRepository)
             .getTopicManager();
     Cache cacheNothingCache = mock(Cache.class);
@@ -123,7 +123,7 @@ public class KafkaConsumptionTest {
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100L,
                 MIN_COMPACTION_LAG,
-                remotePubSubBroker.getAddress(),
+                remotePubSubBroker,
                 pubSubTopicRepository)
             .getTopicManager();
     Cache remoteCacheNothingCache = mock(Cache.class);

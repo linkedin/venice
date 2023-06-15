@@ -186,12 +186,8 @@ public class TestTopicRequestOnHybridDelete {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void deleteStoreAfterStartedPushAllowsNewPush() {
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
-    try (TopicManagerRepository topicManagerRepository = IntegrationTestPushUtils.getTopicManagerRepo(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100,
-        0l,
-        venice.getKafka().getAddress(),
-        pubSubTopicRepository)) {
+    try (TopicManagerRepository topicManagerRepository = IntegrationTestPushUtils
+        .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, venice.getKafka(), pubSubTopicRepository)) {
 
       TopicManager topicManager = topicManagerRepository.getTopicManager();
 

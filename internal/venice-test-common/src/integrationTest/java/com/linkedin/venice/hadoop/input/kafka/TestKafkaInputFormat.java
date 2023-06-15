@@ -47,7 +47,7 @@ public class TestKafkaInputFormat {
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100L,
                 24 * Time.MS_PER_HOUR,
-                pubSubBrokerWrapper.getAddress(),
+                pubSubBrokerWrapper,
                 pubSubTopicRepository)
             .getTopicManager();
   }

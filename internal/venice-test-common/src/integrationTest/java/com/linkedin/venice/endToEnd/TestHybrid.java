@@ -196,7 +196,7 @@ public class TestHybrid {
                     DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                     100,
                     0l,
-                    venice.getKafka().getAddress(),
+                    venice.getKafka(),
                     venice.getPubSubTopicRepository())
                 .getTopicManager()) {
       long streamingRewindSeconds = 25L;
@@ -329,7 +329,7 @@ public class TestHybrid {
                       DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                       100,
                       0l,
-                      venice.getKafka().getAddress(),
+                      venice.getKafka(),
                       sharedVenice.getPubSubTopicRepository())
                   .getTopicManager()) {
 
@@ -1148,7 +1148,7 @@ public class TestHybrid {
                       DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                       100L,
                       MIN_COMPACTION_LAG,
-                      venice.getKafka().getAddress(),
+                      venice.getKafka(),
                       sharedVenice.getPubSubTopicRepository())
                   .getTopicManager()) {
 

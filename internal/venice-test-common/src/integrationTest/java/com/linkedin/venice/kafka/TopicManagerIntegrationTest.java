@@ -43,7 +43,7 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
                 500L,
                 100L,
                 MIN_COMPACTION_LAG,
-                pubSubBrokerWrapper.getAddress(),
+                pubSubBrokerWrapper,
                 new PubSubTopicRepository())
             .getTopicManager();
   }

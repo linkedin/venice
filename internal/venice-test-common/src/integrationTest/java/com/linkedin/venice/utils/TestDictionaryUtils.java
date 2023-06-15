@@ -54,6 +54,7 @@ public class TestDictionaryUtils {
 
   private Properties getKafkaProperties() {
     Properties props = new Properties();
+    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, manager.getKafkaBootstrapServers());
     props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     props.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
     return props;
@@ -70,7 +71,7 @@ public class TestDictionaryUtils {
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100,
                 MIN_COMPACTION_LAG,
-                pubSubBrokerWrapper.getAddress(),
+                pubSubBrokerWrapper,
                 pubSubTopicRepository)
             .getTopicManager();
   }

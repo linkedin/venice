@@ -63,7 +63,7 @@ public class AdminConsumptionTaskIntegrationTest {
                     DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                     100,
                     0l,
-                    pubSubBrokerWrapper.getAddress(),
+                    pubSubBrokerWrapper,
                     pubSubTopicRepository)
                 .getTopicManager()) {
       PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));

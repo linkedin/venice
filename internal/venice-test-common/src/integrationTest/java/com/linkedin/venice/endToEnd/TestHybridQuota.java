@@ -137,7 +137,7 @@ public class TestHybridQuota {
                     DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                     100L,
                     0L,
-                    sharedVenice.getKafka().getAddress(),
+                    sharedVenice.getKafka(),
                     sharedVenice.getPubSubTopicRepository())
                 .getTopicManager()) {
 

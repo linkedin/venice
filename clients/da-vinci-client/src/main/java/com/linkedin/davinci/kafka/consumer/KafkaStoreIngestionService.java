@@ -310,7 +310,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setMetricsRepository(metricsRepository)
         .setLocalKafkaBootstrapServers(serverConfig.getKafkaBootstrapServers())
-        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
+        .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
         .setTopicDeletionStatusPollIntervalMs(DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS)
         .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)

@@ -55,15 +55,9 @@ public class PubSubSharedProducerAdapterFactoryTest {
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     pubSubConsumerAdapterFactory = IntegrationTestPushUtils.getVeniceConsumerFactory();
-    topicManager =
-        IntegrationTestPushUtils
-            .getTopicManagerRepo(
-                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-                100,
-                0L,
-                pubSubBrokerWrapper.getAddress(),
-                pubSubTopicRepository)
-            .getTopicManager();
+    topicManager = IntegrationTestPushUtils
+        .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0L, pubSubBrokerWrapper, pubSubTopicRepository)
+        .getTopicManager();
   }
 
   @AfterClass

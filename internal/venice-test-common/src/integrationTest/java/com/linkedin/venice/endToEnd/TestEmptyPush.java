@@ -83,7 +83,7 @@ public class TestEmptyPush {
                     DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                     100,
                     0l,
-                    venice.getKafka().getAddress(),
+                    venice.getKafka(),
                     venice.getPubSubTopicRepository())
                 .getTopicManager()) {
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
