@@ -160,7 +160,7 @@ public class RouterServer extends AbstractVeniceService {
   private Router secureRouter;
   private DictionaryRetrievalService dictionaryRetrievalService;
   private RouterThrottler readRequestThrottler;
-  private RouterThrottler noopRequestThrottler;
+  // private RouterThrottler noopRequestThrottler;
 
   private MultithreadEventLoopGroup workerEventLoopGroup;
   private MultithreadEventLoopGroup serverEventLoopGroup;
@@ -893,19 +893,6 @@ public class RouterServer extends AbstractVeniceService {
       routingDataRepository.refresh();
       hybridStoreQuotaRepository.ifPresent(HelixHybridStoreQuotaRepository::refresh);
 
-      readRequestThrottler = new ReadRequestThrottler(
-          routersClusterManager,
-          metadataRepository,
-          routingDataRepository,
-          routerStats.getStatsByType(RequestType.SINGLE_GET),
-          config);
-
-      noopRequestThrottler = new NoopRouterThrottler(
-          routersClusterManager,
-          metadataRepository,
-          routerStats.getStatsByType(RequestType.SINGLE_GET),
-          config);
-
       // Setup read requests throttler.
       setReadRequestThrottling(config.isReadThrottlingEnabled());
 
@@ -986,7 +973,22 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   public void setReadRequestThrottling(boolean throttle) {
-    RouterThrottler throttler = throttle ? readRequestThrottler : noopRequestThrottler;
+    RouterThrottler throttler;
+    if (throttle) {
+      throttler = new ReadRequestThrottler(
+          routersClusterManager,
+          metadataRepository,
+          routingDataRepository,
+          routerStats.getStatsByType(RequestType.SINGLE_GET),
+          config);
+      ;
+    } else {
+      throttler = new NoopRouterThrottler(
+          routersClusterManager,
+          metadataRepository,
+          routerStats.getStatsByType(RequestType.SINGLE_GET),
+          config);
+    }
     scatterGatherMode.initReadRequestThrottler(throttler);
   }
 
