@@ -159,9 +159,6 @@ public class RouterServer extends AbstractVeniceService {
   private Optional<Router> router = Optional.empty();
   private Router secureRouter;
   private DictionaryRetrievalService dictionaryRetrievalService;
-  private RouterThrottler readRequestThrottler;
-  // private RouterThrottler noopRequestThrottler;
-
   private MultithreadEventLoopGroup workerEventLoopGroup;
   private MultithreadEventLoopGroup serverEventLoopGroup;
   private MultithreadEventLoopGroup sslResolverEventLoopGroup;
