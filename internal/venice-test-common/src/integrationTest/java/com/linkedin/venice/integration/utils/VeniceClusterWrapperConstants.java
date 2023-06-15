@@ -22,4 +22,9 @@ public class VeniceClusterWrapperConstants {
   // If this value is not large enough, i.e. some services have not been
   // started before clients start to interact, please increase it.
   public static final int DEFAULT_WAIT_TIME_FOR_CLUSTER_START_S = 90;
+  public static final String DEFAULT_PARENT_DATA_CENTER_REGION_NAME = "dc-parent-0";
+  public static final String CHILD_REGION_NAME_PREFIX = "dc-";
+
+  // constant for tests with just one data center/region
+  public static final String STANDALONE_REGION_NAME = "planet-earth";
 }

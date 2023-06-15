@@ -10,6 +10,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
@@ -236,7 +237,7 @@ public class VeniceClusterCreateOptions {
 
   public static class Builder {
     private String clusterName;
-    private String regionName = "";
+    private String regionName;
     private Map<String, String> clusterToD2 = null;
     private Map<String, String> clusterToServerD2 = null;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
@@ -380,8 +381,9 @@ public class VeniceClusterCreateOptions {
       if (clusterName == null) {
         clusterName = Utils.getUniqueString("venice-cluster");
       }
-      if (standalone && regionName == null) {
-        regionName = "";
+      if (regionName == null || regionName.isEmpty()) {
+        regionName = STANDALONE_REGION_NAME;
+        // throw new IllegalArgumentException("regionName cannot be null or empty");
       }
       if (!isMinActiveReplicaSet) {
         minActiveReplica = replicationFactor - 1;

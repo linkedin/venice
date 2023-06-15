@@ -1,5 +1,8 @@
 package com.linkedin.venice.kafka.ssl;
 
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
@@ -27,14 +30,17 @@ public class AdminChannelWithSSLTest {
     Utils.thisIsLocalhost();
     String clusterName = "test-cluster";
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper =
-            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
+        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
+                .setRegionName(DEFAULT_PARENT_DATA_CENTER_REGION_NAME)
+                .build());
         VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper).replicationFactor(1)
                 .partitionSize(10)
                 .rebalanceDelayMs(0)
                 .minActiveReplica(1)
                 .sslToKafka(true)
+                .regionName(CHILD_REGION_NAME_PREFIX + "0")
                 .build());
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
 

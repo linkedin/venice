@@ -11,8 +11,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_P
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
@@ -115,8 +115,9 @@ public class TestActiveActiveIngestion {
   private VeniceClusterWrapper clusterWrapper;
   private VeniceServerWrapper serverWrapper;
   private AvroSerializer serializer;
+  private ControllerClient parentControllerClient;
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() {
     String stringSchemaStr = "\"string\"";
     serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
@@ -124,7 +125,7 @@ public class TestActiveActiveIngestion {
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(
-        CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
+        CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + CHILD_REGION_NAME_PREFIX,
         "localhost:" + TestUtils.getFreePort());
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
@@ -143,9 +144,19 @@ public class TestActiveActiveIngestion {
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
     clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);
+
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    TestUtils.assertCommand(
+        parentControllerClient.configureActiveActiveReplicationForCluster(
+            true,
+            VeniceUserStoreType.BATCH_ONLY.toString(),
+            Optional.empty()),
+        "Failed to configure active-active replication for cluster " + clusterName);
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
     TestView.resetCounters();
@@ -173,7 +184,6 @@ public class TestActiveActiveIngestion {
       String key = pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
     }
-    int a = 0;
   }
 
   private int pollAfterImageEventsFromChangeCaptureConsumer(
@@ -193,16 +203,8 @@ public class TestActiveActiveIngestion {
   @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class)
   public void testLeaderLagWithIgnoredData() throws Exception {
     // We want to verify in this test if pushes will go through if the tail end of the RT is full of data which we drop
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     ControllerClient controllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
-            Optional.empty()));
     // create a active-active enabled store and run batch push job
     // batch job contains 100 records
     File inputDir = getTempDataDirectory();
@@ -278,20 +280,12 @@ public class TestActiveActiveIngestion {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testKIFRepushActiveActiveStore(boolean isChunkingEnabled) throws Exception {
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
-            Optional.empty()));
     // create a active-active enabled store and run batch push job
     // batch job contains 100 records
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("store-kif-repush");
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
@@ -354,7 +348,7 @@ public class TestActiveActiveIngestion {
         for (int i = 0; i < 10; i++) {
           String key = Integer.toString(i);
           Utf8 value = client.get(key).get();
-          Assert.assertNotNull(value);
+          Assert.assertNotNull(value, "Value for key: " + key + " is null, but expected to be non-null");
           Assert.assertEquals(value.toString(), "stream_" + i);
         }
         // test deletes
@@ -460,14 +454,6 @@ public class TestActiveActiveIngestion {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testActiveActiveStoreRestart() throws Exception {
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
-            Optional.empty()));
     // create a active-active enabled store and run batch push job
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -545,14 +531,6 @@ public class TestActiveActiveIngestion {
     Long timestamp = System.currentTimeMillis();
     ControllerClient childControllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    TestUtils.assertCommand(
-        parentControllerClient.configureActiveActiveReplicationForCluster(
-            true,
-            VeniceUserStoreType.BATCH_ONLY.toString(),
-            Optional.empty()));
     // create a active-active enabled store and run batch push job
     // batch job contains 100 records
     File inputDir = getTempDataDirectory();
@@ -594,7 +572,10 @@ public class TestActiveActiveIngestion {
     TestMockTime testMockTime = new TestMockTime();
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
-        new PubSubBrokerConfigs.Builder().setZkWrapper(localZkServer).setMockTime(testMockTime).build());
+        new PubSubBrokerConfigs.Builder().setZkWrapper(localZkServer)
+            .setMockTime(testMockTime)
+            .setRegionName("local-pubsub")
+            .build());
     Properties consumerProperties = new Properties();
     String localKafkaUrl = localKafka.getAddress();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);

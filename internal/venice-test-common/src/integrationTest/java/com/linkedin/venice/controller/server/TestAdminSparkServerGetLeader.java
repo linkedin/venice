@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -46,10 +47,14 @@ public class TestAdminSparkServerGetLeader {
   @BeforeMethod
   public void setUp() {
     zkServer = ServiceFactory.getZkServer();
-    pubSubBrokerWrapper =
-        ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
-    veniceControllerWrapper = ServiceFactory
-        .getVeniceController(new VeniceControllerCreateOptions.Builder(cluster, zkServer, pubSubBrokerWrapper).build());
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+        new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
+            .setRegionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
+            .build());
+    veniceControllerWrapper = ServiceFactory.getVeniceController(
+        new VeniceControllerCreateOptions.Builder(cluster, zkServer, pubSubBrokerWrapper)
+            .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
+            .build());
   }
 
   @AfterMethod

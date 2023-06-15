@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -54,19 +55,28 @@ public class AdminConsumptionTaskIntegrationTest {
   @Test(timeOut = TIMEOUT)
   public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException, IOException {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper kafka =
-            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
-        TopicManager topicManager = IntegrationTestPushUtils
-            .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, kafka.getAddress(), pubSubTopicRepository)
-            .getTopicManager()) {
+        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).setRegionName(STANDALONE_REGION_NAME).build());
+        TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    100,
+                    0l,
+                    pubSubBrokerWrapper.getAddress(),
+                    pubSubTopicRepository)
+                .getTopicManager()) {
       PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";
       try (
-          VeniceControllerWrapper controller = ServiceFactory
-              .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build());
-          VeniceWriter<byte[], byte[], byte[]> writer = TestUtils.getVeniceWriterFactory(kafka.getAddress())
-              .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic.getName()).build())) {
+          VeniceControllerWrapper controller = ServiceFactory.getVeniceController(
+              new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
+                  .regionName(STANDALONE_REGION_NAME)
+                  .build());
+          VeniceWriter<byte[], byte[], byte[]> writer =
+              TestUtils.getVeniceWriterFactory(pubSubBrokerWrapper.getAddress())
+                  .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic.getName()).build())) {
         byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1);
         long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
             .get()

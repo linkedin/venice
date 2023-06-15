@@ -174,8 +174,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         zkServerWrapper = ServiceFactory.getZkServer();
       }
       if (pubSubBrokerWrapper == null) {
-        pubSubBrokerWrapper =
-            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).build());
+        pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper)
+                .setRegionName(options.getRegionName())
+                .build());
+      } else if (!pubSubBrokerWrapper.getRegionName().equals(options.getRegionName())) {
+        throw new RuntimeException(
+            "PubSubBrokerWrapper region name " + pubSubBrokerWrapper.getRegionName()
+                + " does not match with the region name " + options.getRegionName() + " in the options");
       }
 
       // Setup D2 for controller

@@ -57,7 +57,7 @@ import org.testng.annotations.Test;
 public class ParticipantStoreTest {
   private static final Logger LOGGER = LogManager.getLogger(ParticipantStoreTest.class);
 
-  private VeniceClusterWrapper venice;
+  private VeniceClusterWrapper veniceClusterWrapper;
   private VeniceControllerWrapper parentController;
   private ZkServerWrapper parentZk;
   private ControllerClient controllerClient;
@@ -76,24 +76,29 @@ public class ParticipantStoreTest {
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
     controllerConfig
         .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
-    venice = ServiceFactory.getVeniceCluster(1, 0, 1, 1, 100000, false, false, controllerConfig);
-    d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
+    veniceClusterWrapper = ServiceFactory.getVeniceCluster(1, 0, 1, 1, 100000, false, false, controllerConfig);
+    d2Client = D2TestUtils.getAndStartD2Client(veniceClusterWrapper.getZk().getAddress());
     serverFeatureProperties.put(
         VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER,
         ClientConfig.defaultGenericClientConfig("")
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setD2Client(d2Client));
     serverProperties.setProperty(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, Long.toString(100));
-    veniceServerWrapper = venice.addVeniceServer(serverFeatureProperties, serverProperties);
+    veniceServerWrapper = veniceClusterWrapper.addVeniceServer(serverFeatureProperties, serverProperties);
     parentZk = ServiceFactory.getZkServer();
     parentController = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), parentZk, venice.getKafka())
-            .childControllers(venice.getVeniceControllers().toArray(new VeniceControllerWrapper[0]))
-            .extraProperties(controllerConfig)
-            .build());
-    participantMessageStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(venice.getClusterName());
-    controllerClient = venice.getControllerClient();
-    parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
+        new VeniceControllerCreateOptions.Builder(
+            veniceClusterWrapper.getClusterName(),
+            parentZk,
+            veniceClusterWrapper.getKafka())
+                .childControllers(veniceClusterWrapper.getVeniceControllers().toArray(new VeniceControllerWrapper[0]))
+                .extraProperties(controllerConfig)
+                .build());
+    participantMessageStoreName =
+        VeniceSystemStoreUtils.getParticipantStoreNameForCluster(veniceClusterWrapper.getClusterName());
+    controllerClient = veniceClusterWrapper.getControllerClient();
+    parentControllerClient =
+        new ControllerClient(veniceClusterWrapper.getClusterName(), parentController.getControllerUrl());
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(participantMessageStoreName, 1),
         controllerClient,
@@ -109,7 +114,7 @@ public class ParticipantStoreTest {
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
     }
-    IOUtils.closeQuietly(venice);
+    IOUtils.closeQuietly(veniceClusterWrapper);
     IOUtils.closeQuietly(parentZk);
   }
 
@@ -123,8 +128,8 @@ public class ParticipantStoreTest {
       // Verify the push job is STARTED.
       assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
     });
-    String metricPrefix = "." + venice.getClusterName() + "-participant_store_consumption_task";
-    double killedPushJobCount = venice.getVeniceServers()
+    String metricPrefix = "." + veniceClusterWrapper.getClusterName() + "-participant_store_consumption_task";
+    double killedPushJobCount = veniceClusterWrapper.getVeniceServers()
         .iterator()
         .next()
         .getMetricsRepository()
@@ -140,10 +145,11 @@ public class ParticipantStoreTest {
       assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.ERROR.toString());
     });
     // Verify participant store consumption stats
-    String requestMetricExample = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(venice.getClusterName())
-        + "--success_request_key_count.Avg";
+    String requestMetricExample =
+        VeniceSystemStoreUtils.getParticipantStoreNameForCluster(veniceClusterWrapper.getClusterName())
+            + "--success_request_key_count.Avg";
     Map<String, ? extends Metric> metrics =
-        venice.getVeniceServers().iterator().next().getMetricsRepository().metrics();
+        veniceClusterWrapper.getVeniceServers().iterator().next().getMetricsRepository().metrics();
     assertEquals(metrics.get(metricPrefix + "--killed_push_jobs.Count").value(), 1.0);
     assertTrue(metrics.get(metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
     // One from the server stats and the other from the client stats.
@@ -171,9 +177,9 @@ public class ParticipantStoreTest {
     });
 
     // restart routers to discard in-memory throttler info
-    for (VeniceRouterWrapper router: venice.getVeniceRouters()) {
-      venice.stopVeniceRouter(router.getPort());
-      venice.restartVeniceRouter(router.getPort());
+    for (VeniceRouterWrapper router: veniceClusterWrapper.getVeniceRouters()) {
+      veniceClusterWrapper.stopVeniceRouter(router.getPort());
+      veniceClusterWrapper.restartVeniceRouter(router.getPort());
     }
     // Verify still can read from participant stores.
     ParticipantMessageKey key = new ParticipantMessageKey();
@@ -182,7 +188,7 @@ public class ParticipantStoreTest {
     try (AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> client =
         ClientFactory.getAndStartSpecificAvroClient(
             ClientConfig.defaultSpecificClientConfig(participantMessageStoreName, ParticipantMessageValue.class)
-                .setVeniceURL(venice.getRandomRouterURL()))) {
+                .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
       try {
         client.get(key).get();
       } catch (Exception e) {
@@ -234,20 +240,20 @@ public class ParticipantStoreTest {
     // Then we could verify whether the previous version receives a kill-job or not.
     verifyKillMessageInParticipantStore(topicNameForOnlineVersion, false);
 
-    venice.stopVeniceServer(veniceServerWrapper.getPort());
+    veniceClusterWrapper.stopVeniceServer(veniceServerWrapper.getPort());
     // Ensure the partition assignment is 0 before restarting the server
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-      VeniceRouterWrapper routerWrapper = venice.getRandomVeniceRouter();
+      VeniceRouterWrapper routerWrapper = veniceClusterWrapper.getRandomVeniceRouter();
       assertFalse(routerWrapper.getRoutingDataRepository().containsKafkaTopic(topicNameForOnlineVersion));
 
     });
 
-    venice.restartVeniceServer(veniceServerWrapper.getPort());
+    veniceClusterWrapper.restartVeniceServer(veniceServerWrapper.getPort());
     int expectedOnlineReplicaCount = versionCreationResponseForOnlineVersion.getReplicas();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       for (int p = 0; p < versionCreationResponseForOnlineVersion.getPartitions(); p++) {
         assertEquals(
-            venice.getRandomVeniceRouter()
+            veniceClusterWrapper.getRandomVeniceRouter()
                 .getRoutingDataRepository()
                 .getReadyToServeInstances(topicNameForOnlineVersion, p)
                 .size(),
@@ -313,7 +319,7 @@ public class ParticipantStoreTest {
     try (AvroSpecificStoreClient<ParticipantMessageKey, ParticipantMessageValue> client =
         ClientFactory.getAndStartSpecificAvroClient(
             ClientConfig.defaultSpecificClientConfig(participantMessageStoreName, ParticipantMessageValue.class)
-                .setVeniceURL(venice.getRandomRouterURL()))) {
+                .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         try {
           if (shouldPresent) {

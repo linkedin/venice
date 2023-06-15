@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -47,6 +48,7 @@ public class EndToEndKafkaWithSASLTest {
     zkServer = ServiceFactory.getZkServer();
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
+            .setRegionName(STANDALONE_REGION_NAME)
             .setAdditionalBrokerConfiguration(
                 ImmutableMap.of(
                     "listeners",
