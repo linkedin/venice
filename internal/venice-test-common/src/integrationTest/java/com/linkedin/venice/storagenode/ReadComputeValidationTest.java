@@ -143,7 +143,8 @@ public class ReadComputeValidationTest {
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
 
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress());
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
             new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
@@ -227,7 +228,8 @@ public class ReadComputeValidationTest {
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
 
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress());
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
             .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer).build());
@@ -340,7 +342,8 @@ public class ReadComputeValidationTest {
     valuesByKey.put(key1, value1);
     valuesByKey.put(key2, value2);
 
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress());
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
             .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer).build());

@@ -389,7 +389,7 @@ public abstract class TestBatch {
     // Collect the dict of the current version.
     String sourceTopic = Version.composeKafkaTopic(storeName, 2);
     Properties props = new Properties();
-    props.setProperty(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress());
+    props.setProperty(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getPubSubBrokerWrapper().getAddress());
     VeniceProperties veniceProperties = new VeniceProperties(props);
     ByteBuffer sourceDict = DictionaryUtils.readDictionaryFromKafka(sourceTopic, veniceProperties);
 
@@ -643,7 +643,7 @@ public abstract class TestBatch {
         properties -> {
           properties.setProperty(SOURCE_KAFKA, "true");
           properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
-          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
           /**
            * This is used to make sure the first mapper doesn't contain any real messages, but just control messages.
            * So that {@link com.linkedin.venice.hadoop.AbstractVeniceMapper#maybeSprayAllPartitions} won't be invoked.
@@ -781,7 +781,7 @@ public abstract class TestBatch {
           inputDir -> new KeyAndValueSchemas(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
           properties -> {
             properties.setProperty(SOURCE_KAFKA, "true");
-            properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+            properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
             properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
             properties.setProperty(KAFKA_INPUT_COMBINER_ENABLED, combiner);
           },
@@ -915,7 +915,7 @@ public abstract class TestBatch {
     testStoreWithLargeValues(enableChunkingOnPushJob, properties -> {
       properties.setProperty(SOURCE_KAFKA, "true");
       properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
-      properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+      properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
       properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
       properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, sendDirectControlMessage.toString());
     }, storeName);
@@ -1299,7 +1299,7 @@ public abstract class TestBatch {
         properties -> {
           properties.setProperty(SOURCE_KAFKA, "true");
           properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
-          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
           properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
         },
         emptyValidator,

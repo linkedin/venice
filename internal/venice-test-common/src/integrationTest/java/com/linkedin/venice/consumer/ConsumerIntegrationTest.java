@@ -161,7 +161,7 @@ public abstract class ConsumerIntegrationTest {
     Properties javaProps = new Properties();
     javaProps
         .put(ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER, KafkaValueSerializerWithNewerProtocol.class.getName());
-    javaProps.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, cluster.getKafka().getAddress());
+    javaProps.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, cluster.getPubSubBrokerWrapper().getAddress());
     VeniceProperties props = new VeniceProperties(javaProps);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);

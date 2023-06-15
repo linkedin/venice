@@ -102,7 +102,7 @@ public class DaVinciLiveUpdateSuppressionTest {
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper().getAddress());
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 

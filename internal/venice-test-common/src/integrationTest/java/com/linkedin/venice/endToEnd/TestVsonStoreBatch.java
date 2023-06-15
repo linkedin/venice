@@ -265,7 +265,7 @@ public class TestVsonStoreBatch {
         properties -> {
           properties.setProperty(SOURCE_KAFKA, "true");
           properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
-          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+          properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
           properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
         },
         validator,

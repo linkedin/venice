@@ -181,7 +181,8 @@ public class VeniceClusterInitializer implements Closeable {
       values.add(i, serializedBytes);
     }
 
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress());
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder(pushVersionTopic).setKeySerializer(keySerializer).build())) {
       veniceWriter.broadcastStartOfPush(Collections.emptyMap());

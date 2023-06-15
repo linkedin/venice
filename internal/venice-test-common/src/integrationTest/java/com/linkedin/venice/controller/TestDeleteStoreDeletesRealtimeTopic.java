@@ -53,8 +53,12 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     controllerClient =
         ControllerClient.constructClusterControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
 
-    try (TopicManagerRepository topicManagerRepository = IntegrationTestPushUtils
-        .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, venice.getKafka(), pubSubTopicRepository)) {
+    try (TopicManagerRepository topicManagerRepository = IntegrationTestPushUtils.getTopicManagerRepo(
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100,
+        0l,
+        venice.getPubSubBrokerWrapper(),
+        pubSubTopicRepository)) {
       topicManager = topicManagerRepository.getTopicManager();
     }
 

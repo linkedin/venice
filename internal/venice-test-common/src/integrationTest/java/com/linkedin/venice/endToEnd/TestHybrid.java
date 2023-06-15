@@ -185,9 +185,12 @@ public class TestHybrid {
             ServiceFactory.getVeniceCluster(1, 2, 1, 1, 1000000, false, false, extraProperties);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), parentZk, venice.getKafka())
-                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                .build());
+            new VeniceControllerCreateOptions.Builder(
+                venice.getClusterName(),
+                parentZk,
+                venice.getPubSubBrokerWrapper())
+                    .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                    .build());
         ControllerClient controllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
         TopicManager topicManager =
@@ -196,7 +199,7 @@ public class TestHybrid {
                     DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                     100,
                     0l,
-                    venice.getKafka(),
+                    venice.getPubSubBrokerWrapper(),
                     venice.getPubSubTopicRepository())
                 .getTopicManager()) {
       long streamingRewindSeconds = 25L;
@@ -329,7 +332,7 @@ public class TestHybrid {
                       DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                       100,
                       0l,
-                      venice.getKafka(),
+                      venice.getPubSubBrokerWrapper(),
                       sharedVenice.getPubSubTopicRepository())
                   .getTopicManager()) {
 
@@ -862,7 +865,7 @@ public class TestHybrid {
        *  Build a producer that writes to {@link tmpTopic1}
        */
       Properties veniceWriterProperties = new Properties();
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
       AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
       try (VeniceWriter<byte[], byte[], byte[]> tmpWriter1 = TestUtils.getVeniceWriterFactory(veniceWriterProperties)
           .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic1.getName()).build())) {
@@ -902,12 +905,12 @@ public class TestHybrid {
               .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build());) {
         // Build a producer to produce 2 TS messages into RT
         realTimeTopicWriter.broadcastTopicSwitch(
-            Collections.singletonList(venice.getKafka().getAddress()),
+            Collections.singletonList(venice.getPubSubBrokerWrapper().getAddress()),
             tmpTopic1.getName(),
             -1L,
             null);
         realTimeTopicWriter.broadcastTopicSwitch(
-            Collections.singletonList(venice.getKafka().getAddress()),
+            Collections.singletonList(venice.getPubSubBrokerWrapper().getAddress()),
             tmpTopic2.getName(),
             -1L,
             null);
@@ -1148,7 +1151,7 @@ public class TestHybrid {
                       DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                       100L,
                       MIN_COMPACTION_LAG,
-                      venice.getKafka(),
+                      venice.getPubSubBrokerWrapper(),
                       sharedVenice.getPubSubTopicRepository())
                   .getTopicManager()) {
 
@@ -1284,7 +1287,7 @@ public class TestHybrid {
         String value2 = "duplicated_message_test_value_2";
         String key2 = "duplicated_message_test_key_2";
         Properties veniceWriterProperties = new Properties();
-        veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+        veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
         AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
         AvroGenericDeserializer<String> stringDeserializer =
             new AvroGenericDeserializer<>(Schema.parse(STRING_SCHEMA), Schema.parse(STRING_SCHEMA));
@@ -1567,7 +1570,7 @@ public class TestHybrid {
       runVPJ(vpjProperties, 1, controllerClient);
 
       Properties veniceWriterProperties = new Properties();
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
       /**
        * Set max segment elapsed time to 0 to enforce creating small segments aggressively
        */
@@ -1633,7 +1636,7 @@ public class TestHybrid {
       // Do a VPJ push
       runVPJ(vpjProperties, 1, controllerClient);
       Properties veniceWriterProperties = new Properties();
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
       /**
        * Set max segment elapsed time to 0 to enforce creating small segments aggressively
        */

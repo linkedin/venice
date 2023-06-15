@@ -443,7 +443,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return zkServerWrapper;
   }
 
-  public PubSubBrokerWrapper getKafka() {
+  public PubSubBrokerWrapper getPubSubBrokerWrapper() {
     return pubSubBrokerWrapper;
   }
 

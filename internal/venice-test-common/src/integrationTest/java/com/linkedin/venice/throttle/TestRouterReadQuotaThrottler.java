@@ -52,7 +52,7 @@ public class TestRouterReadQuotaThrottler {
     currentVersion = response.getVersion();
 
     String stringSchema = "\"string\"";
-    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper().getAddress());
     try (VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
         VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
         VeniceWriter<Object, Object, Object> writer = writerFactory.createVeniceWriter(

@@ -325,7 +325,7 @@ public class TestActiveActiveIngestion {
 
     // run repush
     props.setProperty(SOURCE_KAFKA, "true");
-    props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getKafka().getAddress());
+    props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // intentionally stop re-consuming from RT so stale records don't affect the testing results
     props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
@@ -649,7 +649,7 @@ public class TestActiveActiveIngestion {
     });
     // run repush
     props.setProperty(SOURCE_KAFKA, "true");
-    props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getKafka().getAddress());
+    props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // intentionally stop re-consuming from RT so stale records don't affect the testing results
     props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);

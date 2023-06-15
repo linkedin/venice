@@ -177,7 +177,8 @@ public class StorageNodeComputeTest {
     String keyPrefix = "key_";
     String valuePrefix = "value_";
 
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress());
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
             .setValueSerializer(new DefaultSerializer())
@@ -288,7 +289,7 @@ public class StorageNodeComputeTest {
 
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils
-            .getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+            .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress())
             .createVeniceWriter(
                 new VeniceWriterOptions.Builder(newVersion.getKafkaTopic()).setKeySerializer(keySerializer).build());
         AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(

@@ -138,7 +138,7 @@ public class TestStreaming {
     compressorFactory = new CompressorFactory();
     VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy);
 
-    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress())
         .createVeniceWriter(new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer).build());
 
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
