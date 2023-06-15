@@ -1284,6 +1284,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean isStorageNodeReadQuotaEnabled() {
+    return this.delegate.isStorageNodeReadQuotaEnabled();
+  }
+
+  @Override
+  public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }

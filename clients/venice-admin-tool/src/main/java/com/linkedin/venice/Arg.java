@@ -37,6 +37,9 @@ public enum Arg {
   READABILITY("readability", "rb", true, "store's readability"),
   WRITEABILITY("writeability", "wb", true, "store's writeability"),
   STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version or storage persona could have"),
+  STORAGE_NODE_READ_QUOTA_ENABLED(
+      "storage-node-read-quota-enabled", "snrqe", true, "whether storage node read quota is enabled for this store"
+  ),
   DISABLE_META_STORE(
       "disable-meta-store", "dms", false,
       "disable meta system store. This command sets storeMetaSystemStoreEnabled flag to false but does not delete any resources associated with the meta store. Please use this option with caution"

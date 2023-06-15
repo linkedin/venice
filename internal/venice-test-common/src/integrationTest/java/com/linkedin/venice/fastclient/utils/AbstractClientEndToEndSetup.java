@@ -29,6 +29,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
@@ -238,6 +239,8 @@ public abstract class AbstractClientEndToEndSetup {
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(KEY_SCHEMA_STR, VALUE_SCHEMA_STR);
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
+    veniceCluster.useControllerClient(
+        client -> client.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // TODO: Make serializers parameterized so we test them all.
