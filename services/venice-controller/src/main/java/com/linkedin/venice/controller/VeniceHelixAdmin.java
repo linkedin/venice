@@ -3998,6 +3998,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  private void setStorageNodeReadQuotaEnabled(
+      String clusterName,
+      String storeName,
+      boolean storageNodeReadQuotaEnabled) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setStorageNodeReadQuotaEnabled(storageNodeReadQuotaEnabled);
+      return store;
+    });
+  }
+
   /**
    * TODO: some logics are in parent controller {@link VeniceParentHelixAdmin} #updateStore and
    *       some are in the child controller here. Need to unify them in the future.
@@ -4122,6 +4132,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> personaName = params.getStoragePersona();
     Optional<Map<String, String>> storeViews = params.getStoreViews();
     Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
+    Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4384,6 +4395,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (latestSupersetSchemaId.isPresent()) {
         setLatestSupersetSchemaId(clusterName, storeName, latestSupersetSchemaId.get());
       }
+
+      storageNodeReadQuotaEnabled
+          .ifPresent(aBoolean -> setStorageNodeReadQuotaEnabled(clusterName, storeName, aBoolean));
 
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
     } catch (VeniceException e) {
