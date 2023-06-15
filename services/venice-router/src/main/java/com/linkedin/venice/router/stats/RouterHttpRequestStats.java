@@ -55,6 +55,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor readQuotaUsageSensor;
   private final Sensor inFlightRequestSensor;
   private Sensor keySizeSensor;
+
+  private Sensor valueSizeSensor;
+
   private final AtomicInteger currentInFlightRequest;
   private final Sensor unavailableReplicaStreamingRequestSensor;
   private final Sensor allowedRetryRequestSensor;
@@ -156,18 +159,19 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           new Max(),
           TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(keySizeSensorName)));
 
-      responseSizeSensor = registerSensor(
-          responseSizeSensorName,
+      String valueSizeSensorName = "value_size_in_byte";
+      valueSizeSensor = registerSensor(
+          valueSizeSensorName,
           new Avg(),
           new Max(),
           TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
-    } else {
-      responseSizeSensor = registerSensor(
-          responseSizeSensorName,
-          new Avg(),
-          new Max(),
-          TehutiUtils.getPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
     }
+
+    responseSizeSensor = registerSensor(
+        responseSizeSensorName,
+        new Avg(),
+        new Max(),
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
 
     currentInFlightRequest = new AtomicInteger();
 
@@ -271,9 +275,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     compressedResponseSizeSensor.record(compressedResponseSize);
   }
 
+  public void recordValueSize(double responseSize) {
+    valueSizeSensor.record(responseSize);
+  }
+
   public void recordResponseSize(double responseSize) {
     responseSizeSensor.record(responseSize);
-  };
+  }
 
   public void recordDecompressionTime(double decompressionTime) {
     decompressionTimeSensor.record(decompressionTime);
