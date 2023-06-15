@@ -679,7 +679,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
         boolean isRequestRetriable = isRequestRetriable(path, role, retryStatus);
 
         // Indicate the current request is a retry request
-        path.setRetryRequest();
+        path.setRetryRequest(retryFuture.isSuccess() ? null : retryFuture.getCause());
 
         HostHealthMonitor<H> healthMonitor =
             _scatterGatherHelper.isEnableRetryRequestAlwaysUseADifferentHost() ? (H host, String partName) ->

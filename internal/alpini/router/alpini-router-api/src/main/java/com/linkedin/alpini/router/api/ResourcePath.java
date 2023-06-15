@@ -42,4 +42,8 @@ public interface ResourcePath<K> {
    */
   default void setRetryRequest() {
   }
+
+  default void setRetryRequest(Throwable retryFutureThrowable) {
+
+  }
 }

@@ -32,6 +32,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   protected final int versionNumber;
   private final Time time;
   private boolean retryRequest = false;
+  private Throwable retryFutureThrowable = null;
   private final boolean smartLongTailRetryEnabled;
   private final int smartLongTailRetryAbortThresholdMs;
   private long originalRequestStartTs = -1;
@@ -144,6 +145,11 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     this.retryRequest = true;
   }
 
+  @Override
+  public void setRetryRequest(Throwable retryFutureThrowable) {
+    this.retryFutureThrowable = retryFutureThrowable;
+  }
+
   protected void setupRetryRelatedInfo(VenicePath originalPath) {
     if (originalPath.isRetryRequest()) {
       setRetryRequest();
@@ -166,6 +172,10 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public boolean isRetryRequest() {
     return this.retryRequest;
+  }
+
+  public Throwable getRetryFutureThrowable() {
+    return this.retryFutureThrowable;
   }
 
   public long getOriginalRequestStartTs() {
@@ -291,6 +301,10 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public VeniceChunkedResponse getChunkedResponse() {
     return this.chunkedResponse;
+  }
+
+  public Set<String> getSlowStorageNodeSet() {
+    return slowStorageNodeSet;
   }
 
   public boolean isStreamingRequest() {

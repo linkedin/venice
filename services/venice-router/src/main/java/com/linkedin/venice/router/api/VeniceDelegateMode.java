@@ -26,6 +26,7 @@ import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,7 +34,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -329,6 +332,22 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     }
     if (minHost == null) {
       if (path.isRetryRequest()) {
+        List<String> replicaHostIds = hosts.stream().map(x -> ((Instance) x).getNodeId()).collect(Collectors.toList());
+        LogManager.getLogger()
+            .error(
+                "VENG-10611-Debug Retry Request Aborted. Store Name: {}, Resource Name: {} ReplicaHostIds: {}, VenicePath SlowNodeSet: {}",
+                path.getStoreName(),
+                path.getResourceName(),
+                replicaHostIds,
+                path.getSlowStorageNodeSet());
+        if (path.getRetryFutureThrowable() != null) {
+          LogManager.getLogger()
+              .error(
+                  "VENG-10611-Debug Retry Request Aborted. Retry future throwable: {}, {}",
+                  path.getRetryFutureThrowable().toString(),
+                  Arrays.toString(path.getRetryFutureThrowable().getStackTrace()));
+        }
+
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
             Optional.of(path.getStoreName()),
             Optional.of(path.getRequestType()),
