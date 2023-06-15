@@ -66,6 +66,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor retryDelaySensor;
   private final Sensor metaStoreShadowReadSensor;
 
+  private final boolean isKeyValueProfilingEnabled;
+
   // QPS metrics
   public RouterHttpRequestStats(
       MetricsRepository metricsRepository,
@@ -83,6 +85,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     unhealthySensor = registerSensor("unhealthy_request", new Count());
     unavailableReplicaStreamingRequestSensor = registerSensor("unavailable_replica_streaming_request", new Count());
     tardySensor = registerSensor("tardy_request", new Count(), tardyRequestRate);
+    this.isKeyValueProfilingEnabled = isKeyValueProfilingEnabled;
     healthyRequestRateSensor =
         registerSensor("healthy_request_ratio", new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
     tardyRequestRatioSensor =
@@ -276,7 +279,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordValueSize(double responseSize) {
-    valueSizeSensor.record(responseSize);
+    if (isKeyValueProfilingEnabled) {
+      valueSizeSensor.record(responseSize);
+    }
   }
 
   public void recordResponseSize(double responseSize) {
