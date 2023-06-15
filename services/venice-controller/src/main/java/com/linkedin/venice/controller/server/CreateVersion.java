@@ -218,7 +218,7 @@ public class CreateVersion extends AbstractRoute {
               storeName);
           sourceGridFabric = Optional.empty();
         }
-        Optional<String> emergencySourceRegion = admin.getEmergencySourceRegion();
+        Optional<String> emergencySourceRegion = admin.getEmergencySourceRegion(clusterName);
         if (emergencySourceRegion.isPresent() && !isActiveActiveReplicationEnabledInAllRegion.get()) {
           LOGGER.info(
               "Ignoring config {} : {}, as store {} is not set up for Active/Active replication in all regions",

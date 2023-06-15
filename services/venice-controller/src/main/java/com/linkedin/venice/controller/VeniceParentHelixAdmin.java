@@ -4803,13 +4803,13 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#getEmergencySourceRegion()
+   * @see Admin#getEmergencySourceRegion(String)
    */
   @Override
-  public Optional<String> getEmergencySourceRegion() {
-    return getMultiClusterConfigs().getEmergencySourceRegion().equals("")
+  public Optional<String> getEmergencySourceRegion(String clusterName) {
+    return getMultiClusterConfigs().getEmergencySourceRegion(clusterName).equals("")
         ? Optional.empty()
-        : Optional.of(getMultiClusterConfigs().getEmergencySourceRegion());
+        : Optional.of(getMultiClusterConfigs().getEmergencySourceRegion(clusterName));
   }
 
   /**

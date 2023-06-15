@@ -7254,13 +7254,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getEmergencySourceRegion()
+   * @see Admin#getEmergencySourceRegion(String)
    */
   @Override
-  public Optional<String> getEmergencySourceRegion() {
-    return multiClusterConfigs.getEmergencySourceRegion().equals("")
+  public Optional<String> getEmergencySourceRegion(String clusterName) {
+
+    return multiClusterConfigs.getEmergencySourceRegion(clusterName).equals("")
         ? Optional.empty()
-        : Optional.of(multiClusterConfigs.getEmergencySourceRegion());
+        : Optional.of(multiClusterConfigs.getEmergencySourceRegion(clusterName));
   }
 
   /**
