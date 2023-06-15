@@ -131,11 +131,19 @@ public class ReplicaStatus {
       return;
     }
 
-    long completeCount = statusHistory.stream().filter(status -> status.getStatus() == COMPLETED).count();
-    long incPushCount = statusHistory.stream().filter(status -> isIncrementalPushStatus(status.getStatus())).count();
-    long topicSwitchCount =
-        statusHistory.stream().filter(status -> status.getStatus() == TOPIC_SWITCH_RECEIVED).count();
-    long endOfPushCount = statusHistory.stream().filter(status -> status.getStatus() == END_OF_PUSH_RECEIVED).count();
+    long completeCount = 0, incPushCount = 0, topicSwitchCount = 0, endOfPushCount = 0;
+    for (StatusSnapshot snapshot: statusHistory) {
+      ExecutionStatus status = snapshot.getStatus();
+      if (status == COMPLETED) {
+        completeCount++;
+      } else if (isIncrementalPushStatus(status)) {
+        incPushCount++;
+      } else if (status == TOPIC_SWITCH_RECEIVED) {
+        topicSwitchCount++;
+      } else if (status == END_OF_PUSH_RECEIVED) {
+        endOfPushCount++;
+      }
+    }
 
     Iterator<StatusSnapshot> itr = statusHistory.iterator();
     while (itr.hasNext()) {
