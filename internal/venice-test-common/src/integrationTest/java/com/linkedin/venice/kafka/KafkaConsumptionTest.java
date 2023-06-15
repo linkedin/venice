@@ -135,7 +135,6 @@ public class KafkaConsumptionTest {
   public void cleanUp() {
     topicManager.close();
     localPubSubBroker.close();
-
     remoteTopicManager.close();
     remotePubSubBroker.close();
   }
@@ -178,7 +177,8 @@ public class KafkaConsumptionTest {
     doReturn(clusterUrlToIdMap).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
 
     TopicExistenceChecker topicExistenceChecker = mock(TopicExistenceChecker.class);
-    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = IntegrationTestPushUtils.getVeniceConsumerFactory();
+    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
+        localPubSubBroker.getPubSubClientsFactory().getConsumerAdapterFactory();
     PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),

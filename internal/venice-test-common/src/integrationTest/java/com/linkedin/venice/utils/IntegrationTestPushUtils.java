@@ -41,10 +41,6 @@ import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import java.util.Arrays;
@@ -213,14 +209,6 @@ public class IntegrationTestPushUtils {
     SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
     veniceProducer.start();
     return veniceProducer;
-  }
-
-  public static PubSubConsumerAdapterFactory getVeniceConsumerFactory() {
-    return new ApacheKafkaConsumerAdapterFactory();
-  }
-
-  public static PubSubAdminAdapterFactory getVeniceAdminFactory() {
-    return new ApacheKafkaAdminAdapterFactory();
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName, Schema recordSchema, Properties props) {

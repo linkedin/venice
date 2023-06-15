@@ -52,7 +52,7 @@ public class VeniceWriterTest {
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
-    pubSubConsumerAdapterFactory = IntegrationTestPushUtils.getVeniceConsumerFactory();
+    pubSubConsumerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory();
     topicManager = IntegrationTestPushUtils
         .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100L, 0L, pubSubBrokerWrapper, pubSubTopicRepository)
         .getTopicManager();
