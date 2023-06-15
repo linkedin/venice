@@ -903,7 +903,8 @@ public class RouterServer extends AbstractVeniceService {
       noopRequestThrottler = new NoopRouterThrottler(
           routersClusterManager,
           metadataRepository,
-          routerStats.getStatsByType(RequestType.SINGLE_GET));
+          routerStats.getStatsByType(RequestType.SINGLE_GET),
+          config);
 
       // Setup read requests throttler.
       setReadRequestThrottling(config.isReadThrottlingEnabled());

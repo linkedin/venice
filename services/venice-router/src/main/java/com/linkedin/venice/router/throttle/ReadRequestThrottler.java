@@ -115,7 +115,11 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     this.perStorageNodeThrottlerEnabled = perStorageNodeThrottlerEnabled;
     this.lastRouterCount = zkRoutersManager.getExpectedRoutersCount();
     this.perStoreRouterQuotaBuffer = perStoreRouterQuotaBuffer;
-    this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
+    this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter(
+        stats,
+        zkRoutersManager.getLiveRoutersCount(),
+        storeRepository.getTotalStoreReadQuota(),
+        maxRouterReadCapacity);
     this.storesThrottlers = new AtomicReference<>(buildAllStoreReadThrottlers());
   }
 
@@ -149,6 +153,11 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     return 1;
   }
 
+  @Override
+  public Logger getLogger() {
+    return LOGGER;
+  }
+
   protected long calculateStoreQuotaPerRouter(long storeQuota) {
     int routerCount = zkRoutersManager.getLiveRoutersCount();
     // There are some edge cases where a bad temporary value will render the quota calculation nonsensical. So we
@@ -161,44 +170,15 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     }
 
     if (routerCount <= 0) {
-      LOGGER.error("Could not find any live router to serve traffic.");
+      throw new VeniceException("Could not find any live router to serve traffic");
     }
 
-    long idealStoreQuotaPerRouter = routerCount > 0
-        ? Math.max(storeQuota / routerCount, 5) // Do not make quota to be 0 when storeQuota < routerCount
-        : 0;
-
-    if (!zkRoutersManager.isMaxCapacityProtectionEnabled() || idealTotalQuotaPerRouter <= maxRouterReadCapacity) {
-      // Current router's capacity is big enough to be allocated to each store's quota.
-      return idealStoreQuotaPerRouter * (1 + (long) perStoreRouterQuotaBuffer);
-    } else {
-      // If we allocate ideal quota value to each store, the total quota would exceed the router's capacity.
-      // The reason is the cluster does not have enough number of routers.(Might be caused by to manny router failures)
-      // So each store's quota must be adjusted accordingly to make sure total quota would not exceed router's capacity.
-      // Compare to the solution that use a single throttler per router to protect usage exceeding router's capacity,
-      // this logic could reduce the quota for each store in proportion which could prevent the usage of a few stores
-      // eat all quota.
-      LOGGER.warn(
-          "The ideal total quota per router: {} has exceeded the router's max capacity: {}, will reduce quotas for all store in proportion.",
-          idealTotalQuotaPerRouter,
-          maxRouterReadCapacity);
-      return idealStoreQuotaPerRouter * maxRouterReadCapacity / idealTotalQuotaPerRouter;
-    }
-  }
-
-  protected final long calculateIdealTotalQuotaPerRouter() {
-    long totalQuota = 0;
-    int routerCount = zkRoutersManager.getLiveRoutersCount();
-
-    if (routerCount != 0) {
-      totalQuota = storeRepository.getTotalStoreReadQuota() / routerCount;
-    }
-    if (zkRoutersManager.isMaxCapacityProtectionEnabled()) {
-      stats.recordTotalQuota(Math.min(totalQuota, maxRouterReadCapacity));
-    } else {
-      stats.recordTotalQuota(totalQuota);
-    }
-    return totalQuota;
+    return calculateStoreQuota(
+        storeQuota,
+        routerCount,
+        idealTotalQuotaPerRouter,
+        maxRouterReadCapacity,
+        perStoreRouterQuotaBuffer);
   }
 
   protected StoreReadThrottler getStoreReadThrottler(String storeName) {
@@ -308,7 +288,11 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     synchronized (storesThrottlers) {
       // Total store quota should be changed because of add/update/delete store.
       long oldIdealTotalQuotaPerRouter = idealTotalQuotaPerRouter;
-      idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
+      idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter(
+          stats,
+          zkRoutersManager.getLiveRoutersCount(),
+          storeRepository.getTotalStoreReadQuota(),
+          maxRouterReadCapacity);
       updater.run();
       if (oldIdealTotalQuotaPerRouter > maxRouterReadCapacity || idealTotalQuotaPerRouter > maxRouterReadCapacity) {
         // Old router's quota and/or new router's quota exceed the router's max capacity, update all store throttlers
@@ -414,7 +398,11 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
 
   private void resetAllThrottlers() {
     synchronized (storesThrottlers) {
-      long newIdealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
+      long newIdealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter(
+          stats,
+          zkRoutersManager.getLiveRoutersCount(),
+          storeRepository.getTotalStoreReadQuota(),
+          maxRouterReadCapacity);
       if (idealTotalQuotaPerRouter != newIdealTotalQuotaPerRouter) {
         idealTotalQuotaPerRouter = newIdealTotalQuotaPerRouter;
         // Total quota for this router is changed, we have to update all store throttlers.
