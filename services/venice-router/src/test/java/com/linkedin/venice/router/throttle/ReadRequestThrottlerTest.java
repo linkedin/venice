@@ -104,6 +104,12 @@ public class ReadRequestThrottlerTest {
     } catch (QuotaExceededException e) {
       // expected.
     }
+    throttler.setIsNoopThrottlerEnabled(true);
+    try {
+      throttler.mayThrottleRead(store.getName(), 10 * appliedQuotaBuffer, "test");
+    } catch (QuotaExceededException e) {
+      Assert.fail("Usage has exceed the quota. Should get the QuotaExceededException.");
+    }
   }
 
   @Test

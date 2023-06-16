@@ -409,7 +409,6 @@
       <Class name="com.linkedin.venice.helix.ZkRoutersClusterManager"/>
       <Class name="com.linkedin.venice.stats.HttpConnectionPoolStats"/>
       <Class name="com.linkedin.venice.stats.HttpConnectionPoolStats$RouteHttpConnectionPoolStats"/>
-      <Class name="com.linkedin.venice.router.throttle.NoopRouterThrottler"/>
       <Class name="com.linkedin.venice.router.throttle.ReadRequestThrottler"/>
       <Class name="com.linkedin.venice.router.streaming.VeniceChunkedResponse$StreamingResponseMeta"/>
       <Class name="com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter"/>
