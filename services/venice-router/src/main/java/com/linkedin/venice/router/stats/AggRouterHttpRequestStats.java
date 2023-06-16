@@ -159,7 +159,6 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStoreStats<Route
 
   public void recordResponseSize(String storeName, double valueSize) {
     totalStats.recordResponseSize(valueSize);
-    totalStats.recordValueSize(valueSize);
     getStoreStats(storeName).recordResponseSize(valueSize);
   }
 

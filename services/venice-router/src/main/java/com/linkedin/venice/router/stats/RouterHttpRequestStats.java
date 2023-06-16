@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.stats;
 
+import static com.linkedin.venice.stats.AbstractVeniceAggStats.*;
+
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
@@ -154,28 +156,25 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     inFlightRequestSensor = registerSensor("in_flight_request_count", new Min(), new Max(0), new Avg());
 
     String responseSizeSensorName = "response_size";
-    if (isKeyValueProfilingEnabled) {
+    if (isKeyValueProfilingEnabled && storeName.equals(STORE_NAME_FOR_TOTAL_STAT)) {
       String keySizeSensorName = "key_size_in_byte";
       keySizeSensor = registerSensor(
           keySizeSensorName,
           new Avg(),
           new Max(),
           TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(keySizeSensorName)));
-
-      String valueSizeSensorName = "value_size_in_byte";
-      valueSizeSensor = registerSensor(
-          valueSizeSensorName,
+      responseSizeSensor = registerSensor(
+          responseSizeSensorName,
           new Avg(),
           new Max(),
-          TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(valueSizeSensorName)));
+          TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
+    } else {
+      responseSizeSensor = registerSensor(
+          responseSizeSensorName,
+          new Avg(),
+          new Max(),
+          TehutiUtils.getPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
     }
-
-    responseSizeSensor = registerSensor(
-        responseSizeSensorName,
-        new Avg(),
-        new Max(),
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
-
     currentInFlightRequest = new AtomicInteger();
 
     allowedRetryRequestSensor = registerSensor("allowed_retry_request_count", new OccurrenceRate());
@@ -276,12 +275,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordCompressedResponseSize(double compressedResponseSize) {
     compressedResponseSizeSensor.record(compressedResponseSize);
-  }
-
-  public void recordValueSize(double responseSize) {
-    if (isKeyValueProfilingEnabled) {
-      valueSizeSensor.record(responseSize);
-    }
   }
 
   public void recordResponseSize(double responseSize) {
