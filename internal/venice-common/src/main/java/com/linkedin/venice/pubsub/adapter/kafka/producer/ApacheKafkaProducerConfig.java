@@ -89,10 +89,10 @@ public class ApacheKafkaProducerConfig {
    * These configs are set for large volume ingestion, not for integration test.
    */
   private void addHighThroughputDefaults() {
-    if (producerProperties.containsKey(ProducerConfig.BATCH_SIZE_CONFIG)) {
+    if (!producerProperties.containsKey(ProducerConfig.BATCH_SIZE_CONFIG)) {
       producerProperties.put(ProducerConfig.BATCH_SIZE_CONFIG, DEFAULT_KAFKA_BATCH_SIZE);
     }
-    if (producerProperties.containsKey(ProducerConfig.LINGER_MS_CONFIG)) {
+    if (!producerProperties.containsKey(ProducerConfig.LINGER_MS_CONFIG)) {
       producerProperties.put(ProducerConfig.LINGER_MS_CONFIG, DEFAULT_KAFKA_LINGER_MS);
     }
   }
