@@ -67,7 +67,6 @@ import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
-import com.linkedin.venice.router.throttle.NoopRouterThrottler;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
@@ -159,6 +158,8 @@ public class RouterServer extends AbstractVeniceService {
   private Optional<Router> router = Optional.empty();
   private Router secureRouter;
   private DictionaryRetrievalService dictionaryRetrievalService;
+  private RouterThrottler readRequestThrottler;
+
   private MultithreadEventLoopGroup workerEventLoopGroup;
   private MultithreadEventLoopGroup serverEventLoopGroup;
   private MultithreadEventLoopGroup sslResolverEventLoopGroup;
@@ -890,6 +891,13 @@ public class RouterServer extends AbstractVeniceService {
       routingDataRepository.refresh();
       hybridStoreQuotaRepository.ifPresent(HelixHybridStoreQuotaRepository::refresh);
 
+      readRequestThrottler = new ReadRequestThrottler(
+          routersClusterManager,
+          metadataRepository,
+          routingDataRepository,
+          routerStats.getStatsByType(RequestType.SINGLE_GET),
+          config);
+
       // Setup read requests throttler.
       setReadRequestThrottling(config.isReadThrottlingEnabled());
 
@@ -970,23 +978,8 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   public void setReadRequestThrottling(boolean throttle) {
-    RouterThrottler throttler;
-    if (throttle) {
-      throttler = new ReadRequestThrottler(
-          routersClusterManager,
-          metadataRepository,
-          routingDataRepository,
-          routerStats.getStatsByType(RequestType.SINGLE_GET),
-          config);
-      ;
-    } else {
-      throttler = new NoopRouterThrottler(
-          routersClusterManager,
-          metadataRepository,
-          routerStats.getStatsByType(RequestType.SINGLE_GET),
-          config);
-    }
-    scatterGatherMode.initReadRequestThrottler(throttler);
+    readRequestThrottler.setIsNoopThrottlerEnabled(throttle);
+    scatterGatherMode.initReadRequestThrottler(readRequestThrottler);
   }
 
   /* test-only */
