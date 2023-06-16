@@ -979,7 +979,8 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   public void setReadRequestThrottling(boolean throttle) {
-    readRequestThrottler.setIsNoopThrottlerEnabled(!throttle);
+    boolean isNoopThrottlerEnabled = !throttle;
+    readRequestThrottler.setIsNoopThrottlerEnabled(isNoopThrottlerEnabled);
   }
 
   /* test-only */
