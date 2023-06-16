@@ -167,7 +167,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
        * and or Zookeeper servers.
        */
       Map<String, ZkServerWrapper> zkServerByRegionName = new HashMap<>(childRegionName.size());
-      Map<String, PubSubBrokerWrapper> kafkaBrokerByRegionName = new HashMap<>(childRegionName.size());
+      Map<String, PubSubBrokerWrapper> pubSubBrokerByRegionName = new HashMap<>(childRegionName.size());
 
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, true);
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, true);
@@ -199,7 +199,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).setRegionName(regionName).build());
         allPubSubBrokerWrappers.add(regionalPubSubBrokerWrapper);
         zkServerByRegionName.put(regionName, zkServerWrapper);
-        kafkaBrokerByRegionName.put(regionName, regionalPubSubBrokerWrapper);
+        pubSubBrokerByRegionName.put(regionName, regionalPubSubBrokerWrapper);
         nativeReplicationRequiredChildControllerProps
             .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + regionName, regionalPubSubBrokerWrapper.getAddress());
       }
@@ -236,7 +236,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       for (int i = 0; i < numberOfRegions; i++) {
         String regionName = childRegionName.get(i);
         builder.regionName(regionName)
-            .kafkaBrokerWrapper(kafkaBrokerByRegionName.get(regionName))
+            .kafkaBrokerWrapper(pubSubBrokerByRegionName.get(regionName))
             .zkServerWrapper(zkServerByRegionName.get(regionName));
         VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(builder.build());
         multiClusters.add(multiClusterWrapper);

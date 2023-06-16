@@ -60,8 +60,8 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     final PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
 
     long timestamp = System.currentTimeMillis();
-    produceToKafka(topic, true, timestamp); // This timestamp is expected to be retrieved
-    produceToKafka(topic, false, timestamp + 1000L); // produce a control message
+    produceRandomPubSubMessage(topic, true, timestamp); // This timestamp is expected to be retrieved
+    produceRandomPubSubMessage(topic, false, timestamp + 1000L); // produce a control message
 
     long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, 1);
     Assert.assertEquals(retrievedTimestamp, timestamp);
@@ -69,11 +69,11 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     // Produce more data records to this topic partition
     for (int i = 0; i < 100; i++) {
       timestamp += 1000L;
-      produceToKafka(topic, true, timestamp);
+      produceRandomPubSubMessage(topic, true, timestamp);
     }
     // Produce several control messages at the end
     for (int i = 1; i <= 3; i++) {
-      produceToKafka(topic, false, timestamp + i * 1000L);
+      produceRandomPubSubMessage(topic, false, timestamp + i * 1000L);
     }
     long checkTimestamp = timestamp - 1000L;
     int numberOfThreads = 50;
