@@ -95,6 +95,7 @@ public class VeniceClusterInitializer implements Closeable {
     this.controllerClient = this.veniceCluster.getControllerClient();
     TestUtils.assertCommand(controllerClient.createNewStore(storeName, "test_owner", KEY_SCHEMA_STR, VALUE_SCHEMA_STR));
     this.veniceCluster.createMetaSystemStore(storeName);
+    this.veniceCluster.createPushStatusSystemStore(storeName);
     // Enable read compute
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);
