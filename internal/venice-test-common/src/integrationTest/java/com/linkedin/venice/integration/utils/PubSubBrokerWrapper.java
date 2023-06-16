@@ -25,4 +25,8 @@ public abstract class PubSubBrokerWrapper extends ProcessWrapper {
   }
 
   public abstract PubSubClientsFactory getPubSubClientsFactory();
+
+  public abstract String getPubSubClusterName();
+
+  public abstract String getRegionName();
 }

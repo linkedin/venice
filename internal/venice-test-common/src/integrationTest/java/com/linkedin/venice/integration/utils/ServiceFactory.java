@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_ATTEMPT;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_WAIT_TIME_FOR_CLUSTER_START_S;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
@@ -57,7 +58,8 @@ public class ServiceFactory {
   private static final String PUBSUB_BROKER_FACTORY_FQCN = "pubSubBrokerFactory";
   // PubSubBrokerFactory implementation to use for tests
   private static final PubSubBrokerFactory<PubSubBrokerWrapper> PUBSUB_BROKER_FACTORY;
-  private static final PubSubBrokerConfigs PUBSUB_BROKER_EMPTY_CONFIGS = new PubSubBrokerConfigs.Builder().build();
+  private static final PubSubBrokerConfigs PUBSUB_BROKER_EMPTY_CONFIGS =
+      new PubSubBrokerConfigs.Builder().setRegionName(STANDALONE_REGION_NAME).build();
 
   /**
    * Calling {@link System#exit(int)} System.exit in tests is unacceptable. The Spark server lib, in particular, calls it.

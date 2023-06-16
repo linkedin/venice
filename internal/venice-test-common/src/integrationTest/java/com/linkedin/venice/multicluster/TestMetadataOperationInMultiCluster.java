@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -44,6 +45,7 @@ public class TestMetadataOperationInMultiCluster {
     VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder(2).numberOfControllers(3)
         .numberOfServers(1)
         .numberOfRouters(1)
+        .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
         .build();
     try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(options)) {
       String[] clusterNames = multiClusterWrapper.getClusterNames();
@@ -132,6 +134,7 @@ public class TestMetadataOperationInMultiCluster {
     VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder(2).numberOfControllers(3)
         .numberOfServers(1)
         .numberOfRouters(1)
+        .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
         .build();
     try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(options)) {
       String[] clusterNames = multiClusterWrapper.getClusterNames();

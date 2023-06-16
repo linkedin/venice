@@ -34,20 +34,20 @@ public class TestKafkaInputFormat {
   private static final String KAFKA_MESSAGE_KEY_PREFIX = "key_";
   private static final String KAFKA_MESSAGE_VALUE_PREFIX = "value_";
 
-  private PubSubBrokerWrapper kafka;
+  private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager manager;
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
-    kafka = ServiceFactory.getPubSubBroker();
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     manager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100L,
                 24 * Time.MS_PER_HOUR,
-                kafka.getAddress(),
+                pubSubBrokerWrapper.getAddress(),
                 pubSubTopicRepository)
             .getTopicManager();
   }
@@ -55,13 +55,13 @@ public class TestKafkaInputFormat {
   @AfterClass
   public void cleanUp() throws IOException {
     manager.close();
-    kafka.close();
+    pubSubBrokerWrapper.close();
   }
 
   public String getTopic(int numRecord, int numPartition) {
     String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
     manager.createTopic(pubSubTopicRepository.getTopic(topicName), numPartition, 1, true);
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(pubSubBrokerWrapper.getAddress());
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {
       for (int i = 0; i < numRecord; ++i) {
@@ -121,7 +121,7 @@ public class TestKafkaInputFormat {
     KafkaInputFormat kafkaInputFormat = new KafkaInputFormat();
     String topic = getTopic(1000, 3);
     JobConf conf = new JobConf();
-    conf.set(KAFKA_INPUT_BROKER_URL, kafka.getAddress());
+    conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
     conf.set(KAFKA_INPUT_TOPIC, topic);
     Map<TopicPartition, Long> latestOffsets = kafkaInputFormat.getLatestOffsets(conf);
     TopicPartition partition0 = new TopicPartition(topic, 0);

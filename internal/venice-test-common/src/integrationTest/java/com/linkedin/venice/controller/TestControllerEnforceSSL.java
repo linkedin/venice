@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -39,8 +40,8 @@ public class TestControllerEnforceSSL {
     extraProperties.setProperty(CONTROLLER_ENFORCE_SSL, "true");
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper =
-            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
+        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).setRegionName(STANDALONE_REGION_NAME).build());
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(CLUSTER_NAME, zkServer, pubSubBrokerWrapper).replicationFactor(1)
                 .partitionSize(10)
@@ -48,6 +49,7 @@ public class TestControllerEnforceSSL {
                 .minActiveReplica(1)
                 .sslToKafka(true)
                 .extraProperties(extraProperties)
+                .regionName(STANDALONE_REGION_NAME)
                 .build());
         ControllerClient controllerClient =
             ControllerClient.constructClusterControllerClient(CLUSTER_NAME, controllerWrapper.getControllerUrl());

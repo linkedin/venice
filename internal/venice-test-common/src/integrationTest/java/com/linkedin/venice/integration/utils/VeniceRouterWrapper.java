@@ -41,6 +41,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -75,7 +76,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     this.zkAddress = zkAddress;
     this.d2ClusterName = d2ClusterName;
     this.clusterDiscoveryD2ClusterName = clusterDiscoveryD2ClusterName;
-    this.regionName = regionName;
+    this.regionName = Objects.requireNonNull(regionName, "Region name cannot be null for VeniceRouterWrapper");
   }
 
   static StatefulServiceProvider<VeniceRouterWrapper> generateService(
