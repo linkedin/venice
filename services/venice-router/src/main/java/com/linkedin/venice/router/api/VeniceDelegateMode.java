@@ -225,6 +225,14 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         int numPartitions = partitionFinder.getNumPartitions(resourceName);
         int versionNumber = venicePath.getVersionNumber();
         int partition = partitionFinder.findPartitionNumber(firstKey, numPartitions, storeName, versionNumber);
+        if (venicePath.getRetryHttpResponseStatus() != null) {
+          LOGGER.error(
+              "VENG-10611-Debug Retry Request. Retry trigger status: {}, store: {}, version:{}, partition: {}",
+              venicePath.getRetryHttpResponseStatus(),
+              storeName,
+              versionNumber,
+              partition);
+        }
         RouterExceptionAndTrackingUtils.FailureType failureType = RouterExceptionAndTrackingUtils.FailureType.REGULAR;
         if (venicePath.isRetryRequest()) {
           // don't record it as unhealthy request.
@@ -334,9 +342,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     if (minHost == null) {
       if (path.isRetryRequest()) {
         List<String> replicaHostIds = hosts.stream().map(x -> ((Instance) x).getNodeId()).collect(Collectors.toList());
-        if (path.getRetryHttpResponseStatus() != null) {
-          LOGGER.error("VENG-10611-Debug Retry Request. Retry trigger status: {}", path.getRetryHttpResponseStatus());
-        }
         LOGGER.error(
             "VENG-10611-Debug Retry Request Aborted. Store Name: {}, Resource Name: {} ReplicaHostIds: {}, VenicePath SlowNodeSet: {}",
             path.getStoreName(),
