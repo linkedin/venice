@@ -167,7 +167,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           valueSizeSensorName,
           new Avg(),
           new Max(),
-          TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
+          TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(valueSizeSensorName)));
     }
 
     responseSizeSensor = registerSensor(
