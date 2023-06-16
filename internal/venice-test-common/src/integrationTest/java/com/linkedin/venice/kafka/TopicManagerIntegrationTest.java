@@ -1,19 +1,18 @@
 package com.linkedin.venice.kafka;
 
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
+
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -36,8 +35,8 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
   @Override
   protected void createTopicManager() {
     TestMockTime mockTime = new TestMockTime();
-    pubSubBrokerWrapper =
-        ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+        new PubSubBrokerConfigs.Builder().setMockTime(mockTime).setRegionName(STANDALONE_REGION_NAME).build());
     topicManager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
@@ -50,11 +49,9 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
   }
 
   protected PubSubProducerAdapter createPubSubProducerAdapter() {
-    Properties props = new Properties();
-    props.put(ApacheKafkaProducerConfig.KAFKA_KEY_SERIALIZER, KafkaKeySerializer.class.getName());
-    props.put(ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER, KafkaValueSerializer.class.getName());
-    props.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
-    return new ApacheKafkaProducerAdapter(new ApacheKafkaProducerConfig(props));
+    return pubSubBrokerWrapper.getPubSubClientsFactory()
+        .getProducerAdapterFactory()
+        .create(new VeniceProperties(new Properties()), "topicManagerTestProducer", pubSubBrokerWrapper.getAddress());
   }
 
   @Test
@@ -63,8 +60,8 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     final PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
 
     long timestamp = System.currentTimeMillis();
-    produceToKafka(topic, true, timestamp); // This timestamp is expected to be retrieved
-    produceToKafka(topic, false, timestamp + 1000L); // produce a control message
+    produceRandomPubSubMessage(topic, true, timestamp); // This timestamp is expected to be retrieved
+    produceRandomPubSubMessage(topic, false, timestamp + 1000L); // produce a control message
 
     long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, 1);
     Assert.assertEquals(retrievedTimestamp, timestamp);
@@ -72,11 +69,11 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     // Produce more data records to this topic partition
     for (int i = 0; i < 100; i++) {
       timestamp += 1000L;
-      produceToKafka(topic, true, timestamp);
+      produceRandomPubSubMessage(topic, true, timestamp);
     }
     // Produce several control messages at the end
     for (int i = 1; i <= 3; i++) {
-      produceToKafka(topic, false, timestamp + i * 1000L);
+      produceRandomPubSubMessage(topic, false, timestamp + i * 1000L);
     }
     long checkTimestamp = timestamp - 1000L;
     int numberOfThreads = 50;

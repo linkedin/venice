@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 
 import com.linkedin.venice.ConfigKeys;
@@ -33,7 +34,7 @@ public class TestDictionaryUtils {
   /** Wait time for {@link #manager} operations, in seconds */
   private static final int WAIT_TIME = 10;
   private static final int PARTITION_COUNT = 1;
-  private PubSubBrokerWrapper kafka;
+  private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager manager;
   private TestMockTime mockTime;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
@@ -53,8 +54,7 @@ public class TestDictionaryUtils {
 
   private Properties getKafkaProperties() {
     Properties props = new Properties();
-    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, manager.getKafkaBootstrapServers());
-    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
+    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     props.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
     return props;
   }
@@ -62,21 +62,22 @@ public class TestDictionaryUtils {
   @BeforeClass
   public void setUp() {
     mockTime = new TestMockTime();
-    kafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+        new PubSubBrokerConfigs.Builder().setMockTime(mockTime).setRegionName(STANDALONE_REGION_NAME).build());
     manager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100,
                 MIN_COMPACTION_LAG,
-                kafka.getAddress(),
+                pubSubBrokerWrapper.getAddress(),
                 pubSubTopicRepository)
             .getTopicManager();
   }
 
   @AfterClass
   public void cleanUp() throws IOException {
-    kafka.close();
+    pubSubBrokerWrapper.close();
     manager.close();
   }
 

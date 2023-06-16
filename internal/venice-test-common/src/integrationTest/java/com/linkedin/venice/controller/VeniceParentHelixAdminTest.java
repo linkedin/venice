@@ -11,6 +11,8 @@ import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WR
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V4;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicPushCompletion;
@@ -408,10 +410,14 @@ public class VeniceParentHelixAdminTest {
         .put(VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR, new SupersetSchemaGeneratorWithCustomProp(CUSTOM_PROP));
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper =
-            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
+        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
+                .setRegionName(DEFAULT_PARENT_DATA_CENTER_REGION_NAME)
+                .build());
         VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper).build());
+            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
+                .regionName(CHILD_REGION_NAME_PREFIX + "0")
+                .build());
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(clusterName, parentZk, pubSubBrokerWrapper)
@@ -559,11 +565,14 @@ public class VeniceParentHelixAdminTest {
     }
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper =
-            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
+        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
+                .setRegionName(DEFAULT_PARENT_DATA_CENTER_REGION_NAME)
+                .build());
         VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
                 .sslToKafka(isControllerSslEnabled)
+                .regionName(CHILD_REGION_NAME_PREFIX + "0")
                 .build());
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(

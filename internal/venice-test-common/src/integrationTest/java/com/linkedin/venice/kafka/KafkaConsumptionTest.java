@@ -29,15 +29,11 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -74,8 +70,8 @@ public class KafkaConsumptionTest {
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  private PubSubBrokerWrapper localKafka;
-  private PubSubBrokerWrapper remoteKafka;
+  private PubSubBrokerWrapper localPubSubBroker;
+  private PubSubBrokerWrapper remotePubSubBroker;
   private TopicManager topicManager;
   private TopicManager remoteTopicManager;
   private TestMockTime mockTime;
@@ -103,14 +99,15 @@ public class KafkaConsumptionTest {
   @BeforeClass
   public void setUp() {
     mockTime = new TestMockTime();
-    localKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
+    localPubSubBroker = ServiceFactory
+        .getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).setRegionName("local-pubsub").build());
     topicManager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100L,
                 MIN_COMPACTION_LAG,
-                localKafka.getAddress(),
+                localPubSubBroker.getAddress(),
                 pubSubTopicRepository)
             .getTopicManager();
     Cache cacheNothingCache = mock(Cache.class);
@@ -118,14 +115,15 @@ public class KafkaConsumptionTest {
     topicManager.setTopicConfigCache(cacheNothingCache);
 
     remoteMockTime = new TestMockTime();
-    remoteKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(remoteMockTime).build());
+    remotePubSubBroker = ServiceFactory.getPubSubBroker(
+        new PubSubBrokerConfigs.Builder().setMockTime(remoteMockTime).setRegionName("remote-pubsub").build());
     remoteTopicManager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100L,
                 MIN_COMPACTION_LAG,
-                remoteKafka.getAddress(),
+                remotePubSubBroker.getAddress(),
                 pubSubTopicRepository)
             .getTopicManager();
     Cache remoteCacheNothingCache = mock(Cache.class);
@@ -136,10 +134,10 @@ public class KafkaConsumptionTest {
   @AfterClass
   public void cleanUp() {
     topicManager.close();
-    localKafka.close();
+    localPubSubBroker.close();
 
     remoteTopicManager.close();
-    remoteKafka.close();
+    remotePubSubBroker.close();
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10 * Time.MS_PER_SECOND)
@@ -168,8 +166,8 @@ public class KafkaConsumptionTest {
           .getSharedConsumerAssignmentStrategy();
     }
 
-    String localKafkaUrl = localKafka.getAddress();
-    String remoteKafkaUrl = remoteKafka.getAddress();
+    String localKafkaUrl = localPubSubBroker.getAddress();
+    String remoteKafkaUrl = remotePubSubBroker.getAddress();
     Map<String, String> clusterUrlToAlias = new HashMap<>();
     clusterUrlToAlias.put(localKafkaUrl, localKafkaUrl);
     clusterUrlToAlias.put(remoteKafkaUrl, remoteKafkaUrl);
@@ -231,11 +229,11 @@ public class KafkaConsumptionTest {
     int controlRecordsNum = 3;
     for (int i = 0; i < dataRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopic.getName(), true, timestamp, localKafkaUrl);
+      produceToKafka(versionTopic.getName(), true, timestamp, localPubSubBroker);
     }
     for (int i = 0; i < controlRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopic.getName(), false, timestamp, localKafkaUrl);
+      produceToKafka(versionTopic.getName(), false, timestamp, localPubSubBroker);
     }
     final int localExpectedRecordsNum = dataRecordsNum + controlRecordsNum;
     waitForNonDeterministicCompletion(
@@ -248,11 +246,11 @@ public class KafkaConsumptionTest {
     controlRecordsNum = 4;
     for (int i = 0; i < dataRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopic.getName(), true, timestamp, remoteKafkaUrl);
+      produceToKafka(versionTopic.getName(), true, timestamp, remotePubSubBroker);
     }
     for (int i = 0; i < controlRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopic.getName(), false, timestamp, remoteKafkaUrl);
+      produceToKafka(versionTopic.getName(), false, timestamp, remotePubSubBroker);
     }
     final int remoteExpectedRecordsNum = dataRecordsNum + controlRecordsNum;
     waitForNonDeterministicCompletion(
@@ -267,17 +265,18 @@ public class KafkaConsumptionTest {
    * @param topic
    * @param isDataRecord
    * @param producerTimestamp
-   * @param kafkaUrl
+   * @param pubSubBrokerWrapper
    * @throws ExecutionException
    * @throws InterruptedException
    */
-  private void produceToKafka(String topic, boolean isDataRecord, long producerTimestamp, String kafkaUrl)
-      throws ExecutionException, InterruptedException {
-    Properties props = new Properties();
-    props.put(ApacheKafkaProducerConfig.KAFKA_KEY_SERIALIZER, KafkaKeySerializer.class.getName());
-    props.put(ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER, KafkaValueSerializer.class.getName());
-    props.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-    PubSubProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(new ApacheKafkaProducerConfig(props));
+  private void produceToKafka(
+      String topic,
+      boolean isDataRecord,
+      long producerTimestamp,
+      PubSubBrokerWrapper pubSubBrokerWrapper) throws ExecutionException, InterruptedException {
+    PubSubProducerAdapter producerAdapter = pubSubBrokerWrapper.getPubSubClientsFactory()
+        .getProducerAdapterFactory()
+        .create(new VeniceProperties(new Properties()), "test-producer", pubSubBrokerWrapper.getAddress());
 
     final byte[] randomBytes = new byte[] { 0, 1 };
 

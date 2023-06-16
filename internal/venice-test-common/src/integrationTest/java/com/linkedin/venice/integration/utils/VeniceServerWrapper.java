@@ -48,6 +48,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -92,7 +93,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
    * proper configurations.
    */
   private boolean forkServer = false;
-  private String regionName = "";
+  private String regionName;
   private String clusterName;
   private int listenPort;
   private String serverConfigPath;
@@ -121,7 +122,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     this.config = config;
     this.consumerClientConfig = consumerClientConfig;
     this.sslFactory = sslFactory;
-    this.regionName = regionName;
+    this.regionName = Objects.requireNonNull(regionName, "Region name cannot be null for VeniceServerWrapper");
     this.pubSubClientsFactory = pubSubClientsFactory;
   }
 
@@ -165,7 +166,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       this.d2ServiceName = consumerClientConfig.getD2ServiceName();
     }
     this.serverName = serverName;
-    this.regionName = regionName;
+    this.regionName = Objects.requireNonNull(regionName, "Region name cannot be null for VeniceServerWrapper");
   }
 
   static StatefulServiceProvider<VeniceServerWrapper> generateService(

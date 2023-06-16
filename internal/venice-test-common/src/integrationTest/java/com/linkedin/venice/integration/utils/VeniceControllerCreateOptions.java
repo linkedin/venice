@@ -6,9 +6,9 @@ import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_DELAYED_TO_REBALANCE_MS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import java.util.Arrays;
@@ -214,7 +214,7 @@ public class VeniceControllerCreateOptions {
     private VeniceControllerWrapper[] childControllers = null;
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
-    private String regionName = "";
+    private String regionName;
 
     public Builder(String[] clusterNames, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
       this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
@@ -310,6 +310,9 @@ public class VeniceControllerCreateOptions {
         extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "true");
       }
       d2Enabled = clusterToD2 != null;
+      if (regionName == null || regionName.isEmpty()) {
+        regionName = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+      }
     }
 
     private void verifyAndAddChildControllerSpecificDefaults() {
@@ -322,10 +325,15 @@ public class VeniceControllerCreateOptions {
       if (extraProperties == null) {
         extraProperties = new Properties();
       }
+
       if (childControllers != null && childControllers.length != 0) {
         verifyAndAddParentControllerSpecificDefaults();
       } else {
         verifyAndAddChildControllerSpecificDefaults();
+      }
+
+      if (regionName == null || regionName.isEmpty()) {
+        throw new IllegalArgumentException("Region name cannot be null or empty");
       }
     }
 
