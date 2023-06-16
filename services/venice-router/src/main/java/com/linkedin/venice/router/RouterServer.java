@@ -899,6 +899,7 @@ public class RouterServer extends AbstractVeniceService {
           config);
 
       // Setup read requests throttler.
+      scatterGatherMode.initReadRequestThrottler(readRequestThrottler);
       setReadRequestThrottling(config.isReadThrottlingEnabled());
 
       if (config.getMultiKeyRoutingStrategy().equals(VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING)) {
@@ -978,8 +979,7 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   public void setReadRequestThrottling(boolean throttle) {
-    readRequestThrottler.setIsNoopThrottlerEnabled(throttle);
-    scatterGatherMode.initReadRequestThrottler(readRequestThrottler);
+    readRequestThrottler.setIsNoopThrottlerEnabled(!throttle);
   }
 
   /* test-only */

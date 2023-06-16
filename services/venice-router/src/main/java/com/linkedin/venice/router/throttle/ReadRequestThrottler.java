@@ -72,7 +72,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   private final long storageNodeQuotaCheckTimeWindow;
   private final boolean perStorageNodeThrottlerEnabled;
 
-  private boolean isNoopThrottlerEnabled;
+  private volatile boolean isNoopThrottlerEnabled;
 
   public ReadRequestThrottler(
       ZkRoutersClusterManager zkRoutersManager,
