@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -32,7 +33,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   protected final int versionNumber;
   private final Time time;
   private boolean retryRequest = false;
-  private Throwable retryFutureThrowable = null;
+  private HttpResponseStatus retryHttpResponseStatus = null;
   private final boolean smartLongTailRetryEnabled;
   private final int smartLongTailRetryAbortThresholdMs;
   private long originalRequestStartTs = -1;
@@ -146,8 +147,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   }
 
   @Override
-  public void setRetryRequest(Throwable retryFutureThrowable) {
-    this.retryFutureThrowable = retryFutureThrowable;
+  public void setRetryRequest(HttpResponseStatus httpResponseStatus) {
+    this.retryHttpResponseStatus = httpResponseStatus;
   }
 
   protected void setupRetryRelatedInfo(VenicePath originalPath) {
@@ -174,8 +175,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     return this.retryRequest;
   }
 
-  public Throwable getRetryFutureThrowable() {
-    return this.retryFutureThrowable;
+  public HttpResponseStatus getRetryHttpResponseStatus() {
+    return this.retryHttpResponseStatus;
   }
 
   public long getOriginalRequestStartTs() {

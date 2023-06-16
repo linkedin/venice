@@ -1,5 +1,6 @@
 package com.linkedin.alpini.router.api;
 
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Collection;
 import java.util.Iterator;
 import javax.annotation.Nonnull;
@@ -43,7 +44,6 @@ public interface ResourcePath<K> {
   default void setRetryRequest() {
   }
 
-  default void setRetryRequest(Throwable retryFutureThrowable) {
-
+  default void setRetryRequest(HttpResponseStatus retryResponseStatus) {
   }
 }

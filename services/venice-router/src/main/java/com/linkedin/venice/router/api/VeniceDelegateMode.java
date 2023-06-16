@@ -26,7 +26,6 @@ import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,6 +36,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -58,6 +58,7 @@ import org.apache.logging.log4j.LogManager;
  * this potential leaking issue.
  */
 public class VeniceDelegateMode extends ScatterGatherMode {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceDelegateMode.class);
   /**
    * This mode will route single get to the least loaded replica.
    */
@@ -179,6 +180,11 @@ public class VeniceDelegateMode extends ScatterGatherMode {
        */
       long retryDelay = System.currentTimeMillis() - venicePath.getOriginalRequestStartTs();
       routerStats.getStatsByType(venicePath.getRequestType()).recordRetryDelay(storeName, retryDelay);
+
+      if (venicePath.getRetryHttpResponseStatus() != null) {
+        LOGGER
+            .error("VENG-10611-Debug Retry Request. Retry trigger status: {}", venicePath.getRetryHttpResponseStatus());
+      }
     }
 
     // Check whether retry request is too late or not
@@ -333,21 +339,12 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     if (minHost == null) {
       if (path.isRetryRequest()) {
         List<String> replicaHostIds = hosts.stream().map(x -> ((Instance) x).getNodeId()).collect(Collectors.toList());
-        LogManager.getLogger()
-            .error(
-                "VENG-10611-Debug Retry Request Aborted. Store Name: {}, Resource Name: {} ReplicaHostIds: {}, VenicePath SlowNodeSet: {}",
-                path.getStoreName(),
-                path.getResourceName(),
-                replicaHostIds,
-                path.getSlowStorageNodeSet());
-        if (path.getRetryFutureThrowable() != null) {
-          LogManager.getLogger()
-              .error(
-                  "VENG-10611-Debug Retry Request Aborted. Retry future throwable: {}, {}",
-                  path.getRetryFutureThrowable().toString(),
-                  Arrays.toString(path.getRetryFutureThrowable().getStackTrace()));
-        }
-
+        LOGGER.error(
+            "VENG-10611-Debug Retry Request Aborted. Store Name: {}, Resource Name: {} ReplicaHostIds: {}, VenicePath SlowNodeSet: {}",
+            path.getStoreName(),
+            path.getResourceName(),
+            replicaHostIds,
+            path.getSlowStorageNodeSet());
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
             Optional.of(path.getStoreName()),
             Optional.of(path.getRequestType()),
