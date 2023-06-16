@@ -180,11 +180,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
        */
       long retryDelay = System.currentTimeMillis() - venicePath.getOriginalRequestStartTs();
       routerStats.getStatsByType(venicePath.getRequestType()).recordRetryDelay(storeName, retryDelay);
-
-      if (venicePath.getRetryHttpResponseStatus() != null) {
-        LOGGER
-            .error("VENG-10611-Debug Retry Request. Retry trigger status: {}", venicePath.getRetryHttpResponseStatus());
-      }
     }
 
     // Check whether retry request is too late or not
@@ -339,6 +334,9 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     if (minHost == null) {
       if (path.isRetryRequest()) {
         List<String> replicaHostIds = hosts.stream().map(x -> ((Instance) x).getNodeId()).collect(Collectors.toList());
+        if (path.getRetryHttpResponseStatus() != null) {
+          LOGGER.error("VENG-10611-Debug Retry Request. Retry trigger status: {}", path.getRetryHttpResponseStatus());
+        }
         LOGGER.error(
             "VENG-10611-Debug Retry Request Aborted. Store Name: {}, Resource Name: {} ReplicaHostIds: {}, VenicePath SlowNodeSet: {}",
             path.getStoreName(),
