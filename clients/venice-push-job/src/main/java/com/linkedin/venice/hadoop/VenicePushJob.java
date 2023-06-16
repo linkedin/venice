@@ -1185,7 +1185,7 @@ public class VenicePushJob implements AutoCloseable {
         /**
          * Post validation + consumption
          */
-        Set<String> candidateRegions = getCandidateRegions();
+        Set<String> candidateRegions = getRegionsForTargetedRegionPush();
         if (candidateRegions.isEmpty()) {
           LOGGER.info("No region that needs post-validation consumption identified. Finish the job now.");
           return;
@@ -1233,10 +1233,10 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * Get the set of regions that haven't been pushed yet.
+   * Get the set of regions that haven't been pushed yet for targeted region push.
    * @return a set of regions that haven't been pushed yet.
    */
-  private Set<String> getCandidateRegions() {
+  private Set<String> getRegionsForTargetedRegionPush() {
     // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
     if (pushJobSetting.isTargetedRegionPushEnabled && pushJobSetting.postValidationConsumption) {
       Set<String> targetedRegions = RegionUtils.parseRegionsFilterList(pushJobSetting.targetedRegions);
@@ -1245,7 +1245,7 @@ public class VenicePushJob implements AutoCloseable {
       candidateRegions.removeAll(targetedRegions);
       return candidateRegions;
     }
-    return new HashSet<>();
+    return Collections.emptySet();
   }
 
   /**
