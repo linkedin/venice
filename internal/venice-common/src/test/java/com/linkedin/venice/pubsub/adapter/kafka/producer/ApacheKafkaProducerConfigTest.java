@@ -11,6 +11,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
@@ -146,5 +147,42 @@ public class ApacheKafkaProducerConfigTest {
       assertEquals(SASL_MECHANISM, output.get("kafka.sasl.mechanism"));
       assertEquals("SASL_SSL", output.get("kafka.security.protocol"));
     }
+  }
+
+  @Test
+  public void testAddHighThroughputDefaultsCanSetProperConfigs() {
+    // should not set batch size and linger ms if high throughput defaults are not enabled
+    ApacheKafkaProducerConfig apacheKafkaProducerConfig =
+        new ApacheKafkaProducerConfig(VeniceProperties.empty(), KAFKA_BROKER_ADDR, PRODUCER_NAME, false);
+    Properties actualProps = apacheKafkaProducerConfig.getProducerProperties();
+    assertFalse(actualProps.containsKey(ProducerConfig.BATCH_SIZE_CONFIG));
+    assertFalse(actualProps.containsKey(ProducerConfig.LINGER_MS_CONFIG));
+
+    Properties veniceProperties = new Properties();
+
+    // should set batch size and linger ms if high throughput defaults are enabled and batch size and linger ms are not
+    // set
+    veniceProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
+    ApacheKafkaProducerConfig apacheKafkaProducerConfig1 =
+        new ApacheKafkaProducerConfig(new VeniceProperties(veniceProperties), KAFKA_BROKER_ADDR, PRODUCER_NAME, false);
+    Properties actualProps1 = apacheKafkaProducerConfig1.getProducerProperties();
+    assertTrue(actualProps1.containsKey(ProducerConfig.BATCH_SIZE_CONFIG));
+    assertEquals(
+        actualProps1.get(ProducerConfig.BATCH_SIZE_CONFIG),
+        ApacheKafkaProducerConfig.DEFAULT_KAFKA_BATCH_SIZE);
+    assertTrue(actualProps1.containsKey(ProducerConfig.LINGER_MS_CONFIG));
+    assertEquals(actualProps1.get(ProducerConfig.LINGER_MS_CONFIG), ApacheKafkaProducerConfig.DEFAULT_KAFKA_LINGER_MS);
+
+    // should not override if already set
+    veniceProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
+    veniceProperties.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG, "55");
+    veniceProperties.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ProducerConfig.LINGER_MS_CONFIG, "66");
+    ApacheKafkaProducerConfig apacheKafkaProducerConfig2 =
+        new ApacheKafkaProducerConfig(new VeniceProperties(veniceProperties), KAFKA_BROKER_ADDR, PRODUCER_NAME, false);
+    Properties actualProps2 = apacheKafkaProducerConfig2.getProducerProperties();
+    assertTrue(actualProps2.containsKey(ProducerConfig.BATCH_SIZE_CONFIG));
+    assertEquals(actualProps2.get(ProducerConfig.BATCH_SIZE_CONFIG), "55");
+    assertTrue(actualProps2.containsKey(ProducerConfig.LINGER_MS_CONFIG));
+    assertEquals(actualProps2.get(ProducerConfig.LINGER_MS_CONFIG), "66");
   }
 }
