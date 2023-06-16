@@ -238,7 +238,6 @@ public class TestVsonStoreBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testKafkaInputBatchJobWithVsonStoreMultiLevelRecordsSchemaWithSelectedField() throws Exception {
-    AtomicInteger validatorRunCount = new AtomicInteger(0);
     TestBatch.VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 0; i < 100; i++) {
         GenericRecord valueInnerRecord = (GenericRecord) ((List) avroClient.get(i).get()).get(0);
