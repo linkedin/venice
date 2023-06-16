@@ -343,7 +343,6 @@ public class VeniceMultiClusterCreateOptions {
       }
       if (regionName == null) {
         throw new IllegalArgumentException("regionName cannot be null");
-        // regionName = STANDALONE_REGION_NAME;
       }
     }
 

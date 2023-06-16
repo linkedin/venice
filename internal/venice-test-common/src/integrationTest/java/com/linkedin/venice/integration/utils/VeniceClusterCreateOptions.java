@@ -383,7 +383,6 @@ public class VeniceClusterCreateOptions {
       }
       if (regionName == null || regionName.isEmpty()) {
         regionName = STANDALONE_REGION_NAME;
-        // throw new IllegalArgumentException("regionName cannot be null or empty");
       }
       if (!isMinActiveReplicaSet) {
         minActiveReplica = replicationFactor - 1;
