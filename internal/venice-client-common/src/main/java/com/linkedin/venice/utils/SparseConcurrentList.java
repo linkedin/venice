@@ -35,11 +35,6 @@ import java.util.function.UnaryOperator;
  * the read operations are used on the hot path.
  */
 public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
-  /**
-   * This supplier is useful when building nested lists, and using {@link #computeIfAbsent(int, IntFunction)} on the
-   * outer list, with the intent of bootstrapping an empty inner list if it's absent.
-   */
-  public static final IntFunction SUPPLIER = i -> new SparseConcurrentList<>();
   private static final long serialVersionUID = 1L;
 
   /**

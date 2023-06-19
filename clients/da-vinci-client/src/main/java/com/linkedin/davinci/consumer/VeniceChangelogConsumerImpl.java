@@ -151,10 +151,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // If a value class is supplied, we'll use a Specific record adapter
       Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
       this.userEventChunkingAdapter = new SpecificRecordChunkingAdapter();
-      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(
-          id -> storeRepository.getValueSchema(storeName, id).getSchema(),
-          (writerSchema, readerSchema) -> FastSerializerDeserializerFactory
-              .getFastAvroSpecificDeserializer(writerSchema, valueClass));
+      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, valueClass);
     } else {
       this.userEventChunkingAdapter = GenericChunkingAdapter.INSTANCE;
       this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
