@@ -104,11 +104,21 @@ public abstract class HelixBaseRoutingRepository
           onRoutingTableChange(routingTableProvider.getRoutingTableSnapshot(propertyType), null);
         } else {
           for (String customizedStateType: entry.getValue()) {
-            LOGGER.info(
-                "Will call onRoutingTableChange for propertyType: {}, customizedStateType: {}",
-                propertyType,
-                customizedStateType);
-            onRoutingTableChange(routingTableProvider.getRoutingTableSnapshot(propertyType, customizedStateType), null);
+            RoutingTableSnapshot routingTableSnapshot =
+                routingTableProvider.getRoutingTableSnapshot(propertyType, customizedStateType);
+            if (routingTableSnapshot.getCustomizeViews() != null
+                && !routingTableSnapshot.getCustomizeViews().isEmpty()) {
+              LOGGER.info(
+                  "Will call onRoutingTableChange for propertyType: {}, customizedStateType: {}",
+                  propertyType,
+                  customizedStateType);
+              onRoutingTableChange(routingTableSnapshot, null);
+            } else {
+              LOGGER.info(
+                  "Will NOT call onRoutingTableChange for propertyType: {}, customizedStateType: {} since its CV is null or empty.",
+                  propertyType,
+                  customizedStateType);
+            }
           }
         }
       }
