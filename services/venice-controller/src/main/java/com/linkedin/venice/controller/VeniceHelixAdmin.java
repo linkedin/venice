@@ -5333,8 +5333,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int versionNumber = Version.parseVersionFromVersionTopicName(kafkaTopic);
 
     if (!incrementalPushVersion.isPresent()) {
-      OfflinePushStatusInfo offlinePushStatusInfo =
-          getOfflinePushStatusInfo(clusterName, kafkaTopic, incrementalPushVersion, monitor, store, versionNumber);
+      OfflinePushStatusInfo offlinePushStatusInfo = getOfflinePushStatusInfo(
+          clusterName,
+          kafkaTopic,
+          incrementalPushVersion,
+          monitor,
+          store,
+          versionNumber,
+          !StringUtils.isEmpty(targetedRegions));
       if (region != null) {
         offlinePushStatusInfo.setUncompletedPartitions(monitor.getUncompletedPartitions(kafkaTopic));
       }
@@ -5355,7 +5361,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             incrementalPushVersion,
             monitor,
             store,
-            version.getNumber());
+            version.getNumber(),
+            !StringUtils.isEmpty(targetedRegions));
         list.add(offlinePushStatusInfoOtherVersion);
       } catch (VeniceNoHelixResourceException e) {
         LOGGER.warn("Resource for store: {} version: {} not found!", storeName, version, e);
@@ -5416,7 +5423,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> incrementalPushVersion,
       PushMonitor monitor,
       Store store,
-      int versionNumber) {
+      int versionNumber,
+      boolean isTargetPush) {
     Pair<ExecutionStatus, String> statusAndDetails;
 
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
@@ -5424,7 +5432,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
 
     // Check if cluster is in maintenance mode due to too many offline instances or too many partitions per instance
-    if (maintenanceSignal != null && maintenanceSignal
+    if (isTargetPush && maintenanceSignal != null && maintenanceSignal
         .getAutoTriggerReason() == MaintenanceSignal.AutoTriggerReason.MAX_OFFLINE_INSTANCES_EXCEEDED) {
       String msg = "Push errored out for " + kafkaTopic + "due to too many offline instances. Reason: "
           + maintenanceSignal.getReason();
