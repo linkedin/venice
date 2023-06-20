@@ -58,8 +58,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor inFlightRequestSensor;
   private Sensor keySizeSensor;
 
-  private Sensor valueSizeSensor;
-
   private final AtomicInteger currentInFlightRequest;
   private final Sensor unavailableReplicaStreamingRequestSensor;
   private final Sensor allowedRetryRequestSensor;
