@@ -431,7 +431,7 @@ subprojects {
       def testName = removeSquareBrackets(descriptor.displayName)
       def out = services.get(StyledTextOutputFactory).create("an-ouput")
 
-      out.style(Style.Normal).println("Gradle suite > Gradle test > $descriptor.className > $testName STARTED")
+      out.style(Style.Normal).println("$descriptor.className > $testName STARTED")
     }
 
     afterTest { descriptor, result ->
@@ -452,7 +452,7 @@ subprojects {
           ? 'FAILED '
           : 'SKIPPED '
  
-      out.style(Style.Normal).text("Gradle suite > Gradle test > $descriptor.className > $testName ")
+      out.style(Style.Normal).text("$descriptor.className > $testName ")
           .style(style).text(status)
           .style(Style.Normal).println("($prettyTime)")
 
@@ -462,14 +462,14 @@ subprojects {
         for (int i = 0; i < originalStacktrace.length; i++) {
           def element = originalStacktrace[i]
           def className = element.getClassName()
-          if (className.startsWith('org.testng') || className.startsWith('org.gradle')) {
+          if (i > 1 && (className.startsWith('org.gradle') || className.startsWith('jdk.internal'))) {
             break
           }
           truncatedStackTrace[i] = element
         }
-        def truncatedException = new Exception()
+        def truncatedException = result.exception
         truncatedException.setStackTrace(truncatedStackTrace.toArray(new StackTraceElement[0]))
-        out.exception(truncatedException)
+        out.text('    ').exception(truncatedException)
       }
     }
   }
