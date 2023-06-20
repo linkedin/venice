@@ -34,7 +34,8 @@ subset of global regions/data centers, whereas full push writes globally at once
 By default, it automatically pushes data to the rest of unspecified regions after the targeted region push is completed.
 We are working on to implement more validations in between to ensure the targeted regions are healthy after the first push. 
 Users may turn off this automation and perform validations and chain it with another full push/targeted region push to 
-achieve the same effect as full push.
+achieve the same effect as full push in terms of data integrity, but the store versions across different regions might be 
+not the same depending on the exact setup.
 
 ## Usage
 The Push Job is designed to require as few configs as possible. The following mandatory configs should be unique to each

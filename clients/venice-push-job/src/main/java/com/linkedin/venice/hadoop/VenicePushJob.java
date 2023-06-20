@@ -1172,7 +1172,8 @@ public class VenicePushJob implements AutoCloseable {
               pushJobSetting.incrementalPushVersion,
               controllerClient,
               pushJobSetting,
-              kafkaTopicInfo);
+              kafkaTopicInfo,
+              pushJobSetting.targetedRegions);
         }
 
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
@@ -1294,8 +1295,12 @@ public class VenicePushJob implements AutoCloseable {
         }
       }
       // Essentially, the remaining regions are "targeted" regions now
-      pushJobSetting.targetedRegions = RegionUtils.composeRegionList(candidateRegions);
-      pollStatusUntilComplete(Optional.empty(), controllerClient, pushJobSetting, kafkaTopicInfo);
+      pollStatusUntilComplete(
+          Optional.empty(),
+          controllerClient,
+          pushJobSetting,
+          kafkaTopicInfo,
+          RegionUtils.composeRegionList(candidateRegions));
     }
   }
 
@@ -2666,12 +2671,18 @@ public class VenicePushJob implements AutoCloseable {
    *
    * If any datacenter report an explicit error status, we throw an exception and fail the job. However, datacenters
    * with COMPLETED status will be serving new data.
+   * @param incrementalPushVersion, optional incremental push version
+   * @param controllerClient, controller client to send query to poll status
+   * @param pushJobSetting, push job setting
+   * @param topicInfo, the kafka topic info from the newly created Version
+   * @param targetedRegions if specified, only poll the status of the specified regions, otherwise it can be null
    */
   void pollStatusUntilComplete(
       Optional<String> incrementalPushVersion,
       ControllerClient controllerClient,
       PushJobSetting pushJobSetting,
-      TopicInfo topicInfo) {
+      TopicInfo topicInfo,
+      String targetedRegions) {
     // Set of datacenters that have reported a completed status at least once.
     Set<String> completedDatacenters = new HashSet<>();
     // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
@@ -2707,8 +2718,7 @@ public class VenicePushJob implements AutoCloseable {
       JobStatusQueryResponse response = ControllerClient.retryableRequest(
           controllerClient,
           pushJobSetting.controllerStatusPollRetries,
-          client -> client
-              .queryOverallJobStatus(topicToMonitor, incrementalPushVersion, pushJobSetting.targetedRegions));
+          client -> client.queryOverallJobStatus(topicToMonitor, incrementalPushVersion, targetedRegions));
 
       if (response.isError()) {
         // status could not be queried which could be due to a communication error.
