@@ -147,6 +147,14 @@ def parser = new XmlSlurper()
 parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
 parser.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
 
+// We remove square brackets from test names, which occur when using a DataProvider,
+// because occasionally the number in the brackets is non-deterministic (unknown why)
+// and when that occurs, the test-retry plugin gets confused and cannot match the
+// attempts together.
+def removeSquareBrackets(String testName) {
+  return testName.replaceFirst('\\[[0-9]+\\]', '')
+}
+
 subprojects {
   //apply group and version to all submodules
   group = rootProject.group
@@ -414,20 +422,54 @@ subprojects {
     }
 
     testLogging {
-      events 'started', 'failed', 'skipped' // N.B. we override how 'passed' tests are formatted in afterTest
+      events = [] // N.B. we suppress all events as everything is taken care of in beforeTest and afterTest
       showStandardStreams = false // to mute the DDS Router's noisy behavior...
       exceptionFormat = 'full'
     }
 
-    afterTest { descriptor, result ->
-      if (result.resultType == TestResult.ResultType.SUCCESS) {
-        def totalTime = result.endTime - result.startTime
-        def prettyTime = totalTime < 1000 ? "$totalTime ms" : "${totalTime / 1000} s"
+    beforeTest { descriptor ->
+      def testName = removeSquareBrackets(descriptor.displayName)
+      def out = services.get(StyledTextOutputFactory).create("an-ouput")
 
-        def out = services.get(StyledTextOutputFactory).create("an-ouput")
-        out.style(Style.Normal).text("Gradle suite > Gradle test > $descriptor.className > $descriptor.displayName ")
-            .style(Style.Identifier).text("PASSED ")
-            .style(Style.Normal).println("($prettyTime)")
+      out.style(Style.Normal).println("Gradle suite > Gradle test > $descriptor.className > $testName STARTED")
+    }
+
+    afterTest { descriptor, result ->
+      def totalTime = result.endTime - result.startTime
+      def prettyTime = totalTime < 1000 ? "$totalTime ms" : "${totalTime / 1000} s"
+      def testName = removeSquareBrackets(descriptor.displayName)
+      def out = services.get(StyledTextOutputFactory).create("an-ouput")
+
+      def style = result.resultType == TestResult.ResultType.SUCCESS 
+        ? Style.Identifier 
+        : result.resultType == TestResult.ResultType.FAILURE
+          ? Style.Failure
+          : Style.Normal
+
+      def status = result.resultType == TestResult.ResultType.SUCCESS 
+        ? 'PASSED ' 
+        : result.resultType == TestResult.ResultType.FAILURE
+          ? 'FAILED '
+          : 'SKIPPED '
+ 
+      out.style(Style.Normal).text("Gradle suite > Gradle test > $descriptor.className > $testName ")
+          .style(style).text(status)
+          .style(Style.Normal).println("($prettyTime)")
+
+      if (result.resultType == TestResult.ResultType.FAILURE) {
+        def originalStacktrace = result.exception.getStackTrace()
+        ArrayList<StackTraceElement> truncatedStackTrace = []
+        for (int i = 0; i < originalStacktrace.length; i++) {
+          def element = originalStacktrace[i]
+          def className = element.getClassName()
+          if (className.startsWith('org.testng') || className.startsWith('org.gradle')) {
+            break
+          }
+          truncatedStackTrace[i] = element
+        }
+        def truncatedException = new Exception()
+        truncatedException.setStackTrace(truncatedStackTrace.toArray(new StackTraceElement[0]))
+        out.exception(truncatedException)
       }
     }
   }

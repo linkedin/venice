@@ -39,7 +39,7 @@ public class StoreWriteComputeProcessor {
    * A read-through cache keyed by the composition of {valueSchemaId, writeComputeSchemaId}, returning a
    * {@link SchemaAndUniqueId} object. The unique ID serves as keys in {@link #writeComputeDeserializerCache}.
    */
-  private final BiIntKeyCache<SchemaAndUniqueId> SchemaAndUniqueIdCache;
+  private final BiIntKeyCache<SchemaAndUniqueId> schemaAndUniqueIdCache;
 
   /**
    * A read-through cache keyed by a pair of unique IDs corresponding to the writer and reader WC schemas,
@@ -59,7 +59,7 @@ public class StoreWriteComputeProcessor {
     this.serializerIndexedBySchemaId = new SparseConcurrentList<>();
     this.writeComputeSchemasIndexedByUniqueId = new SparseConcurrentList<>();
     this.uniqueIdGenerator = new AtomicInteger();
-    this.SchemaAndUniqueIdCache = new BiIntKeyCache<>((valueSchemaId, writeComputeSchemaId) -> {
+    this.schemaAndUniqueIdCache = new BiIntKeyCache<>((valueSchemaId, writeComputeSchemaId) -> {
       final Schema valueSchema = getValueSchema(valueSchemaId);
       final Schema writeComputeSchema = getWriteComputeSchema(valueSchemaId, writeComputeSchemaId);
       WriteComputeSchemaValidator.validate(valueSchema, writeComputeSchema);
@@ -115,7 +115,7 @@ public class StoreWriteComputeProcessor {
   }
 
   private SchemaAndUniqueId getSchemaAndUniqueId(int valueSchemaId, int writeComputeSchemaId) {
-    return SchemaAndUniqueIdCache.get(valueSchemaId, writeComputeSchemaId);
+    return schemaAndUniqueIdCache.get(valueSchemaId, writeComputeSchemaId);
   }
 
   private AvroSerializer<GenericRecord> getValueSerializer(int valueSchemaId) {

@@ -71,7 +71,9 @@ public final class SchemaData {
 
   public void addValueSchema(SchemaEntry valueSchema) {
     // value schema should be unique in store level, same as schema id
-    this.maxValueSchemaId = Math.max(valueSchema.getId(), this.maxValueSchemaId);
+    synchronized (this) {
+      this.maxValueSchemaId = Math.max(valueSchema.getId(), this.maxValueSchemaId);
+    }
     this.valueSchemaMap.set(valueSchema.getId(), valueSchema);
     this.valueSchemaRMap.put(valueSchema, Integer.valueOf(valueSchema.getId()));
   }
