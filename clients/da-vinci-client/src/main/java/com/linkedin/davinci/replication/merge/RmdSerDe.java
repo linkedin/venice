@@ -7,10 +7,9 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.collections.BiIntKeyCache;
 import java.nio.ByteBuffer;
-import java.util.Map;
-import java.util.Objects;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.OptimizedBinaryDecoder;
@@ -28,14 +27,20 @@ import org.apache.commons.lang3.Validate;
 public class RmdSerDe {
   private final StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache;
   private final int rmdVersionId;
-  private final Map<Integer, Schema> valueSchemaIdToRmdSchemaMap;
-  private final Map<WriterReaderSchemaIDs, RecordDeserializer<GenericRecord>> schemaIdToDeserializerMap;
+  private final SparseConcurrentList<Schema> rmdSchemaIndexedByValueSchemaId;
+  private final SparseConcurrentList<RecordSerializer<GenericRecord>> rmdSerializerIndexedByValueSchemaId;
+  private final BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCache;
 
   public RmdSerDe(StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache, int rmdVersionId) {
     this.annotatedStoreSchemaCache = annotatedStoreSchemaCache;
     this.rmdVersionId = rmdVersionId;
-    this.valueSchemaIdToRmdSchemaMap = new VeniceConcurrentHashMap<>();
-    this.schemaIdToDeserializerMap = new VeniceConcurrentHashMap<>();
+    this.rmdSchemaIndexedByValueSchemaId = new SparseConcurrentList<>();
+    this.rmdSerializerIndexedByValueSchemaId = new SparseConcurrentList<>();
+    this.deserializerCache = new BiIntKeyCache<>((writerSchemaId, readerSchemaId) -> {
+      Schema rmdWriterSchema = getRmdSchema(writerSchemaId);
+      Schema rmdReaderSchema = getRmdSchema(readerSchemaId);
+      return MapOrderingPreservingSerDeFactory.getDeserializer(rmdWriterSchema, rmdReaderSchema);
+    });
   }
 
   /**
@@ -66,74 +71,30 @@ public class RmdSerDe {
   }
 
   public ByteBuffer serializeRmdRecord(final int valueSchemaId, GenericRecord rmdRecord) {
-    byte[] rmdBytes = getRmdSerializer(valueSchemaId).serialize(rmdRecord);
+    RecordSerializer<GenericRecord> rmdSerializer =
+        this.rmdSerializerIndexedByValueSchemaId.computeIfAbsent(valueSchemaId, this::generateRmdSerializer);
+    byte[] rmdBytes = rmdSerializer.serialize(rmdRecord);
     return ByteBuffer.wrap(rmdBytes);
   }
 
   public Schema getRmdSchema(final int valueSchemaId) {
-    return valueSchemaIdToRmdSchemaMap.computeIfAbsent(valueSchemaId, id -> {
-      RmdSchemaEntry rmdSchemaEntry = annotatedStoreSchemaCache.getRmdSchema(valueSchemaId, rmdVersionId);
-      if (rmdSchemaEntry == null) {
-        throw new VeniceException("Unable to fetch replication metadata schema from schema repository");
-      }
-      return rmdSchemaEntry.getSchema();
-    });
+    return this.rmdSchemaIndexedByValueSchemaId.computeIfAbsent(valueSchemaId, this::generateRmdSchema);
+  }
+
+  private Schema generateRmdSchema(final int valueSchemaId) {
+    RmdSchemaEntry rmdSchemaEntry = this.annotatedStoreSchemaCache.getRmdSchema(valueSchemaId, this.rmdVersionId);
+    if (rmdSchemaEntry == null) {
+      throw new VeniceException("Unable to fetch replication metadata schema from schema repository");
+    }
+    return rmdSchemaEntry.getSchema();
   }
 
   private RecordDeserializer<GenericRecord> getRmdDeserializer(final int writerSchemaID, final int readerSchemaID) {
-    final WriterReaderSchemaIDs writerReaderSchemaIDs = new WriterReaderSchemaIDs(writerSchemaID, readerSchemaID);
-    return schemaIdToDeserializerMap.computeIfAbsent(writerReaderSchemaIDs, schemaIDs -> {
-      Schema rmdWriterSchema = getRmdSchema(schemaIDs.getWriterSchemaID());
-      Schema rmdReaderSchema = getRmdSchema(schemaIDs.getReaderSchemaID());
-      return MapOrderingPreservingSerDeFactory.getDeserializer(rmdWriterSchema, rmdReaderSchema);
-    });
+    return this.deserializerCache.get(writerSchemaID, readerSchemaID);
   }
 
-  private RecordSerializer<GenericRecord> getRmdSerializer(int valueSchemaId) {
+  private RecordSerializer<GenericRecord> generateRmdSerializer(int valueSchemaId) {
     Schema replicationMetadataSchema = getRmdSchema(valueSchemaId);
     return MapOrderingPreservingSerDeFactory.getSerializer(replicationMetadataSchema);
-  }
-
-  /**
-   * A POJO containing a write schema ID and a reader schema ID.
-   */
-  private static class WriterReaderSchemaIDs {
-    private final int writerSchemaID;
-    private final int readerSchemaID;
-
-    WriterReaderSchemaIDs(int writerSchemaID, int readerSchemaID) {
-      this.writerSchemaID = writerSchemaID;
-      this.readerSchemaID = readerSchemaID;
-    }
-
-    int getWriterSchemaID() {
-      return writerSchemaID;
-    }
-
-    int getReaderSchemaID() {
-      return readerSchemaID;
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(writerSchemaID, readerSchemaID);
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (o == this) {
-        return true;
-      }
-      if (!(o instanceof WriterReaderSchemaIDs)) {
-        return false;
-      }
-      WriterReaderSchemaIDs other = (WriterReaderSchemaIDs) o;
-      return this.writerSchemaID == other.writerSchemaID && this.readerSchemaID == other.readerSchemaID;
-    }
-
-    @Override
-    public String toString() {
-      return String.format("writer_schema_ID = %d, reader_schema_ID = %d", writerSchemaID, readerSchemaID);
-    }
   }
 }
