@@ -330,7 +330,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordKeySizeInByte(long keySize) {
-    keySizeSensor.record(keySize);
+    if (keySizeSensor != null) {
+      keySizeSensor.record(keySize);
+    }
   }
 
   public void recordResponse() {
