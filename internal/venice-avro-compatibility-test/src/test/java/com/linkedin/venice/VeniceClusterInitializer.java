@@ -73,6 +73,7 @@ public class VeniceClusterInitializer implements Closeable {
   private final VeniceKafkaSerializer valueSerializer;
 
   public VeniceClusterInitializer(String storeName, int routerPort) {
+    Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
     clusterConfig.put(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, false, false, clusterConfig);
