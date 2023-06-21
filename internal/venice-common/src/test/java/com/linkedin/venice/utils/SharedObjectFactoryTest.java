@@ -108,13 +108,12 @@ public class SharedObjectFactoryTest {
     Assert.assertEquals(factory.getReferenceCount(id1), numRunnables);
     Assert.assertEquals(factory.size(), 1);
 
-    AtomicInteger executionCount = new AtomicInteger(0);
     CountDownLatch latch2 = new CountDownLatch(numRunnables);
     String id2 = "id2";
     for (int i = 0; i < numRunnables; i++) {
       executorService.submit(() -> {
         // Get new object and close it immediately soon after
-        Object obj = factory.get(id2, TestSharedObject::new, TestSharedObject::close);
+        factory.get(id2, TestSharedObject::new, TestSharedObject::close);
         factory.release(id2);
         latch2.countDown();
       });
