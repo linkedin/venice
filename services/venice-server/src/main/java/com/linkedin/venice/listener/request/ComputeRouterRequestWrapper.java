@@ -36,7 +36,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     }
   }
 
-  public static ComputeRouterRequestWrapper parseComputeRequest(FullHttpRequest httpRequest, boolean useFastAvro) {
+  public static ComputeRouterRequestWrapper parseComputeRequest(FullHttpRequest httpRequest) {
     URI fullUri = URI.create(httpRequest.uri());
     String path = fullUri.getRawPath();
     String[] requestParts = path.split("/");
@@ -65,7 +65,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(apiVersion);
     BinaryDecoder decoder = OptimizedBinaryDecoderFactory.defaultFactory()
         .createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
-    computeRequestWrapper.deserialize(decoder, useFastAvro);
+    computeRequestWrapper.deserialize(decoder);
 
     Iterable<ComputeRouterRequestKeyV1> keys = parseKeys(decoder);
     String schemaId = httpRequest.headers().get(HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID);

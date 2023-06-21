@@ -30,6 +30,13 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
 public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKeyV1> {
+  private static final RecordDeserializer<ByteBuffer> COMPUTE_REQUEST_CLIENT_KEY_V1_DESERIALIZER =
+      FastSerializerDeserializerFactory
+          .getAvroGenericDeserializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
+
+  private static final RecordSerializer<ComputeRouterRequestKeyV1> COMPUTE_ROUTER_REQUEST_KEY_V1_SERIALIZER =
+      FastSerializerDeserializerFactory.getAvroGenericSerializer(ComputeRouterRequestKeyV1.getClassSchema());
+
   // Compute request is useless for now in router, until we support ranking in the future.
   private final ComputeRequestWrapper computeRequestWrapper;
   private final byte[] requestContent;
@@ -47,7 +54,6 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
       int maxKeyCount,
       boolean smartLongTailRetryEnabled,
       int smartLongTailRetryAbortThresholdMs,
-      boolean useFastAvro,
       int longTailRetryMaxRouteForMultiKeyReq) throws RouterException {
     super(
         storeName,
@@ -81,7 +87,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
     computeRequestWrapper = new ComputeRequestWrapper(computeRequestVersion);
     BinaryDecoder decoder = OptimizedBinaryDecoderFactory.defaultFactory()
         .createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
-    computeRequestWrapper.deserialize(decoder, useFastAvro);
+    computeRequestWrapper.deserialize(decoder);
     try {
       // record the length of the serialized ComputeRequest
       computeRequestLengthInBytes = requestContent.length - decoder.inputStream().available();
@@ -94,9 +100,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
     }
 
     // deserialize the second part of the request content using the same decoder
-    RecordDeserializer<ByteBuffer> keyDeserializer = FastSerializerDeserializerFactory
-        .getAvroGenericDeserializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
-    Iterable<ByteBuffer> keys = keyDeserializer.deserializeObjects(decoder);
+    Iterable<ByteBuffer> keys = COMPUTE_REQUEST_CLIENT_KEY_V1_DESERIALIZER.deserializeObjects(decoder);
 
     initialize(storeName, resourceName, keys, partitionFinder, maxKeyCount, null);
   }
@@ -183,10 +187,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
 
   @Override
   protected byte[] serializeRouterRequest() {
-    RecordSerializer<ComputeRouterRequestKeyV1> serializer =
-        FastSerializerDeserializerFactory.getAvroGenericSerializer(ComputeRouterRequestKeyV1.getClassSchema());
-
-    return serializer
+    return COMPUTE_ROUTER_REQUEST_KEY_V1_SERIALIZER
         .serializeObjects(routerKeyMap.values(), ByteBuffer.wrap(requestContent, 0, computeRequestLengthInBytes));
   }
 

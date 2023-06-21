@@ -25,6 +25,7 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -51,6 +52,7 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class ReadComputeValidationTest {
+  private static final long TIMEOUT = 1 * Time.MS_PER_MINUTE;
   private static final String VALUE_PREFIX = "id_";
   private VeniceClusterWrapper veniceCluster;
   private String storeName;
@@ -126,7 +128,7 @@ public class ReadComputeValidationTest {
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
-  @Test
+  @Test(timeOut = TIMEOUT)
   public void testComputeMissingField() throws Exception {
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     boolean fastAvro = true;
@@ -211,7 +213,7 @@ public class ReadComputeValidationTest {
     }
   }
 
-  @Test
+  @Test(timeOut = TIMEOUT)
   public void testComputeSwappedFields() throws Exception {
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     boolean fastAvro = true;
@@ -289,7 +291,7 @@ public class ReadComputeValidationTest {
    *
    * @throws Exception
    */
-  @Test
+  @Test(timeOut = TIMEOUT)
   public void testComputeOnStoreWithQTFDScompliantSchema() throws Exception {
     String keySchema = "\"int\"";
     String valueSchemaWithNullableListField = "{" + "  \"namespace\": \"example.compute\",    "
