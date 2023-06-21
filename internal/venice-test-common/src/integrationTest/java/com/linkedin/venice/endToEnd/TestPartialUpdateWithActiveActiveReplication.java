@@ -445,9 +445,61 @@ public class TestPartialUpdateWithActiveActiveReplication {
             .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl)));
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testActiveActivePartialUpdateWithRecordMapField() throws IOException {
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("PartialUpdateWithRecordMapField.avsc"));
+    Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+
+    assertCommand(parentControllerClient.createNewStore(storeName, "owner", KEY_SCHEMA_STR, valueSchema.toString()));
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setNativeReplicationEnabled(true)
+        .setActiveActiveReplicationEnabled(true)
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setChunkingEnabled(true)
+        .setIncrementalPushEnabled(true)
+        .setHybridRewindSeconds(25L)
+        .setHybridOffsetLagThreshold(1L)
+        .setWriteComputationEnabled(true);
+    assertCommand(parentControllerClient.updateStore(storeName, params));
+
+    runEmptyPushAndVerifyStoreVersion(storeName, 1);
+    startVeniceSystemProducers();
+    UpdateBuilder ub;
+
+    Schema mapValueRecordSchema = valueSchema.getField(NULLABLE_MAP_FIELD).schema().getTypes().get(1).getValueType();
+    String mapValueRecordLongFieldName = "longField";
+    String key = "testKey";
+    GenericRecord updateRecord1 = new GenericData.Record(mapValueRecordSchema);
+    updateRecord1.put(mapValueRecordLongFieldName, 1L);
+    GenericRecord updateRecord2 = new GenericData.Record(mapValueRecordSchema);
+    updateRecord2.put(mapValueRecordLongFieldName, 2L);
+    ub = new UpdateBuilderImpl(updateSchema);
+    Map<String, GenericRecord> deltaMap = new HashMap<>();
+    deltaMap.put("key1", updateRecord1);
+    deltaMap.put("key2", updateRecord2);
+    ub.setEntriesToAddToMapField(NULLABLE_MAP_FIELD, deltaMap);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key, ub.build());
+    AvroGenericStoreClient<String, GenericRecord> client = getStoreClient(storeName, dc0RouterUrl);
+    TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
+      GenericRecord retrievedValue = client.get(key).get();
+      assertNotNull(retrievedValue);
+    });
+    // Add another two key-value pairs to the map field.
+    deltaMap.clear();
+    deltaMap.put("key3", updateRecord1);
+    deltaMap.put("key4", updateRecord2);
+    ub = new UpdateBuilderImpl(updateSchema);
+    ub.setEntriesToAddToMapField(NULLABLE_MAP_FIELD, deltaMap);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key, ub.build());
+    TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
+      GenericRecord retrievedValue = client.get(key).get();
+      assertNotNull(retrievedValue);
+      Assert.assertEquals(((Map) retrievedValue.get(NULLABLE_MAP_FIELD)).size(), 4);
+    });
+  }
+
   /*
-   * Verify partial-update on Map-field level in Active-Active replication setup
-   */
+  * Verify partial-update on Map-field level in Active-Active replication setup
+  */
   @Test(timeOut = TEST_TIMEOUT)
   public void testAAReplicationForPartialUpdateOnMapField() throws IOException {
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("PartialUpdateMapField.avsc"));
