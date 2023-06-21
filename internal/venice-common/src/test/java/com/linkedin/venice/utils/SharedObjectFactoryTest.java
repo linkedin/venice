@@ -1,21 +1,40 @@
 package com.linkedin.venice.utils;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.Assert;
+import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 
+@Test(singleThreaded = true)
 public class SharedObjectFactoryTest {
+  private static final AtomicInteger SHARED_OBJECT_COUNT = new AtomicInteger();
+  private static final AtomicInteger MULTIPLE_DESTRUCTION_COUNT = new AtomicInteger();
+
   private class TestSharedObject implements AutoCloseable {
     boolean destructorInvoked;
 
     TestSharedObject() {
       destructorInvoked = false;
+      SHARED_OBJECT_COUNT.incrementAndGet();
     }
 
     @Override
     public void close() {
+      if (destructorInvoked) {
+        MULTIPLE_DESTRUCTION_COUNT.incrementAndGet();
+      }
       destructorInvoked = true;
     }
+  }
+
+  @BeforeTest
+  public void setUp() {
+    SHARED_OBJECT_COUNT.set(0);
+    MULTIPLE_DESTRUCTION_COUNT.set(0);
   }
 
   @Test
@@ -66,5 +85,45 @@ public class SharedObjectFactoryTest {
     Assert.assertTrue(factory.release(id1));
     String id3 = "id3";
     Assert.assertTrue(factory.release(id3));
+  }
+
+  public void testMultiThreadedSharedObject() throws InterruptedException {
+    SharedObjectFactory<TestSharedObject> factory = new SharedObjectFactory<>();
+    int threadPoolSize = 10;
+    int numRunnables = 1000;
+
+    ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
+
+    CountDownLatch latch1 = new CountDownLatch(numRunnables);
+    String id1 = "id1";
+    for (int i = 0; i < numRunnables; i++) {
+      executorService.submit(() -> {
+        factory.get(id1, TestSharedObject::new, TestSharedObject::close);
+        latch1.countDown();
+      });
+    }
+    latch1.await();
+
+    Assert.assertEquals(SHARED_OBJECT_COUNT.get(), 1);
+    Assert.assertEquals(factory.getReferenceCount(id1), numRunnables);
+    Assert.assertEquals(factory.size(), 1);
+
+    AtomicInteger executionCount = new AtomicInteger(0);
+    CountDownLatch latch2 = new CountDownLatch(numRunnables);
+    String id2 = "id2";
+    for (int i = 0; i < numRunnables; i++) {
+      executorService.submit(() -> {
+        // Get new object and close it immediately soon after
+        Object obj = factory.get(id2, TestSharedObject::new, TestSharedObject::close);
+        factory.release(id2);
+        latch2.countDown();
+      });
+    }
+    latch2.await();
+    executorService.shutdownNow();
+
+    Assert.assertEquals(MULTIPLE_DESTRUCTION_COUNT.get(), 0);
+    Assert.assertEquals(factory.getReferenceCount(id2), 0);
+    Assert.assertEquals(factory.size(), 1);
   }
 }
