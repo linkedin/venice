@@ -37,28 +37,8 @@ public class PartitionUtils {
       int maxPartitionCount,
       boolean isRoundUpEnabled,
       int roundUpSize) {
-    if (storageQuota <= 0 && storageQuota != Store.UNLIMITED_STORAGE_QUOTA) {
-      throw new VeniceException("Storage quota: " + storageQuota + " is invalid.");
-    }
-    if (storePartitionCount == 0) {
-      // Store level partition count is not configured, calculate partition count
-      long partitionCount = storageQuota / partitionSize;
-      if (isRoundUpEnabled) {
-        // Round upwards to the next multiple of roundUpSize
-        partitionCount = (partitionCount + roundUpSize - 1) / roundUpSize * roundUpSize;
-      }
-      if (partitionCount > maxPartitionCount) {
-        partitionCount = maxPartitionCount;
-      } else if (partitionCount < minPartitionCount) {
-        partitionCount = minPartitionCount;
-      }
-      LOGGER.info(
-          "Assign partition count: {} calculated by storage quota: {} to the new version of store: {}",
-          partitionCount,
-          storageQuota,
-          storeName);
-      return (int) partitionCount;
-    } else {
+
+    if (storePartitionCount != 0) {
       // Store level partition count is configured, use the number
       LOGGER.info(
           "Assign partition count: {} from store level config to the new version of store: {}",
@@ -66,6 +46,37 @@ public class PartitionUtils {
           storeName);
       return storePartitionCount;
     }
+
+    if (storageQuota == Store.UNLIMITED_STORAGE_QUOTA) {
+      LOGGER.info(
+          "Assign partition count: {} calculated by storage quota: {} to the new version of store: {}",
+          maxPartitionCount,
+          storageQuota,
+          storeName);
+      return maxPartitionCount;
+    }
+
+    if (storageQuota <= 0) {
+      throw new VeniceException("Storage quota: " + storageQuota + " is invalid.");
+    }
+
+    // Store level partition count is not configured, calculate partition count
+    long partitionCount = storageQuota / partitionSize;
+    if (isRoundUpEnabled) {
+      // Round upwards to the next multiple of roundUpSize
+      partitionCount = ((partitionCount + roundUpSize - 1) / roundUpSize) * roundUpSize;
+    }
+    if (partitionCount > maxPartitionCount) {
+      partitionCount = maxPartitionCount;
+    } else if (partitionCount < minPartitionCount) {
+      partitionCount = minPartitionCount;
+    }
+    LOGGER.info(
+        "Assign partition count: {} calculated by storage quota: {} to the new version of store: {}",
+        partitionCount,
+        storageQuota,
+        storeName);
+    return (int) partitionCount;
   }
 
   private static void checkAmplificationFactor(int amplificationFactor) {

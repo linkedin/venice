@@ -92,9 +92,8 @@ public class TestHelixReadOnlySchemaRepository {
     // Query key schema again after setting up key schema
     String keySchemaStr = "\"string\"";
     schemaRWRepo.initKeySchema(storeName, keySchemaStr);
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
-      return schemaRORepo.getKeySchema(storeName) != null;
-    });
+    TestUtils
+        .waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> schemaRORepo.getKeySchema(storeName) != null);
     SchemaEntry keySchema = schemaRORepo.getKeySchema(storeName);
     Assert.assertNotNull(keySchema);
     Assert.assertEquals(keySchema.getId(), Integer.parseInt(HelixSchemaAccessor.KEY_SCHEMA_ID));

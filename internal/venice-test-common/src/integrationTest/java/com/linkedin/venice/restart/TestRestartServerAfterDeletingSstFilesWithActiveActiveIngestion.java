@@ -6,7 +6,7 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
@@ -151,7 +151,8 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         .setHybridOffsetLagThreshold(2)
         .setNativeReplicationEnabled(true)
         .setBackupVersionRetentionMs(1)
-        .setIncrementalPushEnabled(true);
+        .setIncrementalPushEnabled(true)
+        .setPartitionCount(1);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
   }
 

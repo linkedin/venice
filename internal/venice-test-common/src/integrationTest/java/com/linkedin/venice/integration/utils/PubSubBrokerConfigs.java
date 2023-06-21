@@ -9,6 +9,8 @@ import java.util.Map;
  * This class is used to pass around the configuration needed to start a PubSub broker.
  */
 public class PubSubBrokerConfigs {
+  public static final String DEFAULT_PUBSUB_CLUSTER_NAME = "venice";
+
   private final ZkServerWrapper zkServerWrapper;
   private final TestMockTime mockTime;
   private final String regionName;
@@ -78,6 +80,14 @@ public class PubSubBrokerConfigs {
     }
 
     public PubSubBrokerConfigs build() {
+      if (regionName == null || regionName.isEmpty()) {
+        throw new IllegalArgumentException("Region name must be set and non-empty");
+      }
+
+      if (clusterName == null) {
+        clusterName = DEFAULT_PUBSUB_CLUSTER_NAME;
+      }
+
       return new PubSubBrokerConfigs(this);
     }
   }

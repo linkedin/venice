@@ -45,6 +45,7 @@ import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELET
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -96,7 +97,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   public static final String SUPERSET_SCHEMA_GENERATOR = "SupersetSchemaGenerator";
 
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
-  public static final String DEFAULT_PARENT_DATA_CENTER_REGION_NAME = "dc-parent-0";
 
   private VeniceController service;
   private final List<VeniceProperties> configs;
@@ -261,7 +261,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
            * and in parent fabric, there can be more than one Kafka clusters, so we might need more
            * than one parent fabric name even though logically there is only one parent fabric.
            */
-          String parentDataCenterName1 = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+          String parentDataCenterName1 = VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
           String nativeReplicationSourceFabricAllowlist = fabricAllowList + "," + parentDataCenterName1;
           builder.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, nativeReplicationSourceFabricAllowlist);
           builder.put(
@@ -345,7 +345,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   private static String createDataCenterNameWithIndex(int index) {
-    return "dc-" + index;
+    return CHILD_REGION_NAME_PREFIX + index;
   }
 
   @Override

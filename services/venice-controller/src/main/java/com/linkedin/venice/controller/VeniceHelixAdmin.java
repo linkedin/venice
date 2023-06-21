@@ -254,6 +254,7 @@ import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
+import org.apache.helix.model.MaintenanceSignal;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
@@ -872,22 +873,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public boolean isClusterValid(String clusterName) {
     return admin.getClusters().contains(clusterName);
-  }
-
-  /**
-   * This function is used to determine whether the requested cluster is in maintenance mode or not.
-   * Right now, this class is using {@link #zkClient} to access the zookeeper node of controller
-   * maintenance since this info couldn't be retrieved through {@link HelixAdmin}.
-   * TODO: Once Helix provides the right API, we should switch to the formal way since we shouldn't
-   * touch the implementation details of Helix.
-   *
-   * @param clusterName
-   * @return
-   */
-  private boolean isClusterInMaintenanceMode(String clusterName) {
-    // Construct the path to maintenance mode ZNode
-    String maintenanceZNodePath = "/" + clusterName + "/CONTROLLER/MAINTENANCE";
-    return zkClient.exists(maintenanceZNodePath);
   }
 
   protected HelixAdmin getHelixAdmin() {
@@ -2321,11 +2306,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions) {
-    if (isClusterInMaintenanceMode(clusterName)) {
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    MaintenanceSignal maintenanceSignal =
+        HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
+
+    if (maintenanceSignal != null) {
       throw new HelixClusterMaintenanceModeException(clusterName);
     }
+
     checkControllerLeadershipFor(clusterName);
-    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Version version = null;
     OfflinePushStrategy strategy;
@@ -3349,6 +3338,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .updateTopicRetention(pubSubTopicRepository.getTopic(kafkaTopicName), deprecatedJobTopicRetentionMs)) {
         return true;
       }
+    } catch (TopicDoesNotExistException e) {
+      LOGGER.info(
+          "Topic {} does not exist in Kafka cluster {}, will skip the truncation",
+          kafkaTopicName,
+          topicManager.getKafkaBootstrapServers());
     } catch (Exception e) {
       LOGGER.warn(
           "Unable to update the retention for topic {} in Kafka cluster {}, will skip the truncation",
@@ -3653,7 +3647,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (partitionCount != 0) {
         store.setPartitionCount(partitionCount);
       } else {
-        store.setPartitionCount(clusterConfig.getNumberOfPartition());
+        store.setPartitionCount(clusterConfig.getMinNumberOfPartitions());
       }
 
       return store;
@@ -3686,7 +3680,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
     }
 
-    int maxPartitionNum = clusterConfig.getMaxNumberOfPartition();
+    int maxPartitionNum = clusterConfig.getMaxNumberOfPartitions();
     if (newPartitionCount > maxPartitionNum) {
       String errorMessage =
           errorMessagePrefix + "Partition count: " + newPartitionCount + " should be less than max: " + maxPartitionNum;
@@ -4009,6 +4003,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  private void setStorageNodeReadQuotaEnabled(
+      String clusterName,
+      String storeName,
+      boolean storageNodeReadQuotaEnabled) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setStorageNodeReadQuotaEnabled(storageNodeReadQuotaEnabled);
+      return store;
+    });
+  }
+
   /**
    * TODO: some logics are in parent controller {@link VeniceParentHelixAdmin} #updateStore and
    *       some are in the child controller here. Need to unify them in the future.
@@ -4133,6 +4137,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> personaName = params.getStoragePersona();
     Optional<Map<String, String>> storeViews = params.getStoreViews();
     Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
+    Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4395,6 +4400,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (latestSupersetSchemaId.isPresent()) {
         setLatestSupersetSchemaId(clusterName, storeName, latestSupersetSchemaId.get());
       }
+
+      storageNodeReadQuotaEnabled
+          .ifPresent(aBoolean -> setStorageNodeReadQuotaEnabled(clusterName, storeName, aBoolean));
 
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
     } catch (VeniceException e) {
@@ -5330,8 +5338,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int versionNumber = Version.parseVersionFromVersionTopicName(kafkaTopic);
 
     if (!incrementalPushVersion.isPresent()) {
-      OfflinePushStatusInfo offlinePushStatusInfo =
-          getOfflinePushStatusInfo(clusterName, kafkaTopic, incrementalPushVersion, monitor, store, versionNumber);
+      OfflinePushStatusInfo offlinePushStatusInfo = getOfflinePushStatusInfo(
+          clusterName,
+          kafkaTopic,
+          incrementalPushVersion,
+          monitor,
+          store,
+          versionNumber,
+          !StringUtils.isEmpty(targetedRegions));
       if (region != null) {
         offlinePushStatusInfo.setUncompletedPartitions(monitor.getUncompletedPartitions(kafkaTopic));
       }
@@ -5352,7 +5366,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             incrementalPushVersion,
             monitor,
             store,
-            version.getNumber());
+            version.getNumber(),
+            !StringUtils.isEmpty(targetedRegions));
         list.add(offlinePushStatusInfoOtherVersion);
       } catch (VeniceNoHelixResourceException e) {
         LOGGER.warn("Resource for store: {} version: {} not found!", storeName, version, e);
@@ -5413,8 +5428,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> incrementalPushVersion,
       PushMonitor monitor,
       Store store,
-      int versionNumber) {
+      int versionNumber,
+      boolean isTargetPush) {
     Pair<ExecutionStatus, String> statusAndDetails;
+
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    MaintenanceSignal maintenanceSignal =
+        HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
+
+    // Check if cluster is in maintenance mode due to too many offline instances or too many partitions per instance
+    if (isTargetPush && maintenanceSignal != null && maintenanceSignal
+        .getAutoTriggerReason() == MaintenanceSignal.AutoTriggerReason.MAX_OFFLINE_INSTANCES_EXCEEDED) {
+      String msg = "Push errored out for " + kafkaTopic + "due to too many offline instances. Reason: "
+          + maintenanceSignal.getReason();
+      LOGGER.error(msg);
+      return new OfflinePushStatusInfo(ExecutionStatus.ERROR, msg);
+    }
+
     if (incrementalPushVersion.isPresent()) {
       statusAndDetails = getIncrementalPushStatus(clusterName, kafkaTopic, incrementalPushVersion.get(), monitor);
     } else {
@@ -5424,8 +5454,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String details = statusAndDetails.getSecond();
     if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
       StringBuilder moreDetailsBuilder = new StringBuilder(details == null ? "" : details + " and ");
+
       // Check whether cluster is in maintenance mode or not
-      if (isClusterInMaintenanceMode(clusterName)) {
+      if (maintenanceSignal != null) {
         moreDetailsBuilder.append("Cluster: ").append(clusterName).append(" is in maintenance mode");
       } else {
         moreDetailsBuilder.append("Version creation for topic: ").append(kafkaTopic).append(" got delayed");
@@ -5820,8 +5851,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store.getStorageQuotaInByte(),
         store.getPartitionCount(),
         config.getPartitionSize(),
-        config.getNumberOfPartition(),
-        config.getMaxNumberOfPartition(),
+        config.getMinNumberOfPartitions(),
+        config.getMaxNumberOfPartitions(),
         config.isPartitionCountRoundUpEnabled(),
         config.getPartitionCountRoundUpSize());
   }

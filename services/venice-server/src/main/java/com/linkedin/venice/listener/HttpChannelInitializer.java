@@ -193,11 +193,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           pipeline.addLast(storeAclHandler.get());
         }
       }
-      pipeline.addLast(
-          new RouterRequestHttpHandler(
-              statsHandler,
-              serverConfig.isComputeFastAvroEnabled(),
-              serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
+      pipeline
+          .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
       if (quotaEnforcer != null) {
         pipeline.addLast(quotaEnforcer);
       }

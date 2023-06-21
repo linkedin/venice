@@ -42,6 +42,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
@@ -537,7 +538,7 @@ public class VeniceParentHelixAdmin implements Admin {
           PUSH_JOB_DETAILS_STORE_DESCRIPTOR + VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           PushJobStatusRecordKey.getClassSchema().toString(),
           PushJobDetails.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(clusterName).getNumberOfPartition(),
+          getMultiClusterConfigs().getControllerConfig(clusterName).getMinNumberOfPartitions(),
           updateStoreQueryParams);
     }
 
@@ -558,7 +559,7 @@ public class VeniceParentHelixAdmin implements Admin {
           BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR + batchJobHeartbeatStoreName,
           BatchJobHeartbeatKey.getClassSchema().toString(),
           BatchJobHeartbeatValue.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(currClusterName).getNumberOfPartition(),
+          getMultiClusterConfigs().getControllerConfig(currClusterName).getMinNumberOfPartitions(),
           updateStoreQueryParams);
     } else {
       LOGGER.info(
@@ -667,6 +668,9 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         if (!updateStoreQueryParams.getHybridRewindSeconds().isPresent()) {
           updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
+        }
+        if (!updateStoreQueryParams.getPartitionCount().isPresent()) {
+          updateStoreQueryParams.setPartitionCount(partitionCount);
         }
         updateStore(clusterName, storeName, updateStoreQueryParams);
         store = getStore(clusterName, storeName);
@@ -2123,7 +2127,7 @@ public class VeniceParentHelixAdmin implements Admin {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
       int maxPartitionNum =
-          getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
+          getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartitions();
       if (partitionCount > maxPartitionNum) {
         throw new ConfigurationException(
             "Partition count: " + partitionCount + " should be less than max: " + maxPartitionNum);
@@ -2283,6 +2287,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * configs should be replicated to children too.
        */
       Optional<Boolean> replicateAll = params.getReplicateAllConfigs();
+      Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
       List<CharSequence> updatedConfigsList = new LinkedList<>();
       String errorMessagePrefix = "Store update error for " + storeName + " in cluster: " + clusterName + ": ";
@@ -2549,6 +2554,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.latestSuperSetValueSchemaId =
           latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigsList, LATEST_SUPERSET_SCHEMA_ID))
               .orElseGet(currStore::getLatestSuperSetValueSchemaId);
+      setStore.storageNodeReadQuotaEnabled =
+          storageNodeReadQuotaEnabled.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_NODE_READ_QUOTA_ENABLED))
+              .orElseGet(currStore::isStorageNodeReadQuotaEnabled);
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
@@ -2615,14 +2623,23 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (!veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
-          && veniceHelixAdmin.isHybrid(setStore.hybridStoreConfig) && setStore.partitionNum == 0) {
-        // This is a new hybrid store and partition count is not specified. Use default hybrid store partition count.
-        setStore.partitionNum = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
-            .getConfig()
-            .getNumberOfPartitionForHybrid();
+          && veniceHelixAdmin.isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
+        // This is a new hybrid store and partition count is not specified.
+        VeniceControllerClusterConfig config =
+            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
+        setStore.setPartitionNum(
+            PartitionUtils.calculatePartitionCount(
+                storeName,
+                setStore.getStorageQuotaInByte(),
+                0,
+                config.getPartitionSize(),
+                config.getMinNumberOfPartitionsForHybrid(),
+                config.getMaxNumberOfPartitions(),
+                config.isPartitionCountRoundUpEnabled(),
+                config.getPartitionCountRoundUpSize()));
         LOGGER.info(
             "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
-            setStore.partitionNum,
+            setStore.getPartitionNum(),
             storeName);
         updatedConfigsList.add(PARTITION_COUNT);
       }

@@ -1023,11 +1023,17 @@ public class TestPushJobWithNativeReplication {
               systemStoreName + " is not ready for DC-" + iCopy);
 
           systemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-          StoreResponse storeResponse2 =
-              controllerClient.getStore(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName));
+          StoreResponse storeResponse2 = controllerClient.getStore(systemStoreName);
           Assert.assertFalse(storeResponse2.isError());
           Assert.assertTrue(
               storeResponse2.getStore().getCurrentVersion() > 0,
+              systemStoreName + " is not ready for DC-" + iCopy);
+
+          systemStoreName = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
+          StoreResponse storeResponse3 = controllerClient.getStore(systemStoreName);
+          Assert.assertFalse(storeResponse3.isError());
+          Assert.assertTrue(
+              storeResponse3.getStore().getCurrentVersion() > 0,
               systemStoreName + " is not ready for DC-" + iCopy);
         });
       }

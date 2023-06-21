@@ -73,11 +73,13 @@ public class HelixSchemaAccessor {
     String keySchemaPath = getKeySchemaPath(PathResourceRegistry.WILDCARD_MATCH_ANY);
     String valueSchemaPath =
         getValueSchemaPath(PathResourceRegistry.WILDCARD_MATCH_ANY, PathResourceRegistry.WILDCARD_MATCH_ANY);
-    String derivedSchemaPath = getDerivedSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/"
-        + PathResourceRegistry.WILDCARD_MATCH_ANY;
+    String derivedSchemaPath = getDerivedSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY).append("/")
+        .append(PathResourceRegistry.WILDCARD_MATCH_ANY)
+        .toString();
     String replicationMetadataSchemaPath =
-        getReplicationMetadataSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/"
-            + PathResourceRegistry.WILDCARD_MATCH_ANY;
+        getReplicationMetadataSchemaParentPath(PathResourceRegistry.WILDCARD_MATCH_ANY).append("/")
+            .append(PathResourceRegistry.WILDCARD_MATCH_ANY)
+            .toString();
     VeniceSerializer<SchemaEntry> serializer = new SchemaEntrySerializer();
     adapter.registerSerializer(keySchemaPath, serializer);
     adapter.registerSerializer(valueSchemaPath, serializer);
@@ -97,7 +99,7 @@ public class HelixSchemaAccessor {
   public List<SchemaEntry> getAllValueSchemas(String storeName) {
     return HelixUtils.getChildren(
         schemaAccessor,
-        getValueSchemaParentPath(storeName),
+        getValueSchemaParentPath(storeName).toString(),
         refreshAttemptsForZkReconnect,
         refreshIntervalForZkReconnectInMs);
   }
@@ -110,7 +112,7 @@ public class HelixSchemaAccessor {
   public List<DerivedSchemaEntry> getAllDerivedSchemas(String storeName) {
     return HelixUtils.getChildren(
         derivedSchemaAccessor,
-        getDerivedSchemaParentPath(storeName),
+        getDerivedSchemaParentPath(storeName).toString(),
         refreshAttemptsForZkReconnect,
         refreshIntervalForZkReconnectInMs);
   }
@@ -142,80 +144,83 @@ public class HelixSchemaAccessor {
   }
 
   public void subscribeKeySchemaCreationChange(String storeName, IZkChildListener childListener) {
-    schemaAccessor.subscribeChildChanges(getKeySchemaParentPath(storeName), childListener);
+    schemaAccessor.subscribeChildChanges(getKeySchemaParentPath(storeName).toString(), childListener);
     logger.info("Subscribe key schema child changes for store: {}.", storeName);
   }
 
   public void unsubscribeKeySchemaCreationChange(String storeName, IZkChildListener childListener) {
-    schemaAccessor.unsubscribeChildChanges(getKeySchemaParentPath(storeName), childListener);
+    schemaAccessor.unsubscribeChildChanges(getKeySchemaParentPath(storeName).toString(), childListener);
     logger.info("Unsubscribe key schema child changes for store: {}.", storeName);
   }
 
   public void subscribeValueSchemaCreationChange(String storeName, IZkChildListener childListener) {
-    schemaAccessor.subscribeChildChanges(getValueSchemaParentPath(storeName), childListener);
+    schemaAccessor.subscribeChildChanges(getValueSchemaParentPath(storeName).toString(), childListener);
     logger.info("Subscribe value schema child changes for store: {}.", storeName);
   }
 
   public void unsubscribeValueSchemaCreationChange(String storeName, IZkChildListener childListener) {
-    schemaAccessor.unsubscribeChildChanges(getValueSchemaParentPath(storeName), childListener);
+    schemaAccessor.unsubscribeChildChanges(getValueSchemaParentPath(storeName).toString(), childListener);
     logger.info("Unsubscribe value schema child changes for store: {}.", storeName);
   }
 
   public void subscribeDerivedSchemaCreationChange(String storeName, IZkChildListener childListener) {
-    derivedSchemaAccessor.subscribeChildChanges(getDerivedSchemaParentPath(storeName), childListener);
+    derivedSchemaAccessor.subscribeChildChanges(getDerivedSchemaParentPath(storeName).toString(), childListener);
     logger.info("Subscribe derived schema child changes for store: {}.", storeName);
   }
 
   public void unsubscribeDerivedSchemaCreationChanges(String storeName, IZkChildListener childListener) {
-    derivedSchemaAccessor.unsubscribeChildChanges(getDerivedSchemaParentPath(storeName), childListener);
+    derivedSchemaAccessor.unsubscribeChildChanges(getDerivedSchemaParentPath(storeName).toString(), childListener);
     logger.info("Unsubscribe derived schema child changes for store: {}.", storeName);
   }
 
-  protected String getStorePath(String storeName) {
+  protected StringBuilder getStorePath(String storeName) {
     StringBuilder sb = new StringBuilder(HelixUtils.getHelixClusterZkPath(clusterName));
     sb.append(HelixReadOnlyStoreRepository.STORE_REPOSITORY_PATH).append("/").append(storeName).append("/");
-    return sb.toString();
+    return sb;
   }
 
   /**
    * Get absolute key schema parent path for a given store
    */
-  String getKeySchemaParentPath(String storeName) {
-    return getStorePath(storeName) + KEY_SCHEMA_PATH;
+  StringBuilder getKeySchemaParentPath(String storeName) {
+    return getStorePath(storeName).append(KEY_SCHEMA_PATH);
   }
 
   /**
    * Get absolute key schema path for a given store
    */
   String getKeySchemaPath(String storeName) {
-    return getKeySchemaParentPath(storeName) + "/" + KEY_SCHEMA_ID;
+    return getKeySchemaParentPath(storeName).append("/").append(KEY_SCHEMA_ID).toString();
   }
 
   /**
    * Get absolute value schema parent path for a given store
    */
-  String getValueSchemaParentPath(String storeName) {
-    return getStorePath(storeName) + VALUE_SCHEMA_PATH;
+  StringBuilder getValueSchemaParentPath(String storeName) {
+    return getStorePath(storeName).append(VALUE_SCHEMA_PATH);
   }
 
   /**
    * Get absolute value schema path for a given store and schema id
    */
   String getValueSchemaPath(String storeName, String valueSchemaId) {
-    return getValueSchemaParentPath(storeName) + "/" + valueSchemaId;
+    return getValueSchemaParentPath(storeName).append("/").append(valueSchemaId).toString();
   }
 
-  String getDerivedSchemaParentPath(String storeName) {
-    return getStorePath(storeName) + DERIVED_SCHEMA_PATH;
+  StringBuilder getDerivedSchemaParentPath(String storeName) {
+    return getStorePath(storeName).append(DERIVED_SCHEMA_PATH);
   }
 
   String getDerivedSchemaPath(String storeName, String valueSchemaId, String derivedSchemaId) {
-    return getDerivedSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER
-        + derivedSchemaId;
+    return getDerivedSchemaParentPath(storeName).append("/")
+        .append(valueSchemaId)
+        .append(MULTIPART_SCHEMA_VERSION_DELIMITER)
+        .append(derivedSchemaId)
+        .toString();
   }
 
   String getDerivedSchemaPath(String storeName, String derivedSchemaIdPair) {
-    return getDerivedSchemaParentPath(storeName) + "/" + derivedSchemaIdPair;
+    return getDerivedSchemaParentPath(storeName).append("/").append(derivedSchemaIdPair).toString();
   }
 
   public RmdSchemaEntry getReplicationMetadataSchema(String storeName, String replicationMetadataVersionIdPair) {
@@ -228,7 +233,7 @@ public class HelixSchemaAccessor {
   public List<RmdSchemaEntry> getAllReplicationMetadataSchemas(String storeName) {
     return HelixUtils.getChildren(
         replicationMetadataSchemaAccessor,
-        getReplicationMetadataSchemaParentPath(storeName),
+        getReplicationMetadataSchemaParentPath(storeName).toString(),
         refreshAttemptsForZkReconnect,
         refreshIntervalForZkReconnectInMs);
   }
@@ -246,26 +251,31 @@ public class HelixSchemaAccessor {
 
   public void subscribeReplicationMetadataSchemaCreationChange(String storeName, IZkChildListener childListener) {
     replicationMetadataSchemaAccessor
-        .subscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName), childListener);
+        .subscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName).toString(), childListener);
     logger.info("Subscribe replication metadata schema child changes for store: {}", storeName);
   }
 
   public void unsubscribeReplicationMetadataSchemaCreationChanges(String storeName, IZkChildListener childListener) {
     replicationMetadataSchemaAccessor
-        .unsubscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName), childListener);
+        .unsubscribeChildChanges(getReplicationMetadataSchemaParentPath(storeName).toString(), childListener);
     logger.info("Unsubscribe replication metadata schema child changes for store: {}.", storeName);
   }
 
-  String getReplicationMetadataSchemaParentPath(String storeName) {
-    return getStorePath(storeName) + REPLICATION_METADATA_SCHEMA_PATH;
+  StringBuilder getReplicationMetadataSchemaParentPath(String storeName) {
+    return getStorePath(storeName).append(REPLICATION_METADATA_SCHEMA_PATH);
   }
 
   String getReplicationMetadataSchemaPath(String storeName, String valueSchemaId, String replicationMetadataVersionId) {
-    return getReplicationMetadataSchemaParentPath(storeName) + "/" + valueSchemaId + MULTIPART_SCHEMA_VERSION_DELIMITER
-        + replicationMetadataVersionId;
+    return getReplicationMetadataSchemaParentPath(storeName).append("/")
+        .append(valueSchemaId)
+        .append(MULTIPART_SCHEMA_VERSION_DELIMITER)
+        .append(replicationMetadataVersionId)
+        .toString();
   }
 
   String getReplicationMetadataSchemaPath(String storeName, String replicationMetadataVersionIdPair) {
-    return getReplicationMetadataSchemaParentPath(storeName) + "/" + replicationMetadataVersionIdPair;
+    return getReplicationMetadataSchemaParentPath(storeName).append("/")
+        .append(replicationMetadataVersionIdPair)
+        .toString();
   }
 }

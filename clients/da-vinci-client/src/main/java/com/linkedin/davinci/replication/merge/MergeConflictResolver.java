@@ -440,6 +440,9 @@ public class MergeConflictResolver {
   }
 
   private GenericRecord deserializeValue(ByteBuffer bytes, Schema writerSchema, Schema readerSchema) {
+    /**
+     * TODO: Refactor this to use {@link com.linkedin.venice.serialization.StoreDeserializerCache}
+     */
     return MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema).deserialize(bytes);
   }
 

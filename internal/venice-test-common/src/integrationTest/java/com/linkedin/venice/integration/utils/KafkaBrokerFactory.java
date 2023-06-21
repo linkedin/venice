@@ -90,12 +90,18 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
 
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       KafkaServer kafkaServer = KafkaBrokerWrapper.instantiateNewKafkaServer(kafkaConfig, configs.getMockTime());
-      LOGGER.info("KafkaBroker URL: {}:{}", kafkaServer.config().hostName(), kafkaServer.config().port());
+      LOGGER.info(
+          "KafkaBroker for region:{} url: {}:{}",
+          configs.getRegionName(),
+          kafkaServer.config().hostName(),
+          kafkaServer.config().port());
       return new KafkaBrokerWrapper(
           kafkaConfig,
           kafkaServer,
           dir,
           zkServerWrapper,
+          configs.getRegionName(),
+          configs.getClusterName(),
           shouldCloseZkServer,
           configs.getMockTime(),
           tlsConfiguration,
@@ -126,8 +132,9 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
     private final TestMockTime mockTime;
     private final ZkServerWrapper zkServerWrapper;
     private final boolean shouldCloseZkServer;
-    private final PubSubClientsFactory pubSubClientsFactory;
     private final VeniceTlsConfiguration tlsConfiguration;
+    private final String regionName;
+    private final String pubSubClusterName;
 
     /**
      * The constructor is private because {@link KafkaBrokerFactory#generateService(PubSubBrokerConfigs)} should be
@@ -141,6 +148,8 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
         KafkaServer kafkaServer,
         File dataDirectory,
         ZkServerWrapper zkServerWrapper,
+        String regionName,
+        String pubSubClusterName,
         boolean shouldCloseZkServer,
         TestMockTime mockTime,
         VeniceTlsConfiguration tlsConfiguration,
@@ -153,10 +162,8 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
       this.sslPort = sslPort;
       this.zkServerWrapper = zkServerWrapper;
       this.shouldCloseZkServer = shouldCloseZkServer;
-      this.pubSubClientsFactory = new PubSubClientsFactory(
-          new ApacheKafkaProducerAdapterFactory(),
-          new ApacheKafkaConsumerAdapterFactory(),
-          new ApacheKafkaAdminAdapterFactory());
+      this.regionName = regionName;
+      this.pubSubClusterName = pubSubClusterName;
     }
 
     public String getZkAddress() {
@@ -238,7 +245,17 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
 
     @Override
     public PubSubClientsFactory getPubSubClientsFactory() {
-      return pubSubClientsFactory;
+      return KAFKA_CLIENTS_FACTORY;
+    }
+
+    @Override
+    public String getRegionName() {
+      return regionName;
+    }
+
+    @Override
+    public String getPubSubClusterName() {
+      return pubSubClusterName;
     }
   }
 }

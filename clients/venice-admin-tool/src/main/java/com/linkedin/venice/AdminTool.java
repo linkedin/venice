@@ -16,6 +16,7 @@ import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
@@ -986,6 +987,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p), argSet);
     booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p), argSet);
     longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p), argSet);
+    booleanParam(cmd, Arg.STORAGE_NODE_READ_QUOTA_ENABLED, p -> params.setStorageNodeReadQuotaEnabled(p), argSet);
     booleanParam(cmd, Arg.HYBRID_STORE_OVERHEAD_BYPASS, p -> params.setHybridStoreOverheadBypass(p), argSet);
     longParam(cmd, Arg.READ_QUOTA, p -> params.setReadQuotaInCU(p), argSet);
     longParam(cmd, Arg.HYBRID_REWIND_SECONDS, p -> params.setHybridRewindSeconds(p), argSet);
@@ -2433,13 +2435,18 @@ public class AdminTool {
   private static void getKafkaTopicConfigs(CommandLine cmd) {
     String veniceControllerUrls = getRequiredArgument(cmd, Arg.URL);
     String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
-    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
-    if (storeName.isEmpty()) {
-      throw new VeniceException("Please either provide a valid topic name.");
+    String clusterName = null;
+    if (AdminTopicUtils.isAdminTopic(kafkaTopicName)) {
+      clusterName = AdminTopicUtils.getClusterNameFromTopicName(kafkaTopicName);
+    } else {
+      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+      if (storeName.isEmpty()) {
+        throw new VeniceException("Please either provide a valid topic name.");
+      }
+      D2ServiceDiscoveryResponse clusterDiscovery =
+          ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+      clusterName = clusterDiscovery.getCluster();
     }
-    D2ServiceDiscoveryResponse clusterDiscovery =
-        ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
-    String clusterName = clusterDiscovery.getCluster();
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
       PubSubTopicConfigResponse response = tmpControllerClient.getKafkaTopicConfigs(kafkaTopicName);
       printObject(response);
@@ -2481,13 +2488,17 @@ public class AdminTool {
      */
     String clusterName = getOptionalArgument(cmd, Arg.CLUSTER);
     if (clusterName == null) {
-      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
-      if (storeName.isEmpty()) {
-        throw new VeniceException("Please either provide a valid topic name or a cluster name.");
+      if (AdminTopicUtils.isAdminTopic(kafkaTopicName)) {
+        clusterName = AdminTopicUtils.getClusterNameFromTopicName(kafkaTopicName);
+      } else {
+        String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+        if (storeName.isEmpty()) {
+          throw new VeniceException("Please either provide a valid topic name or a cluster name.");
+        }
+        D2ServiceDiscoveryResponse clusterDiscovery =
+            ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+        clusterName = clusterDiscovery.getCluster();
       }
-      D2ServiceDiscoveryResponse clusterDiscovery =
-          ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
-      clusterName = clusterDiscovery.getCluster();
     }
 
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {

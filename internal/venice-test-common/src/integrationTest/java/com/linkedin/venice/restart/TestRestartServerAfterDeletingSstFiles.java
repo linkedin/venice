@@ -26,13 +26,11 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReadWriteLock;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -156,32 +154,35 @@ public class TestRestartServerAfterDeletingSstFiles {
     StorageService storageService = testVeniceServer.getStorageService();
     RocksDBStorageEngine rocksDBStorageEngine =
         (RocksDBStorageEngine) storageService.getStorageEngineRepository().getLocalStorageEngine(storeVersionName);
-    List<RocksDBStoragePartition> rocksDBStoragePartitions = new ArrayList<>();
-    rocksDBStoragePartitions.add((RocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(0));
-    rocksDBStoragePartitions.add((RocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(1));
-    rocksDBStoragePartitions.add((RocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(2));
 
     LOGGER.info("Waiting for the process to Finish ingesting all the data to sst files");
-    // 1. wait for rocksDBSstFileWriter to be opened
+    // Verify the total number of records ingested
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      rocksDBStoragePartitions.stream().forEach(partition -> {
-        Assert.assertNotNull(partition.getRocksDBSstFileWriter());
-      });
-    });
-
-    // 2. verify the total number of records ingested
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      AtomicInteger totalIngestedKeys = new AtomicInteger();
-      rocksDBStoragePartitions.stream().forEach(partition -> {
-        totalIngestedKeys.addAndGet((int) partition.getRocksDBSstFileWriter().getRecordNumInAllSSTFiles());
-      });
-      Assert.assertEquals(totalIngestedKeys.get(), numKeys);
+      long totalIngestedKeys = rocksDBStorageEngine.getPartitionIds().stream().mapToLong(id -> {
+        ReadWriteLock rwLock = rocksDBStorageEngine.getRWLockForPartitionOrThrow(id);
+        try {
+          rwLock.readLock().lock();
+          RocksDBStoragePartition partition = (RocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(id);
+          Assert.assertNotNull(partition.getRocksDBSstFileWriter());
+          return partition.getRocksDBSstFileWriter().getRecordNumInAllSSTFiles();
+        } finally {
+          rwLock.readLock().unlock();
+        }
+      }).sum();
+      Assert.assertEquals(totalIngestedKeys, numKeys);
     });
 
     // Delete the sst files to mimic how ingestExternalFile() moves them to RocksDB.
     LOGGER.info("Finished Ingestion of all data to SST Files: Delete the sst files");
-    rocksDBStoragePartitions.stream().forEach(partition -> {
-      partition.deleteFilesInDirectory(partition.getFullPathForTempSSTFileDir());
+    rocksDBStorageEngine.getPartitionIds().forEach(id -> {
+      ReadWriteLock rwLock = rocksDBStorageEngine.getRWLockForPartitionOrThrow(id);
+      try {
+        rwLock.writeLock().lock();
+        RocksDBStoragePartition partition = (RocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(id);
+        partition.deleteFilesInDirectory(partition.getFullPathForTempSSTFileDir());
+      } finally {
+        rwLock.writeLock().unlock();
+      }
     });
 
     // restart the venice servers: Mimic Process crash and restart after ingestExternalFile()

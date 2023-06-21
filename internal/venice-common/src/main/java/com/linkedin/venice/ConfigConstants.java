@@ -23,13 +23,4 @@ public class ConfigConstants {
   /**
    * End of controller config default value
    */
-
-  // Start of server config default value
-  /**
-   * Default Kafka batch size and linger time for better producer performance during ingestion.
-   */
-  public static final String DEFAULT_KAFKA_BATCH_SIZE = "524288";
-
-  public static final String DEFAULT_KAFKA_LINGER_MS = "1000";
-  // End of server config default value
 }

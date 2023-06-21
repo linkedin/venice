@@ -57,9 +57,7 @@ public class VeniceSingleGetPath extends VenicePath {
       routerKey = RouterKey.fromString(key);
     }
 
-    if (stats != null) {
-      stats.getStatsByType(RequestType.SINGLE_GET).recordKeySize(storeName, routerKey.getKeySize());
-    }
+    stats.getStatsByType(RequestType.SINGLE_GET).recordKeySize(storeName, routerKey.getKeySize());
 
     try {
       int partitionNum = partitionFinder.getNumPartitions(resourceName);

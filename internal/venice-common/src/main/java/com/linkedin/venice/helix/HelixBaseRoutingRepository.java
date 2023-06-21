@@ -100,10 +100,25 @@ public abstract class HelixBaseRoutingRepository
       for (Map.Entry<PropertyType, List<String>> entry: dataSource.entrySet()) {
         PropertyType propertyType = entry.getKey();
         if (entry.getValue().isEmpty()) {
+          LOGGER.info("Will call onRoutingTableChange for propertyType: {}" + propertyType);
           onRoutingTableChange(routingTableProvider.getRoutingTableSnapshot(propertyType), null);
         } else {
           for (String customizedStateType: entry.getValue()) {
-            onRoutingTableChange(routingTableProvider.getRoutingTableSnapshot(propertyType, customizedStateType), null);
+            RoutingTableSnapshot routingTableSnapshot =
+                routingTableProvider.getRoutingTableSnapshot(propertyType, customizedStateType);
+            if (routingTableSnapshot.getCustomizeViews() != null
+                && !routingTableSnapshot.getCustomizeViews().isEmpty()) {
+              LOGGER.info(
+                  "Will call onRoutingTableChange for propertyType: {}, customizedStateType: {}",
+                  propertyType,
+                  customizedStateType);
+              onRoutingTableChange(routingTableSnapshot, null);
+            } else {
+              LOGGER.info(
+                  "Will NOT call onRoutingTableChange for propertyType: {}, customizedStateType: {} since its CV is null or empty.",
+                  propertyType,
+                  customizedStateType);
+            }
           }
         }
       }
