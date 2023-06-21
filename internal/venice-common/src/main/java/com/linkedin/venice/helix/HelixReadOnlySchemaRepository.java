@@ -420,12 +420,11 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       logger.info("Try to fetch schema data for store: {}.", storeName);
       // If the local cache doesn't have the schema entry for this store,
       // it could be added recently, and we need to add/monitor it locally
-      SchemaData schemaData = new SchemaData(storeName);
 
       // Fetch key schema
       // Since key schema are not mutated (not even the child zk path) there is no need to set watches
       accessor.subscribeKeySchemaCreationChange(storeName, keySchemaChildListener);
-      schemaData.setKeySchema(accessor.getKeySchema(storeName));
+      SchemaData schemaData = new SchemaData(storeName, accessor.getKeySchema(storeName));
 
       // Fetch value schema
       accessor.subscribeValueSchemaCreationChange(storeName, valueSchemaChildListener);

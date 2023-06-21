@@ -2,7 +2,6 @@ package com.linkedin.venice.schema;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
-import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import java.nio.charset.StandardCharsets;
@@ -28,8 +27,7 @@ public class TestSchemaData {
     String keySchemaStr = "\"string\"";
     int id = 1;
     SchemaEntry entry = new SchemaEntry(id, keySchemaStr);
-    SchemaData schemaData = new SchemaData("test_store");
-    schemaData.setKeySchema(entry);
+    SchemaData schemaData = new SchemaData("test_store", entry);
 
     SchemaEntry keySchema = schemaData.getKeySchema();
     Assert.assertEquals(keySchema.getId(), 1);
@@ -41,7 +39,7 @@ public class TestSchemaData {
     String valueSchemaStr1 = "\"long\"";
     String valueSchemaStr2 = "\"string\"";
 
-    SchemaData schemaData = new SchemaData("test_store");
+    SchemaData schemaData = new SchemaData("test_store", null);
     schemaData.addValueSchema(new SchemaEntry(1, valueSchemaStr1));
     schemaData.addValueSchema(new SchemaEntry(2, valueSchemaStr2));
 
@@ -56,10 +54,9 @@ public class TestSchemaData {
     SchemaEntry valueSchema = new SchemaEntry(1, VALUE_SCHEMA.toString());
     DerivedSchemaEntry derivedSchema = new DerivedSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
     RmdSchemaEntry rmdSchema = new RmdSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
-    SchemaData schemaData = new SchemaData("testStore");
+    SchemaData schemaData = new SchemaData("testStore", null);
 
     Assert.assertEquals(schemaData.getDerivedSchemaId(derivedSchema.getSchemaStr()), GeneratedSchemaID.INVALID);
-    Assert.assertEquals(schemaData.getReplicationMetadataVersionId(rmdSchema), new RmdVersionId(-1, -1));
 
     schemaData.addValueSchema(valueSchema);
     schemaData.addDerivedSchema(derivedSchema);
@@ -67,7 +64,6 @@ public class TestSchemaData {
     Assert.assertEquals(schemaData.getDerivedSchemas(), Collections.singletonList(derivedSchema));
     Assert.assertEquals(schemaData.getReplicationMetadataSchemas(), Collections.singletonList(rmdSchema));
     Assert.assertEquals(schemaData.getDerivedSchemaId(derivedSchema.getSchemaStr()), new GeneratedSchemaID(1, 1));
-    Assert.assertEquals(schemaData.getReplicationMetadataVersionId(rmdSchema), new RmdVersionId(1, 1));
   }
 
   private static String loadFileAsString(String fileName) {

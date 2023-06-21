@@ -128,7 +128,6 @@ public class TestVeniceComputePath {
           10,
           false,
           -1,
-          false,
           1);
       Assert.assertEquals(computePath.getComputeRequestLengthInBytes(), expectedLength);
 

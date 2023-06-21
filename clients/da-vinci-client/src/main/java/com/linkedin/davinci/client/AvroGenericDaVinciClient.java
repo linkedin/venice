@@ -46,6 +46,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -106,6 +107,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   private RecordSerializer<K> keySerializer;
   private RecordDeserializer<K> keyDeserializer;
+  private AvroStoreDeserializerCache<GenericRecord> genericRecordStoreDeserializerCache;
+  private AvroStoreDeserializerCache<V> storeDeserializerCache;
   private AvroGenericReadComputeStoreClient<K, V> veniceClient;
   private StoreBackend storeBackend;
   private static ReferenceCounted<DaVinciBackend> daVinciBackend;
@@ -249,6 +252,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
             partition,
             keyBytes,
             getAvroChunkingAdapter(),
+            this.storeDeserializerCache,
+            versionBackend.getSupersetOrLatestValueSchemaId(),
             reusableObjects.binaryDecoder,
             reusableObjects.rawValue,
             reusableValue);
@@ -302,6 +307,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       }
       Set<K> missingKeys = new HashSet<>();
       ReusableObjects reusableObjects = REUSABLE_OBJECTS.get();
+      int readerSchemaId = versionBackend.getSupersetOrLatestValueSchemaId();
       for (K key: keys) {
         byte[] keyBytes = keySerializer.serialize(key);
         int partition = versionBackend.getPartition(keyBytes);
@@ -311,6 +317,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
               partition,
               keyBytes,
               getAvroChunkingAdapter(),
+              this.storeDeserializerCache,
+              readerSchemaId,
               reusableObjects.binaryDecoder,
               reusableObjects.rawValue,
               null); // TODO: Consider supporting object re-use for batch get as well.
@@ -423,6 +431,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Map<String, Object> globalContext = new HashMap<>();
       Schema computeResultSchema = getComputeResultSchema(computeRequestWrapper);
 
+      int readerSchemaId = versionBackend.getSupersetOrLatestValueSchemaId();
       for (K key: keys) {
         byte[] keyBytes = keySerializer.serialize(key);
         int partition = versionBackend.getPartition(keyBytes);
@@ -432,6 +441,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
               partition,
               keyBytes,
               getGenericRecordChunkingAdapter(),
+              genericRecordStoreDeserializerCache,
+              readerSchemaId,
               reusableObjects.binaryDecoder,
               reusableObjects.rawValue,
               reuseValueRecord,
@@ -691,8 +702,16 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       }
 
       Schema keySchema = getBackend().getSchemaRepository().getKeySchema(getStoreName()).getSchema();
-      keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema, false);
-      keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
+      this.keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema, false);
+      this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
+      this.genericRecordStoreDeserializerCache =
+          new AvroStoreDeserializerCache(daVinciBackend.get().getSchemaRepository(), getStoreName(), true);
+      this.storeDeserializerCache = clientConfig.isSpecificClient()
+          ? new AvroStoreDeserializerCache<>(
+              daVinciBackend.get().getSchemaRepository(),
+              getStoreName(),
+              clientConfig.getSpecificValueClass())
+          : (AvroStoreDeserializerCache<V>) this.genericRecordStoreDeserializerCache;
 
       if (isVeniceQueryAllowed()) {
         veniceClient = (AvroGenericReadComputeStoreClient<K, V>) getAndStartAvroClient(clientConfig);
@@ -727,5 +746,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       logger.error(msg, e);
       throw new VeniceClientException(msg, e);
     }
+  }
+
+  @Override
+  public String toString() {
+    return this.getClass().getSimpleName();
   }
 }

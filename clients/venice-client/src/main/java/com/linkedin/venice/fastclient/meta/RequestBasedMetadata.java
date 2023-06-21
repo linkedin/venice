@@ -201,11 +201,14 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         }
 
         // Update schemas
-        SchemaData schemaData = new SchemaData(storeName);
+        Map.Entry<CharSequence, CharSequence> lastEntry = null;
         for (Map.Entry<CharSequence, CharSequence> entry: metadataResponse.getKeySchema().entrySet()) {
-          schemaData
-              .setKeySchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
+          lastEntry = entry;
         }
+        SchemaEntry keySchema = lastEntry == null
+            ? null
+            : new SchemaEntry(Integer.parseInt(lastEntry.getKey().toString()), lastEntry.getValue().toString());
+        SchemaData schemaData = new SchemaData(storeName, keySchema);
         for (Map.Entry<CharSequence, CharSequence> entry: metadataResponse.getValueSchemas().entrySet()) {
           schemaData.addValueSchema(
               new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));

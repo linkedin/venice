@@ -89,7 +89,6 @@ public class StorageReadRequestsHandlerTest {
     String valueString = "testvalue";
     int schemaId = 1;
     int partition = 3;
-    long expectedOffset = 12345L;
     List<Object> outputArray = new ArrayList<Object>();
     byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
     // [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
@@ -97,11 +96,11 @@ public class StorageReadRequestsHandlerTest {
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
     GetRouterRequest testRequest = GetRouterRequest.parseGetHttpRequest(httpRequest);
 
-    AbstractStorageEngine testStore = mock(AbstractStorageEngine.class);
-    doReturn(valueBytes).when(testStore).get(partition, ByteBuffer.wrap(keyString.getBytes()));
+    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    doReturn(valueBytes).when(storageEngine).get(partition, ByteBuffer.wrap(keyString.getBytes()));
 
     StorageEngineRepository testRepository = mock(StorageEngineRepository.class);
-    doReturn(testStore).when(testRepository).getLocalStorageEngine(topic);
+    doReturn(storageEngine).when(testRepository).getLocalStorageEngine(topic);
 
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
 
@@ -112,7 +111,11 @@ public class StorageReadRequestsHandlerTest {
 
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
     Store store = mock(Store.class);
-    when(store.getVersion(anyInt())).thenReturn(Optional.empty());
+    Version version = mock(Version.class);
+    PartitionerConfig partitionerConfig = mock(PartitionerConfig.class);
+    when(partitionerConfig.getAmplificationFactor()).thenReturn(1);
+    when(version.getPartitionerConfig()).thenReturn(partitionerConfig);
+    when(store.getVersion(anyInt())).thenReturn(Optional.of(version));
     when(metadataRepo.getStoreOrThrow(anyString())).thenReturn(store);
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
@@ -368,7 +371,11 @@ public class StorageReadRequestsHandlerTest {
     ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
     ReadOnlyStoreRepository metadataRepo = mock(ReadOnlyStoreRepository.class);
     Store store = mock(Store.class);
-    when(store.getVersion(anyInt())).thenReturn(Optional.empty());
+    Version version = mock(Version.class);
+    PartitionerConfig partitionerConfig = mock(PartitionerConfig.class);
+    when(partitionerConfig.getAmplificationFactor()).thenReturn(1);
+    when(version.getPartitionerConfig()).thenReturn(partitionerConfig);
+    when(store.getVersion(anyInt())).thenReturn(Optional.of(version));
     when(metadataRepo.getStoreOrThrow(anyString())).thenReturn(store);
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
