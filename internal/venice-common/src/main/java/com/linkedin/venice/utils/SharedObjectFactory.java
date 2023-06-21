@@ -2,7 +2,6 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -73,14 +72,12 @@ public class SharedObjectFactory<T> {
    * managing an object with the identifier, returns 0
    */
   public int getReferenceCount(String identifier) {
-    AtomicInteger referenceCount = new AtomicInteger(0);
-    objectMap.compute(identifier, (id, referenceCounted) -> {
-      if (referenceCounted != null) {
-        referenceCount.set(referenceCounted.getReferenceCount());
-      }
-
-      return referenceCounted;
-    });
-    return referenceCount.get();
+    // It is possible that this method is not thread-safe, but since this is only used in tests currently, it is okay
+    ReferenceCounted<T> referenceCounted = objectMap.get(identifier);
+    if (referenceCounted == null) {
+      return 0;
+    } else {
+      return referenceCounted.getReferenceCount();
+    }
   }
 }
