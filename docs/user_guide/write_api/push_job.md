@@ -68,7 +68,7 @@ The user may choose to specify the following configs:
   Optionally specify a list of target region(s) to push data into. See full details at 
   [TARGETED_REGION_PUSH_LIST](https://venicedb.org/javadoc/com/linkedin/venice/hadoop/VenicePushJob.html#TARGETED_REGION_PUSH_LIST).
 - `post.validation.consumption`: Whether to perform post validation consumption after targeted region push is finished. 
-   Default: `true`.
+   Default: `true`. Set this to `false` if you want to achieve a true single colo push.
 
 The push job also supports using D2 URLs for automated controller service discovery. To use this, the user or operator
 must specify the following configs:

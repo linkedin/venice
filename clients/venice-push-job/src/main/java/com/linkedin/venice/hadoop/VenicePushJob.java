@@ -1183,6 +1183,10 @@ public class VenicePushJob implements AutoCloseable {
         updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
 
+        // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
+        if (!(pushJobSetting.isTargetedRegionPushEnabled && pushJobSetting.postValidationConsumption)) {
+          return;
+        }
         /**
          * Post validation + consumption
          */
@@ -1238,15 +1242,11 @@ public class VenicePushJob implements AutoCloseable {
    * @return a set of regions that haven't been pushed yet.
    */
   private Set<String> getRegionsForPostValidationConsumption() {
-    // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
-    if (pushJobSetting.isTargetedRegionPushEnabled && pushJobSetting.postValidationConsumption) {
-      Set<String> targetedRegions = RegionUtils.parseRegionsFilterList(pushJobSetting.targetedRegions);
-      Set<String> candidateRegions =
-          new HashSet<>(storeSetting.storeResponse.getStore().getColoToCurrentVersions().keySet());
-      candidateRegions.removeAll(targetedRegions);
-      return candidateRegions;
-    }
-    return Collections.emptySet();
+    Set<String> targetedRegions = RegionUtils.parseRegionsFilterList(pushJobSetting.targetedRegions);
+    Set<String> candidateRegions =
+        new HashSet<>(storeSetting.storeResponse.getStore().getColoToCurrentVersions().keySet());
+    candidateRegions.removeAll(targetedRegions);
+    return candidateRegions;
   }
 
   /**

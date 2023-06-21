@@ -1600,9 +1600,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (pushType.isIncremental()) {
       newVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
     } else {
-      if (StringUtils.isNotEmpty(targetedRegions)) {
-        validateTargetedRegions(targetedRegions, clusterName);
-      }
+      validateTargetedRegions(targetedRegions, clusterName);
 
       newVersion = addVersionAndTopicOnly(
           clusterName,
@@ -1643,6 +1641,9 @@ public class VeniceParentHelixAdmin implements Admin {
    * @param clusterName
    */
   private void validateTargetedRegions(String targetedRegions, String clusterName) throws VeniceException {
+    if (StringUtils.isEmpty(targetedRegions)) {
+      return;
+    }
     Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
     Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     for (String region: targetedRegionSet) {
