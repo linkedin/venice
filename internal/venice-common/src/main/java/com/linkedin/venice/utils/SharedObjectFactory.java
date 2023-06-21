@@ -3,6 +3,8 @@ package com.linkedin.venice.utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -14,6 +16,11 @@ import java.util.function.Supplier;
  */
 public class SharedObjectFactory<T> {
   private final Map<String, ReferenceCounted<T>> OBJECT_MAP = new VeniceConcurrentHashMap<>();
+  private final Map<String, ReentrantLock> LOCK_MAP = new VeniceConcurrentHashMap<>();
+
+  private Lock getLock(String identifier) {
+    return LOCK_MAP.computeIfAbsent(identifier, id -> new ReentrantLock());
+  }
 
   /**
    * Get a shared object that has the specified {@param identifier}. If an object with the {@param identifier} doesn't
@@ -25,7 +32,8 @@ public class SharedObjectFactory<T> {
    * @return A shared object
    */
   public T get(String identifier, Supplier<T> constructor, Consumer<T> destroyer) {
-    synchronized (OBJECT_MAP) {
+    getLock(identifier).lock();
+    try {
       final AtomicBoolean newObjectCreated = new AtomicBoolean(false);
       ReferenceCounted<T> referenceCounted = OBJECT_MAP.computeIfAbsent(identifier, id -> {
         newObjectCreated.set(true);
@@ -38,6 +46,8 @@ public class SharedObjectFactory<T> {
       }
 
       return referenceCounted.get();
+    } finally {
+      getLock(identifier).unlock();
     }
   }
 
@@ -49,7 +59,8 @@ public class SharedObjectFactory<T> {
    * @return {@code true} if the shared object is no longer being used; {@code false} otherwise
    */
   public boolean release(String identifier) {
-    synchronized (OBJECT_MAP) {
+    getLock(identifier).lock();
+    try {
       ReferenceCounted<T> referenceCounted = OBJECT_MAP.get(identifier);
       if (referenceCounted != null) {
         referenceCounted.release(); // Also removes the object from the objectMap
@@ -60,6 +71,8 @@ public class SharedObjectFactory<T> {
           return false;
         }
       }
+    } finally {
+      getLock(identifier).unlock();
     }
     return true;
   }
@@ -79,12 +92,15 @@ public class SharedObjectFactory<T> {
    * managing an object with the identifier, returns 0
    */
   public int getReferenceCount(String identifier) {
-    synchronized (OBJECT_MAP) {
+    getLock(identifier).lock();
+    try {
       if (!OBJECT_MAP.containsKey(identifier)) {
         return 0;
       } else {
         return OBJECT_MAP.get(identifier).getReferenceCount();
       }
+    } finally {
+      getLock(identifier).unlock();
     }
   }
 }
