@@ -771,7 +771,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return grpcPort;
   }
 
-  public boolean getIsGrpcEnabled() {
+  public boolean isGrpcEnabled() {
     return isGrpcEnabled;
   }
 

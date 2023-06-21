@@ -1,15 +1,15 @@
 package com.linkedin.venice.listener.grpc;
 
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.listener.grpc.interceptors.AuthTokenProvideInterceptor;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
-import io.grpc.Channel;
-import io.grpc.ClientInterceptor;
-import io.grpc.ClientInterceptors;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.EncodingUtils;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import java.nio.charset.StandardCharsets;
+import org.apache.avro.SchemaBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -17,27 +17,36 @@ import org.apache.logging.log4j.Logger;
 public class VeniceReadServiceClient {
   private final static Logger LOGGER = LogManager.getLogger(VeniceReadServiceClient.class);
   private final ManagedChannel originChannel;
+  private final String storeName;
   private final VeniceReadServiceGrpc.VeniceReadServiceBlockingStub stub;
+  protected volatile RecordSerializer<String> keySerializer;
 
-  public VeniceReadServiceClient(String address) {
+  public VeniceReadServiceClient(String address, String storeName) {
     originChannel = ManagedChannelBuilder.forTarget(address).usePlaintext().build();
-    ClientInterceptor interceptor = new AuthTokenProvideInterceptor();
-    Channel newChannel = ClientInterceptors.intercept(originChannel, interceptor);
-    stub = VeniceReadServiceGrpc.newBlockingStub(newChannel);
+    this.storeName = storeName;
+    stub = VeniceReadServiceGrpc.newBlockingStub(originChannel);
+
+    // will only work for this specific schema --> need to pass schema as parameter in next iteration
+    keySerializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(SchemaBuilder.builder().stringType());
   }
 
-  public String get(String key) {
-    VeniceClientRequest request = VeniceClientRequest.newBuilder().setKey(key).build();
-    VeniceServerResponse response;
+  public String get(int version, int partition, String keyString) {
+    // encode keyString in base64
+    String resourceName = storeName + "_v" + version;
 
-    try {
-      response = stub.get(request);
-    } catch (Exception e) {
-      LOGGER.error("Fail to get value for key: {}", key, e);
-      throw new VeniceException(e);
-    }
+    byte[] serializedString = keySerializer.serialize(keyString);
+    String b64Key = EncodingUtils.base64EncodeToString(serializedString) + "?f=b64";
 
-    return response.getValue();
+    VeniceClientRequest request = VeniceClientRequest.newBuilder()
+        .setStoreName(storeName)
+        .setResourceName(resourceName)
+        .setPartition(partition)
+        .setKeyString(b64Key)
+        .build();
+
+    VeniceServerResponse response = stub.get(request);
+    // convert to string, not getting decoded properly. Has an extra space in the front. Will debug.
+    return new String(response.getData().toByteArray(), StandardCharsets.UTF_8);
   }
 
   public void shutdown() {

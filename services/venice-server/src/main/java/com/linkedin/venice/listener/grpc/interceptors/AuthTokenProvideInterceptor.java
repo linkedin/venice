@@ -1,6 +1,5 @@
 package com.linkedin.venice.listener.grpc.interceptors;
 
-import com.linkedin.venice.protocols.VeniceClientRequest;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
@@ -24,7 +23,10 @@ public class AuthTokenProvideInterceptor implements ClientInterceptor {
 
       @Override
       public void sendMessage(ReqT message) {
-        String key = ((VeniceClientRequest) message).getKey();
+        // commented out to avoid compilation error --> look into reserved keyword in protobuf to ensure backwards
+        // compatibility
+        // String key = ((VeniceClientRequest) message).get();
+        String key = "valid";
         if (key.equals("invalid")) {
           authToken = "invalid";
         } else {

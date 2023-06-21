@@ -23,8 +23,8 @@ public class VeniceGrpcServer {
       server.start();
     } catch (IllegalStateException | IOException illegalStateException) {
       LOGGER.error(
-          "Failed to start {} on port {}",
-          VeniceGrpcServer.class.getSimpleName(),
+          "Failed to start gRPC Server for service {} on port {}",
+          server.getServices(),
           server.getPort(),
           illegalStateException);
       throw new RuntimeException(illegalStateException);
