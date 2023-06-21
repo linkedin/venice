@@ -1,11 +1,13 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceClusterInitializer.ID_FIELD_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.KEY_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.ZK_ADDRESS_FIELD;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -16,6 +18,7 @@ import com.linkedin.venice.utils.ClassPathSupplierForVeniceCluster;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -23,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -114,10 +118,18 @@ public class VeniceClientCompatibilityTest {
     Assert.assertNotNull(zkAddress[0]);
     LOGGER.info("Zookeeper address in unit test: {}", zkAddress[0]);
 
-    daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithoutMetaSystemStoreRepo(
+    Properties extraBackendConfig = new Properties();
+    extraBackendConfig.setProperty(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath());
+    daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
         storeName,
         zkAddress[0],
-        Utils.getTempDataDirectory().getAbsolutePath());
+        new DaVinciConfig(),
+        new VeniceProperties(new Properties()));
+
+    // daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithoutMetaSystemStoreRepo(
+    // storeName,
+    // zkAddress[0],
+    // Utils.getTempDataDirectory().getAbsolutePath());
     daVinciClient.subscribeAll().get(60, TimeUnit.SECONDS);
   }
 
