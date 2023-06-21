@@ -87,6 +87,7 @@ public class SharedObjectFactoryTest {
     Assert.assertTrue(factory.release(id3));
   }
 
+  @Test
   public void testMultiThreadedSharedObject() throws InterruptedException {
     SharedObjectFactory<TestSharedObject> factory = new SharedObjectFactory<>();
     int threadPoolSize = 10;

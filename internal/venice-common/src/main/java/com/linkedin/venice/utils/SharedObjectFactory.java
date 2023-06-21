@@ -2,9 +2,7 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -16,11 +14,6 @@ import java.util.function.Supplier;
  */
 public class SharedObjectFactory<T> {
   private final Map<String, ReferenceCounted<T>> objectMap = new VeniceConcurrentHashMap<>();
-  private final Map<String, ReentrantLock> lockMap = new VeniceConcurrentHashMap<>();
-
-  private Lock getLock(String identifier) {
-    return lockMap.computeIfAbsent(identifier, id -> new ReentrantLock());
-  }
 
   /**
    * Get a shared object that has the specified {@param identifier}. If an object with the {@param identifier} doesn't
@@ -32,24 +25,15 @@ public class SharedObjectFactory<T> {
    * @return A shared object
    */
   public T get(String identifier, Supplier<T> constructor, Consumer<T> destroyer) {
-    Lock lock = getLock(identifier);
-    lock.lock();
-    try {
-      final AtomicBoolean newObjectCreated = new AtomicBoolean(false);
-      ReferenceCounted<T> referenceCounted = objectMap.computeIfAbsent(identifier, id -> {
-        newObjectCreated.set(true);
+    return objectMap.compute(identifier, (id, referenceCounted) -> {
+      if (referenceCounted == null) {
         T object = constructor.get();
         return new ReferenceCounted<>(object, destroyer);
-      });
-
-      if (!newObjectCreated.get()) {
+      } else {
         referenceCounted.retain();
+        return referenceCounted;
       }
-
-      return referenceCounted.get();
-    } finally {
-      lock.unlock();
-    }
+    }).get();
   }
 
   /**
@@ -60,23 +44,18 @@ public class SharedObjectFactory<T> {
    * @return {@code true} if the shared object is no longer being used; {@code false} otherwise
    */
   public boolean release(String identifier) {
-    Lock lock = getLock(identifier);
-    lock.lock();
-    try {
-      ReferenceCounted<T> referenceCounted = objectMap.get(identifier);
+    return objectMap.compute(identifier, (id, referenceCounted) -> {
       if (referenceCounted != null) {
-        referenceCounted.release(); // Also removes the object from the objectMap
+        referenceCounted.release();
         if (referenceCounted.getReferenceCount() == 0) {
-          objectMap.remove(identifier);
-          return true;
+          return null;
         } else {
-          return false;
+          return referenceCounted;
         }
+      } else {
+        return null;
       }
-    } finally {
-      lock.unlock();
-    }
-    return true;
+    }) == null;
   }
 
   /**
@@ -94,17 +73,14 @@ public class SharedObjectFactory<T> {
    * managing an object with the identifier, returns 0
    */
   public int getReferenceCount(String identifier) {
-    Lock lock = getLock(identifier);
-    lock.lock();
-    try {
-      ReferenceCounted<T> referenceCounted = objectMap.get(identifier);
-      if (referenceCounted == null) {
-        return 0;
-      } else {
-        return referenceCounted.getReferenceCount();
+    AtomicInteger referenceCount = new AtomicInteger(0);
+    objectMap.compute(identifier, (id, referenceCounted) -> {
+      if (referenceCounted != null) {
+        referenceCount.set(referenceCounted.getReferenceCount());
       }
-    } finally {
-      lock.unlock();
-    }
+
+      return referenceCounted;
+    });
+    return referenceCount.get();
   }
 }
