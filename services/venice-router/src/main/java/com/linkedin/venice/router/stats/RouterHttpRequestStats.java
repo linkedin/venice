@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.stats;
 
+import static com.linkedin.venice.stats.AbstractVeniceAggStats.*;
+
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
@@ -55,6 +57,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor readQuotaUsageSensor;
   private final Sensor inFlightRequestSensor;
   private Sensor keySizeSensor;
+
   private final AtomicInteger currentInFlightRequest;
   private final Sensor unavailableReplicaStreamingRequestSensor;
   private final Sensor allowedRetryRequestSensor;
@@ -62,6 +65,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor errorRetryAttemptTriggeredByPendingRequestCheckSensor;
   private final Sensor retryDelaySensor;
   private final Sensor metaStoreShadowReadSensor;
+
+  private final boolean isKeyValueProfilingEnabled;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -80,6 +85,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     unhealthySensor = registerSensor("unhealthy_request", new Count());
     unavailableReplicaStreamingRequestSensor = registerSensor("unavailable_replica_streaming_request", new Count());
     tardySensor = registerSensor("tardy_request", new Count(), tardyRequestRate);
+    this.isKeyValueProfilingEnabled = isKeyValueProfilingEnabled;
     healthyRequestRateSensor =
         registerSensor("healthy_request_ratio", new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
     tardyRequestRatioSensor =
@@ -148,14 +154,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     inFlightRequestSensor = registerSensor("in_flight_request_count", new Min(), new Max(0), new Avg());
 
     String responseSizeSensorName = "response_size";
-    if (isKeyValueProfilingEnabled) {
+    if (isKeyValueProfilingEnabled && storeName.equals(STORE_NAME_FOR_TOTAL_STAT)) {
       String keySizeSensorName = "key_size_in_byte";
       keySizeSensor = registerSensor(
           keySizeSensorName,
           new Avg(),
           new Max(),
           TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(keySizeSensorName)));
-
       responseSizeSensor = registerSensor(
           responseSizeSensorName,
           new Avg(),
@@ -168,7 +173,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           new Max(),
           TehutiUtils.getPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
     }
-
     currentInFlightRequest = new AtomicInteger();
 
     allowedRetryRequestSensor = registerSensor("allowed_retry_request_count", new OccurrenceRate());
@@ -273,7 +277,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordResponseSize(double responseSize) {
     responseSizeSensor.record(responseSize);
-  };
+  }
 
   public void recordDecompressionTime(double decompressionTime) {
     decompressionTimeSensor.record(decompressionTime);
@@ -324,7 +328,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordKeySizeInByte(long keySize) {
-    keySizeSensor.record(keySize);
+    if (keySizeSensor != null) {
+      keySizeSensor.record(keySize);
+    }
   }
 
   public void recordResponse() {

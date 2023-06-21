@@ -142,14 +142,18 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       // this method may throw store not exist exception; track the exception under unhealthy request metric
       int version = versionFinder.getVersion(storeName, fullHttpRequest);
       String resourceName = Version.composeKafkaTopic(storeName, version);
-
-      RouterStats<AggRouterHttpRequestStats> stats = routerConfig.isKeyValueProfilingEnabled() ? routerStats : null;
-
       String method = fullHttpRequest.method().name();
+
       if (VeniceRouterUtils.isHttpGet(method)) {
         // single-get request
-        path =
-            new VeniceSingleGetPath(storeName, version, resourceName, pathHelper.getKey(), uri, partitionFinder, stats);
+        path = new VeniceSingleGetPath(
+            storeName,
+            version,
+            resourceName,
+            pathHelper.getKey(),
+            uri,
+            partitionFinder,
+            routerStats);
       } else if (VeniceRouterUtils.isHttpPost(method)) {
         if (resourceType == RouterResourceType.TYPE_STORAGE) {
           // multi-get request
@@ -162,7 +166,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               getBatchGetLimit(storeName),
               routerConfig.isSmartLongTailRetryEnabled(),
               routerConfig.getSmartLongTailRetryAbortThresholdMs(),
-              stats,
+              routerStats,
               routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
         } else if (resourceType == RouterResourceType.TYPE_COMPUTE) {
           // read compute request
