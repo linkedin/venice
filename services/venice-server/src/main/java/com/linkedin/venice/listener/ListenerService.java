@@ -59,6 +59,8 @@ public class ListenerService extends AbstractVeniceService {
   // TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
+  private StorageReadRequestsHandler _storageReadRequestsHandler;
+
   public ListenerService(
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
@@ -76,7 +78,7 @@ public class ListenerService extends AbstractVeniceService {
 
     this.serverConfig = serverConfig;
     this.port = serverConfig.getListenerPort();
-    this.isGrpcEnabled = serverConfig.getIsGrpcEnabled();
+    this.isGrpcEnabled = serverConfig.isGrpcEnabled();
     this.grpcPort = serverConfig.getGrpcPort();
 
     executor = createThreadPool(
@@ -112,6 +114,8 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.getParallelBatchGetChunkSize(),
         compressorFactory,
         resourceReadUsageTracker);
+
+    _storageReadRequestsHandler = requestHandler;
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
@@ -151,19 +155,19 @@ public class ListenerService extends AbstractVeniceService {
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
+
+    if (isGrpcEnabled) {
+      grpcServer = new VeniceGrpcServer(
+          new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
+              .setService(new VeniceReadServiceImpl(_storageReadRequestsHandler))
+              .build());
+    }
   }
 
   @Override
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
     LOGGER.info("Listener service started on port: {}", port);
-
-    grpcServer = new VeniceGrpcServer(
-        new VeniceGrpcServerConfig.Builder().setPort(8080) // temporarily set to this, will use grpcPort once I figure
-                                                           // out how to allow the client to connect to an allocated
-                                                           // port
-            .setService(new VeniceReadServiceImpl())
-            .build());
 
     if (isGrpcEnabled) {
       grpcServer.start();
@@ -191,7 +195,7 @@ public class ListenerService extends AbstractVeniceService {
     shutdown.sync();
 
     if (grpcServer != null) {
-      System.out.println("Stopping gRPC service on port: " + grpcPort);
+      LOGGER.info("Stopping gRPC service on port {}", grpcPort);
       grpcServer.stop();
     }
   }

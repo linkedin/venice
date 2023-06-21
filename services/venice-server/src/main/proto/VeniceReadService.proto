@@ -8,10 +8,18 @@ service VeniceReadService {
 }
 
 message VeniceClientRequest {
-  string key = 1;
+  uint32 partition = 1;
+  string keyString = 2;
+  sint32 requestTimeoutInNS = 3;
+  string resourceName = 4;
+  string storeName = 5;
+  bool   isStreamingRequest = 6;
 }
 
 message VeniceServerResponse {
-  string key = 1;
-  string value = 2;
+  // Server response has a lot of data which I think isn't necessary for mvp, so I'm not including it
+  sint32 schemaId = 1;
+  bytes  data = 2;
+  uint32 dataSize = 3;
+  bytes  serializedArr = 4;
 }
