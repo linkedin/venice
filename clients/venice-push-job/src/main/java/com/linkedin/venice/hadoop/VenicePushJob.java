@@ -1266,7 +1266,7 @@ public class VenicePushJob implements AutoCloseable {
    * Kick off the post-validation consumption on the rest of regions that haven't been pushed yet.
    * @param candidateRegions
    */
-  private void postValidationConsumption(Set<String> candidateRegions) {
+  void postValidationConsumption(Set<String> candidateRegions) {
     // get the latest version of the store for data recovery
     Version sourceVersion = getStoreVersion(pushJobSetting.storeName, kafkaTopicInfo.version);
 
@@ -1291,7 +1291,7 @@ public class VenicePushJob implements AutoCloseable {
             true,
             Optional.of(sourceVersion));
         if (response.isError()) {
-          throw new VeniceException("Can't perform data recovery for region " + region + ". " + response.getError());
+          throw new VeniceException("Can't push data for region " + region + ". " + response.getError());
         }
       }
       // Essentially, the remaining regions are "targeted" regions now

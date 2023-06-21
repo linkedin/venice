@@ -26,13 +26,16 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -45,6 +48,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.exceptions.VeniceValidationException;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -654,7 +658,7 @@ public class VenicePushJobTest {
     try {
       pushJob.run();
     } catch (VeniceException e) {
-      assertTrue(e.getMessage().contains("Can't perform data recovery for region"));
+      assertTrue(e.getMessage().contains("Can't push data for region"));
     }
 
     ControllerResponse goodDataRecoveryResponse = new ControllerResponse();
@@ -684,6 +688,25 @@ public class VenicePushJobTest {
 
     // for hybrid store, the job is supposed to ran twice, one for targeted region push and another is for repush
     verify(pushJob, times(2)).run();
+  }
+
+  @Test
+  public void testTargetedRegionPushPostValidationFailedForValidation() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(TARGETED_REGION_PUSH_ENABLED, true);
+    props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+    ControllerClient client = getClient();
+    VenicePushJob pushJob = getSpyVenicePushJob(props, client);
+    skipVPJValidation(pushJob);
+
+    JobStatusQueryResponse response = mockJobStatusQuery();
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString());
+    mockVersionCreationResponse(client);
+
+    doThrow(new VeniceValidationException("error")).when(pushJob).postPushValidation();
+
+    assertThrows(VeniceValidationException.class, pushJob::run);
+    verify(pushJob, never()).postValidationConsumption(any());
   }
 
   private JobStatusQueryResponse mockJobStatusQuery() {
