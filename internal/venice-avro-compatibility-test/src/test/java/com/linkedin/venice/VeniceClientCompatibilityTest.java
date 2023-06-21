@@ -1,6 +1,5 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceClusterInitializer.ID_FIELD_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.KEY_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.ZK_ADDRESS_FIELD;
@@ -11,27 +10,22 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
-import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.utils.ClassPathSupplierForVeniceCluster;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
@@ -58,77 +52,55 @@ public class VeniceClientCompatibilityTest {
   private AvroGenericStoreClient<String, GenericRecord> veniceClient;
   private DaVinciClient<String, GenericRecord> daVinciClient;
 
-  private VeniceClusterWrapper veniceClusterWrapper;
-  private String storeName;
-
-  public static final String VALUE_SCHEMA_STR = "{" + "  \"namespace\": \"example.compute\",    "
-      + "  \"type\": \"record\",        " + "  \"name\": \"MemberFeature\",       " + "  \"fields\": [        "
-      + "         { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_id\"},             "
-      + "         { \"name\": \"name\", \"type\": \"string\", \"default\": \"default_name\"},           "
-      + "         { \"name\": \"boolean_field\", \"type\": \"boolean\", \"default\": false},           "
-      + "         { \"name\": \"int_field\", \"type\": \"int\", \"default\": 0},           "
-      + "         { \"name\": \"float_field\", \"type\": \"float\", \"default\": 0},           "
-      + "         { \"name\": \"namemap\", \"type\":  {\"type\" : \"map\", \"values\" : \"int\" }},           "
-      + "         { \"name\": \"member_feature\", \"type\": { \"type\": \"array\", \"items\": \"float\" }, \"default\": []},"
-      + "         { \"name\": \"ZookeeperAddress\", \"type\": \"string\"}" + "  ]       " + " }       ";
-  public static final String KEY_SCHEMA_STR = "\"string\"";
-
-  public static final String ZK_ADDRESS_FIELD = "ZookeeperAddress";
-  public static final int ENTRY_COUNT = 1000;
-
   @BeforeClass
   public void setUp() throws Exception {
+    Utils.thisIsLocalhost();
     LOGGER.info("Avro version in unit test: {}", AvroCompatibilityHelperCommon.getRuntimeAvroVersion());
     // Assert.assertEquals(
     // AvroCompatibilityHelperCommon.getRuntimeAvroVersion(),
     // AvroVersion.valueOf(System.getProperty("clientAvroVersion")));
-
-    Utils.thisIsLocalhost();
-    Properties clusterConfig = new Properties();
-    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    veniceClusterWrapper = ServiceFactory.getVeniceCluster(1, 2, 1, 1, 100, false, false, clusterConfig);
-    pushSyntheticData();
-
     /**
      * The following port selection is not super safe since this port could be occupied when it is being used
      * by the {@link VeniceClusterInitializer}.
      *
      * If it is flaky, maybe we could add some retry logic to make it more resilient in the future.
      */
-    // String routerPort = Integer.toString(TestUtils.getFreePort());
-    // String routerAddress = "http://localhost:" + routerPort;
-    // LOGGER.info("Router address in unit test: {}", routerAddress);
-    //
-    // String storeName = Utils.getUniqueString("venice-store");
-    // clusterProcess = ForkedJavaProcess.exec(
-    // VeniceClusterInitializer.class,
-    // Arrays.asList(storeName, routerPort),
-    // Collections.emptyList(),
-    // new ClassPathSupplierForVeniceCluster().get(),
-    // true,
-    // Optional.empty());
+    String routerPort = Integer.toString(TestUtils.getFreePort());
+    String routerAddress = "http://localhost:" + routerPort;
+    LOGGER.info("Router address in unit test: {}", routerAddress);
+
+    String storeName = Utils.getUniqueString("venice-store");
+    clusterProcess = ForkedJavaProcess.exec(
+        VeniceClusterInitializer.class,
+        Arrays.asList(storeName, routerPort),
+        Collections.emptyList(),
+        new ClassPathSupplierForVeniceCluster().get(),
+        true,
+        Optional.empty());
 
     veniceClient = ClientFactory.getGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(veniceClusterWrapper.getRandomRouterURL())
+            .setVeniceURL(routerAddress)
             .setForceClusterDiscoveryAtStartTime(true));
-    veniceClient.start();
 
     // Block until the store is ready.
-    // TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-    // if (!clusterProcess.isAlive()) {
-    // throw new VeniceException("Cluster process exited unexpectedly.");
-    // }
-    // Assert.assertTrue(clusterProcess.isAlive());
-    // try {
-    // veniceClient.start();
-    // } catch (VeniceException e) {
-    // Assert.fail("Store is not ready yet.", e);
-    // }
-    // });
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      if (!clusterProcess.isAlive()) {
+        throw new VeniceException("Cluster process exited unexpectedly.");
+      }
+      Assert.assertTrue(clusterProcess.isAlive());
+      try {
+        veniceClient.start();
+      } catch (VeniceException e) {
+        Assert.fail("Store is not ready yet.", e);
+      }
+    });
 
     String[] zkAddress = new String[1];
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      if (!clusterProcess.isAlive()) {
+        throw new VeniceException("Cluster process exited unexpectedly.");
+      }
       try {
         GenericRecord value = veniceClient.get(KEY_PREFIX + "0").get();
         Assert.assertNotNull(value);
@@ -147,36 +119,6 @@ public class VeniceClientCompatibilityTest {
         zkAddress[0],
         Utils.getTempDataDirectory().getAbsolutePath());
     daVinciClient.subscribeAll().get(60, TimeUnit.SECONDS);
-  }
-
-  private void pushSyntheticData() throws ExecutionException, InterruptedException {
-    Schema valueSchema = Schema.parse(VALUE_SCHEMA_STR);
-    // Insert test record
-    Map values = new HashMap<>();
-    for (int i = 0; i < ENTRY_COUNT; ++i) {
-      GenericRecord value = new GenericData.Record(valueSchema);
-      value.put("id", ID_FIELD_PREFIX + i);
-      String name = "name_" + i;
-      value.put("name", name);
-      value.put("namemap", Collections.emptyMap());
-      value.put("boolean_field", true);
-      value.put("int_field", 10);
-      value.put("float_field", 10.0f);
-      value.put(ZK_ADDRESS_FIELD, veniceClusterWrapper.getZk().getAddress());
-
-      List<Float> features = new ArrayList<>();
-      features.add(Float.valueOf((float) (i + 1)));
-      features.add(Float.valueOf((float) ((i + 1) * 10)));
-      value.put("member_feature", features);
-      values.put(KEY_PREFIX + i, value);
-    }
-    storeName = veniceClusterWrapper
-        .createStore(KEY_SCHEMA_STR, VALUE_SCHEMA_STR, values.entrySet().stream(), CompressionStrategy.NO_OP, null);
-    veniceClusterWrapper.createPushStatusSystemStore(storeName);
-    veniceClusterWrapper.createMetaSystemStore(storeName);
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setReadComputationEnabled(true);
-    veniceClusterWrapper.updateStore(storeName, params);
   }
 
   @AfterClass
