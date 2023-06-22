@@ -203,7 +203,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      */
     ColumnFamilyOptions columnFamilyOptions;
     for (byte[] name: columnFamilyNameList) {
-      if (name == REPLICATION_METADATA_COLUMN_FAMILY && !rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+      if (name == REPLICATION_METADATA_COLUMN_FAMILY) {
         columnFamilyOptions = new ColumnFamilyOptions(getStoreOptions(storagePartitionConfig, true));
       } else {
         columnFamilyOptions = new ColumnFamilyOptions(options);
