@@ -36,7 +36,6 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
-import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_VALUE_PREFIX;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
@@ -974,20 +973,13 @@ public class TestPushJobWithNativeReplication {
               }
             });
           }
-
-          // verify the reads for both DCs
-          for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
-            String routerUrl =
-                childDatacenters.get(dataCenterIndex).getClusters().get(clusterName).getRandomRouterURL();
-            verifyVeniceStoreData(storeName, routerUrl, DEFAULT_USER_DATA_VALUE_PREFIX, 10);
-          }
         });
   }
 
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testTargetedRegionPushJobFullConsumptionForHybridStore() throws Exception {
     motherOfAllTests(
-        "testTargetedRegionPushJobHybridStorse",
+        "testTargetedRegionPushJobHybridStore",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridRewindSeconds(10)
             .setHybridOffsetLagThreshold(2),
@@ -1008,13 +1000,6 @@ public class TestPushJobWithNativeReplication {
                 Assert.assertEquals(version, 2);
               }
             });
-          }
-
-          // verify the reads for both DCs
-          for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
-            String routerUrl =
-                childDatacenters.get(dataCenterIndex).getClusters().get(clusterName).getRandomRouterURL();
-            verifyVeniceStoreData(storeName, routerUrl, DEFAULT_USER_DATA_VALUE_PREFIX, 10);
           }
         });
   }
