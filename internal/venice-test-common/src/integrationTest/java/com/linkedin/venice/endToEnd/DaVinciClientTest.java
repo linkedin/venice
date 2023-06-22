@@ -510,6 +510,8 @@ public class DaVinciClientTest {
         extraBackendConfigMap);
     try (CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory()) {
       DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient();
+      // Subscribe to data partition.
+      client.subscribe(Collections.singleton(dataPartition)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, true, true, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           assertEquals(client.get(i).get(), i);

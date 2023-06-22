@@ -160,7 +160,22 @@ public class DaVinciBackend implements Closeable {
       IsolatedIngestionUtils.destroyLingeringIsolatedIngestionProcess(configLoader);
       /**
        * The constructor of {@link #storageService} will take care of unused store/store version cleanup.
+       *
+       * When Ingestion Isolation is enabled, we don't want to restore data partitions here:
+       * 1. It is a waste of effort since all the opened partitioned will be closed right after.
+       * 2. When DaVinci memory limiter is enabled, currently, SSTFileManager doesn't clean up the entries belonging
+       *    to the closed database, which means when the Isolated process hands the database back to the main process,
+       *    some removed SST files (some SST files can be removed in Isolated Process because of log compaction) will
+       *    remain in SSTFileManager tracked file list.
+       * 3. We still want to open metadata partition, otherwise {@link StorageService} won't scan the local db folder.
+       *    Also opening metadata partition in main process won't cause much side effect from DaVinci memory limiter's
+       *    POV, since metadata partition won't be handed back to main process in the future.
+       * 4. When Ingestion Isolation is enabled with suppressing live update feature, main process needs to open all the
+       *    data partitions since Isolated Process won't re-ingest the existing partitions.
        */
+      boolean whetherToRestoreDataPartitions = !isIsolatedIngestion()
+          || configLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
+      LOGGER.info("DaVinci {} restore data partitions.", whetherToRestoreDataPartitions ? "will" : "won't");
       storageService = new StorageService(
           configLoader,
           aggVersionedStorageEngineStats,
@@ -168,7 +183,7 @@ public class DaVinciBackend implements Closeable {
           storeVersionStateSerializer,
           partitionStateSerializer,
           storeRepository,
-          true,
+          whetherToRestoreDataPartitions,
           true,
           functionToCheckWhetherStorageEngineShouldBeKeptOrNot(managedClients));
       storageService.start();

@@ -41,12 +41,13 @@ public interface StoreIngestionService extends MetadataRetriever {
   /**
    * Stops consuming messages from Kafka Partition corresponding to Venice Partition and wait up to
    * (sleepSeconds * numRetires) to make sure partition consumption is stopped.
-   * @param veniceStore Venice Store for the partition.
-   * @param partitionId Venice partition's id.
-   * @param sleepSeconds
-   * @param numRetries
    */
-  void stopConsumptionAndWait(VeniceStoreVersionConfig veniceStore, int partitionId, int sleepSeconds, int numRetries);
+  void stopConsumptionAndWait(
+      VeniceStoreVersionConfig veniceStore,
+      int partitionId,
+      int sleepSeconds,
+      int numRetries,
+      boolean whetherToResetOffset);
 
   /**
    * Kill all of running consumptions of given store.

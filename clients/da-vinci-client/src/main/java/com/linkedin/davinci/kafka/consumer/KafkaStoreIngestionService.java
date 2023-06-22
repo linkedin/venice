@@ -874,7 +874,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       VeniceStoreVersionConfig veniceStore,
       int partitionId,
       int sleepSeconds,
-      int numRetries) {
+      int numRetries,
+      boolean whetherToResetOffset) {
     String topicName = veniceStore.getStoreVersionName();
     if (isPartitionConsuming(topicName, partitionId)) {
       stopConsumption(veniceStore, partitionId);
@@ -903,7 +904,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     } else {
       LOGGER.warn("Partition: {} of topic: {} is not consuming, skipped the stop consumption.", partitionId, topicName);
     }
-    resetConsumptionOffset(veniceStore, partitionId);
+    if (whetherToResetOffset) {
+      resetConsumptionOffset(veniceStore, partitionId);
+      LOGGER.info("Reset consumption offset for topic: {}, partition: {}", topicName, partitionId);
+    }
     if (!ingestionTaskHasAnySubscription(topicName)) {
       if (isIsolatedIngestion) {
         LOGGER.info("Ingestion task for topic {} will be kept open for the access from main process.", topicName);
