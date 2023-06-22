@@ -30,7 +30,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
@@ -262,7 +261,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       long processingCycleTimeoutInMs,
       int maxWorkerThreadPoolSize,
       PubSubTopicRepository pubSubTopicRepository,
-      KafkaPubSubMessageDeserializer pubSubMessageDeserializer,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
       String regionName) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);

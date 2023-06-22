@@ -12,6 +12,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -27,13 +28,19 @@ public class TestBackupControllerResponse {
   public void backupControllerThrows421() throws Exception {
     String clusterName = "backupControllerThrows421";
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper kafka =
-            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
+        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
+                .setRegionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
+                .build());
         ControllerTransport transport = new ControllerTransport(Optional.empty());
-        VeniceControllerWrapper controller1 = ServiceFactory
-            .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build());
-        VeniceControllerWrapper controller2 = ServiceFactory
-            .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build())) {
+        VeniceControllerWrapper controller1 = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
+                .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
+                .build());
+        VeniceControllerWrapper controller2 = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
+                .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
+                .build())) {
       // TODO: Eliminate sleep to make test reliable
       Thread.sleep(2000);
       VeniceControllerWrapper nonLeaderController =

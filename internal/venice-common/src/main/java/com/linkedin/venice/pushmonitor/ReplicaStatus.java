@@ -112,8 +112,8 @@ public class ReplicaStatus {
     /**
      * Removed old statuses when status list is over MAX_HISTORY_LENGTH.
      * Preserve:
-     * 1. TOPIC_SWITCH_RECEIVED and END_OF_PUSH_RECEIVED
-     * 2. COMPLETED, inc pushes if there is only single copy
+     * 1. TOPIC_SWITCH_RECEIVED and END_OF_PUSH_RECEIVED, if there is only one single copy
+     * 2. COMPLETED and inc pushes, if there is only single copy
      *
      * TODO: If parallel inc push doesn't need inc status history, we can choose to keep only the current inc push status.
      */
@@ -131,33 +131,65 @@ public class ReplicaStatus {
       return;
     }
 
-    long completeCount = statusHistory.stream().filter(status -> status.getStatus() == COMPLETED).count();
-    long incPushCount = statusHistory.stream().filter(status -> isIncrementalPushStatus(status.getStatus())).count();
-    Iterator<StatusSnapshot> itr = statusHistory.iterator();
+    long completeCount = 0, incPushCount = 0, topicSwitchCount = 0, endOfPushCount = 0;
+    for (StatusSnapshot snapshot: statusHistory) {
+      ExecutionStatus status = snapshot.getStatus();
+      if (status == COMPLETED) {
+        completeCount++;
+      } else if (isIncrementalPushStatus(status)) {
+        incPushCount++;
+      } else if (status == TOPIC_SWITCH_RECEIVED) {
+        topicSwitchCount++;
+      } else if (status == END_OF_PUSH_RECEIVED) {
+        endOfPushCount++;
+      }
+    }
 
+    Iterator<StatusSnapshot> itr = statusHistory.iterator();
     while (itr.hasNext()) {
       if (statusHistory.size() < MAX_HISTORY_LENGTH) {
         break;
       }
       StatusSnapshot oldSnapshot = itr.next();
       ExecutionStatus oldStatus = oldSnapshot.getStatus();
-      if (oldStatus == TOPIC_SWITCH_RECEIVED || oldStatus == END_OF_PUSH_RECEIVED || isIncrementalPushStatus(oldStatus)
+      if (isIncrementalPushStatus(oldStatus)
           && oldSnapshot.getIncrementalPushVersion().equals(incrementalPushVersion)) {
         continue;
       }
+
       if (oldStatus == COMPLETED) {
         if (completeCount > 1) {
           itr.remove();
           completeCount--;
         }
-      } else if (isIncrementalPushStatus(oldStatus)) {
+        continue;
+      }
+
+      if (isIncrementalPushStatus(oldStatus)) {
         if (incPushCount > 1) {
           itr.remove();
           incPushCount--;
         }
-      } else {
-        itr.remove();
+        continue;
       }
+
+      if (oldStatus == TOPIC_SWITCH_RECEIVED) {
+        if (topicSwitchCount > 1) {
+          itr.remove();
+          topicSwitchCount--;
+        }
+        continue;
+      }
+
+      if (oldStatus == END_OF_PUSH_RECEIVED) {
+        if (endOfPushCount > 1) {
+          itr.remove();
+          endOfPushCount--;
+        }
+        continue;
+      }
+
+      itr.remove();
     }
   }
 

@@ -22,6 +22,8 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Time;
@@ -110,7 +112,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       Optional<Properties> childControllerPropertiesOverride,
       Optional<VeniceProperties> serverProperties,
       boolean forkServer) {
-    String parentRegionName = VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+    String parentRegionName = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfRegions);
 
@@ -122,13 +124,16 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     defaultParentControllerProps.setProperty(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, "false");
 
     ZkServerWrapper zkServer = null;
-    PubSubBrokerWrapper parentKafka = null;
-    List<PubSubBrokerWrapper> allKafkaBrokers = new ArrayList<>();
+    PubSubBrokerWrapper parentPubSubBrokerWrapper = null;
+    List<PubSubBrokerWrapper> allPubSubBrokerWrappers = new ArrayList<>();
 
     try {
       zkServer = ServiceFactory.getZkServer();
-      parentKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
-      allKafkaBrokers.add(parentKafka);
+      parentPubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+          new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
+              .setRegionName(DEFAULT_PARENT_DATA_CENTER_REGION_NAME)
+              .build());
+      allPubSubBrokerWrappers.add(parentPubSubBrokerWrapper);
 
       Properties parentControllerProps = parentControllerPropertiesOverride.isPresent()
           ? parentControllerPropertiesOverride.get().getPropertiesCopy()
@@ -151,7 +156,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       List<String> childRegionName = new ArrayList<>(numberOfRegions);
 
       for (int i = 0; i < numberOfRegions; i++) {
-        childRegionName.add("dc-" + i);
+        childRegionName.add(CHILD_REGION_NAME_PREFIX + i);
       }
 
       String childRegionList = String.join(",", childRegionName);
@@ -162,7 +167,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
        * and or Zookeeper servers.
        */
       Map<String, ZkServerWrapper> zkServerByRegionName = new HashMap<>(childRegionName.size());
-      Map<String, PubSubBrokerWrapper> kafkaBrokerByRegionName = new HashMap<>(childRegionName.size());
+      Map<String, PubSubBrokerWrapper> pubSubBrokerByRegionName = new HashMap<>(childRegionName.size());
 
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, true);
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, true);
@@ -187,16 +192,16 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       nativeReplicationRequiredChildControllerProps.put(ADMIN_TOPIC_SOURCE_REGION, parentRegionName);
       nativeReplicationRequiredChildControllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentRegionName);
       nativeReplicationRequiredChildControllerProps
-          .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentRegionName, parentKafka.getAddress());
+          .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentRegionName, parentPubSubBrokerWrapper.getAddress());
       for (String regionName: childRegionName) {
         ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper =
-            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).build());
-        allKafkaBrokers.add(pubSubBrokerWrapper);
+        PubSubBrokerWrapper regionalPubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).setRegionName(regionName).build());
+        allPubSubBrokerWrappers.add(regionalPubSubBrokerWrapper);
         zkServerByRegionName.put(regionName, zkServerWrapper);
-        kafkaBrokerByRegionName.put(regionName, pubSubBrokerWrapper);
+        pubSubBrokerByRegionName.put(regionName, regionalPubSubBrokerWrapper);
         nativeReplicationRequiredChildControllerProps
-            .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + regionName, pubSubBrokerWrapper.getAddress());
+            .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + regionName, regionalPubSubBrokerWrapper.getAddress());
       }
       Properties activeActiveRequiredChildControllerProps = new Properties();
       activeActiveRequiredChildControllerProps.put(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, childRegionList);
@@ -213,7 +218,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       childControllerPropertiesOverride.ifPresent(finalChildControllerProperties::putAll);
 
       Map<String, Map<String, String>> kafkaClusterMap =
-          addKafkaClusterIDMappingToServerConfigs(serverProperties, childRegionName, allKafkaBrokers);
+          addKafkaClusterIDMappingToServerConfigs(serverProperties, childRegionName, allPubSubBrokerWrappers);
 
       VeniceMultiClusterCreateOptions.Builder builder =
           new VeniceMultiClusterCreateOptions.Builder(numberOfClustersInEachRegion)
@@ -231,7 +236,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       for (int i = 0; i < numberOfRegions; i++) {
         String regionName = childRegionName.get(i);
         builder.regionName(regionName)
-            .kafkaBrokerWrapper(kafkaBrokerByRegionName.get(regionName))
+            .kafkaBrokerWrapper(pubSubBrokerByRegionName.get(regionName))
             .zkServerWrapper(zkServerByRegionName.get(regionName));
         VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(builder.build());
         multiClusters.add(multiClusterWrapper);
@@ -248,12 +253,13 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
           VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
       VeniceControllerCreateOptions options =
-          new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentKafka)
+          new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper)
               .replicationFactor(replicationFactor)
               .childControllers(childControllers)
               .extraProperties(finalParentControllerProperties)
               .clusterToD2(clusterToD2)
               .clusterToServerD2(clusterToServerD2)
+              .regionName(parentRegionName)
               .build();
       // Create parentControllers for multi-cluster
       for (int i = 0; i < numberOfParentControllers; i++) {
@@ -263,7 +269,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       }
 
       final ZkServerWrapper finalZkServer = zkServer;
-      final PubSubBrokerWrapper finalParentKafka = parentKafka;
+      final PubSubBrokerWrapper finalParentKafka = parentPubSubBrokerWrapper;
 
       return (serviceName) -> new VeniceTwoLayerMultiRegionMultiClusterWrapper(
           null,
@@ -276,7 +282,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     } catch (Exception e) {
       parentControllers.forEach(IOUtils::closeQuietly);
       multiClusters.forEach(IOUtils::closeQuietly);
-      IOUtils.closeQuietly(parentKafka);
+      IOUtils.closeQuietly(parentPubSubBrokerWrapper);
       IOUtils.closeQuietly(zkServer);
       throw e;
     }

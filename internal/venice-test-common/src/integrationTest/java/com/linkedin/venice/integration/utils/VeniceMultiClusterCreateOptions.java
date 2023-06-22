@@ -206,7 +206,7 @@ public class VeniceMultiClusterCreateOptions {
   }
 
   public static class Builder {
-    private String regionName = "";
+    private String regionName;
     private final int numberOfClusters;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
     private int numberOfServers = DEFAULT_NUMBER_OF_SERVERS;
@@ -340,6 +340,9 @@ public class VeniceMultiClusterCreateOptions {
       }
       if (kafkaClusterMap == null) {
         kafkaClusterMap = Collections.emptyMap();
+      }
+      if (regionName == null) {
+        throw new IllegalArgumentException("regionName cannot be null");
       }
     }
 

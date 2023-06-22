@@ -3,8 +3,8 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 
 
-public interface PubSubBrokerFactory {
-  StatefulServiceProvider<PubSubBrokerWrapper> generateService(PubSubBrokerConfigs configs);
+public interface PubSubBrokerFactory<BROKER extends PubSubBrokerWrapper> {
+  StatefulServiceProvider<BROKER> generateService(PubSubBrokerConfigs configs);
 
   String getServiceName();
 

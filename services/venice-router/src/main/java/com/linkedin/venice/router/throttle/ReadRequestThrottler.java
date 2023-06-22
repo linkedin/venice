@@ -72,6 +72,8 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   private final long storageNodeQuotaCheckTimeWindow;
   private final boolean perStorageNodeThrottlerEnabled;
 
+  private volatile boolean isNoopThrottlerEnabled;
+
   public ReadRequestThrottler(
       ZkRoutersClusterManager zkRoutersManager,
       ReadOnlyStoreRepository storeRepository,
@@ -117,6 +119,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     this.perStoreRouterQuotaBuffer = perStoreRouterQuotaBuffer;
     this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
     this.storesThrottlers = new AtomicReference<>(buildAllStoreReadThrottlers());
+    this.isNoopThrottlerEnabled = false;
   }
 
   /**
@@ -131,7 +134,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   @Override
   public void mayThrottleRead(String storeName, double readCapacityUnit, String storageNodeId)
       throws QuotaExceededException {
-    if (!zkRoutersManager.isThrottlingEnabled()) {
+    if (!zkRoutersManager.isThrottlingEnabled() || isNoopThrottlerEnabled) {
       return;
     }
     StoreReadThrottler throttler = storesThrottlers.get().get(storeName);
@@ -147,6 +150,11 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   @Override
   public int getReadCapacity() {
     return 1;
+  }
+
+  @Override
+  public void setIsNoopThrottlerEnabled(boolean isNoopThrottlerEnabled) {
+    this.isNoopThrottlerEnabled = isNoopThrottlerEnabled;
   }
 
   protected long calculateStoreQuotaPerRouter(long storeQuota) {

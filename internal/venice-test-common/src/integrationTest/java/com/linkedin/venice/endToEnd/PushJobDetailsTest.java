@@ -89,17 +89,8 @@ public class PushJobDetailsTest {
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
 
     Properties parentControllerProperties = new Properties();
-    parentControllerProperties.setProperty(ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "venice-cluster0"); // Need to
-                                                                                                              // add
-                                                                                                              // this in
-                                                                                                              // controller
-                                                                                                              // props
-                                                                                                              // when
-                                                                                                              // creating
-                                                                                                              // venice
-                                                                                                              // system
-                                                                                                              // for
-                                                                                                              // tests
+    // Need to add this in controller props when creating venice system for tests
+    parentControllerProperties.setProperty(ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "venice-cluster0");
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         1,
@@ -173,42 +164,47 @@ public class PushJobDetailsTest {
           fail("Unexpected exception thrown while reading from the venice store", e);
         }
       });
-      PushJobDetails value = client.get(key).get();
-      assertEquals(
-          value.clusterName.toString(),
-          childRegionClusterWrapper.getClusterName(),
-          "Unexpected cluster name from push job details");
-      assertTrue(value.reportTimestamp > 0, "Push job details report timestamp is missing");
+
       List<Integer> expectedStatuses = Arrays.asList(
           PushJobDetailsStatus.STARTED.getValue(),
           PushJobDetailsStatus.TOPIC_CREATED.getValue(),
           PushJobDetailsStatus.WRITE_COMPLETED.getValue(),
           PushJobDetailsStatus.COMPLETED.getValue());
-      assertEquals(
-          value.overallStatus.size(),
-          expectedStatuses.size(),
-          "Unexpected number of overall statuses in push job details");
-      for (int i = 0; i < expectedStatuses.size(); i++) {
-        assertEquals(value.overallStatus.get(i).status, (int) expectedStatuses.get(i));
-        assertTrue(value.overallStatus.get(i).timestamp > 0, "Timestamp for status tuple is missing");
-      }
-      assertFalse(value.coloStatus.isEmpty(), "Region status shouldn't be empty");
-      for (List<PushJobDetailsStatusTuple> tuple: value.coloStatus.values()) {
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        PushJobDetails value = client.get(key).get();
         assertEquals(
-            tuple.get(tuple.size() - 1).status,
-            PushJobDetailsStatus.COMPLETED.getValue(),
-            "Latest status for every region should be COMPLETED");
-        assertTrue(tuple.get(tuple.size() - 1).timestamp > 0, "Timestamp for region status tuple is missing");
-      }
-      assertTrue(value.jobDurationInMs > 0);
-      assertTrue(value.totalNumberOfRecords > 0);
-      assertTrue(value.totalKeyBytes > 0);
-      assertTrue(value.totalRawValueBytes > 0);
-      assertTrue(value.totalCompressedValueBytes > 0);
-      assertNotNull(value.pushJobConfigs);
-      assertFalse(value.pushJobConfigs.isEmpty());
-      assertNotNull(value.producerConfigs);
-      assertTrue(value.producerConfigs.isEmpty());
+            value.clusterName.toString(),
+            childRegionClusterWrapper.getClusterName(),
+            "Unexpected cluster name from push job details");
+        assertTrue(value.reportTimestamp > 0, "Push job details report timestamp is missing");
+        assertEquals(
+            value.overallStatus.size(),
+            expectedStatuses.size(),
+            "Unexpected number of overall statuses in push job details");
+
+        for (int i = 0; i < expectedStatuses.size(); i++) {
+          assertEquals(value.overallStatus.get(i).status, (int) expectedStatuses.get(i));
+          assertTrue(value.overallStatus.get(i).timestamp > 0, "Timestamp for status tuple is missing");
+        }
+        assertFalse(value.coloStatus.isEmpty(), "Region status shouldn't be empty");
+        for (List<PushJobDetailsStatusTuple> tuple: value.coloStatus.values()) {
+          assertEquals(
+              tuple.get(tuple.size() - 1).status,
+              PushJobDetailsStatus.COMPLETED.getValue(),
+              "Latest status for every region should be COMPLETED");
+          assertTrue(tuple.get(tuple.size() - 1).timestamp > 0, "Timestamp for region status tuple is missing");
+        }
+        assertTrue(value.jobDurationInMs > 0);
+        assertTrue(value.totalNumberOfRecords > 0);
+        assertTrue(value.totalKeyBytes > 0);
+        assertTrue(value.totalRawValueBytes > 0);
+        assertTrue(value.totalCompressedValueBytes > 0);
+        assertNotNull(value.pushJobConfigs);
+        assertFalse(value.pushJobConfigs.isEmpty());
+        assertNotNull(value.producerConfigs);
+        assertTrue(value.producerConfigs.isEmpty());
+      });
     }
 
     // Verify records (note, records 1-100 have been pushed)

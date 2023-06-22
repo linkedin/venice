@@ -18,8 +18,8 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -64,7 +64,7 @@ public class DumpAdminMessages {
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     OptimizedKafkaValueSerializer valueDeserializer = new OptimizedKafkaValueSerializer();
-    KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
+    PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         valueDeserializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));

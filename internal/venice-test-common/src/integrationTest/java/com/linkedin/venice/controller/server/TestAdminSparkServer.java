@@ -592,14 +592,14 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanListFutureStoreVersions() {
     List<String> storeNames = new ArrayList<>();
-    storeNames.add(cluster.getNewStore("testStore").getName());
     try {
       ControllerClient parentControllerClient = ControllerClient
           .constructClusterControllerClient(cluster.getClusterName(), parentController.getControllerUrl());
+      storeNames.add(parentControllerClient.createNewStore("testStore", "owner", "\"string\"", "\"string\"").getName());
       MultiStoreStatusResponse storeResponse =
           parentControllerClient.getFutureVersions(cluster.getClusterName(), storeNames.get(0));
 
-      // Theres no version for this store and no future version coming, so we expect an entry with
+      // There's no version for this store and no future version coming, so we expect an entry with
       // Store.NON_EXISTING_VERSION
       Assert.assertTrue(storeResponse.getStoreStatusMap().containsKey("dc-0"));
       Assert.assertEquals(storeResponse.getStoreStatusMap().get("dc-0"), String.valueOf(Store.NON_EXISTING_VERSION));

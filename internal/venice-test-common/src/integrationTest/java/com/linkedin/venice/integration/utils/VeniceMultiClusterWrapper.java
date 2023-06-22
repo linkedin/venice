@@ -8,7 +8,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -60,8 +60,14 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         zkServerWrapper = ServiceFactory.getZkServer();
       }
       if (pubSubBrokerWrapper == null) {
-        pubSubBrokerWrapper =
-            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).build());
+        pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
+            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper)
+                .setRegionName(options.getRegionName())
+                .build());
+      } else if (!pubSubBrokerWrapper.getRegionName().equals(options.getRegionName())) {
+        throw new RuntimeException(
+            "PubSubBrokerWrapper region name " + pubSubBrokerWrapper.getRegionName()
+                + " does not match with the region name " + options.getRegionName() + " in the options");
       }
       String[] clusterNames = new String[options.getNumberOfClusters()];
       Map<String, String> clusterToD2 = new HashMap<>();
@@ -120,7 +126,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       // Specify the system store cluster name
       Properties extraProperties = options.getVeniceProperties().toProperties();
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
-      extraProperties.putAll(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
+      extraProperties.putAll(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       VeniceClusterCreateOptions.Builder vccBuilder =
           new VeniceClusterCreateOptions.Builder().regionName(options.getRegionName())
               .standalone(false)

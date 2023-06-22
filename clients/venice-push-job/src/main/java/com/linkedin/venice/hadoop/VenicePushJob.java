@@ -54,6 +54,8 @@ import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
+import com.linkedin.venice.hadoop.validation.NoOpValidator;
+import com.linkedin.venice.hadoop.validation.Validator;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -73,6 +75,7 @@ import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -409,6 +412,11 @@ public class VenicePushJob implements AutoCloseable {
   public static final String TARGETED_REGION_PUSH_LIST = "targeted.region.push.list";
 
   /**
+   * Config to enable post validation and consumption in VPJ when {@link #TARGETED_REGION_PUSH_ENABLED} is true.
+   */
+  public static final String POST_VALIDATION_CONSUMPTION_ENABLED = "post.validation.consumption.enabled";
+
+  /**
    * Since the job is calculating the raw data file size, which is not accurate because of compression,
    * key/value schema and backend storage overhead, we are applying this factor to provide a more
    * reasonable estimation.
@@ -517,6 +525,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean d2Routing;
     String targetedRegions;
     boolean isTargetedRegionPushEnabled;
+    boolean postValidationConsumption;
   }
 
   protected PushJobSetting pushJobSetting;
@@ -537,6 +546,7 @@ public class VenicePushJob implements AutoCloseable {
     int amplificationFactor;
     boolean chunkingEnabled;
     boolean rmdChunkingEnabled;
+    String kafkaSourceRegion;
   }
 
   private TopicInfo kafkaTopicInfo;
@@ -690,6 +700,10 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     pushJobSettingToReturn.repushTTLInSeconds = NOT_SET;
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
+    pushJobSettingToReturn.postValidationConsumption = props.getBoolean(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+    if (pushJobSettingToReturn.isIncrementalPush && pushJobSettingToReturn.isTargetedRegionPushEnabled) {
+      throw new VeniceException("Incremental push is not supported while using targeted region push mode");
+    }
     if (props.containsKey(TARGETED_REGION_PUSH_LIST)) {
       if (pushJobSettingToReturn.isTargetedRegionPushEnabled) {
         pushJobSettingToReturn.targetedRegions = props.getString(TARGETED_REGION_PUSH_LIST);
@@ -1158,7 +1172,8 @@ public class VenicePushJob implements AutoCloseable {
               pushJobSetting.incrementalPushVersion,
               controllerClient,
               pushJobSetting,
-              kafkaTopicInfo);
+              kafkaTopicInfo,
+              pushJobSetting.targetedRegions);
         }
 
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
@@ -1167,6 +1182,21 @@ public class VenicePushJob implements AutoCloseable {
         updatePushJobDetailsWithConfigs();
         updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
+
+        // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
+        if (!(pushJobSetting.isTargetedRegionPushEnabled && pushJobSetting.postValidationConsumption)) {
+          return;
+        }
+        /**
+         * Post validation + consumption
+         */
+        Set<String> candidateRegions = getRegionsForPostValidationConsumption();
+        if (candidateRegions.isEmpty()) {
+          LOGGER.info("No region that needs post-validation consumption identified. Finish the job now.");
+          return;
+        }
+        postPushValidation();
+        postValidationConsumption(candidateRegions);
       }
     } catch (Throwable e) {
       LOGGER.error("Failed to run job.", e);
@@ -1204,6 +1234,73 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.rmdSchemaDir != null) {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
+    }
+  }
+
+  /**
+   * Get the set of regions that haven't been pushed yet after targeted region push.
+   * @return a set of regions that haven't been pushed yet.
+   */
+  private Set<String> getRegionsForPostValidationConsumption() {
+    Set<String> targetedRegions = RegionUtils.parseRegionsFilterList(pushJobSetting.targetedRegions);
+    Set<String> candidateRegions =
+        new HashSet<>(storeSetting.storeResponse.getStore().getColoToCurrentVersions().keySet());
+    candidateRegions.removeAll(targetedRegions);
+    return candidateRegions;
+  }
+
+  /**
+   * Start a group of validation job to verify result from the previous targeted region push is healthy.
+   */
+  void postPushValidation() {
+    if (kafkaTopicInfo.kafkaSourceRegion == null) {
+      throw new VeniceException("Post-validation consumption halted due to no available source region found");
+    }
+
+    // TODO: Add parallelism support when we have more validators. It's premature to do so now.
+    Validator noOpValidator = new NoOpValidator();
+    noOpValidator.validate();
+  }
+
+  /**
+   * Kick off the post-validation consumption on the rest of regions that haven't been pushed yet.
+   * @param candidateRegions
+   */
+  void postValidationConsumption(Set<String> candidateRegions) {
+    // get the latest version of the store for data recovery
+    Version sourceVersion = getStoreVersion(pushJobSetting.storeName, kafkaTopicInfo.version);
+
+    if (sourceVersion.getHybridStoreConfig() != null) {
+      // perform data recovery for HYBRID stores
+      pushJobSetting.isTargetedRegionPushEnabled = false;
+      pushJobSetting.targetedRegions = null;
+      // set up repush
+      pushJobSetting.isSourceKafka = true;
+      pushJobSetting.kafkaInputBrokerUrl = kafkaTopicInfo.kafkaUrl;
+      pushJobSetting.kafkaInputTopic = kafkaTopicInfo.topic;
+      this.run();
+    } else {
+      // perform data recovery for BATCH stores
+      for (String region: candidateRegions) {
+        ControllerResponse response = controllerClient.dataRecovery(
+            kafkaTopicInfo.kafkaSourceRegion,
+            region,
+            pushJobSetting.storeName,
+            sourceVersion.getNumber(),
+            true,
+            true,
+            Optional.of(sourceVersion));
+        if (response.isError()) {
+          throw new VeniceException("Can't push data for region " + region + ". " + response.getError());
+        }
+      }
+      // Essentially, the remaining regions are "targeted" regions now
+      pollStatusUntilComplete(
+          Optional.empty(),
+          controllerClient,
+          pushJobSetting,
+          kafkaTopicInfo,
+          RegionUtils.composeRegionList(candidateRegions));
     }
   }
 
@@ -2312,9 +2409,6 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException(
             "The store either does not have native replication mode enabled or set up default source fabric.");
       }
-      if (setting.isIncrementalPush) {
-        throw new VeniceException("Incremental push is not supported while using targeted region push mode");
-      }
     }
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
@@ -2458,6 +2552,7 @@ public class VenicePushJob implements AutoCloseable {
     kafkaTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
     kafkaTopicInfo.chunkingEnabled = storeSetting.isChunkingEnabled && !Version.isRealTimeTopic(kafkaTopicInfo.topic);
     kafkaTopicInfo.rmdChunkingEnabled = kafkaTopicInfo.chunkingEnabled && storeSetting.isRmdChunkingEnabled;
+    kafkaTopicInfo.kafkaSourceRegion = versionCreationResponse.getKafkaSourceRegion();
 
     if (pushJobSetting.isSourceKafka) {
       /**
@@ -2472,35 +2567,20 @@ public class VenicePushJob implements AutoCloseable {
        *
        * TODO: maybe we should fail fast before creating a new version.
        */
-      StoreResponse storeResponse = ControllerClient
-          .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
-      if (storeResponse.isError()) {
-        throw new VeniceException(
-            "Failed to retrieve store response with urls: " + setting.veniceControllerUrl + ", error: "
-                + storeResponse.getError());
-      }
-      int newVersionNum = kafkaTopicInfo.version;
-      Optional<Version> newVersionOptional = storeResponse.getStore().getVersion(newVersionNum);
-      if (!newVersionOptional.isPresent()) {
-        throw new VeniceException(
-            "Couldn't fetch the newly created version: " + newVersionNum + " for store: " + setting.storeName
-                + " with urls: " + setting.veniceControllerUrl);
-      }
-      Version newVersion = newVersionOptional.get();
+      Version newVersion = getStoreVersion(setting.storeName, kafkaTopicInfo.version);
       Version sourceVersion = storeSetting.sourceKafkaInputVersionInfo;
 
       // Chunked source version cannot be repushed if new version is not chunking enabled.
       if (sourceVersion.isChunkingEnabled() && !newVersion.isChunkingEnabled()) {
         throw new VeniceException(
-            "Chunking config mismatch between the source and the new version of store "
-                + storeResponse.getStore().getName() + ". Source version: " + sourceVersion.getNumber() + " is using: "
-                + sourceVersion.isChunkingEnabled() + ", new version: " + newVersion.getNumber() + " is using: "
-                + newVersion.isChunkingEnabled());
+            "Chunking config mismatch between the source and the new version of store " + setting.storeName
+                + ". Source version: " + sourceVersion.getNumber() + " is using: " + sourceVersion.isChunkingEnabled()
+                + ", new version: " + newVersion.getNumber() + " is using: " + newVersion.isChunkingEnabled());
       }
       if (sourceVersion.isRmdChunkingEnabled() && !newVersion.isRmdChunkingEnabled()) {
         throw new VeniceException(
-            "RMD Chunking config mismatch between the source and the new version of store "
-                + storeResponse.getStore().getName() + ". Source version: " + sourceVersion.getNumber() + " is using: "
+            "RMD Chunking config mismatch between the source and the new version of store " + setting.storeName
+                + ". Source version: " + sourceVersion.getNumber() + " is using: "
                 + sourceVersion.isRmdChunkingEnabled() + ", new version: " + newVersion.getNumber() + " is using: "
                 + newVersion.isRmdChunkingEnabled());
       }
@@ -2591,12 +2671,18 @@ public class VenicePushJob implements AutoCloseable {
    *
    * If any datacenter report an explicit error status, we throw an exception and fail the job. However, datacenters
    * with COMPLETED status will be serving new data.
+   * @param incrementalPushVersion, optional incremental push version
+   * @param controllerClient, controller client to send query to poll status
+   * @param pushJobSetting, push job setting
+   * @param topicInfo, the kafka topic info from the newly created Version
+   * @param targetedRegions if specified, only poll the status of the specified regions, otherwise it can be null
    */
   void pollStatusUntilComplete(
       Optional<String> incrementalPushVersion,
       ControllerClient controllerClient,
       PushJobSetting pushJobSetting,
-      TopicInfo topicInfo) {
+      TopicInfo topicInfo,
+      String targetedRegions) {
     // Set of datacenters that have reported a completed status at least once.
     Set<String> completedDatacenters = new HashSet<>();
     // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
@@ -2632,8 +2718,7 @@ public class VenicePushJob implements AutoCloseable {
       JobStatusQueryResponse response = ControllerClient.retryableRequest(
           controllerClient,
           pushJobSetting.controllerStatusPollRetries,
-          client -> client
-              .queryOverallJobStatus(topicToMonitor, incrementalPushVersion, pushJobSetting.targetedRegions));
+          client -> client.queryOverallJobStatus(topicToMonitor, incrementalPushVersion, targetedRegions));
 
       if (response.isError()) {
         // status could not be queried which could be due to a communication error.
@@ -3103,6 +3188,30 @@ public class VenicePushJob implements AutoCloseable {
      * These values were populated to schemaInfo in the same function but in driver */
     conf.set(KEY_FIELD_PROP, pushJobSchemaInfo.getKeyField());
     conf.set(VALUE_FIELD_PROP, pushJobSchemaInfo.getValueField());
+  }
+
+  /**
+   * Query the controller to retrieve a specific version
+   * @param storeName
+   * @param version
+   * @return
+   */
+  private Version getStoreVersion(String storeName, int version) {
+    StoreResponse storeResponse = ControllerClient
+        .retryableRequest(controllerClient, pushJobSetting.controllerRetries, c -> c.getStore(storeName));
+    if (storeResponse.isError()) {
+      throw new VeniceException(
+          "Failed to retrieve store response with urls: " + pushJobSetting.veniceControllerUrl + ", error: "
+              + storeResponse.getError());
+    }
+    Optional<Version> newVersion = storeResponse.getStore().getVersion(version);
+    if (!newVersion.isPresent()) {
+      throw new VeniceException(
+          "Couldn't fetch the newly created version: " + version + " for store: " + storeName + " with urls: "
+              + pushJobSetting.veniceControllerUrl);
+    }
+
+    return newVersion.get();
   }
 
   private void logPushJobProperties(

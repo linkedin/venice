@@ -36,7 +36,6 @@ import com.linkedin.venice.server.VeniceServerContext;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.ForkedJavaProcess;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -49,6 +48,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -93,7 +93,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
    * proper configurations.
    */
   private boolean forkServer = false;
-  private String regionName = "";
+  private String regionName;
   private String clusterName;
   private int listenPort;
   private String serverConfigPath;
@@ -122,7 +122,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     this.config = config;
     this.consumerClientConfig = consumerClientConfig;
     this.sslFactory = sslFactory;
-    this.regionName = regionName;
+    this.regionName = Objects.requireNonNull(regionName, "Region name cannot be null for VeniceServerWrapper");
     this.pubSubClientsFactory = pubSubClientsFactory;
   }
 
@@ -166,7 +166,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       this.d2ServiceName = consumerClientConfig.getD2ServiceName();
     }
     this.serverName = serverName;
-    this.regionName = regionName;
+    this.regionName = Objects.requireNonNull(regionName, "Region name cannot be null for VeniceServerWrapper");
   }
 
   static StatefulServiceProvider<VeniceServerWrapper> generateService(
@@ -225,7 +225,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(configProperties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
-        serverPropsBuilder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
+        serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       }
 
       VeniceProperties serverProps = serverPropsBuilder.build();

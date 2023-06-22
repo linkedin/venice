@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -24,6 +25,7 @@ public class TestWritePathComputation {
     VeniceMultiClusterCreateOptions options = new VeniceMultiClusterCreateOptions.Builder(1).numberOfControllers(1)
         .numberOfServers(1)
         .numberOfRouters(0)
+        .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
         .build();
     try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(options)) {
       String clusterName = multiClusterWrapper.getClusterNames()[0];
@@ -40,7 +42,9 @@ public class TestWritePathComputation {
       String controllerUrl =
           multiClusterWrapper.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getControllerUrl();
       try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl)) {
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+        TestUtils.assertCommand(
+            controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true)),
+            "Write Compute should be enabled");
         Assert.assertTrue(admin.getStore(clusterName, storeName).isWriteComputationEnabled());
 
         // Reset flag

@@ -21,6 +21,7 @@ import org.apache.helix.model.CustomizedStateConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LiveInstance;
+import org.apache.helix.model.MaintenanceSignal;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.zookeeper.zkclient.DataUpdater;
 import org.apache.logging.log4j.LogManager;
@@ -166,20 +167,20 @@ public class HelixUtils {
     throw new ZkDataAccessException(path, "set", retryCount);
   }
 
-  public static <T> void updateChildren(ZkBaseDataAccessor<T> dataAccessor, List<String> pathes, List<T> data) {
-    updateChildren(dataAccessor, pathes, data, DEFAULT_HELIX_OP_RETRY_COUNT);
+  public static <T> void updateChildren(ZkBaseDataAccessor<T> dataAccessor, List<String> paths, List<T> data) {
+    updateChildren(dataAccessor, paths, data, DEFAULT_HELIX_OP_RETRY_COUNT);
   }
 
   // TODO there is not atomic operations to update multiple node to ZK. We should ask Helix library to rollback if it's
   // only partial successful.
   public static <T> void updateChildren(
       ZkBaseDataAccessor<T> dataAccessor,
-      List<String> pathes,
+      List<String> paths,
       List<T> data,
       int retryCount) {
     int retry = 0;
     while (retry < retryCount) {
-      boolean[] results = dataAccessor.setChildren(pathes, data, AccessOption.PERSISTENT);
+      boolean[] results = dataAccessor.setChildren(paths, data, AccessOption.PERSISTENT);
       boolean isAllSuccessful = true;
       for (Boolean r: results) {
         if (!r) {
@@ -193,7 +194,7 @@ public class HelixUtils {
       retry++;
       if (retry == retryCount) {
         throw new ZkDataAccessException(
-            pathes.get(0).substring(0, pathes.get(0).lastIndexOf('/')),
+            paths.get(0).substring(0, paths.get(0).lastIndexOf('/')),
             "update children",
             retryCount);
       }
@@ -333,6 +334,19 @@ public class HelixUtils {
     } else {
       return true;
     }
+  }
+
+  /**
+   * If a cluster is in maintenance mode it returns all the signals associated with it regarding the reason
+   * and other details for creating the maintenance mode.
+   * @param clusterName
+   * @param manager
+   * @return the maintenance mode signal if the cluster is in maintenance mode, otherwise returns null.
+   */
+  public static MaintenanceSignal getClusterMaintenanceSignal(String clusterName, SafeHelixManager manager) {
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+    SafeHelixDataAccessor accessor = manager.getHelixDataAccessor();
+    return accessor.getProperty(keyBuilder.maintenance());
   }
 
   /**

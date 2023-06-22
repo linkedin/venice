@@ -1,13 +1,18 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.utils.collections.NullSkippingIteratorWrapper;
+import java.util.AbstractCollection;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import java.util.function.IntFunction;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 
@@ -156,5 +161,47 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
 
   public synchronized List<E> subList(int fromIndex, int toIndex) {
     return super.subList(fromIndex, toIndex);
+  }
+
+  public E computeIfAbsent(int index, IntFunction<? extends E> mappingFunction) {
+    E element = get(index);
+    if (element == null) {
+      synchronized (this) {
+        element = get(index);
+        if (element == null) {
+          element = mappingFunction.apply(index);
+          set(index, element);
+        }
+      }
+    }
+    return element;
+  }
+
+  public Collection<E> values() {
+    return new ValueCollection<>(this::iterator);
+  }
+
+  static class ValueCollection<E> extends AbstractCollection<E> {
+    private final Supplier<Iterator<E>> iteratorSupplier;
+
+    ValueCollection(Supplier<Iterator<E>> iteratorSupplier) {
+      this.iteratorSupplier = iteratorSupplier;
+    }
+
+    @Override
+    public Iterator<E> iterator() {
+      return new NullSkippingIteratorWrapper<>(iteratorSupplier.get());
+    }
+
+    @Override
+    public int size() {
+      Iterator<E> iterator = new NullSkippingIteratorWrapper(iteratorSupplier.get());
+      int populatedSize = 0;
+      while (iterator.hasNext()) {
+        iterator.next();
+        populatedSize++;
+      }
+      return populatedSize;
+    }
   }
 }

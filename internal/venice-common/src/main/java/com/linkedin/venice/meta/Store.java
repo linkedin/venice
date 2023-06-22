@@ -287,4 +287,8 @@ public interface Store {
   boolean isSystemStore();
 
   void fixMissingFields();
+
+  boolean isStorageNodeReadQuotaEnabled();
+
+  void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled);
 }

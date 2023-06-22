@@ -41,6 +41,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
+import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
@@ -565,10 +566,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           reusedRawValue,
           binaryDecoder,
           null,
-          compressionStrategy,
-          serverConfig.isComputeFastAvroEnabled(),
-          schemaRepository,
-          storeName,
+          schemaRepository.getSupersetOrLatestValueSchema(storeName).getId(),
+          RawBytesStoreDeserializerCache.getInstance(),
           compressor.get());
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
           LatencyUtils.getLatencyInMS(lookupStartTimeInNS),

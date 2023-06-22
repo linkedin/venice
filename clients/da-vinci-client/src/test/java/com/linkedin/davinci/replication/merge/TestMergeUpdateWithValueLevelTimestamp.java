@@ -112,6 +112,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
     doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
+        .getValueSchema(storeName, incomingValueSchemaId);
+    doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
     StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
         new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);

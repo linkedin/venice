@@ -534,7 +534,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         VeniceStoreVersionConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
         // Make sure partition is not consuming, so we can safely close the rocksdb partition
         long startTimeInMs = System.currentTimeMillis();
-        getStoreIngestionService().stopConsumptionAndWait(storeConfig, partitionId, 1, stopConsumptionWaitRetriesNum);
+        getStoreIngestionService()
+            .stopConsumptionAndWait(storeConfig, partitionId, 1, stopConsumptionWaitRetriesNum, false);
         // Close all RocksDB sub-Partitions in Ingestion Service.
         getStorageService().closeStorePartition(storeConfig, partitionId);
         LOGGER.info(

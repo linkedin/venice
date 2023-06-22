@@ -124,7 +124,8 @@ public class PushStatusCollector {
       if (!pushStatus.isMonitoring()) {
         continue;
       }
-      if (pushStatus.getDaVinciStatus() != null && pushStatus.getDaVinciStatus().getStatus().isTerminal()) {
+      if (pushStatus.getDaVinciStatus() != null && pushStatus.getDaVinciStatus().getStatus().isTerminal()
+          && !pushStatus.getDaVinciStatus().isNoDaVinciStatusReport()) {
         resultList.add(CompletableFuture.completedFuture(pushStatus));
       } else {
         resultList.add(CompletableFuture.supplyAsync(() -> {
@@ -150,6 +151,7 @@ public class PushStatusCollector {
       }
       ExecutionStatusWithDetails daVinciStatus = pushStatus.getDaVinciStatus();
       if (daVinciStatus.isNoDaVinciStatusReport()) {
+        LOGGER.info("Received empty DaVinci status report for topic: {}", pushStatus.topicName);
         // poll DaVinci status more
         int noDaVinciStatusRetryAttempts = topicToNoDaVinciStatusRetryCountMap.compute(pushStatus.topicName, (k, v) -> {
           if (v == null) {
@@ -166,6 +168,11 @@ public class PushStatusCollector {
       } else {
         topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
       }
+      LOGGER.info(
+          "Received DaVinci status: {} with details: {} for topic: {}",
+          daVinciStatus.getStatus(),
+          daVinciStatus.getDetails(),
+          pushStatus.topicName);
       ExecutionStatusWithDetails serverStatus = pushStatus.getServerStatus();
       if (serverStatus == null) {
         continue;
@@ -175,21 +182,30 @@ public class PushStatusCollector {
           pushStatus.getTopicName(),
           serverStatus.getStatus(),
           daVinciStatus.getStatus());
-      if (serverStatus.getStatus().equals(ExecutionStatus.COMPLETED)
-          && daVinciStatus.getStatus().equals(ExecutionStatus.COMPLETED)) {
-        pushStatus.setMonitoring(false);
-        pushCompletedHandler.accept(pushStatus.getTopicName());
-      } else if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)
-          || daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
-        pushStatus.setMonitoring(false);
-        StringBuilder pushErrorDetailStringBuilder = new StringBuilder();
-        if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)) {
-          pushErrorDetailStringBuilder.append("Server push error: ").append(serverStatus.getDetails()).append("\n");
+      try {
+        if (serverStatus.getStatus().equals(ExecutionStatus.COMPLETED)
+            && daVinciStatus.getStatus().equals(ExecutionStatus.COMPLETED)) {
+          pushStatus.setMonitoring(false);
+          pushCompletedHandler.accept(pushStatus.getTopicName());
+        } else if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)
+            || daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
+          pushStatus.setMonitoring(false);
+          StringBuilder pushErrorDetailStringBuilder = new StringBuilder();
+          if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)) {
+            pushErrorDetailStringBuilder.append("Server push error: ").append(serverStatus.getDetails()).append("\n");
+          }
+          if (daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
+            pushErrorDetailStringBuilder.append("Da Vinci push error: ")
+                .append(daVinciStatus.getDetails())
+                .append("\n");
+          }
+          pushErrorHandler.accept(pushStatus.getTopicName(), pushErrorDetailStringBuilder.toString());
         }
-        if (daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
-          pushErrorDetailStringBuilder.append("Da Vinci push error: ").append(daVinciStatus.getDetails()).append("\n");
-        }
-        pushErrorHandler.accept(pushStatus.getTopicName(), pushErrorDetailStringBuilder.toString());
+      } catch (Exception e) {
+        LOGGER.error(
+            "Caught exception when calling handler for terminal push status for topic: {}",
+            pushStatus.getTopicName(),
+            e);
       }
     }
   }

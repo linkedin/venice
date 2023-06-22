@@ -421,7 +421,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
     kafkaStoreIngestionService.startConsumption(config, 0);
-    kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1);
+    kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1, true);
     StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     if (isIsolatedIngestion) {
       Assert.assertNotNull(storeIngestionTask);
@@ -431,7 +431,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService.startConsumption(config, 0);
     storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     storeIngestionTask.setPartitionConsumptionState(1, mock(PartitionConsumptionState.class));
-    kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1);
+    kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1, true);
     Assert.assertNotNull(storeIngestionTask);
   }
 

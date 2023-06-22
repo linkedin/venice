@@ -14,4 +14,6 @@ public interface RouterThrottler {
   void mayThrottleRead(String storeName, double readCapacityUnit, String storageNodeId) throws QuotaExceededException;
 
   int getReadCapacity();
+
+  void setIsNoopThrottlerEnabled(boolean isNoopThrottlerEnabled);
 }

@@ -21,10 +21,10 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -155,12 +155,12 @@ public class PubSubSharedProducerAdapterFactoryTest {
         sharedKafkaProducerAdapterFactory.close();
       }
     }
-    KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         new KafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumerAdapter pubSubConsumer =
-        pubSubConsumerAdapterFactory.create(new VeniceProperties(properties), false, pubSubMessageDeserializer, "")) {
+    try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory
+        .create(new VeniceProperties(properties), false, pubSubMessageDeserializer, "TestConsumer")) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(existingTopic, 0);
       Long end = pubSubConsumer.endOffset(pubSubTopicPartition);
       Assert.assertTrue(end > 100L); // to account for the SOP that VW sends internally.

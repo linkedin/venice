@@ -666,6 +666,12 @@
               },
               "doc": "This field is used to maintain a mapping between each type of system store and the corresponding distinct properties",
               "default": {}
+            },
+            {
+              "name": "storageNodeReadQuotaEnabled",
+              "type": "boolean",
+              "doc": "Controls the storage node read quota enforcement for the given Venice store",
+              "default": false
             }
           ]
         }

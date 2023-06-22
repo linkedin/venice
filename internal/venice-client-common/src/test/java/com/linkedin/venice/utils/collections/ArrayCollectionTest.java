@@ -1,4 +1,4 @@
-package com.linkedin.venice.utils;
+package com.linkedin.venice.utils.collections;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;

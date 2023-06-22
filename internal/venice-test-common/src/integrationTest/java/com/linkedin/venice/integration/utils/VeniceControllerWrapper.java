@@ -45,6 +45,7 @@ import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELET
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -62,7 +63,6 @@ import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -97,7 +97,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   public static final String SUPERSET_SCHEMA_GENERATOR = "SupersetSchemaGenerator";
 
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
-  public static final String DEFAULT_PARENT_DATA_CENTER_REGION_NAME = "dc-parent-0";
 
   private VeniceController service;
   private final List<VeniceProperties> configs;
@@ -204,9 +203,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(PUSH_STATUS_STORE_ENABLED, true)
-            .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 5)
             .put(CONCURRENT_INIT_ROUTINES_ENABLED, true)
             .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
             .put(extraProps.toProperties());
 
         if (sslEnabled) {
@@ -215,7 +214,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
         if (options.isSslToKafka()) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
-          builder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
+          builder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
         }
 
         String fabricAllowList = "";
@@ -262,7 +261,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
            * and in parent fabric, there can be more than one Kafka clusters, so we might need more
            * than one parent fabric name even though logically there is only one parent fabric.
            */
-          String parentDataCenterName1 = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+          String parentDataCenterName1 = VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
           String nativeReplicationSourceFabricAllowlist = fabricAllowList + "," + parentDataCenterName1;
           builder.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, nativeReplicationSourceFabricAllowlist);
           builder.put(
@@ -346,7 +345,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   private static String createDataCenterNameWithIndex(int index) {
-    return "dc-" + index;
+    return CHILD_REGION_NAME_PREFIX + index;
   }
 
   @Override

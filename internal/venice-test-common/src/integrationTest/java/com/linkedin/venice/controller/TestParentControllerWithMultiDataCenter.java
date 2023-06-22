@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -14,6 +16,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -58,6 +61,8 @@ public class TestParentControllerWithMultiDataCenter {
   public void setUp() {
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, 2);
+    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3);
+    controllerProps.put(DEFAULT_PARTITION_SIZE, 1024);
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
@@ -101,13 +106,14 @@ public class TestParentControllerWithMultiDataCenter {
       final long expectedHybridRewindSeconds = 100;
       final long expectedHybridOffsetLagThreshold = 100;
       final BufferReplayPolicy expectedHybridBufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
-      final UpdateStoreQueryParams updateStoreParams =
-          new UpdateStoreQueryParams().setHybridRewindSeconds(expectedHybridRewindSeconds)
-              .setHybridOffsetLagThreshold(expectedHybridOffsetLagThreshold)
-              .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
-              .setChunkingEnabled(true)
-              .setRmdChunkingEnabled(true)
-              .setAmplificationFactor(2);
+      final UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams().setStorageQuotaInByte(1)
+          .setHybridRewindSeconds(expectedHybridRewindSeconds)
+          .setHybridOffsetLagThreshold(expectedHybridOffsetLagThreshold)
+          .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
+          .setChunkingEnabled(true)
+          .setRmdChunkingEnabled(true)
+          .setAmplificationFactor(2)
+          .setStorageNodeReadQuotaEnabled(true);
 
       TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
@@ -138,11 +144,12 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           Assert.assertTrue(storeInfo.isChunkingEnabled());
           Assert.assertTrue(storeInfo.isRmdChunkingEnabled());
-          Assert.assertEquals(storeInfo.getPartitionCount(), 2);
+          Assert.assertEquals(storeInfo.getPartitionCount(), 2); // hybrid partition count from the config
+          Assert.assertTrue(storeInfo.isStorageNodeReadQuotaEnabled());
         }
       });
 
-      // Turn off hybrid config so we can update the partitioner config.
+      // Turn off hybrid config, so we can update the partitioner config.
       final UpdateStoreQueryParams updateStoreParams2 =
           new UpdateStoreQueryParams().setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1);
       TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams2);
@@ -182,14 +189,15 @@ public class TestParentControllerWithMultiDataCenter {
       TestWriteUtils.updateStore(
           incPushStoreName,
           parentControllerClient,
-          new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setIncrementalPushEnabled(true));
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         for (ControllerClient controllerClient: controllerClients) {
           StoreResponse storeResponse = controllerClient.getStore(incPushStoreName);
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
           Assert.assertNotNull(storeInfo.getHybridStoreConfig());
-          Assert.assertEquals(storeInfo.getPartitionCount(), 2);
+          Assert.assertEquals(storeInfo.getPartitionCount(), 3); // max partition count from the config
         }
       });
     }

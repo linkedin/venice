@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -26,6 +27,7 @@ public class StoreBackend {
   private final Set<Integer> faultyVersionSet = new HashSet<>();
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
   private final ConcurrentRef<VersionBackend> daVinciCurrentVersionRef = new ConcurrentRef<>(this::deleteVersion);
+  private final AvroStoreDeserializerCache storeDeserializerCache;
   private VersionBackend daVinciCurrentVersion;
   private VersionBackend daVinciFutureVersion;
 
@@ -36,6 +38,7 @@ public class StoreBackend {
     this.config =
         new StoreBackendConfig(backend.getConfigLoader().getVeniceServerConfig().getDataBasePath(), storeName);
     this.stats = new StoreBackendStats(backend.getMetricsRepository(), storeName);
+    this.storeDeserializerCache = new AvroStoreDeserializerCache(backend.getSchemaRepository(), storeName, true);
     try {
       backend.getStoreRepository().subscribe(storeName);
     } catch (InterruptedException e) {
@@ -357,5 +360,9 @@ public class StoreBackend {
     VersionBackend version = daVinciFutureVersion;
     setDaVinciFutureVersion(null);
     setDaVinciCurrentVersion(version);
+  }
+
+  public AvroStoreDeserializerCache getStoreDeserializerCache() {
+    return storeDeserializerCache;
   }
 }
