@@ -15,9 +15,6 @@ import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -31,7 +28,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -108,11 +104,6 @@ public class VeniceController {
             .setRouterClientConfig(routerClientConfig.orElse(null))
             .setIcProvider(icProvider.orElse(null))
             .setExternalSupersetSchemaGenerator(externalSupersetSchemaGenerator.orElse(null))
-            .setPubSubClientsFactory(
-                new PubSubClientsFactory(
-                    new ApacheKafkaProducerAdapterFactory(),
-                    new ApacheKafkaConsumerAdapterFactory(),
-                    new ApacheKafkaAdminAdapterFactory()))
             .build());
   }
 
@@ -128,7 +119,10 @@ public class VeniceController {
     this.routerClientConfig = Optional.ofNullable(ctx.getRouterClientConfig());
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
-    this.pubSubClientsFactory = Objects.requireNonNull(ctx.getPubSubClientsFactory(), "PubSubClientsFactory is null");
+    this.pubSubClientsFactory = new PubSubClientsFactory(
+        multiClusterConfigs.getPubSubProducerAdapterFactory(),
+        multiClusterConfigs.getPubSubConsumerAdapterFactory(),
+        multiClusterConfigs.getPubSubAdminAdapterFactory());
     createServices();
   }
 
@@ -303,17 +297,11 @@ public class VeniceController {
 
     String zkAddress = controllerProps.getString(ZOOKEEPER_ADDRESS);
     D2Client d2Client = D2ClientFactory.getD2Client(zkAddress, Optional.empty());
-
-    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
-        new ApacheKafkaProducerAdapterFactory(),
-        new ApacheKafkaConsumerAdapterFactory(),
-        new ApacheKafkaAdminAdapterFactory());
     VeniceController controller = new VeniceController(
         new VeniceControllerContext.Builder()
             .setPropertiesList(Arrays.asList(new VeniceProperties[] { controllerProps }))
             .setServiceDiscoveryAnnouncers(new ArrayList<>())
             .setD2Client(d2Client)
-            .setPubSubClientsFactory(pubSubClientsFactory)
             .build());
     controller.start();
     addShutdownHook(controller, zkAddress);

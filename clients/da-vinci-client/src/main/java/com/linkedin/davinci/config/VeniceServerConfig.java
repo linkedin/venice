@@ -28,6 +28,9 @@ import static com.linkedin.venice.ConfigKeys.MAX_FUTURE_VERSION_LEADER_FOLLOWER_
 import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
@@ -118,6 +121,9 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -408,6 +414,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final List<String> forkedProcessJvmArgList;
 
   private final long divProducerStateMaxAgeMs;
+  private final PubSubAdminAdapterFactory pubSubAdminAdapterFactory;
+
+  private final PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory;
+  private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -652,6 +662,25 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     this.divProducerStateMaxAgeMs =
         serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, KafkaDataIntegrityValidator.DISABLED);
+    try {
+      String producerFactoryClassName = serverProperties.getString(
+          PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+          "com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory");
+      pubSubProducerAdapterFactory =
+          (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
+      String consumerFactoryClassName = serverProperties.getString(
+          PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+          "com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory");
+      pubSubConsumerAdapterFactory =
+          (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
+      String adminFactoryClassName = serverProperties.getString(
+          PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
+          "com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory");
+      pubSubAdminAdapterFactory = (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
+    } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
+      LOGGER.error("Failed to create an instance of pub sub clients factory", e);
+      throw new VeniceException(e);
+    }
   }
 
   long extractIngestionMemoryLimit(
@@ -1156,5 +1185,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getDivProducerStateMaxAgeMs() {
     return this.divProducerStateMaxAgeMs;
+  }
+
+  public PubSubProducerAdapterFactory getPubSubProducerAdapterFactory() {
+    return pubSubProducerAdapterFactory;
+  }
+
+  public PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory() {
+    return pubSubConsumerAdapterFactory;
+  }
+
+  public PubSubAdminAdapterFactory getPubSubAdminAdapterFactory() {
+    return pubSubAdminAdapterFactory;
   }
 }

@@ -71,6 +71,9 @@ import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
@@ -92,6 +95,9 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
@@ -270,6 +276,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean parentExternalSupersetSchemaGenerationEnabled;
 
   private final boolean systemSchemaInitializationAtStartTimeEnabled;
+
+  private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
+
+  private final PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory;
+
+  private final PubSubAdminAdapterFactory pubSubAdminAdapterFactory;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -477,6 +489,27 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
     this.systemSchemaInitializationAtStartTimeEnabled =
         props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
+
+    try {
+      String producerFactoryClassName = props.getString(
+          PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+          "com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory");
+      pubSubProducerAdapterFactory =
+          (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
+      String consumerFactoryClassName = props.getString(
+          PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+          "com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory");
+      pubSubConsumerAdapterFactory =
+          (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
+      String adminFactoryClassName = props.getString(
+          PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
+          "com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory");
+      pubSubAdminAdapterFactory = (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
+    } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
+      LOGGER.error("Failed to create an instance of pub sub clients factory", e);
+      throw new VeniceException(e);
+    }
+
   }
 
   private void validateActiveActiveConfigs() {
@@ -883,6 +916,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isSystemSchemaInitializationAtStartTimeEnabled() {
     return systemSchemaInitializationAtStartTimeEnabled;
+  }
+
+  public PubSubProducerAdapterFactory getPubSubProducerAdapterFactory() {
+    return pubSubProducerAdapterFactory;
+  }
+
+  public PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory() {
+    return pubSubConsumerAdapterFactory;
+  }
+
+  public PubSubAdminAdapterFactory getPubSubAdminAdapterFactory() {
+    return pubSubAdminAdapterFactory;
   }
 
   /**

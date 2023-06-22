@@ -37,15 +37,9 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     TestMockTime mockTime = new TestMockTime();
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setMockTime(mockTime).setRegionName(STANDALONE_REGION_NAME).build());
-    topicManager =
-        IntegrationTestPushUtils
-            .getTopicManagerRepo(
-                500L,
-                100L,
-                MIN_COMPACTION_LAG,
-                pubSubBrokerWrapper,
-                new PubSubTopicRepository())
-            .getTopicManager();
+    topicManager = IntegrationTestPushUtils
+        .getTopicManagerRepo(500L, 100L, MIN_COMPACTION_LAG, pubSubBrokerWrapper, new PubSubTopicRepository())
+        .getTopicManager();
   }
 
   protected PubSubProducerAdapter createPubSubProducerAdapter() {
