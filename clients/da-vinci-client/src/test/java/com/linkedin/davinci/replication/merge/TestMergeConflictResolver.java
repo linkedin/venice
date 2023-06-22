@@ -74,6 +74,7 @@ public class TestMergeConflictResolver {
     doReturn(rmdSchemaEntry).when(schemaRepository).getReplicationMetadataSchema(anyString(), anyInt(), anyInt());
     SchemaEntry valueSchemaEntry = new SchemaEntry(1, userSchemaV1);
     doReturn(valueSchemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(anyString());
+    doReturn(valueSchemaEntry).when(schemaRepository).getValueSchema(anyString(), anyInt());
   }
 
   private void validateTestInputSchemas() {

@@ -55,11 +55,11 @@ public class EstimateDataRecoveryTimeCommand extends Command {
   @Override
   public void execute() {
     // get store's push + partition info
-    String storeName = getParams().getStore();
+    String storeName = getParams().store;
     String clusterName = getParams().getPCtrlCliWithoutCluster().discoverCluster(storeName).getCluster();
 
     try (ControllerClient parentCtrlCli =
-        buildControllerClient(clusterName, getParams().getParentUrl(), getParams().getSslFactory())) {
+        buildControllerClient(clusterName, getParams().getParentUrl(), getParams().getSSLFactory())) {
       StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(getParams().getStore(), true);
       Map<String, RegionPushDetails> pushDetails = storeHealthInfo.getRegionPushDetails();
 
@@ -84,14 +84,6 @@ public class EstimateDataRecoveryTimeCommand extends Command {
     private String parentUrl;
     private Optional<SSLFactory> sslFactory;
 
-    public Params(Params p) {
-      setStore(p.getStore());
-      setPCtrlCliWithoutCluster(p.getPCtrlCliWithoutCluster());
-      setTargetRegion(p.getTargetRegion());
-      setSslFactory(p.getSslFactory());
-      setParentUrl((p.getParentUrl()));
-    }
-
     public Params() {
     }
 
@@ -99,32 +91,71 @@ public class EstimateDataRecoveryTimeCommand extends Command {
       return targetRegion;
     }
 
-    public void setTargetRegion(String targetRegion) {
-      this.targetRegion = targetRegion;
-    }
-
     public ControllerClient getPCtrlCliWithoutCluster() {
       return pCtrlCliWithoutCluster;
     }
 
-    public void setPCtrlCliWithoutCluster(ControllerClient pCtrlCliWithoutCluster) {
-      this.pCtrlCliWithoutCluster = pCtrlCliWithoutCluster;
-    }
-
-    public Optional<SSLFactory> getSslFactory() {
+    public Optional<SSLFactory> getSSLFactory() {
       return sslFactory;
-    }
-
-    public void setSslFactory(Optional<SSLFactory> sslFactory) {
-      this.sslFactory = sslFactory;
     }
 
     public String getParentUrl() {
       return parentUrl;
     }
 
-    public void setParentUrl(String parentUrl) {
-      this.parentUrl = parentUrl;
+    public static class Builder {
+      private String targetRegion;
+      private ControllerClient pCtrlCliWithoutCluster;
+      private String parentUrl;
+      private Optional<SSLFactory> sslFactory;
+
+      public Builder() {
+      }
+
+      public Builder(
+          String targetRegion,
+          ControllerClient controllerClient,
+          String parentUrl,
+          Optional<SSLFactory> sslFactory) {
+        this.setTargetRegion(targetRegion)
+            .setPCtrlCliWithoutCluster(controllerClient)
+            .setParentUrl(parentUrl)
+            .setSSLFactory(sslFactory);
+      }
+
+      public Builder(EstimateDataRecoveryTimeCommand.Params p) {
+        this(p.targetRegion, p.pCtrlCliWithoutCluster, p.parentUrl, p.sslFactory);
+      }
+
+      public EstimateDataRecoveryTimeCommand.Params build() {
+        EstimateDataRecoveryTimeCommand.Params ret = new EstimateDataRecoveryTimeCommand.Params();
+        ret.targetRegion = targetRegion;
+        ret.pCtrlCliWithoutCluster = pCtrlCliWithoutCluster;
+        ret.parentUrl = parentUrl;
+        ret.sslFactory = sslFactory;
+        return ret;
+      }
+
+      public EstimateDataRecoveryTimeCommand.Params.Builder setTargetRegion(String targetRegion) {
+        this.targetRegion = targetRegion;
+        return this;
+      }
+
+      public EstimateDataRecoveryTimeCommand.Params.Builder setParentUrl(String parentUrl) {
+        this.parentUrl = parentUrl;
+        return this;
+      }
+
+      public EstimateDataRecoveryTimeCommand.Params.Builder setSSLFactory(Optional<SSLFactory> sslFactory) {
+        this.sslFactory = sslFactory;
+        return this;
+      }
+
+      public EstimateDataRecoveryTimeCommand.Params.Builder setPCtrlCliWithoutCluster(
+          ControllerClient controllerClient) {
+        this.pCtrlCliWithoutCluster = controllerClient;
+        return this;
+      }
     }
   }
 

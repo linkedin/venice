@@ -74,6 +74,7 @@ import static com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
@@ -81,10 +82,12 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
+import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -184,6 +187,7 @@ public class ControllerClient implements Closeable {
     List<String> urls = new ArrayList<>(this.controllerDiscoveryUrls);
     Collections.shuffle(urls);
 
+    Exception lastConnectException = null;
     Exception lastException = null;
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url: urls) {
@@ -195,10 +199,28 @@ public class ControllerClient implements Closeable {
           return leaderControllerUrl;
         } catch (Exception e) {
           LOGGER.warn("Unable to discover leader controller from {}", url);
-          lastException = e;
+          if (ExceptionUtils.recursiveClassEquals(e, ConnectException.class)) {
+            lastConnectException = e;
+          } else {
+            lastException = e;
+          }
         }
       }
     }
+
+    /**
+     * During normal operation, some hosts might be down for maintenance. Over time, the host list might even get
+     * stale. So, when requests are made to hosts which no longer host venice controllers or routers,
+     * {@link ConnectException} will be thrown. When the request actually leads to an error, all active hosts in
+     * the host list will throw this error and the inactive hosts will throw the {@link ConnectException}. In such
+     * cases, the {@link ConnectException} is not actionable by the user. If after trying all controllers and routers,
+     * we still don't have any other non-{@link ConnectException}, the {@link ConnectException} is the most actionable
+     * exception, and we throw that.
+     */
+    if (lastException == null) {
+      lastException = lastConnectException;
+    }
+
     String message = "Unable to discover leader controller from " + this.controllerDiscoveryUrls;
     LOGGER.error(message, lastException);
     throw new VeniceException(message, lastException);
@@ -1105,6 +1127,7 @@ public class ControllerClient implements Closeable {
     List<String> urls = new ArrayList<>(this.controllerDiscoveryUrls);
     Collections.shuffle(urls);
 
+    Exception lastConnectException = null;
     Exception lastException = null;
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url: urls) {
@@ -1119,15 +1142,49 @@ public class ControllerClient implements Closeable {
             // TODO: Routers also support fetching the store name via query params. So, once sufficient time has passed,
             // this check can be changed to break out of the loop on non-5XX errors.
 
+            // Do not attempt querying further if host explicitly returns that store was not found.
+            // If Controllers have been upgraded to recent versions, they will return the proper STORE_NOT_FOUND
+            // ErrorType.
+            if (e.getErrorType() == ErrorType.STORE_NOT_FOUND) {
+              lastException = e;
+              break;
+            }
+
+            // If Controllers have not been upgraded recently, they will return a 404 status with GENERAL_ERROR as the
+            // ErrorType.
+            if (e.getErrorType() == ErrorType.GENERAL_ERROR && e.getHttpStatusCode() == 404) {
+              lastException =
+                  new VeniceHttpException(e.getHttpStatusCode(), e.getMessage(), e, ErrorType.STORE_NOT_FOUND);
+              break;
+            }
+
             String routerPath = ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName;
             return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
           }
         } catch (Exception e) {
           LOGGER.warn("Unable to discover cluster for store {} from {}", storeName, url);
-          lastException = e;
+          if (ExceptionUtils.recursiveClassEquals(e, ConnectException.class)) {
+            lastConnectException = e;
+          } else {
+            lastException = e;
+          }
         }
       }
     }
+
+    /**
+     * During normal operation, some hosts might be down for maintenance. Over time, the host list might even get
+     * stale. So, when requests are made to hosts which no longer host venice controllers or routers,
+     * {@link ConnectException} will be thrown. When the request actually leads to an error, all active hosts in
+     * the host list will throw this error and the inactive hosts will throw the {@link ConnectException}. In such
+     * cases, the {@link ConnectException} is not actionable by the user. If after trying all controllers and routers,
+     * we still don't have any other non-{@link ConnectException}, the {@link ConnectException} is the most actionable
+     * exception, and we throw that.
+     */
+    if (lastException == null) {
+      lastException = lastConnectException;
+    }
+
     String message = "Unable to discover cluster for store " + storeName + " from " + this.controllerDiscoveryUrls;
     return makeErrorResponse(message, lastException, D2ServiceDiscoveryResponse.class);
   }

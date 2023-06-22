@@ -288,6 +288,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final boolean ingestionCheckpointDuringGracefulShutdownEnabled;
 
   protected boolean isDataRecovery;
+  protected int dataRecoverySourceVersionNumber;
   protected final MetaStoreWriter metaStoreWriter;
   protected final Function<String, String> kafkaClusterUrlResolver;
   /** TODO Get rid of this map once we delete the dedicated consumer mode */

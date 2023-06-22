@@ -118,13 +118,14 @@ public abstract class AbstractPushMonitor
     this.pushStatusCollector = new PushStatusCollector(
         metadataRepository,
         pushStatusStoreReader,
-        (topic) -> handleCompletedPush(getOfflinePush(topic)),
-        (topic, details) -> handleErrorPush(getOfflinePush(topic), details),
-        controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled(),
-        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds(),
-        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber(),
-        controllerConfig.getOfflinePushMonitorDaVinciPushStatusScanNoDaVinciStatusReportRetryMaxAttempt());
-    this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled();
+        (topic) -> handleCompletedPush(topic),
+        (topic, details) -> handleErrorPush(topic, details),
+        controllerConfig.isDaVinciPushStatusScanEnabled(),
+        controllerConfig.getDaVinciPushStatusScanIntervalInSeconds(),
+        controllerConfig.getDaVinciPushStatusScanThreadNumber(),
+        controllerConfig.getDaVinciPushStatusScanNoReportRetryMaxAttempt(),
+        controllerConfig.getDaVinciPushStatusScanMaxOfflineInstance());
+    this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
     pushStatusCollector.start();
   }
 
@@ -642,21 +643,6 @@ public abstract class AbstractPushMonitor
     }
   }
 
-  public boolean wouldJobFail(String topic, PartitionAssignment partitionAssignmentAfterRemoving) {
-    String storeName = Version.parseStoreFromKafkaTopicName(topic);
-    try (AutoCloseableLock ignore = clusterLockManager.createStoreReadLock(storeName)) {
-      if (!topicToPushMap.containsKey(topic)) {
-        // the offline push has been terminated and archived.
-        return false;
-      } else {
-        OfflinePushStatus offlinePush = getOfflinePush(topic);
-        Pair<ExecutionStatus, Optional<String>> status = PushStatusDecider.getDecider(offlinePush.getStrategy())
-            .checkPushStatusAndDetails(offlinePush, partitionAssignmentAfterRemoving);
-        return status.getFirst().equals(ExecutionStatus.ERROR);
-      }
-    }
-  }
-
   protected abstract Pair<ExecutionStatus, Optional<String>> checkPushStatus(
       OfflinePushStatus pushStatus,
       PartitionAssignment partitionAssignment,
@@ -935,15 +921,19 @@ public abstract class AbstractPushMonitor
     }
   }
 
-  protected void handleCompletedPush(OfflinePushStatus pushStatus) {
-    routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
+  protected void handleCompletedPush(String topic) {
+    routingDataRepository.unSubscribeRoutingDataChange(topic, this);
+    OfflinePushStatus pushStatus = getOfflinePush(topic);
+    if (pushStatus == null) {
+      LOGGER.warn("Could not find OfflinePushStatus for topic: {}, will skip push completion handling", topic);
+      return;
+    }
     LOGGER.info(
         "Updating offline push status, push for: {} old status: {}, new status: {}",
-        pushStatus.getKafkaTopic(),
+        topic,
         pushStatus.getCurrentStatus(),
         ExecutionStatus.COMPLETED);
 
-    String topic = pushStatus.getKafkaTopic();
     long durationSecs = getDurationInSec(pushStatus);
     pushStatus.setSuccessfulPushDurationInSecs(durationSecs);
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -974,17 +964,22 @@ public abstract class AbstractPushMonitor
     LOGGER.info("Offline push for topic: {} is completed.", pushStatus.getKafkaTopic());
   }
 
-  protected void handleErrorPush(OfflinePushStatus pushStatus, String statusDetails) {
-    routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
+  protected void handleErrorPush(String topic, String statusDetails) {
+    routingDataRepository.unSubscribeRoutingDataChange(topic, this);
+    OfflinePushStatus pushStatus = getOfflinePush(topic);
+    if (pushStatus == null) {
+      LOGGER.warn("Could not find OfflinePushStatus for topic: {}, will skip push error handling", topic);
+      return;
+    }
     LOGGER.info(
         "Updating offline push status, push for: {} is now {}, new status: {}, statusDetails: {}",
-        pushStatus.getKafkaTopic(),
+        topic,
         pushStatus.getCurrentStatus(),
         ExecutionStatus.ERROR,
         statusDetails);
     updatePushStatus(pushStatus, ExecutionStatus.ERROR, Optional.of(statusDetails));
-    String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
-    int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     try {
       updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ERROR);
       aggPushHealthStats.recordFailedPush(storeName, getDurationInSec(pushStatus));

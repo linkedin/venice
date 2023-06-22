@@ -46,7 +46,6 @@ public class TestAvroStoreClient {
   @BeforeClass
   public void setUp() throws VeniceClientException, IOException {
     mockTransportClient = mock(TransportClient.class);
-    doReturn(mockTransportClient).when(mockTransportClient).getCopyIfNotUsableInCallback();
 
     byte[] schemaResponseInBytes = StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, KEY_SCHEMA_STR);
     setupSchemaResponse(schemaResponseInBytes, RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);

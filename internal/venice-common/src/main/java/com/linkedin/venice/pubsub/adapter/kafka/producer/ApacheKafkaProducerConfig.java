@@ -1,5 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -24,7 +26,6 @@ public class ApacheKafkaProducerConfig {
   public static final String KAFKA_BOOTSTRAP_SERVERS = KAFKA_CONFIG_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG;
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = KAFKA_CONFIG_PREFIX + ProducerConfig.RETRIES_CONFIG;
   public static final String KAFKA_LINGER_MS = KAFKA_CONFIG_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
-  public static final String KAFKA_BATCH_SIZE = KAFKA_CONFIG_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG;
   public static final String KAFKA_BUFFER_MEMORY = KAFKA_CONFIG_PREFIX + ProducerConfig.BUFFER_MEMORY_CONFIG;
   public static final String KAFKA_CLIENT_ID = KAFKA_CONFIG_PREFIX + ProducerConfig.CLIENT_ID_CONFIG;
   public static final String KAFKA_KEY_SERIALIZER = KAFKA_CONFIG_PREFIX + ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG;
@@ -35,14 +36,21 @@ public class ApacheKafkaProducerConfig {
   public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
       KAFKA_CONFIG_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl." + KAFKA_BOOTSTRAP_SERVERS;
+
   /**
    * N.B. do not attempt to change spelling, "kakfa", without carefully replacing all instances in use and some of them
    * may be external to this repo
-   * @deprecated Use {@link KAFKA_OVER_SSL}
+   * @deprecated Use {@link #KAFKA_OVER_SSL} instead
    */
   @Deprecated
   public static final String SSL_TO_KAFKA_LEGACY = "ssl.to.kakfa";
   public static final String KAFKA_OVER_SSL = KAFKA_CONFIG_PREFIX + "over.ssl";
+
+  /**
+   * Default Kafka batch size and linger time for better producer performance during ingestion.
+   */
+  public static final String DEFAULT_KAFKA_BATCH_SIZE = "524288";
+  public static final String DEFAULT_KAFKA_LINGER_MS = "1000";
 
   private final Properties producerProperties;
 
@@ -64,11 +72,28 @@ public class ApacheKafkaProducerConfig {
       this.producerProperties.put(ProducerConfig.CLIENT_ID_CONFIG, producerName);
     }
 
+    if (allVeniceProperties.getBoolean(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, false)) {
+      addHighThroughputDefaults();
+    }
+
     // Setup ssl config if needed.
     if (KafkaSSLUtils.validateAndCopyKafkaSSLConfig(allVeniceProperties, this.producerProperties)) {
       LOGGER.info("Will initialize an SSL Kafka producer");
     } else {
       LOGGER.info("Will initialize a non-SSL Kafka producer");
+    }
+  }
+
+  /**
+   * Setup default batch size and linger time for better producing performance during server new push ingestion.
+   * These configs are set for large volume ingestion, not for integration test.
+   */
+  private void addHighThroughputDefaults() {
+    if (!producerProperties.containsKey(ProducerConfig.BATCH_SIZE_CONFIG)) {
+      producerProperties.put(ProducerConfig.BATCH_SIZE_CONFIG, DEFAULT_KAFKA_BATCH_SIZE);
+    }
+    if (!producerProperties.containsKey(ProducerConfig.LINGER_MS_CONFIG)) {
+      producerProperties.put(ProducerConfig.LINGER_MS_CONFIG, DEFAULT_KAFKA_LINGER_MS);
     }
   }
 

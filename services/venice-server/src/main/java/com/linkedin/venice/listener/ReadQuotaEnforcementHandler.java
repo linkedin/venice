@@ -16,7 +16,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
@@ -127,25 +126,34 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, RouterRequest request) {
-    if (!isInitialized()) {
-      // If we haven't completed initialization, allow all requests
+    String storeName = request.getStoreName();
+    Store store = storeRepository.getStore(storeName);
+    if (store == null) {
+      ctx.writeAndFlush(
+          new HttpShortcutResponse(
+              "Invalid request resource " + request.getResourceName(),
+              HttpResponseStatus.BAD_REQUEST));
+      return;
+    }
+    if (!isInitialized() || !store.isStorageNodeReadQuotaEnabled()) {
+      // If we haven't completed initialization or store does not have SN read quota enabled, allow all requests
       // Note: not recording any metrics. Lack of metrics indicates an issue with initialization
       ReferenceCountUtil.retain(request);
       ctx.fireChannelRead(request);
       return;
     }
     int rcu = getRcu(request); // read capacity units
-    String storeName = Version.parseStoreFromKafkaTopicName(request.getResourceName());
 
     /**
      * First check store bucket for capacity; don't throttle retried request at store version level
      */
-    if (storeVersionBuckets.containsKey(request.getResourceName()) && !request.isRetryRequest()) {
-      if (!storeVersionBuckets.get(request.getResourceName()).tryConsume(rcu)) {
+    TokenBucket tokenBucket = storeVersionBuckets.get(request.getResourceName());
+    if (tokenBucket != null && !request.isRetryRequest()) {
+      if (!tokenBucket.tryConsume(rcu)) {
         // TODO: check if extra node capacity and can still process this request out of quota
         stats.recordRejected(storeName, rcu);
         if (enforcing) {
-          long storeQuota = storeRepository.getStore(storeName).getReadQuotaInCU();
+          long storeQuota = store.getReadQuotaInCU();
           float thisNodeRcuPerSecond = storeVersionBuckets.get(request.getResourceName()).getAmortizedRefillPerSecond();
           String errorMessage =
               "Total quota for store " + storeName + " is " + storeQuota + " RCU per second. Storage Node " + thisNodeId
@@ -294,7 +302,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       List<String> readyToServeInstances = new ArrayList<>();
       for (ReplicaState replicaState: customizedViewRepository
           .getReplicaStates(partitionAssignment.getTopic(), p.getId())) {
-        if (replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name())) {
+        if (replicaState.isReadyToServe()) {
           readyToServeInstances.add(replicaState.getParticipantId());
         }
       }

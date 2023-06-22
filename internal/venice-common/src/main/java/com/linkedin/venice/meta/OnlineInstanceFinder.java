@@ -2,7 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
-import com.linkedin.venice.routerapi.ReplicaState;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.List;
 import java.util.Map;
 
@@ -28,15 +28,15 @@ public interface OnlineInstanceFinder {
   List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
 
   /**
+   * Query instances that are online (in leader or follower state), but not necessarily ready to serve yet.
+   */
+  List<Instance> getWorkingInstances(String kafkaTopic, int partitionId);
+
+  /**
    * Query instances that belong to given kafka topic and partition.
    * @return a map that has {@link com.linkedin.venice.helix.HelixState} as the key and list of instances as the value
    */
-  Map<String, List<Instance>> getAllInstances(String kafkaTopic, int partitionId);
-
-  /**
-   * @return a list of {@link ReplicaState} with replica level details about a given store name, version and partition.
-   */
-  List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId);
+  Map<ExecutionStatus, List<Instance>> getAllInstances(String kafkaTopic, int partitionId);
 
   /**
    * Query number of partition in given kafka topic.

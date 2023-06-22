@@ -5,15 +5,13 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
+import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 
 
 public class TestPushStatusDecider {
   protected String topic = "testTopic";
-  protected int numberOfPartition = 4;
+  protected int numberOfPartition = 2;
   protected int replicationFactor = 3;
   protected String nodeId = "localhost_1234";
   protected PartitionAssignment partitionAssignment;
@@ -21,9 +19,11 @@ public class TestPushStatusDecider {
   public void createPartitions(int numberOfPartition, int replicationFactor) {
     for (int i = 0; i < numberOfPartition; i++) {
       List<Instance> instances = createInstances(replicationFactor);
-      Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
-      stateToInstancesMap.put(HelixState.BOOTSTRAP_STATE, instances);
-      Partition partition = new Partition(i, stateToInstancesMap);
+
+      EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+      EnumMap<ExecutionStatus, List<Instance>> executionStatusToInstancesMap = new EnumMap<>(ExecutionStatus.class);
+      executionStatusToInstancesMap.put(ExecutionStatus.STARTED, instances);
+      Partition partition = new Partition(i, helixStateToInstancesMap, executionStatusToInstancesMap);
       partitionAssignment.addPartition(partition);
     }
   }
@@ -35,35 +35,5 @@ public class TestPushStatusDecider {
       instances.add(instance);
     }
     return instances;
-  }
-
-  protected Partition changeReplicaState(Partition partition, String instanceId, HelixState newState) {
-    Map<String, List<Instance>> newStateToInstancesMap = new HashMap<>();
-    Instance targetInstance = null;
-    for (String state: partition.getAllInstances().keySet()) {
-      List<Instance> oldInstances = partition.getAllInstances().get(state);
-      List<Instance> newInstances = new ArrayList<>(oldInstances);
-      Iterator<Instance> iterator = newInstances.iterator();
-      while (iterator.hasNext()) {
-        Instance instance = iterator.next();
-        if (instance.getNodeId().equals(instanceId)) {
-          targetInstance = instance;
-          iterator.remove();
-        }
-      }
-      if (!newInstances.isEmpty()) {
-        newStateToInstancesMap.put(state, newInstances);
-      }
-    }
-    if (targetInstance == null) {
-      throw new IllegalStateException("Can not find instance:" + instanceId);
-    }
-    List<Instance> newInstances = newStateToInstancesMap.get(newState.name());
-    if (newInstances == null) {
-      newInstances = new ArrayList<>();
-      newStateToInstancesMap.put(newState.name(), newInstances);
-    }
-    newInstances.add(targetInstance);
-    return new Partition(partition.getId(), newStateToInstancesMap);
   }
 }

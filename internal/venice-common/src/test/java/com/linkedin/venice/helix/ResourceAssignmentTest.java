@@ -5,10 +5,10 @@ import static com.linkedin.venice.helix.ResourceAssignment.ResourceAssignmentCha
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -121,13 +121,12 @@ public class ResourceAssignmentTest {
   }
 
   private Partition getDefaultPartition(int partitionId, int replicaNum, HelixState helixState) {
-    Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
+    EnumMap<HelixState, List<Instance>> stateToInstancesMap = new EnumMap<>(HelixState.class);
     for (int i = 0; i < replicaNum; i++) {
-      stateToInstancesMap
-          .put(helixState.name(), Collections.singletonList(new Instance(String.valueOf(i), "localhost", i)));
+      stateToInstancesMap.put(helixState, Collections.singletonList(new Instance(String.valueOf(i), "localhost", i)));
     }
 
-    return new Partition(partitionId, stateToInstancesMap);
+    return new Partition(partitionId, stateToInstancesMap, new EnumMap<>(ExecutionStatus.class));
   }
 
 }

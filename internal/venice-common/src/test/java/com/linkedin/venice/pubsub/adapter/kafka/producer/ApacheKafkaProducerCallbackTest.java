@@ -47,12 +47,7 @@ public class ApacheKafkaProducerCallbackTest {
     assertTrue(internalCallback.isInvoked());
     assertNotNull(internalCallback.getException());
     assertEquals(internalCallback.getException(), exception);
-    assertNotNull(internalCallback.getProduceResult());
-
-    PubSubProduceResult produceResult = internalCallback.getProduceResult();
-    assertEquals(produceResult.getTopic(), recordMetadata.topic());
-    assertEquals(produceResult.getPartition(), recordMetadata.partition());
-    assertEquals(produceResult.getOffset(), recordMetadata.offset());
+    assertNull(internalCallback.getProduceResult());
   }
 
   @Test(expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Unknown topic: topicX.*")

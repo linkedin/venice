@@ -13,10 +13,12 @@ public class DataRecoveryVersionConfigImpl implements DataRecoveryVersionConfig 
 
   public DataRecoveryVersionConfigImpl(
       @JsonProperty("dataRecoverySourceFabric") String dataRecoverySourceFabric,
-      @JsonProperty("isDataRecoveryComplete") boolean isDataRecoveryComplete) {
+      @JsonProperty("isDataRecoveryComplete") boolean isDataRecoveryComplete,
+      @JsonProperty("dataRecoverySourceVersionNumber") int dataRecoverySourceVersionNumber) {
     dataRecoveryConfig = new DataRecoveryConfig();
     dataRecoveryConfig.dataRecoverySourceFabric = dataRecoverySourceFabric;
     dataRecoveryConfig.isDataRecoveryComplete = isDataRecoveryComplete;
+    dataRecoveryConfig.dataRecoverySourceVersionNumber = dataRecoverySourceVersionNumber;
   }
 
   DataRecoveryVersionConfigImpl(DataRecoveryConfig dataRecoveryConfig) {
@@ -49,6 +51,16 @@ public class DataRecoveryVersionConfigImpl implements DataRecoveryVersionConfig 
   }
 
   @Override
+  public int getDataRecoverySourceVersionNumber() {
+    return dataRecoveryConfig.dataRecoverySourceVersionNumber;
+  }
+
+  @Override
+  public void setDataRecoverySourceVersionNumber(int dataRecoverySourceVersionNumber) {
+    dataRecoveryConfig.dataRecoverySourceVersionNumber = dataRecoverySourceVersionNumber;
+  }
+
+  @Override
   public boolean equals(Object o) {
     if (this == o) {
       return true;
@@ -67,6 +79,9 @@ public class DataRecoveryVersionConfigImpl implements DataRecoveryVersionConfig 
 
   @Override
   public DataRecoveryVersionConfig clone() {
-    return new DataRecoveryVersionConfigImpl(getDataRecoverySourceFabric(), isDataRecoveryComplete());
+    return new DataRecoveryVersionConfigImpl(
+        getDataRecoverySourceFabric(),
+        isDataRecoveryComplete(),
+        getDataRecoverySourceVersionNumber());
   }
 }

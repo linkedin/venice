@@ -120,14 +120,24 @@ public class D2ControllerClient extends ControllerClient {
         D2ServiceDiscoveryResponse.class);
   }
 
+  @Deprecated
   public static D2ServiceDiscoveryResponse discoverCluster(
       String d2ZkHost,
       String d2ServiceName,
       String storeName,
       int retryAttempts) {
+    return discoverCluster(d2ZkHost, d2ServiceName, storeName, retryAttempts, Optional.empty());
+  }
+
+  public static D2ServiceDiscoveryResponse discoverCluster(
+      String d2ZkHost,
+      String d2ServiceName,
+      String storeName,
+      int retryAttempts,
+      Optional<SSLFactory> sslFactory) {
     D2Client d2Client;
     try {
-      d2Client = D2ClientFactory.getD2Client(d2ZkHost, Optional.empty());
+      d2Client = D2ClientFactory.getD2Client(d2ZkHost, sslFactory);
       return discoverCluster(d2Client, d2ServiceName, storeName, retryAttempts);
     } finally {
       D2ClientFactory.release(d2ZkHost);

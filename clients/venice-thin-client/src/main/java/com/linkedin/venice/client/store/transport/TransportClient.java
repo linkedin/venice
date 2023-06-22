@@ -34,14 +34,4 @@ public abstract class TransportClient implements Closeable {
       byte[] requestBody,
       TransportClientStreamingCallback callback,
       int keyCount);
-
-  /**
-   * If the internal client could not be used by its callback function,
-   * implementation of this function should return a new copy.
-   * The default implementation is to return itself.
-   * @return
-   */
-  public TransportClient getCopyIfNotUsableInCallback() {
-    return this;
-  }
 }

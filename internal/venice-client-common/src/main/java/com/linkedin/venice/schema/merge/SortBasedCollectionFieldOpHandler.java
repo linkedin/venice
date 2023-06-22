@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
@@ -701,6 +702,19 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     });
   }
 
+  private void sortElementAndTimestampListInMap(
+      List<ElementAndTimestamp> elementAndTsList,
+      Function<Object, String> keyExtractor) {
+    Comparator<Object> mapKeyComparator = Comparator.comparing(x -> (String) x);
+    elementAndTsList.sort((o1, o2) -> {
+      final int timestampCompareResult = Long.compare(o1.getTimestamp(), o2.getTimestamp());
+      if (timestampCompareResult == 0) {
+        return mapKeyComparator.compare(keyExtractor.apply(o1.getElement()), keyExtractor.apply(o2.getElement()));
+      }
+      return timestampCompareResult;
+    });
+  }
+
   private void removeIntersectionElements(Set<Object> set1, Set<Object> set2) {
     List<Object> intersectionElements = new ArrayList<>();
     for (Object element: set1) {
@@ -958,11 +972,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     activeEntriesToTsMap.forEach((activeEntry, activeTs) -> {
       newActiveEntriesAndTsList.add(new ElementAndTimestamp(activeEntry, activeTs));
     });
-    final Comparator<Object> mapValueComparator = getMapValueComparator(currValueRecord, fieldName);
-    sortElementAndTimestampList(
-        // Only sort the collection-merge part of the list and leave the put-only part as is.
+    sortElementAndTimestampListInMap(
         newActiveEntriesAndTsList.subList(newPutOnlyPartLength, newActiveEntriesAndTsList.size()),
-        mapValueComparator);
+        x -> ((KeyValPair) x).getKey());
     setNewMapActiveElementAndTs(
         newActiveEntriesAndTsList,
         newPutOnlyPartLength,
@@ -976,29 +988,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     deletedKeyToTsMap.forEach((k, v) -> newDeletedKeyAndTsList.add(new ElementAndTimestamp(k, v)));
 
     // The element here is String (as deleted key). So, we can use a String comparator.
-    sortElementAndTimestampList(newDeletedKeyAndTsList, Comparator.comparing(o -> ((String) o)));
+    sortElementAndTimestampListInMap(newDeletedKeyAndTsList, x -> (String) x);
     setDeletedDeletedKeyAndTsList(newDeletedKeyAndTsList, collectionFieldRmd);
     return UpdateResultStatus.PARTIALLY_UPDATED;
-  }
-
-  private Comparator<Object> getMapValueComparator(GenericRecord currValueRecord, String mapFieldName) {
-    // TODO: handle the situation where two values have different schemas (e.g. element schema evolution). Assume
-    // map value schemas are always the same for now.
-    return (o1, o2) -> this.avroElementComparator
-        .compare(o1, o2, getMapSchema(currValueRecord, mapFieldName).getValueType());
-  }
-
-  private Schema getMapSchema(GenericRecord currValueRecord, String mapFieldName) {
-    Schema mapFieldSchema = currValueRecord.getSchema().getField(mapFieldName).schema();
-    switch (mapFieldSchema.getType()) {
-      case MAP:
-        return mapFieldSchema;
-      case UNION:
-        return getSchemaFromNullableCollectionSchema(mapFieldSchema, Schema.Type.MAP);
-
-      default:
-        throw new IllegalStateException("Expect a map or a union schema. Got: " + mapFieldSchema);
-    }
   }
 
   private Schema getArraySchema(GenericRecord currValueRecord, String arrayFieldName) {

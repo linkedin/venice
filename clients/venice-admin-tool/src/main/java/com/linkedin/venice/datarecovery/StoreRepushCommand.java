@@ -1,10 +1,14 @@
 package com.linkedin.venice.datarecovery;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.security.SSLFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
@@ -44,6 +48,10 @@ public class StoreRepushCommand extends Command {
     this.params = params;
   }
 
+  public StoreRepushCommand.Params getParams() {
+    return this.params;
+  }
+
   @Override
   public StoreRepushCommand.Result getResult() {
     return result;
@@ -56,7 +64,7 @@ public class StoreRepushCommand extends Command {
 
   private List<String> generateRepushCommand() {
     List<String> cmd = new ArrayList<>();
-    cmd.add(this.params.command);
+    cmd.add(this.getParams().command);
     cmd.add(this.params.extraCommandArgs);
     cmd.add(String.format("--store '%s'", this.params.store));
     cmd.add(String.format("--fabric '%s'", this.params.sourceFabric));
@@ -136,27 +144,159 @@ public class StoreRepushCommand extends Command {
   public static class Params extends Command.Params {
     // command name.
     private String command;
+    // dest fabric
+    private String destFabric;
     // source fabric.
     private String sourceFabric;
     // extra arguments to command.
     private String extraCommandArgs;
+    // expected completion timestamp
+    private LocalDateTime timestamp;
     // Debug run.
     private boolean debug = false;
 
-    public void setDebug(boolean debug) {
-      this.debug = debug;
+    private ControllerClient pCtrlCliWithoutCluster;
+    private String url;
+    private Optional<SSLFactory> sslFactory;
+
+    public String getCommand() {
+      return this.command;
     }
 
-    public void setCommand(String cmd) {
-      this.command = cmd;
+    public String getUrl() {
+      return url;
     }
 
-    public void setExtraCommandArgs(String args) {
-      this.extraCommandArgs = args;
+    public ControllerClient getPCtrlCliWithoutCluster() {
+      return this.pCtrlCliWithoutCluster;
     }
 
-    public void setSourceFabric(String fabric) {
-      this.sourceFabric = fabric;
+    public LocalDateTime getTimestamp() {
+      return this.timestamp;
+    }
+
+    public String getDestFabric() {
+      return this.destFabric;
+    }
+
+    public Optional<SSLFactory> getSSLFactory() {
+      return sslFactory;
+    }
+
+    public String getSourceFabric() {
+      return sourceFabric;
+    }
+
+    public boolean getDebug() {
+      return this.debug;
+    }
+
+    public static class Builder {
+      private String command;
+      private String destFabric;
+      private String sourceFabric;
+      private String extraCommandArgs;
+      private LocalDateTime timestamp;
+      private ControllerClient pCtrlCliWithoutCluster;
+      private String url;
+      private Optional<SSLFactory> sslFactory;
+      private boolean debug = false;
+
+      public Builder() {
+      }
+
+      public Builder(
+          String command,
+          String destFabric,
+          String sourceFabric,
+          String extraCommandArgs,
+          LocalDateTime timestamp,
+          ControllerClient controllerClient,
+          String url,
+          Optional<SSLFactory> sslFactory,
+          boolean debug) {
+        this.setCommand(command)
+            .setDestFabric(destFabric)
+            .setSourceFabric(sourceFabric)
+            .setExtraCommandArgs(extraCommandArgs)
+            .setTimestamp(timestamp)
+            .setPCtrlCliWithoutCluster(controllerClient)
+            .setUrl(url)
+            .setSSLFactory(sslFactory)
+            .setDebug(debug);
+      }
+
+      public Builder(StoreRepushCommand.Params p) {
+        this(
+            p.command,
+            p.destFabric,
+            p.sourceFabric,
+            p.extraCommandArgs,
+            p.timestamp,
+            p.pCtrlCliWithoutCluster,
+            p.url,
+            p.sslFactory,
+            p.debug);
+      }
+
+      public StoreRepushCommand.Params build() {
+        StoreRepushCommand.Params ret = new StoreRepushCommand.Params();
+        ret.command = command;
+        ret.destFabric = destFabric;
+        ret.sourceFabric = sourceFabric;
+        ret.extraCommandArgs = extraCommandArgs;
+        ret.timestamp = timestamp;
+        ret.pCtrlCliWithoutCluster = pCtrlCliWithoutCluster;
+        ret.url = url;
+        ret.sslFactory = sslFactory;
+        ret.debug = debug;
+        return ret;
+      }
+
+      public StoreRepushCommand.Params.Builder setCommand(String command) {
+        this.command = command;
+        return this;
+      }
+
+      public StoreRepushCommand.Params.Builder setDestFabric(String destFabric) {
+        this.destFabric = destFabric;
+        return this;
+      }
+
+      public StoreRepushCommand.Params.Builder setSourceFabric(String sourceFabric) {
+        this.sourceFabric = sourceFabric;
+        return this;
+      }
+
+      public StoreRepushCommand.Params.Builder setExtraCommandArgs(String extraCommandArgs) {
+        this.extraCommandArgs = extraCommandArgs;
+        return this;
+      }
+
+      public StoreRepushCommand.Params.Builder setTimestamp(LocalDateTime timestamp) {
+        this.timestamp = timestamp;
+        return this;
+      }
+
+      public StoreRepushCommand.Params.Builder setPCtrlCliWithoutCluster(ControllerClient pCtrlCliWithoutCluster) {
+        this.pCtrlCliWithoutCluster = pCtrlCliWithoutCluster;
+        return this;
+      }
+
+      public StoreRepushCommand.Params.Builder setUrl(String url) {
+        this.url = url;
+        return this;
+      }
+
+      public StoreRepushCommand.Params.Builder setSSLFactory(Optional<SSLFactory> sslFactory) {
+        this.sslFactory = sslFactory;
+        return this;
+      }
+
+      public StoreRepushCommand.Params.Builder setDebug(boolean debug) {
+        this.debug = debug;
+        return this;
+      }
     }
   }
 

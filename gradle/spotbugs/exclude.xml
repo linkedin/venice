@@ -40,6 +40,8 @@
       <!--Not require to make assertion for every case to confirm if it's safe-->
       <Bug pattern="BC_UNCONFIRMED_CAST"/>
       <Bug pattern="BC_UNCONFIRMED_CAST_OF_RETURN_VALUE"/>
+      <!--No intention to use Java serialization-->
+      <Bug pattern="SE_TRANSIENT_FIELD_NOT_RESTORED"/>
       <!--Not require to refactor every inner class into a static inner-->
       <Bug pattern="SIC_INNER_SHOULD_BE_STATIC_ANON"/>
       <Bug pattern="SIC_INNER_SHOULD_BE_STATIC_NEEDS_THIS"/>
@@ -409,7 +411,6 @@
       <Class name="com.linkedin.venice.helix.ZkRoutersClusterManager"/>
       <Class name="com.linkedin.venice.stats.HttpConnectionPoolStats"/>
       <Class name="com.linkedin.venice.stats.HttpConnectionPoolStats$RouteHttpConnectionPoolStats"/>
-      <Class name="com.linkedin.venice.router.throttle.NoopRouterThrottler"/>
       <Class name="com.linkedin.venice.router.throttle.ReadRequestThrottler"/>
       <Class name="com.linkedin.venice.router.streaming.VeniceChunkedResponse$StreamingResponseMeta"/>
       <Class name="com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter"/>

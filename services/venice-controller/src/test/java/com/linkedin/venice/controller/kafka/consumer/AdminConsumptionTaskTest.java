@@ -38,6 +38,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.admin.InMemoryAdminTopicMetadataAccessor;
 import com.linkedin.venice.admin.InMemoryExecutionIdAccessor;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -73,10 +74,10 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -232,7 +233,7 @@ public class AdminConsumptionTaskTest {
         new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
 
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
@@ -1599,5 +1600,48 @@ public class AdminConsumptionTaskTest {
     verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
     verify(admin, times(1)).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
 
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testSystemStoreMessageOrder() throws InterruptedException, IOException {
+    doThrow(new VeniceException("Prevent store creation")).when(admin)
+        .createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
+    executor.submit(task);
+    String sysStorePushId = "empty_push";
+    int sysStoreVersion = 1;
+    int sysStorePartition = 1;
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    String systemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+    veniceWriter.put(
+        emptyKeyBytes,
+        getAddVersionMessage(clusterName, systemStoreName, sysStorePushId, sysStoreVersion, sysStorePartition, 2L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    // Give the consumption task at least two cycles to retry the failing user store creation message. The corresponding
+    // system store message should remain blocked/unprocessed.
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> verify(admin, times(2)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false));
+
+    verify(admin, never()).addVersionAndStartIngestion(
+        clusterName,
+        systemStoreName,
+        sysStorePushId,
+        sysStoreVersion,
+        sysStorePartition,
+        Version.PushType.BATCH,
+        null,
+        -1,
+        1,
+        false);
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 }

@@ -65,7 +65,7 @@ public class VeniceClientCompatibilityTest {
      *
      * If it is flaky, maybe we could add some retry logic to make it more resilient in the future.
      */
-    String routerPort = Integer.toString(Utils.getFreePort());
+    String routerPort = Integer.toString(TestUtils.getFreePort());
     String routerAddress = "http://localhost:" + routerPort;
     LOGGER.info("Router address in unit test: {}", routerAddress);
 

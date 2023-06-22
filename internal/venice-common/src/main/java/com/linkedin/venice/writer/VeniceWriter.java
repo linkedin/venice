@@ -32,11 +32,11 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -318,7 +318,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.protocolSchemaHeaders = overrideProtocolSchema == null
         ? EMPTY_MSG_HEADERS
         : new PubSubMessageHeaders().add(
-            KafkaPubSubMessageDeserializer.VENICE_TRANSPORT_PROTOCOL_HEADER,
+            PubSubMessageDeserializer.VENICE_TRANSPORT_PROTOCOL_HEADER,
             overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
     try {
       this.producerAdapter = producerAdapter;
@@ -329,6 +329,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         this.numberOfPartitions = params.getPartitionCount();
       } else {
         this.numberOfPartitions = this.producerAdapter.getNumberOfPartitions(topicName, 30, TimeUnit.SECONDS);
+      }
+      if (this.numberOfPartitions <= 0) {
+        throw new VeniceException("Invalid number of partitions: " + this.numberOfPartitions);
       }
       this.segmentsCreationTimeArray = new long[this.numberOfPartitions];
       // Prepare locks for all partitions instead of using map to avoid the searching and creation cost during

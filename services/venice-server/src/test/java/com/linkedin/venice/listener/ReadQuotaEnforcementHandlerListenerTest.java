@@ -23,7 +23,6 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import java.util.ArrayList;
@@ -204,7 +203,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     List<ReplicaState> replicaStates = new ArrayList<>();
     ReplicaState thisReplicaState = mock(ReplicaState.class);
     doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
-    doReturn(ExecutionStatus.COMPLETED.name()).when(thisReplicaState).getVenicePushStatus();
+    doReturn(true).when(thisReplicaState).isReadyToServe();
     replicaStates.add(thisReplicaState);
     when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
 

@@ -460,6 +460,12 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   String getKafkaBootstrapServers(boolean isSSL);
 
+  /**
+   * Return the region name of this Admin
+   * @return the region name of this controller
+   */
+  String getRegionName();
+
   String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric);
 
   String getNativeReplicationSourceFabric(

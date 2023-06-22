@@ -16,6 +16,7 @@ import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
@@ -79,7 +80,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
@@ -628,25 +629,36 @@ public class AdminTool {
 
   private static void executeDataRecovery(CommandLine cmd) {
     String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
+    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
     String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
     String stores = getRequiredArgument(cmd, Arg.STORES);
+    String timestamp = getRequiredArgument(cmd, Arg.DATETIME);
+    String url = getRequiredArgument(cmd, Arg.URL);
 
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
     boolean isNonInteractive = cmd.hasOption(Arg.NON_INTERACTIVE.toString());
 
-    StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
-    cmdParams.setCommand(recoveryCommand);
-    cmdParams.setSourceFabric(sourceFabric);
+    StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder().setCommand(recoveryCommand)
+        .setDestFabric(destFabric)
+        .setSourceFabric(sourceFabric)
+        .setTimestamp(LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+        .setSSLFactory(sslFactory)
+        .setUrl(url);
     if (extraCommandArgs != null) {
-      cmdParams.setExtraCommandArgs(extraCommandArgs);
+      builder.setExtraCommandArgs(extraCommandArgs);
     }
-    cmdParams.setDebug(isDebuggingEnabled);
+    builder.setDebug(isDebuggingEnabled);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
     params.setNonInteractive(isNonInteractive);
-    dataRecoveryClient.execute(params, cmdParams);
+
+    try (ControllerClient cli = new ControllerClient("*", url, sslFactory)) {
+      builder.setPCtrlCliWithoutCluster(cli);
+      StoreRepushCommand.Params cmdParams = builder.build();
+      dataRecoveryClient.execute(params, cmdParams);
+    }
   }
 
   private static void estimateDataRecoveryTime(CommandLine cmd) {
@@ -658,14 +670,12 @@ public class AdminTool {
 
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
 
-    EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
-    cmdParams.setTargetRegion(destFabric);
-    cmdParams.setParentUrl(parentUrl);
-    cmdParams.setSslFactory(sslFactory);
     Long total;
 
     try (ControllerClient cli = new ControllerClient("*", parentUrl, sslFactory)) {
-      cmdParams.setPCtrlCliWithoutCluster(cli);
+      EstimateDataRecoveryTimeCommand.Params.Builder builder =
+          new EstimateDataRecoveryTimeCommand.Params.Builder(destFabric, cli, parentUrl, sslFactory);
+      EstimateDataRecoveryTimeCommand.Params cmdParams = builder.build();
       total = dataRecoveryClient.estimateRecoveryTime(params, cmdParams);
     }
 
@@ -688,13 +698,12 @@ public class AdminTool {
 
     String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL);
 
-    MonitorCommand.Params monitorParams = new MonitorCommand.Params();
-    monitorParams.setTargetRegion(destFabric);
-    monitorParams.setParentUrl(parentUrl);
-    monitorParams.setSslFactory(sslFactory);
+    MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder().setTargetRegion(destFabric)
+        .setParentUrl(parentUrl)
+        .setSSLFactory(sslFactory);
 
     try {
-      monitorParams.setDateTime(LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+      builder.setDateTime(LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
     } catch (DateTimeParseException e) {
       throw new VeniceException(
           String.format(
@@ -710,7 +719,8 @@ public class AdminTool {
     }
 
     try (ControllerClient parentCtrlCli = new ControllerClient("*", parentUrl, sslFactory)) {
-      monitorParams.setPCtrlCliWithoutCluster(parentCtrlCli);
+      builder.setPCtrlCliWithoutCluster(parentCtrlCli);
+      MonitorCommand.Params monitorParams = builder.build();
       dataRecoveryClient.monitor(params, monitorParams);
     }
   }
@@ -977,6 +987,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p), argSet);
     booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p), argSet);
     longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p), argSet);
+    booleanParam(cmd, Arg.STORAGE_NODE_READ_QUOTA_ENABLED, p -> params.setStorageNodeReadQuotaEnabled(p), argSet);
     booleanParam(cmd, Arg.HYBRID_STORE_OVERHEAD_BYPASS, p -> params.setHybridStoreOverheadBypass(p), argSet);
     longParam(cmd, Arg.READ_QUOTA, p -> params.setReadQuotaInCU(p), argSet);
     longParam(cmd, Arg.HYBRID_REWIND_SECONDS, p -> params.setHybridRewindSeconds(p), argSet);
@@ -2424,13 +2435,18 @@ public class AdminTool {
   private static void getKafkaTopicConfigs(CommandLine cmd) {
     String veniceControllerUrls = getRequiredArgument(cmd, Arg.URL);
     String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
-    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
-    if (storeName.isEmpty()) {
-      throw new VeniceException("Please either provide a valid topic name.");
+    String clusterName = null;
+    if (AdminTopicUtils.isAdminTopic(kafkaTopicName)) {
+      clusterName = AdminTopicUtils.getClusterNameFromTopicName(kafkaTopicName);
+    } else {
+      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+      if (storeName.isEmpty()) {
+        throw new VeniceException("Please either provide a valid topic name.");
+      }
+      D2ServiceDiscoveryResponse clusterDiscovery =
+          ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+      clusterName = clusterDiscovery.getCluster();
     }
-    D2ServiceDiscoveryResponse clusterDiscovery =
-        ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
-    String clusterName = clusterDiscovery.getCluster();
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
       PubSubTopicConfigResponse response = tmpControllerClient.getKafkaTopicConfigs(kafkaTopicName);
       printObject(response);
@@ -2472,13 +2488,17 @@ public class AdminTool {
      */
     String clusterName = getOptionalArgument(cmd, Arg.CLUSTER);
     if (clusterName == null) {
-      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
-      if (storeName.isEmpty()) {
-        throw new VeniceException("Please either provide a valid topic name or a cluster name.");
+      if (AdminTopicUtils.isAdminTopic(kafkaTopicName)) {
+        clusterName = AdminTopicUtils.getClusterNameFromTopicName(kafkaTopicName);
+      } else {
+        String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+        if (storeName.isEmpty()) {
+          throw new VeniceException("Please either provide a valid topic name or a cluster name.");
+        }
+        D2ServiceDiscoveryResponse clusterDiscovery =
+            ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
+        clusterName = clusterDiscovery.getCluster();
       }
-      D2ServiceDiscoveryResponse clusterDiscovery =
-          ControllerClient.discoverCluster(veniceControllerUrls, storeName, sslFactory, 3);
-      clusterName = clusterDiscovery.getCluster();
     }
 
     try (ControllerClient tmpControllerClient = new ControllerClient(clusterName, veniceControllerUrls, sslFactory)) {
@@ -2861,12 +2881,12 @@ public class AdminTool {
   }
 
   private static PubSubConsumerAdapter getConsumer(Properties consumerProps) {
-    KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     return new ApacheKafkaConsumerAdapterFactory()
-        .create(new VeniceProperties(consumerProps), false, kafkaPubSubMessageDeserializer, "");
+        .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "admin-tool-topic-dumper");
   }
 
 }

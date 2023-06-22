@@ -1,10 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_BATCH_SIZE;
-import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_LINGER_MS;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_AUTO_OFFSET_RESET_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BATCH_SIZE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
@@ -14,7 +11,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MIN_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_GROUP_ID_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_POLL_RECORDS_CONFIG;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
@@ -67,6 +63,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
@@ -74,8 +71,8 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -250,17 +247,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Properties veniceWriterProperties =
         veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
 
-    /**
-     * Setup default batch size and linger time for better producing performance during server new push ingestion.
-     * These configs are set for large volume ingestion, not for integration test.
-     */
-    if (!veniceWriterProperties.containsKey(KAFKA_BATCH_SIZE)) {
-      veniceWriterProperties.put(KAFKA_BATCH_SIZE, DEFAULT_KAFKA_BATCH_SIZE);
-    }
-
-    if (!veniceWriterProperties.containsKey(KAFKA_LINGER_MS)) {
-      veniceWriterProperties.put(KAFKA_LINGER_MS, DEFAULT_KAFKA_LINGER_MS);
-    }
+    veniceWriterProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
 
     // TODO: Move shared producer factory construction to upper layer and pass it in here.
     LOGGER.info(
@@ -414,7 +401,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     // TODO: Wire configs into these params
     KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
     kafkaMessageEnvelopeSchemaReader.ifPresent(kafkaValueSerializer::setSchemaReader);
-    KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
+    PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
@@ -738,6 +725,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partition,
       long retryIntervalInMs,
       int numRetries) {
+    LOGGER.info("Waiting all ingestion action to complete for topic: {}, partition: {}", topicName, partition);
     if (!topicPartitionHasAnyPendingActions(topicName, partition)) {
       LOGGER.info("Topic: {}, partition: {} has no pending ingestion action.", topicName, partition);
       return;
@@ -752,7 +740,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               partition,
               topicName,
               LatencyUtils.getElapsedTimeInMs(startTimeInMs));
-          break;
+          return;
         }
         sleep(retryIntervalInMs);
       }
@@ -773,6 +761,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       return ingestionTask != null && ingestionTask.isRunning()
           && ingestionTask.hasPendingPartitionIngestionAction(partition);
     }
+  }
+
+  public boolean isLiveUpdateSuppressionEnabled() {
+    return veniceConfigLoader.getVeniceServerConfig().freezeIngestionIfReadyToServeOrLocalDataExists();
   }
 
   @Override
@@ -882,7 +874,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       VeniceStoreVersionConfig veniceStore,
       int partitionId,
       int sleepSeconds,
-      int numRetries) {
+      int numRetries,
+      boolean whetherToResetOffset) {
     String topicName = veniceStore.getStoreVersionName();
     if (isPartitionConsuming(topicName, partitionId)) {
       stopConsumption(veniceStore, partitionId);
@@ -911,7 +904,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     } else {
       LOGGER.warn("Partition: {} of topic: {} is not consuming, skipped the stop consumption.", partitionId, topicName);
     }
-    resetConsumptionOffset(veniceStore, partitionId);
+    if (whetherToResetOffset) {
+      resetConsumptionOffset(veniceStore, partitionId);
+      LOGGER.info("Reset consumption offset for topic: {}, partition: {}", topicName, partitionId);
+    }
     if (!ingestionTaskHasAnySubscription(topicName)) {
       if (isIsolatedIngestion) {
         LOGGER.info("Ingestion task for topic {} will be kept open for the access from main process.", topicName);

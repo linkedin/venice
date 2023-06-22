@@ -58,7 +58,7 @@ public class D2ControllerClientFactory {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     D2ServiceDiscoveryResponse discoveryResponse =
-        D2ControllerClient.discoverCluster(d2ZkHost, d2ServiceName, storeName, retryAttempts);
+        D2ControllerClient.discoverCluster(d2ZkHost, d2ServiceName, storeName, retryAttempts, sslFactory);
     checkDiscoveryResponse(storeName, discoveryResponse);
     return getControllerClient(d2ServiceName, discoveryResponse.getCluster(), d2ZkHost, sslFactory);
   }

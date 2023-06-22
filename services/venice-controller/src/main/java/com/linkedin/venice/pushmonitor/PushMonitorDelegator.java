@@ -192,11 +192,6 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public boolean wouldJobFail(String topic, PartitionAssignment partitionAssignmentAfterRemoving) {
-    return getPushMonitor(topic).wouldJobFail(topic, partitionAssignmentAfterRemoving);
-  }
-
-  @Override
   public void refreshAndUpdatePushStatus(
       String kafkaTopic,
       ExecutionStatus newStatus,
