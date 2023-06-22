@@ -184,7 +184,10 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
         DEFAULT_FAIRNESS,
         DEFAULT_MODE,
         rocksDBServerConfig.isAutoTunedRateLimiterEnabled());
-
+    if (this.memoryLimit > 0) {
+      rocksDBMemoryStats.setMemoryLimit(this.memoryLimit);
+      rocksDBMemoryStats.setSstFileManager(this.sstFileManager);
+    }
   }
 
   public long getMemoryLimit() {
@@ -296,10 +299,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   }
 
   /**
-   * The following function shouldn't be invoked at runtime (only at startup time), so we didn't apply
-   * any throttling here, and if the above condition changes in the future, we may need to consider
-   * throttling the deletion to reduce the IO impact to the database disk, which may result in some
-   * side effect in the read path.
+   * Currently, this function doesn't apply any IO throttling and if there is a side effect
+   * discovered in the read path in the future, we will need to apply some optimization here.
    */
   @Override
   public synchronized void removeStorageEngine(String storeName) {
