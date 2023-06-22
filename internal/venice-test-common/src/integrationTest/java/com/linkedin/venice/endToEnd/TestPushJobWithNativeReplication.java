@@ -16,6 +16,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.INPUT_PATH_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.hadoop.VenicePushJob.POST_VALIDATION_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_ENABLED;
@@ -47,6 +48,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -875,45 +877,29 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          // start a regular push job
-          try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
-            job.run();
-            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
-
-            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-              // Current version should become 1 at both 2 data centers
-              for (int version: parentControllerClient.getStore(storeName)
-                  .getStore()
-                  .getColoToCurrentVersions()
-                  .values()) {
-                Assert.assertEquals(version, 1);
-              }
-            });
-          }
-
-          // start a targeted region push which should only increase the version to 2 in dc-0
+          // start a targeted region push which should only increase the version to 1 in dc-0
           props.put(TARGETED_REGION_PUSH_ENABLED, true);
-          try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
+          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
+          try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
             job.run(); // the job should succeed
 
-            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
               Map<String, Integer> coloVersions =
                   parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
               coloVersions.forEach((colo, version) -> {
                 if (colo.equals(DEFAULT_NATIVE_REPLICATION_SOURCE)) {
-                  Assert.assertEquals((int) version, 2);
-                } else {
                   Assert.assertEquals((int) version, 1);
+                } else {
+                  Assert.assertEquals((int) version, 0);
                 }
               });
             });
           }
 
-          // specify two regions, so both dc-0 and dc-1 is updated to version 3
+          // specify two regions, so both dc-0 and dc-1 is updated to version 2
           props.setProperty(TARGETED_REGION_PUSH_LIST, "dc-0, dc-1");
-          try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
+          try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
             job.run(); // the job should succeed
 
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -922,14 +908,14 @@ public class TestPushJobWithNativeReplication {
                   .getStore()
                   .getColoToCurrentVersions()
                   .values()) {
-                Assert.assertEquals(version, 3);
+                Assert.assertEquals(version, 2);
               }
             });
           }
 
           // emergency source is dc-0 so dc-1 isn't selected to be the source fabric but the push should still complete
           props.setProperty(TARGETED_REGION_PUSH_LIST, "dc-1");
-          try (VenicePushJob job = new VenicePushJob("Test push job 4", props)) {
+          try (VenicePushJob job = new VenicePushJob("Test push job 3", props)) {
             job.run(); // the job should succeed
 
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
@@ -938,11 +924,81 @@ public class TestPushJobWithNativeReplication {
 
               coloVersions.forEach((colo, version) -> {
                 if (colo.equals("dc-1")) {
-                  Assert.assertEquals((int) version, 4);
-                } else {
                   Assert.assertEquals((int) version, 3);
+                } else {
+                  Assert.assertEquals((int) version, 2);
                 }
               });
+            });
+          }
+        });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testTargetedRegionPushJobFullConsumptionForBatchStore() throws Exception {
+    // make sure the participant store is up and running in dest region otherwise the test will be flaky
+    // the participant store is needed for data recovery
+    String destClusterName = CLUSTER_NAMES[0];
+
+    try (ControllerClient controllerClient =
+        new ControllerClient(destClusterName, childDatacenters.get(1).getControllerConnectString())) {
+      // Verify the participant store is up and running in dest region.
+      // Participant store is needed for checking kill record existence and dest region readiness for data recovery.
+      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(destClusterName);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(participantStoreName, 1),
+          controllerClient,
+          100,
+          TimeUnit.MINUTES);
+    }
+
+    motherOfAllTests(
+        "testTargetedRegionPushJobBatchStore",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
+        100,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+          props.put(TARGETED_REGION_PUSH_ENABLED, true);
+          // no need to set but add here for clarity
+          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+          try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
+              // Current version should become 1
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 1);
+              }
+            });
+          }
+        });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testTargetedRegionPushJobFullConsumptionForHybridStore() throws Exception {
+    motherOfAllTests(
+        "testTargetedRegionPushJobHybridStore",
+        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
+            .setHybridRewindSeconds(10)
+            .setHybridOffsetLagThreshold(2),
+        100,
+        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
+          props.put(TARGETED_REGION_PUSH_ENABLED, true);
+          // no need to set but add here for clarity
+          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+          try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
+              // Current version should become 2
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 2);
+              }
             });
           }
         });
