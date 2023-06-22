@@ -244,6 +244,7 @@ public class CreateVersionTest {
     Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
     Optional<String> emergencySrcRegion = Optional.of("dc-1");
 
+    doReturn("dc-0").when(admin).getRegionName();
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
     doReturn(true).when(admin).isParent();
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(any(), any(), anyBoolean());
@@ -283,6 +284,7 @@ public class CreateVersionTest {
     VersionCreationResponse versionCreationResponse =
         OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
     assertEquals(versionCreationResponse.getKafkaBootstrapServers(), "dc-1.region.io");
+    assertEquals(versionCreationResponse.getKafkaSourceRegion(), "dc-0");
   }
 
   private Store getHybridTestStore() {

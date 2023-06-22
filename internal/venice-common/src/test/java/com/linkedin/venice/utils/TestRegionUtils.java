@@ -44,6 +44,7 @@ public class TestRegionUtils {
     Set<String> regionName = RegionUtils.parseRegionsFilterList(single);
     Assert.assertTrue(regionName.contains(TEST_DC_1));
     Assert.assertEquals(regionName.size(), 1);
+    Assert.assertEquals(RegionUtils.composeRegionList(regionName), single);
 
     String multiple = "dc-0,dc-1";
     regionName = RegionUtils.parseRegionsFilterList(multiple);

@@ -1645,6 +1645,9 @@ public class VeniceParentHelixAdmin implements Admin {
    * @param clusterName
    */
   private void validateTargetedRegions(String targetedRegions, String clusterName) throws VeniceException {
+    if (StringUtils.isEmpty(targetedRegions)) {
+      return;
+    }
     Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
     Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     for (String region: targetedRegionSet) {
@@ -3597,6 +3600,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public String getKafkaBootstrapServers(boolean isSSL) {
     return getVeniceHelixAdmin().getKafkaBootstrapServers(isSSL);
+  }
+
+  @Override
+  public String getRegionName() {
+    return getVeniceHelixAdmin().getRegionName();
   }
 
   /**
