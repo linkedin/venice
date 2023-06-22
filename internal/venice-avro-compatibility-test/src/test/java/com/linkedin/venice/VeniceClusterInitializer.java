@@ -73,7 +73,6 @@ public class VeniceClusterInitializer implements Closeable {
   private final VeniceKafkaSerializer valueSerializer;
 
   public VeniceClusterInitializer(String storeName, int routerPort) {
-    Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
     clusterConfig.put(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, false, false, clusterConfig);
@@ -96,7 +95,6 @@ public class VeniceClusterInitializer implements Closeable {
     this.controllerClient = this.veniceCluster.getControllerClient();
     TestUtils.assertCommand(controllerClient.createNewStore(storeName, "test_owner", KEY_SCHEMA_STR, VALUE_SCHEMA_STR));
     this.veniceCluster.createMetaSystemStore(storeName);
-    this.veniceCluster.createPushStatusSystemStore(storeName);
     // Enable read compute
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);
