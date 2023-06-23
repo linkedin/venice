@@ -31,9 +31,11 @@ Hybrid.
 Technically, targeted region push is an option of full push _(hence not a new mode)_, but it allows writing data into a 
 subset of global regions/data centers, whereas full push writes globally at once.
 
-Please note that this functionality is still under active development. It doesn't push data to the rest of unspecified regions
-automatically yet. Users may perform validations and chain it with another full push/targeted region push to achieve the
-same effect as full push.
+By default, it automatically pushes data to the rest of unspecified regions after the targeted region push is completed.
+We are working on to implement more validations in between to ensure the targeted regions are healthy after the first push. 
+Users may turn off this automation and perform validations and chain it with another full push/targeted region push to 
+achieve the same effect as full push in terms of data integrity, but the store versions across different regions might be 
+not the same depending on the exact setup.
 
 ## Usage
 The Push Job is designed to require as few configs as possible. The following mandatory configs should be unique to each
@@ -65,6 +67,8 @@ The user may choose to specify the following configs:
 - `targeted.region.push.list`: This config takes effect only when targeted region push flag is enabled. 
   Optionally specify a list of target region(s) to push data into. See full details at 
   [TARGETED_REGION_PUSH_LIST](https://venicedb.org/javadoc/com/linkedin/venice/hadoop/VenicePushJob.html#TARGETED_REGION_PUSH_LIST).
+- `post.validation.consumption`: Whether to perform post validation consumption after targeted region push is finished. 
+   Default: `true`. Set this to `false` if you want to achieve a true single colo push.
 
 The push job also supports using D2 URLs for automated controller service discovery. To use this, the user or operator
 must specify the following configs:

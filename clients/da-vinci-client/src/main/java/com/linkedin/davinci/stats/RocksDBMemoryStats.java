@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.rocksdb.SstFileManager;
 
 
 /**
@@ -63,6 +64,8 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
               "rocksdb.block-cache-capacity",
               "rocksdb.block-cache-pinned-usage",
               "rocksdb.block-cache-usage")));
+  private volatile long memoryLimit = -1;
+  private volatile SstFileManager sstFileManager;
 
   // metrics related to block cache, which should not be collected when plain table format is enabled.
   private static final Set<String> BLOCK_CACHE_METRICS =
@@ -97,6 +100,21 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
         return total;
       }));
     }
+    registerSensor("memory_limit", new Gauge(() -> memoryLimit));
+    registerSensor("memory_usage", new Gauge(() -> {
+      if (memoryLimit > 0 && sstFileManager != null) {
+        return sstFileManager.getTotalSize();
+      }
+      return -1;
+    }));
+  }
+
+  public void setMemoryLimit(long memoryLimit) {
+    this.memoryLimit = memoryLimit;
+  }
+
+  public void setSstFileManager(SstFileManager sstFileManager) {
+    this.sstFileManager = sstFileManager;
   }
 
   public void registerPartition(String partitionName, RocksDBStoragePartition rocksDBPartition) {

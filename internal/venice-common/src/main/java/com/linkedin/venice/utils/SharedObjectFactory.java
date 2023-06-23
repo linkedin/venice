@@ -24,18 +24,15 @@ public class SharedObjectFactory<T> {
    * @return A shared object
    */
   public T get(String identifier, Supplier<T> constructor, Consumer<T> destroyer) {
-    if (!objectMap.containsKey(identifier)) {
-      T object = constructor.get();
-      objectMap.put(identifier, new ReferenceCounted<>(object, obj -> {
-        destroyer.accept(obj);
-        objectMap.remove(identifier);
-      }));
-      return object;
-    } else {
-      ReferenceCounted<T> referenceCounted = objectMap.get(identifier);
-      referenceCounted.retain();
-      return referenceCounted.get();
-    }
+    return objectMap.compute(identifier, (id, referenceCounted) -> {
+      if (referenceCounted == null) {
+        T object = constructor.get();
+        return new ReferenceCounted<>(object, destroyer);
+      } else {
+        referenceCounted.retain();
+        return referenceCounted;
+      }
+    }).get();
   }
 
   /**
@@ -46,12 +43,18 @@ public class SharedObjectFactory<T> {
    * @return {@code true} if the shared object is no longer being used; {@code false} otherwise
    */
   public boolean release(String identifier) {
-    ReferenceCounted<T> referenceCounted = objectMap.get(identifier);
-    if (referenceCounted != null) {
-      referenceCounted.release(); // Also removes the object from the objectMap
-      return referenceCounted.getReferenceCount() == 0;
-    }
-    return true;
+    return objectMap.compute(identifier, (id, referenceCounted) -> {
+      if (referenceCounted != null) {
+        referenceCounted.release();
+        if (referenceCounted.getReferenceCount() == 0) {
+          return null;
+        } else {
+          return referenceCounted;
+        }
+      } else {
+        return null;
+      }
+    }) == null;
   }
 
   /**
@@ -69,10 +72,12 @@ public class SharedObjectFactory<T> {
    * managing an object with the identifier, returns 0
    */
   public int getReferenceCount(String identifier) {
-    if (!objectMap.containsKey(identifier)) {
+    // It is possible that this method is not thread-safe, but since this is only used in tests currently, it is okay
+    ReferenceCounted<T> referenceCounted = objectMap.get(identifier);
+    if (referenceCounted == null) {
       return 0;
     } else {
-      return objectMap.get(identifier).getReferenceCount();
+      return referenceCounted.getReferenceCount();
     }
   }
 }
