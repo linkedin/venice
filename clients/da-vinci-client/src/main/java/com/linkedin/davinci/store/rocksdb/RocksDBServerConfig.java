@@ -107,6 +107,8 @@ public class RocksDBServerConfig {
 
   public static final String ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED = "rocksdb.plain.table.format.enabled";
 
+  public static final String ROCKSDB_RMD_BLOCK_CACHE_ENABLED = "rocksdb.rmd.block.cache.enabled";
+
   /**
    * Length of the capped prefix extractor used with RocksDB Plain Table. Be cautious when tweaking this config because
    * it might prevent reading old data written with a different extractor length. Therefore, changing it requires wiping
@@ -239,6 +241,9 @@ public class RocksDBServerConfig {
   private final boolean rocksDBStatisticsEnabled;
 
   private final boolean rocksDBPlainTableFormatEnabled;
+
+  private final boolean rocksDBBlockCacheRMDEnabled;
+
   private final boolean rocksDBStoreIndexInFile;
   private final int rocksDBHugePageTlbSize;
   private final int rocksDBBloomBitsPerKey;
@@ -338,6 +343,7 @@ public class RocksDBServerConfig {
 
     // DO NOT ENABLE except for new stores. https://github.com/facebook/rocksdb/wiki/PlainTable-Format
     this.rocksDBPlainTableFormatEnabled = props.getBoolean(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+    this.rocksDBBlockCacheRMDEnabled = props.getBoolean(ROCKSDB_RMD_BLOCK_CACHE_ENABLED, false);
     if (rocksDBPlainTableFormatEnabled && rocksDBUseDirectReads) {
       throw new VeniceException(
           "Invalid configuration combination, " + ROCKSDB_OPTIONS_USE_DIRECT_READS + " must be disabled to enable "
@@ -547,6 +553,10 @@ public class RocksDBServerConfig {
 
   public boolean isAtomicFlushEnabled() {
     return atomicFlushEnabled;
+  }
+
+  public boolean isRocksDBBlockCacheRMDEnabled() {
+    return rocksDBBlockCacheRMDEnabled;
   }
 
   public boolean isUseSeparateRMDCacheEnabled() {

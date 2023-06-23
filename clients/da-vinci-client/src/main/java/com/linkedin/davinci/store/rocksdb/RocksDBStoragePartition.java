@@ -199,12 +199,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
     /**
      * There are some possible optimization opportunities for column families. For example, optimizeForSmallDb() option
-     * may be applied if we are sure replicationMetadata column family is smaller in size.
+     * may be applied if we are sure replicationMetadata column family is smaller.
      */
     ColumnFamilyOptions columnFamilyOptions;
     for (byte[] name: columnFamilyNameList) {
       if (name == REPLICATION_METADATA_COLUMN_FAMILY) {
-        columnFamilyOptions = new ColumnFamilyOptions(getStoreOptions(storagePartitionConfig, true));
+        columnFamilyOptions = new ColumnFamilyOptions(
+            getStoreOptions(storagePartitionConfig, rocksDBServerConfig.isRocksDBBlockCacheRMDEnabled()));
       } else {
         columnFamilyOptions = new ColumnFamilyOptions(options);
       }
