@@ -180,26 +180,6 @@ public class StorageService extends AbstractVeniceService {
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
   }
 
-  private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
-    return storageEngineName -> {
-      String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
-      if (VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
-        return true;
-      }
-      Store store;
-      try {
-        store = storeRepository.getStoreOrThrow(storeName);
-      } catch (VeniceNoStoreException e) {
-        // The store does not exist in Venice anymore, so it will be deleted.
-        LOGGER.warn("Store does not exist, will delete invalid local version: {}", storageEngineName);
-        return false;
-      }
-
-      int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
-      return store.getVersion(versionNumber).isPresent();
-    };
-  }
-
   private boolean deleteStorageEngine(String storageEngineName) {
     String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
     if (VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
@@ -211,7 +191,7 @@ public class StorageService extends AbstractVeniceService {
     } catch (VeniceNoStoreException e) {
       // The store does not exist in Venice anymore, so it will be deleted.
       LOGGER.warn("Store does not exist, will delete invalid local version: {}", storageEngineName);
-      return false;
+      return true;
     }
 
     int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
@@ -248,6 +228,7 @@ public class StorageService extends AbstractVeniceService {
               LOGGER.error("Could not load the following store : " + storeName, e);
               aggVersionedStorageEngineStats.recordRocksDBOpenFailure(storeName);
               if (deleteStorageEngine(storeName)) {
+                LOGGER.info("Error opening store: {}, deleting it", storeName, e);
                 factory.removeStorageEngine(storeName);
               }
               continue;
