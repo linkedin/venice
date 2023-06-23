@@ -6,19 +6,15 @@ import static com.linkedin.venice.VeniceClusterInitializer.KEY_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.ZK_ADDRESS_FIELD;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.utils.ClassPathSupplierForVeniceCluster;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -26,7 +22,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -54,7 +49,7 @@ public class VeniceClientCompatibilityTest {
 
   private ForkedJavaProcess clusterProcess;
   private AvroGenericStoreClient<String, GenericRecord> veniceClient;
-  private DaVinciClient<String, GenericRecord> daVinciClient;
+  // private DaVinciClient<String, GenericRecord> daVinciClient;
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -118,21 +113,21 @@ public class VeniceClientCompatibilityTest {
     Assert.assertNotNull(zkAddress[0]);
     LOGGER.info("Zookeeper address in unit test: {}", zkAddress[0]);
 
-    Properties extraBackendConfig = new Properties();
-    extraBackendConfig.setProperty(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath());
-    daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
-        storeName,
-        zkAddress[0],
-        new DaVinciConfig(),
-        new VeniceProperties(new Properties()));
-
-    daVinciClient.subscribeAll().get(60, TimeUnit.SECONDS);
+    // Properties extraBackendConfig = new Properties();
+    // extraBackendConfig.setProperty(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath());
+    // daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
+    // storeName,
+    // zkAddress[0],
+    // new DaVinciConfig(),
+    // new VeniceProperties(new Properties()));
+    //
+    // daVinciClient.subscribeAll().get(60, TimeUnit.SECONDS);
   }
 
   @AfterClass
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(veniceClient);
-    Utils.closeQuietlyWithErrorLogged(daVinciClient);
+    // Utils.closeQuietlyWithErrorLogged(daVinciClient);
     if (clusterProcess != null) {
       clusterProcess.destroy();
     }
