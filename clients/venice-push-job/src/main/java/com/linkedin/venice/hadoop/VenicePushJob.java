@@ -860,7 +860,7 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     LOGGER.info("userProvidedStoreName: {}", userProvidedStoreName);
-    StoreResponse storeResponse = getStoreResponse(userProvidedStoreName);
+    StoreResponse storeResponse = getStoreResponse(userProvidedStoreName, true);
     Map<String, Integer> coloToCurrentVersions = getCurrentStoreVersions(storeResponse);
     if (new HashSet<>(coloToCurrentVersions.values()).size() > 1) {
       LOGGER.info(
@@ -3187,7 +3187,7 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * Get the previously cached {@link StoreResponse} if available, otherwise query the controller.
    * @param storeName, the store name
-   * @param refresh, if true, query the controller to get the latest store response
+   * @param refresh, if true, query the controller to get the latest store response. Usually used for up-to-date Version.
    * @return
    */
   private StoreResponse getStoreResponse(String storeName, boolean refresh) {
