@@ -118,7 +118,7 @@ public class StorageService extends AbstractVeniceService {
           configLoader,
           restoreDataPartitions,
           restoreMetadataPartitions,
-          functionToCheckWhetherStorageEngineShouldBeKeptOrNot());
+          checkWhetherStorageEngineShouldBeKeptOrNot);
     }
   }
 
@@ -192,17 +192,30 @@ public class StorageService extends AbstractVeniceService {
       } catch (VeniceNoStoreException e) {
         // The store does not exist in Venice anymore, so it will be deleted.
         LOGGER.warn("Store does not exist, will delete invalid local version: {}", storageEngineName);
-        removeStorageEngine(storeName);
         return false;
       }
 
       int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
-      if (!store.getVersion(versionNumber).isPresent() && versionNumber < store.getCurrentVersion()) {
-        removeStorageEngine(storeName);
-        return false;
-      }
-      return true;
+      return store.getVersion(versionNumber).isPresent();
     };
+  }
+
+  private boolean deleteStorageEngine(String storageEngineName) {
+    String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
+    if (VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
+      return true;
+    }
+    Store store;
+    try {
+      store = storeRepository.getStoreOrThrow(storeName);
+    } catch (VeniceNoStoreException e) {
+      // The store does not exist in Venice anymore, so it will be deleted.
+      LOGGER.warn("Store does not exist, will delete invalid local version: {}", storageEngineName);
+      return false;
+    }
+
+    int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
+    return store.getVersion(versionNumber).isPresent() || versionNumber < store.getCurrentVersion();
   }
 
   private void restoreAllStores(
@@ -234,6 +247,9 @@ public class StorageService extends AbstractVeniceService {
             if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
               LOGGER.error("Could not load the following store : " + storeName, e);
               aggVersionedStorageEngineStats.recordRocksDBOpenFailure(storeName);
+              if (deleteStorageEngine(storeName)) {
+                factory.removeStorageEngine(storeName);
+              }
               continue;
             }
             throw new VeniceException("Error caught during opening store " + storeName, e);
