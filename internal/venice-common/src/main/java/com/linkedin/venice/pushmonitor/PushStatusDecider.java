@@ -28,7 +28,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * Decide the offline push status by checking all of replicas statuses under different offline push strategies.
+ * Decide the offline push status by checking all replicas statuses under different offline push strategies.
  */
 public abstract class PushStatusDecider {
   private final Logger logger = LogManager.getLogger(PushStatusDecider.class);
@@ -36,7 +36,7 @@ public abstract class PushStatusDecider {
   private static final String REASON_NOT_ENOUGH_PARTITIONS_IN_EV = "not enough partitions in EXTERNALVIEW";
   private static final String REASON_UNDER_REPLICATED = "does not have enough replicas";
 
-  private static Map<OfflinePushStrategy, PushStatusDecider> decidersMap = new HashMap<>();
+  private static final Map<OfflinePushStrategy, PushStatusDecider> decidersMap = new HashMap<>();
 
   static {
     decidersMap.put(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, new WaitNMinusOnePushStatusDecider());
@@ -119,7 +119,7 @@ public abstract class PushStatusDecider {
   }
 
   /**
-   * Replicas from L/F and Online/Offline model will be considered ready to serve if their status is {@link ExecutionStatus.COMPLETED}.
+   * Replicas from L/F and Online/Offline model will be considered ready to serve if their status is {@link ExecutionStatus#COMPLETED}.
    * More information is needed if you'd like to change/support other behaviors such as routing to the leader replica.
    * @param replicaStatusMap
    * @return List of ready to serve instance ids
@@ -255,7 +255,7 @@ public abstract class PushStatusDecider {
   public static ExecutionStatus getReplicaCurrentStatus(List<StatusSnapshot> historicStatusList) {
     List<ExecutionStatus> statusList =
         historicStatusList.stream().map(statusSnapshot -> statusSnapshot.getStatus()).collect(Collectors.toList());
-    // prep to traverse the list from latest status.
+    // prep to traverse the list from the latest status.
     Collections.reverse(statusList);
     ExecutionStatus status = STARTED;
     for (ExecutionStatus executionStatus: statusList) {

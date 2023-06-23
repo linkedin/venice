@@ -27,7 +27,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.AggPushHealthStats;
 import com.linkedin.venice.pushmonitor.AggPushStatusCleanUpStats;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
-import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
+import com.linkedin.venice.pushmonitor.PartitionStatusBasedPushMonitor;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -65,7 +65,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final ReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
-  private final PushMonitorDelegator pushMonitor;
+  private final PartitionStatusBasedPushMonitor pushMonitor;
   private final LeakedPushStatusCleanUpService leakedPushStatusCleanUpService;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
@@ -104,7 +104,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
     /**
      * ClusterLockManager is created per cluster and shared between {@link VeniceHelixAdmin},
-     * {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} and {@link HelixReadWriteStoreRepository}.
+     * {@link PartitionStatusBasedPushMonitor} and {@link HelixReadWriteStoreRepository}.
      */
     this.clusterLockManager = new ClusterLockManager(clusterName);
     HelixReadWriteStoreRepository readWriteStoreRepository = new HelixReadWriteStoreRepository(
@@ -153,12 +153,12 @@ public class HelixVeniceClusterResources implements VeniceResource {
         config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
     boolean unregisterMetricEnabled = config.isUnregisterMetricForDeletedStoreEnabled();
 
-    this.pushMonitor = new PushMonitorDelegator(
+    this.pushMonitor = new PartitionStatusBasedPushMonitor(
         clusterName,
-        routingDataRepository,
         offlinePushMonitorAccessor,
         admin,
         storeMetadataRepository,
+        routingDataRepository,
         new AggPushHealthStats(clusterName, metricsRepository, storeMetadataRepository, unregisterMetricEnabled),
         realTimeTopicSwitcher,
         clusterLockManager,
@@ -370,7 +370,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     return config;
   }
 
-  public PushMonitorDelegator getPushMonitor() {
+  public PartitionStatusBasedPushMonitor getPushMonitor() {
     return pushMonitor;
   }
 

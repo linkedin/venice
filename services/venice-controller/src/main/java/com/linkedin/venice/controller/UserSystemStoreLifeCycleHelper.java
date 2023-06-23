@@ -10,7 +10,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
+import com.linkedin.venice.pushmonitor.PartitionStatusBasedPushMonitor;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import java.util.ArrayList;
@@ -121,7 +121,7 @@ public class UserSystemStoreLifeCycleHelper {
   public static void deleteSystemStore(
       VeniceHelixAdmin admin,
       ReadWriteStoreRepository storeRepository,
-      PushMonitorDelegator pushMonitor,
+      PartitionStatusBasedPushMonitor pushMonitor,
       String clusterName,
       String systemStoreName,
       boolean isStoreMigrating,
@@ -165,7 +165,7 @@ public class UserSystemStoreLifeCycleHelper {
   public static void maybeDeleteSystemStoresForUserStore(
       VeniceHelixAdmin admin,
       ReadWriteStoreRepository storeRepository,
-      PushMonitorDelegator pushMonitor,
+      PartitionStatusBasedPushMonitor pushMonitor,
       String clusterName,
       Store userStore,
       MetaStoreWriter metaStoreWriter,

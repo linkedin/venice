@@ -27,9 +27,8 @@ import org.apache.logging.log4j.Logger;
 /**
  * This class serves as a collector of offline push status for both Venice Server and Da Vinci clients.
  * It will try to aggregate push status from Server and Da Vinci and produce the final aggregated result.
- * For Venice Server, it will receive status update and may report directly if push status store is not enabled, othewise
+ * For Venice Server, it will receive status update and may report directly if push status store is not enabled, otherwise
  * it will wait for Da Vinci push status and compute final state.
- * For Da Vinci push status, it will be
  *
  */
 public class PushStatusCollector {
@@ -40,16 +39,13 @@ public class PushStatusCollector {
   private final PushStatusStoreReader pushStatusStoreReader;
   private final ReadWriteStoreRepository storeRepository;
   private final int daVinciPushStatusScanPeriodInSeconds;
-
   private final int daVinciPushStatusScanThreadNumber;
   private final boolean daVinciPushStatusScanEnabled;
   private final int daVinciPushStatusNoReportRetryMaxAttempts;
-
   private final int daVinciPushStatusScanMaxOfflineInstance;
   private ScheduledExecutorService offlinePushCheckScheduler;
   private ExecutorService pushStatusStoreScanExecutor;
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
-
   private final Map<String, Integer> topicToNoDaVinciStatusRetryCountMap = new HashMap<>();
 
   public PushStatusCollector(

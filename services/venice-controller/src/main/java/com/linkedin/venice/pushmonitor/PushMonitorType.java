@@ -1,7 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 /**
- * This enum controls the behavior of how {@link PushMonitorDelegator} chooses
+ * This enum controls the behavior of how {@link PartitionStatusBasedPushMonitor} chooses
  * proper PushMonitor for resources.
  */
 public enum PushMonitorType {

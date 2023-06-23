@@ -157,8 +157,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatusWithDetails;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PartitionStatusBasedPushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitor;
-import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushMonitorUtils;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
@@ -6518,7 +6518,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int numberOfPartition,
       int replicationFactor,
       OfflinePushStrategy strategy) {
-    PushMonitorDelegator offlinePushMonitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
+    PartitionStatusBasedPushMonitor offlinePushMonitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
     offlinePushMonitor.startMonitorOfflinePush(kafkaTopic, numberOfPartition, replicationFactor, strategy);
   }
 

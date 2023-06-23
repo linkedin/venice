@@ -20,7 +20,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
+import com.linkedin.venice.pushmonitor.PartitionStatusBasedPushMonitor;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -44,7 +44,7 @@ public class TestInstanceStatusDecider {
   private String storeName = "TestInstanceStatusDecider";
   private int version = 1;
   private String resourceName = Version.composeKafkaTopic(storeName, version);
-  private PushMonitorDelegator mockMonitor;
+  private PartitionStatusBasedPushMonitor mockMonitor;
 
   @BeforeMethod
   public void setUp() {
@@ -52,7 +52,7 @@ public class TestInstanceStatusDecider {
     resources = mock(HelixVeniceClusterResources.class);
     routingDataRepository = mock(HelixExternalViewRepository.class);
     readWriteStoreRepository = mock(HelixReadWriteStoreRepository.class);
-    mockMonitor = mock(PushMonitorDelegator.class);
+    mockMonitor = mock(PartitionStatusBasedPushMonitor.class);
 
     doAnswer(invocation -> {
       PartitionAssignment partitionAssignment = invocation.getArgument(0);
