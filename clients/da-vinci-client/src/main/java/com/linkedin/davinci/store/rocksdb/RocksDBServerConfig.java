@@ -206,7 +206,7 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_SEPARATE_RMD_CACHE_ENABLED = "rocksdb.separate.rmd.cache.enabled";
   public static final String ROCKSDB_BLOCK_BASE_FORMAT_VERSION = "rocksdb.block.base.format.version";
 
-  public static final String ROCKSDB_BLOCK_CACHE_HIGH_PRI_POOL_RATIO = "rocksdb.block.base.high.pri.pool.ratio";
+  public static final String ROCKSDB_BLOCK_CACHE_HIGH_PRI_POOL_RATIO = "rocksdb.block.cache.base.high.pri.pool.ratio";
 
   private final boolean rocksDBUseDirectReads;
 
