@@ -147,13 +147,13 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
           rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
           rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
           rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit(),
-          rocksDBServerConfig.getCacheHighPriorityPoolRatio());
+          rocksDBServerConfig.getBlockCacheHighPriorityPoolRatio());
       if (rocksDBServerConfig.isUseSeparateRMDCacheEnabled()) {
         this.sharedRMDCache = new LRUCache(
             rocksDBServerConfig.getRocksDBRMDBlockCacheSizeInBytes(),
             rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
             rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit(),
-            rocksDBServerConfig.getCacheHighPriorityPoolRatio());
+            rocksDBServerConfig.getBlockCacheHighPriorityPoolRatio());
       }
     }
 

@@ -206,7 +206,7 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_SEPARATE_RMD_CACHE_ENABLED = "rocksdb.separate.rmd.cache.enabled";
   public static final String ROCKSDB_BLOCK_BASE_FORMAT_VERSION = "rocksdb.block.base.format.version";
 
-  public static final String ROCKSDB_BLOCK_CACHE_HIGH_PRI_POOL_RATIO = "rocksdb.block.base.high.pri.pool.ration";
+  public static final String ROCKSDB_BLOCK_CACHE_HIGH_PRI_POOL_RATIO = "rocksdb.block.base.high.pri.pool.ratio";
 
   private final boolean rocksDBUseDirectReads;
 
@@ -267,7 +267,7 @@ public class RocksDBServerConfig {
   private final boolean separateRMDCacheEnabled;
   private int blockBaseFormatVersion;
 
-  private double cacheHighPriorityPoolRatio;
+  private double blockCacheHighPriorityPoolRatio;
 
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
@@ -376,15 +376,15 @@ public class RocksDBServerConfig {
     this.separateRMDCacheEnabled = props.getBoolean(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, false);
 
     this.blockBaseFormatVersion = props.getInt(ROCKSDB_BLOCK_BASE_FORMAT_VERSION, 2);
-    this.cacheHighPriorityPoolRatio = props.getDouble(ROCKSDB_BLOCK_CACHE_HIGH_PRI_POOL_RATIO, 0.1);
+    this.blockCacheHighPriorityPoolRatio = props.getDouble(ROCKSDB_BLOCK_CACHE_HIGH_PRI_POOL_RATIO, 0.1);
   }
 
   public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {
     return level0FileNumCompactionTriggerWriteOnlyVersion;
   }
 
-  public double getCacheHighPriorityPoolRatio() {
-    return cacheHighPriorityPoolRatio;
+  public double getBlockCacheHighPriorityPoolRatio() {
+    return blockCacheHighPriorityPoolRatio;
   }
 
   public int getLevel0SlowdownWritesTriggerWriteOnlyVersion() {
