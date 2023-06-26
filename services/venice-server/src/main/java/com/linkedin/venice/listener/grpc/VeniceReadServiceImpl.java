@@ -9,9 +9,12 @@ import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import io.grpc.stub.StreamObserver;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServiceImplBase {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceReadServiceImpl.class);
   StorageReadRequestsHandler _storageReadRequestsHandler;
 
   public VeniceReadServiceImpl() {
@@ -33,7 +36,10 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     VeniceServerResponse grpcResponse = VeniceServerResponse.newBuilder()
         .setSchemaId(valueRecord.getSchemaId())
         .setDataSize(valueRecord.getDataSize())
-        .setData(ByteString.copyFrom(valueRecord.getData().array(), 4, valueRecord.getDataSize()))
+        .setData(ByteString.copyFrom(valueRecord.getData().array(), 4, valueRecord.getDataSize())) // set offset of 4
+                                                                                                   // since first 4
+                                                                                                   // bytes are schema
+                                                                                                   // id
         .setSerializedArr(ByteString.copyFrom(valueRecord.getData().array()))
         .build();
 

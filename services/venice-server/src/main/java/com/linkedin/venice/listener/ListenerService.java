@@ -59,7 +59,7 @@ public class ListenerService extends AbstractVeniceService {
   // TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
-  private StorageReadRequestsHandler _storageReadRequestsHandler;
+  private StorageReadRequestsHandler storageReadRequestsHandler;
 
   public ListenerService(
       StorageEngineRepository storageEngineRepository,
@@ -115,7 +115,7 @@ public class ListenerService extends AbstractVeniceService {
         compressorFactory,
         resourceReadUsageTracker);
 
-    _storageReadRequestsHandler = requestHandler;
+    storageReadRequestsHandler = requestHandler;
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
@@ -159,7 +159,7 @@ public class ListenerService extends AbstractVeniceService {
     if (isGrpcEnabled) {
       grpcServer = new VeniceGrpcServer(
           new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
-              .setService(new VeniceReadServiceImpl(_storageReadRequestsHandler))
+              .setService(new VeniceReadServiceImpl(storageReadRequestsHandler))
               .build());
     }
   }

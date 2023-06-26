@@ -45,8 +45,10 @@ public class VeniceReadServiceClient {
         .build();
 
     VeniceServerResponse response = stub.get(request);
+    String dataResponse = new String(response.getData().toByteArray(), StandardCharsets.US_ASCII);
+    LOGGER.debug("grpc Client Response: '" + dataResponse + "'");
     // convert to string, not getting decoded properly. Has an extra space in the front. Will debug.
-    return new String(response.getData().toByteArray(), StandardCharsets.UTF_8);
+    return dataResponse.trim();
   }
 
   public void shutdown() {

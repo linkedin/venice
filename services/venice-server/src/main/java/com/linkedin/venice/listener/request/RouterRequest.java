@@ -31,7 +31,7 @@ public abstract class RouterRequest {
 
   public RouterRequest(String resourceName, String storeName, boolean isRetryRequest, boolean isStreamingRequest) {
     this.resourceName = resourceName;
-    this.storeName = storeName;
+    this.storeName = Version.parseStoreFromKafkaTopicName(resourceName);
     this.isRetryRequest = isRetryRequest;
     this.isStreamingRequest = isStreamingRequest;
   }
