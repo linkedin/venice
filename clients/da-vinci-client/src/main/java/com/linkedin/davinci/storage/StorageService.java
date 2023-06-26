@@ -15,7 +15,6 @@ import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngineFactory;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -182,9 +181,6 @@ public class StorageService extends AbstractVeniceService {
 
   private boolean deleteStorageEngine(String storageEngineName) {
     String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
-    if (VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
-      return true;
-    }
     Store store;
     try {
       store = storeRepository.getStoreOrThrow(storeName);
