@@ -258,7 +258,6 @@ public class TopicManagerTest {
     Assert.assertEquals(
         topicManager.getTopicRetention(topicNameWithDefaultRetentionPolicy),
         TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
-    Assert.assertEquals(1, topicManager.getReplicationFactor(topicNameWithDefaultRetentionPolicy));
   }
 
   @Test

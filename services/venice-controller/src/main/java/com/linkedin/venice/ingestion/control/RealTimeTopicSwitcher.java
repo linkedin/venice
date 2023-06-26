@@ -47,6 +47,7 @@ public class RealTimeTopicSwitcher {
   private final VeniceWriterFactory veniceWriterFactory;
   private final Time timer;
   private final Integer kafkaReplicationFactorForRTTopics;
+  private final Integer kafkaReplicationFactor;
   private final Optional<Integer> minSyncReplicasForRTTopics;
 
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -64,7 +65,7 @@ public class RealTimeTopicSwitcher {
         veniceProperties.getBooleanWithAlternative(ConfigKeys.KAFKA_OVER_SSL, ConfigKeys.SSL_TO_KAFKA_LEGACY, false)
             ? veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS)
             : veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
-    int kafkaReplicationFactor = veniceProperties.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
+    this.kafkaReplicationFactor = veniceProperties.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
     this.kafkaReplicationFactorForRTTopics =
         veniceProperties.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     this.minSyncReplicasForRTTopics = veniceProperties.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
@@ -154,9 +155,7 @@ public class RealTimeTopicSwitcher {
       } else {
         partitionCount = store.getPartitionCount();
       }
-      int replicationFactor = srcTopicName.isRealTime()
-          ? kafkaReplicationFactorForRTTopics
-          : getTopicManager().getReplicationFactor(topicWhereToSendTheTopicSwitch);
+      int replicationFactor = srcTopicName.isRealTime() ? kafkaReplicationFactorForRTTopics : kafkaReplicationFactor;
       Optional<Integer> minISR = srcTopicName.isRealTime() ? minSyncReplicasForRTTopics : Optional.empty();
       getTopicManager().createTopic(
           srcTopicName,

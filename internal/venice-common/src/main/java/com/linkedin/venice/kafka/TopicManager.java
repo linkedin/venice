@@ -320,10 +320,6 @@ public class TopicManager implements Closeable {
     return kafkaWriteOnlyAdmin.get().deleteTopic(topicName);
   }
 
-  public int getReplicationFactor(PubSubTopic topicName) {
-    return partitionsFor(topicName).iterator().next().replicasNum();
-  }
-
   /**
    * Update retention for the given topic.
    * If the topic doesn't exist, this operation will throw {@link TopicDoesNotExistException}
