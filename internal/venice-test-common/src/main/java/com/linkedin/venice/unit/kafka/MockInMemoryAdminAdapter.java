@@ -52,7 +52,7 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
     topicPubSubTopicConfigurationMap.put(topic, topicPubSubTopicConfiguration);
     topicPartitionNumMap.put(topic, new ArrayList<>());
     for (int i = 0; i < numPartitions; i++) {
-      topicPartitionNumMap.get(topic).add(new PubSubTopicPartitionInfo(topic, i, replication, true));
+      topicPartitionNumMap.get(topic).add(new PubSubTopicPartitionInfo(topic, i, true));
     }
   }
 
