@@ -7,7 +7,12 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -19,6 +24,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -33,6 +39,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -44,6 +51,8 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.Node;
+import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.testng.Assert;
@@ -51,6 +60,9 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+/**
+ * Unit tests for {@link ApacheKafkaConsumerAdapter}.
+ */
 public class ApacheKafkaPubSubConsumerAdapterTest {
   private ApacheKafkaConsumerAdapter apacheKafkaConsumerWithOffsetTrackingDisabled;
   private ApacheKafkaConsumerAdapter apacheKafkaConsumerWithOffsetTrackingEnabled;
@@ -237,5 +249,40 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
     assertEquals(actualKey.getKeyHeaderByte(), key.getKeyHeaderByte());
     assertEquals(actualKey.getKey(), key.getKey());
     assertEquals(messages.get(pubSubTopicPartition).get(0).getValue(), value);
+  }
+
+  @Test
+  public void testPartitionsFor() {
+    PubSubTopic topic = mock(PubSubTopic.class);
+    when(topic.getName()).thenReturn("testTopic");
+    List<PartitionInfo> partitionInfos = new ArrayList<>();
+    partitionInfos.add(new PartitionInfo("testTopic", 0, null, new Node[4], new Node[0]));
+    partitionInfos.add(new PartitionInfo("testTopic", 1, null, new Node[3], new Node[1]));
+    partitionInfos.add(new PartitionInfo("otherTopic", 0, null, new Node[0], new Node[0]));
+    when(delegateKafkaConsumer.partitionsFor(topic.getName())).thenReturn(partitionInfos);
+
+    List<PubSubTopicPartitionInfo> result = apacheKafkaConsumerWithOffsetTrackingDisabled.partitionsFor(topic);
+
+    assertNotNull(result);
+    assertEquals(result.size(), 2);
+
+    PubSubTopicPartitionInfo topicPartitionInfo = result.get(0);
+    assertEquals(topicPartitionInfo.topic(), topic);
+    assertEquals(topicPartitionInfo.topic().getName(), "testTopic");
+    assertEquals(topicPartitionInfo.partition(), 0);
+    assertFalse(topicPartitionInfo.hasInSyncReplicas());
+
+    topicPartitionInfo = result.get(1);
+    assertEquals(topicPartitionInfo.topic(), topic);
+    assertEquals(topicPartitionInfo.topic().getName(), "testTopic");
+    assertTrue(topicPartitionInfo.hasInSyncReplicas());
+  }
+
+  @Test
+  public void testPartitionsForReturnsNull() {
+    PubSubTopic topic = mock(PubSubTopic.class);
+    when(topic.getName()).thenReturn("testTopic");
+    when(delegateKafkaConsumer.partitionsFor(topic.getName())).thenReturn(null);
+    assertNull(apacheKafkaConsumerWithOffsetTrackingDisabled.partitionsFor(topic));
   }
 }
