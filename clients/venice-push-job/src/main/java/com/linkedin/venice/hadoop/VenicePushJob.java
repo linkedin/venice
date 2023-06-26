@@ -72,6 +72,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -2023,22 +2024,24 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalZstdWithDictCompressedValueBytes =
           MRJobCounterHelper.getTotalZstdWithDictCompressedValueSize(runningJob.getCounters());
       LOGGER.info(
-          "pushJobDetails MR Counters: " + "\n\tTotal number of records: {} " + "\n\tSize of keys: {} Bytes "
-              + "\n\tsize of uncompressed value: {} Bytes " + "\n\tConfigured value Compression Strategy: {} "
-              + "\n\tFinal data size stored in Venice based on this compression strategy: {} Bytes "
+          "pushJobDetails MR Counters: " + "\n\tTotal number of records: {} " + "\n\tSize of keys: {} "
+              + "\n\tsize of uncompressed value: {} " + "\n\tConfigured value Compression Strategy: {} "
+              + "\n\tFinal data size stored in Venice based on this compression strategy: {} "
               + "\n\tCompression Metrics collection is: {} ",
           pushJobDetails.totalNumberOfRecords,
-          pushJobDetails.totalKeyBytes,
-          pushJobDetails.totalRawValueBytes,
+          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes),
+          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes),
           CompressionStrategy.valueOf(pushJobDetails.valueCompressionStrategy).name(),
-          pushJobDetails.totalCompressedValueBytes,
+          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes),
           pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled");
       if (pushJobSetting.compressionMetricCollectionEnabled) {
-        LOGGER.info("\tData size if compressed using Gzip: {} Bytes ", pushJobDetails.totalGzipCompressedValueBytes);
+        LOGGER.info(
+            "\tData size if compressed using Gzip: {} ",
+            ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalGzipCompressedValueBytes));
         if (isZstdDictCreationSuccess) {
           LOGGER.info(
-              "\tData size if compressed using Zstd with Dictionary: {} Bytes",
-              pushJobDetails.totalZstdWithDictCompressedValueBytes);
+              "\tData size if compressed using Zstd with Dictionary: {} ",
+              ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalZstdWithDictCompressedValueBytes));
         } else {
           LOGGER.info("\tZstd Dictionary creation Failed");
         }
