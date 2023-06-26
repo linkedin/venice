@@ -1,6 +1,6 @@
 ---
 layout: default
-title: VIP-1
+title: [VIP-2] Removing Per Record Offset Metadata From Venice-Server Storage With Heartbeats
 parent: Community Guides
 permalink: /docs/proposals/VIP_TEMPLATE.md
 ---
