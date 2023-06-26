@@ -191,7 +191,7 @@ public class StorageService extends AbstractVeniceService {
     }
 
     int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
-    return store.getVersion(versionNumber).isPresent() || versionNumber < store.getCurrentVersion();
+    return !store.getVersion(versionNumber).isPresent() || versionNumber < store.getCurrentVersion();
   }
 
   private void restoreAllStores(
