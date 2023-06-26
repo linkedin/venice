@@ -46,8 +46,8 @@ public class RealTimeTopicSwitcher {
   private final String destKafkaBootstrapServers;
   private final VeniceWriterFactory veniceWriterFactory;
   private final Time timer;
-  private final Integer kafkaReplicationFactorForRTTopics;
-  private final Integer kafkaReplicationFactor;
+  private final int kafkaReplicationFactorForRTTopics;
+  private final int kafkaReplicationFactor;
   private final Optional<Integer> minSyncReplicasForRTTopics;
 
   private final PubSubTopicRepository pubSubTopicRepository;
