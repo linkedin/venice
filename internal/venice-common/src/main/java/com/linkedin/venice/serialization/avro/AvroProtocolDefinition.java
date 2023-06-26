@@ -15,6 +15,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
@@ -148,6 +149,11 @@ public enum AvroProtocolDefinition {
   PUSH_STATUS_SYSTEM_SCHEMA_STORE(1, PushStatusValue.class),
 
   /**
+   * Value schema for participant system stores.
+   */
+  PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE(1, ParticipantMessageValue.class),
+
+  /**
    * Response record for admin request v1.
    */
   SERVER_ADMIN_RESPONSE_V1(1, AdminResponseRecord.class),
@@ -230,7 +236,7 @@ public enum AvroProtocolDefinition {
    * extra header prepended in front. These are either un-evolvable or have their
    * schema ID stored out of band from the record.
    *
-   * For example, everything that goes inside of the Put of a {@link KafkaMessageEnvelope}
+   * For example, everything that goes inside the Put message of a {@link KafkaMessageEnvelope}
    * and uses the {@link com.linkedin.venice.kafka.protocol.Put#schemaId} to store
    * the protocol version.
    */

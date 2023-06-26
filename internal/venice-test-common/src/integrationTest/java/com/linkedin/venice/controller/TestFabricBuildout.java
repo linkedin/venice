@@ -22,7 +22,6 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -63,7 +62,7 @@ public class TestFabricBuildout {
         1,
         Optional.empty(),
         Optional.of(childControllerProperties),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(serverProperties),
         false);
 
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();

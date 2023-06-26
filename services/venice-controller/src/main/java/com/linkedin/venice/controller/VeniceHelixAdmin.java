@@ -22,6 +22,7 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE;
 import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
@@ -50,7 +51,7 @@ import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRep
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
-import com.linkedin.venice.controller.init.InternalRTStoreInitializationRoutine;
+import com.linkedin.venice.controller.init.PerClusterInternalRTStoreInitializationRoutine;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
@@ -229,7 +230,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
@@ -385,6 +385,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       new VeniceConcurrentHashMap<>();
   private final Map<String, HelixLiveInstanceMonitor> liveInstanceMonitorMap = new HashMap<>();
 
+  private final ClusterLeaderInitializationManager clusterLeaderInitializationManager;
   private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
   private long backupVersionDefaultRetentionMs;
@@ -414,7 +415,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional.empty(),
         Optional.empty(),
         pubSubTopicRepository,
-        pubSubClientsFactory);
+        pubSubClientsFactory,
+        Collections.EMPTY_LIST);
   }
 
   // TODO Use different configs for different clusters when creating helix admin.
@@ -427,7 +429,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<DynamicAccessController> accessController,
       Optional<ICProvider> icProvider,
       PubSubTopicRepository pubSubTopicRepository,
-      PubSubClientsFactory pubSubClientsFactory) {
+      PubSubClientsFactory pubSubClientsFactory,
+      List<ClusterLeaderInitializationRoutine> additionalInitRoutines) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
     VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
@@ -594,20 +597,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               Optional.of(VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS),
               true));
     }
+    initRoutines.addAll(additionalInitRoutines);
 
     // Participant stores are not read or written in parent colo. Parent controller skips participant store
     // initialization.
     if (!multiClusterConfigs.isParent() && multiClusterConfigs.isParticipantMessageStoreEnabled()) {
-      Function<String, String> storeNameSupplier = VeniceSystemStoreUtils::getParticipantStoreNameForCluster;
       initRoutines.add(
-          new InternalRTStoreInitializationRoutine(
-              storeNameSupplier,
+          new PerClusterInternalRTStoreInitializationRoutine(
+              PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE,
+              VeniceSystemStoreUtils::getParticipantStoreNameForCluster,
               multiClusterConfigs,
               this,
-              ParticipantMessageKey.getClassSchema().toString(),
-              ParticipantMessageValue.getClassSchema().toString()));
+              ParticipantMessageKey.getClassSchema()));
     }
-    ClusterLeaderInitializationRoutine controllerInitialization =
+
+    clusterLeaderInitializationManager =
         new ClusterLeaderInitializationManager(initRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
 
     // Create the controller cluster if required.
@@ -622,7 +626,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this,
         multiClusterConfigs,
         metricsRepository,
-        controllerInitialization,
+        clusterLeaderInitializationManager,
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient);
@@ -757,6 +761,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   public HelixAdapterSerializer getAdapterSerializer() {
     return adapterSerializer;
+  }
+
+  // Package private on purpose
+  ClusterLeaderInitializationManager getClusterLeaderInitializationManager() {
+    return clusterLeaderInitializationManager;
   }
 
   // For testing purpose.
@@ -7346,11 +7355,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store == null) {
       throwStoreDoesNotExist(clusterName, regularStoreName);
     }
-    String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName);
-    if (!isParent()) {
-      // Make sure RT topic in child region exists before producing. There's no write to parent region meta store RT.
-      getRealTimeTopic(clusterName, metaStoreName);
-    }
 
     // Update the store flag to enable meta system store.
     if (!store.isStoreMetaSystemStoreEnabled()) {
@@ -7359,6 +7363,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return s;
       });
     }
+
+    // Make sure RT topic exists before producing. There's no write to parent region meta store RT, but we still create
+    // the RT topic to be consistent in case it was not auto-materialized
+    getRealTimeTopic(clusterName, VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName));
+
     Optional<MetaStoreWriter> metaStoreWriter = getHelixVeniceClusterResources(clusterName).getMetaStoreWriter();
     if (!metaStoreWriter.isPresent()) {
       LOGGER.info(

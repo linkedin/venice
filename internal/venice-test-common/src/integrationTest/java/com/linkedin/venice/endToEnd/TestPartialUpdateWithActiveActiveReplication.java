@@ -46,7 +46,6 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.IOException;
@@ -135,9 +134,9 @@ public class TestPartialUpdateWithActiveActiveReplication {
         2,
         1,
         2,
-        Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(controllerProps),
+        Optional.of(serverProperties),
         false);
 
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();

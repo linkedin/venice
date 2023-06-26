@@ -28,7 +28,6 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -84,8 +83,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       int numberOfServers,
       int numberOfRouters,
       int replicationFactor,
-      Optional<VeniceProperties> parentControllerProperties,
-      Optional<VeniceProperties> serverProperties) {
+      Optional<Properties> parentControllerProperties,
+      Optional<Properties> serverProperties) {
     return generateService(
         numberOfRegions,
         numberOfClustersInEachRegion,
@@ -108,9 +107,9 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       int numberOfServers,
       int numberOfRouters,
       int replicationFactor,
-      Optional<VeniceProperties> parentControllerPropertiesOverride,
+      Optional<Properties> parentControllerPropertiesOverride,
       Optional<Properties> childControllerPropertiesOverride,
-      Optional<VeniceProperties> serverProperties,
+      Optional<Properties> serverProperties,
       boolean forkServer) {
     String parentRegionName = DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
@@ -134,13 +133,6 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .setRegionName(DEFAULT_PARENT_DATA_CENTER_REGION_NAME)
               .build());
       allPubSubBrokerWrappers.add(parentPubSubBrokerWrapper);
-
-      Properties parentControllerProps = parentControllerPropertiesOverride.isPresent()
-          ? parentControllerPropertiesOverride.get().getPropertiesCopy()
-          : new Properties();
-      /** Enable participant system store by default in a two-layer multi-region set-up */
-      parentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
-      parentControllerPropertiesOverride = Optional.of(new VeniceProperties(parentControllerProps));
 
       Map<String, String> clusterToD2 = new HashMap<>();
       Map<String, String> clusterToServerD2 = new HashMap<>();
@@ -186,7 +178,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
 
       final Properties finalParentControllerProperties = new Properties();
       finalParentControllerProperties.putAll(defaultParentControllerProps);
-      parentControllerPropertiesOverride.ifPresent(p -> finalParentControllerProperties.putAll(p.getPropertiesCopy()));
+      parentControllerPropertiesOverride.ifPresent(finalParentControllerProperties::putAll);
 
       Properties nativeReplicationRequiredChildControllerProps = new Properties();
       nativeReplicationRequiredChildControllerProps.put(ADMIN_TOPIC_SOURCE_REGION, parentRegionName);
@@ -225,10 +217,9 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       finalChildControllerProperties.putAll(pubSubBrokerProps); // child controllers
 
       Properties additionalServerProps = new Properties();
-      serverProperties
-          .ifPresent(veniceProperties -> additionalServerProps.putAll(veniceProperties.getPropertiesCopy()));
+      serverProperties.ifPresent(additionalServerProps::putAll);
       additionalServerProps.putAll(pubSubBrokerProps);
-      serverProperties = Optional.of(new VeniceProperties(additionalServerProps));
+      serverProperties = Optional.of(additionalServerProps);
 
       VeniceMultiClusterCreateOptions.Builder builder =
           new VeniceMultiClusterCreateOptions.Builder(numberOfClustersInEachRegion)
@@ -239,7 +230,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .randomizeClusterName(false)
               .multiRegionSetup(true)
               .childControllerProperties(finalChildControllerProperties)
-              .veniceProperties(serverProperties.orElse(null))
+              .extraProperties(serverProperties.orElse(null))
               .forkServer(forkServer)
               .kafkaClusterMap(kafkaClusterMap);
       // Create multi-clusters
@@ -252,6 +243,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
         multiClusters.add(multiClusterWrapper);
       }
 
+      // random controller from each multi-cluster, in reality this should include all controllers, not just one
       VeniceControllerWrapper[] childControllers = multiClusters.stream()
           .map(VeniceMultiClusterWrapper::getRandomController)
           .toArray(VeniceControllerWrapper[]::new);
@@ -273,7 +265,6 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .build();
       // Create parentControllers for multi-cluster
       for (int i = 0; i < numberOfParentControllers; i++) {
-        // random controller from each multi-cluster, in reality this should include all controllers, not just one
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(parentControllerCreateOptions);
         parentControllers.add(parentController);
       }
@@ -299,12 +290,12 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   }
 
   private static Map<String, Map<String, String>> addKafkaClusterIDMappingToServerConfigs(
-      Optional<VeniceProperties> serverProperties,
+      Optional<Properties> serverProperties,
       List<String> regionNames,
       List<PubSubBrokerWrapper> kafkaBrokers) {
     if (serverProperties.isPresent()) {
       SecurityProtocol baseSecurityProtocol = SecurityProtocol
-          .valueOf(serverProperties.get().getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name));
+          .valueOf(serverProperties.get().getProperty(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name));
       Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
 
       Map<String, String> mapping;

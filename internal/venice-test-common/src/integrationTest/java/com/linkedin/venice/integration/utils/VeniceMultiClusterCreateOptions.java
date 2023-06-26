@@ -9,7 +9,6 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
@@ -35,7 +34,7 @@ public class VeniceMultiClusterCreateOptions {
   private final ZkServerWrapper zkServerWrapper;
   private final PubSubBrokerWrapper pubSubBrokerWrapper;
   private final Properties childControllerProperties;
-  private final VeniceProperties veniceProperties;
+  private final Properties extraProperties;
 
   public String getRegionName() {
     return regionName;
@@ -113,8 +112,8 @@ public class VeniceMultiClusterCreateOptions {
     return childControllerProperties;
   }
 
-  public VeniceProperties getVeniceProperties() {
-    return veniceProperties;
+  public Properties getExtraProperties() {
+    return extraProperties;
   }
 
   @Override
@@ -169,7 +168,7 @@ public class VeniceMultiClusterCreateOptions {
         .append(childControllerProperties)
         .append(", ")
         .append("veniceProperties:")
-        .append(veniceProperties)
+        .append(extraProperties)
         .append(", ")
         .append(", ")
         .append("zk:")
@@ -201,7 +200,7 @@ public class VeniceMultiClusterCreateOptions {
     zkServerWrapper = builder.zkServerWrapper;
     pubSubBrokerWrapper = builder.pubSubBrokerWrapper;
     childControllerProperties = builder.childControllerProperties;
-    veniceProperties = builder.veniceProperties;
+    extraProperties = builder.extraProperties;
     forkServer = builder.forkServer;
     kafkaClusterMap = builder.kafkaClusterMap;
   }
@@ -227,7 +226,7 @@ public class VeniceMultiClusterCreateOptions {
     private ZkServerWrapper zkServerWrapper;
     private PubSubBrokerWrapper pubSubBrokerWrapper;
     private Properties childControllerProperties;
-    private VeniceProperties veniceProperties;
+    private Properties extraProperties;
 
     public Builder(int numberOfClusters) {
       this.numberOfClusters = numberOfClusters;
@@ -324,8 +323,8 @@ public class VeniceMultiClusterCreateOptions {
       return this;
     }
 
-    public Builder veniceProperties(VeniceProperties veniceProperties) {
-      this.veniceProperties = veniceProperties;
+    public Builder extraProperties(Properties extraProperties) {
+      this.extraProperties = extraProperties;
       return this;
     }
 
@@ -336,8 +335,8 @@ public class VeniceMultiClusterCreateOptions {
       if (childControllerProperties == null) {
         childControllerProperties = new Properties();
       }
-      if (veniceProperties == null) {
-        veniceProperties = VeniceProperties.empty();
+      if (extraProperties == null) {
+        extraProperties = new Properties();
       }
       if (kafkaClusterMap == null) {
         kafkaClusterMap = Collections.emptyMap();

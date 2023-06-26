@@ -33,7 +33,6 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -85,7 +84,7 @@ public class PushStatusStoreMultiColoTest {
         NUMBER_OF_SERVERS,
         NUMBER_OF_ROUTERS,
         REPLICATION_FACTOR,
-        Optional.of(new VeniceProperties(extraProperties)),
+        Optional.of(extraProperties),
         Optional.of(extraProperties),
         Optional.empty(),
         false);

@@ -17,4 +17,23 @@ public final class ConcurrencyUtils {
       }
     }
   }
+
+  public static void executeUnderConditionalLock(
+      Runnable action,
+      Runnable orElse,
+      BooleanSupplier lockCondition,
+      Object lock) {
+    if (lockCondition.getAsBoolean()) {
+      synchronized (lock) {
+        // Check it again
+        if (lockCondition.getAsBoolean()) {
+          action.run();
+        } else {
+          orElse.run();
+        }
+      }
+    } else {
+      orElse.run();
+    }
+  }
 }

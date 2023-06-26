@@ -120,10 +120,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   boolean isClusterValid(String clusterName);
 
-  default boolean isBatchJobHeartbeatEnabled() {
-    return false;
-  }
-
   default void createStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
     createStore(clusterName, storeName, owner, keySchema, valueSchema, false, Optional.empty());
   }
@@ -346,6 +342,26 @@ public interface Admin extends AutoCloseable, Closeable {
       String valueSchemaStr,
       int schemaId,
       DirectionalSchemaCompatibilityType expectedCompatibilityType);
+
+  /**
+   * This method skips most precondition checks and is intended for only internal use.
+   * Code from outside should call
+   * {@link #addValueSchema(String, String, String, DirectionalSchemaCompatibilityType)} instead.
+   *
+   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType)
+   */
+  default SchemaEntry addValueSchema(
+      String clusterName,
+      String storeName,
+      String valueSchemaStr,
+      int schemaId) {
+    return addValueSchema(
+        clusterName,
+        storeName,
+        valueSchemaStr,
+        schemaId,
+        SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE);
+  }
 
   SchemaEntry addSupersetSchema(
       String clusterName,

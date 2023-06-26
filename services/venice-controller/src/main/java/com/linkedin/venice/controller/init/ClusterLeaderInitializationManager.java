@@ -41,7 +41,7 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
   @Override
   public void execute(String clusterToInit) {
     Map<ClusterLeaderInitializationRoutine, Object> initializedRoutinesForCluster =
-        initializedClusters.computeIfAbsent(clusterToInit, k -> new VeniceConcurrentHashMap());
+        initializedClusters.computeIfAbsent(clusterToInit, k -> new VeniceConcurrentHashMap<>());
 
     if (concurrentInit) {
       initRoutines.forEach(
