@@ -104,22 +104,20 @@ public interface InputDataInfoProvider extends Closeable {
       // At least 1 sample per file should be added until the max sample size is reached
       if (fileSampleSize > 0) {
         if (fileSampleSize + data.length > pushJobZstdConfig.getMaxBytesPerFile()) {
-          String perFileLimitErrorMsg = String.format(
-              "Read %s to build dictionary. Reached limit per file of %s.",
+          LOGGER.debug(
+              "Read {} to build dictionary. Reached limit per file of {}.",
               ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
               ByteUtils.generateHumanReadableByteCountString(pushJobZstdConfig.getMaxBytesPerFile()));
-          LOGGER.debug(perFileLimitErrorMsg);
           return;
         }
       }
 
       // addSample returns false when the data read no longer fits in the 'sample' buffer limit
       if (!pushJobZstdConfig.getZstdDictTrainer().addSample(data)) {
-        String maxSamplesReadErrorMsg = String.format(
-            "Read %s to build dictionary. Reached sample limit of %s.",
+        LOGGER.debug(
+            "Read {} to build dictionary. Reached sample limit of {}.",
             ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
             ByteUtils.generateHumanReadableByteCountString(pushJobZstdConfig.getMaxSampleSize()));
-        LOGGER.debug(maxSamplesReadErrorMsg);
         return;
       }
       fileSampleSize += data.length;
