@@ -101,13 +101,16 @@ public interface InputDataInfoProvider extends Closeable {
         continue;
       }
 
-      if (fileSampleSize + data.length > pushJobZstdConfig.getMaxBytesPerFile()) {
-        String perFileLimitErrorMsg = String.format(
-            "Read %s to build dictionary. Reached limit per file of %s.",
-            ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
-            ByteUtils.generateHumanReadableByteCountString(pushJobZstdConfig.getMaxBytesPerFile()));
-        LOGGER.debug(perFileLimitErrorMsg);
-        return;
+      // At least 1 sample per file should be added until the max sample size is reached
+      if (fileSampleSize > 0) {
+        if (fileSampleSize + data.length > pushJobZstdConfig.getMaxBytesPerFile()) {
+          String perFileLimitErrorMsg = String.format(
+              "Read %s to build dictionary. Reached limit per file of %s.",
+              ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
+              ByteUtils.generateHumanReadableByteCountString(pushJobZstdConfig.getMaxBytesPerFile()));
+          LOGGER.debug(perFileLimitErrorMsg);
+          return;
+        }
       }
 
       // addSample returns false when the data read no longer fits in the 'sample' buffer limit
