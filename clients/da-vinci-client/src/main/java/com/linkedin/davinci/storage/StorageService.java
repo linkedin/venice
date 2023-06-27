@@ -179,21 +179,29 @@ public class StorageService extends AbstractVeniceService {
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
   }
 
-  private boolean deleteStorageEngine(String storageEngineName) {
+  static void deleteStorageEngineOnRocksDBError(
+      String storageEngineName,
+      ReadOnlyStoreRepository storeRepository,
+      StorageEngineFactory factory) {
     String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
     Store store;
+    boolean doDeleteStorageEngine;
     try {
+      int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
       store = storeRepository.getStoreOrThrow(storeName);
+      doDeleteStorageEngine = !store.getVersion(versionNumber).isPresent() || versionNumber < store.getCurrentVersion();
     } catch (VeniceNoStoreException e) {
       // The store does not exist in Venice anymore, so it will be deleted.
-      return true;
+      doDeleteStorageEngine = true;
     }
 
-    int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
-    return !store.getVersion(versionNumber).isPresent() || versionNumber < store.getCurrentVersion();
+    if (doDeleteStorageEngine) {
+      LOGGER.info("Storage for {} does not exist, will delete it.", storageEngineName);
+      factory.removeStorageEngine(storageEngineName);
+    }
   }
 
-  void restoreAllStores(
+  private void restoreAllStores(
       VeniceConfigLoader configLoader,
       boolean restoreDataPartitions,
       boolean restoreMetadataPartitions,
@@ -221,10 +229,8 @@ public class StorageService extends AbstractVeniceService {
           } catch (Exception e) {
             if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
               LOGGER.warn("Encountered RocksDB error while opening store: {}", storeName, e);
-              if (deleteStorageEngine(storeName)) {
-                LOGGER.info("Store {} does not exist, will delete it.", storeName);
-                factory.removeStorageEngine(storeName);
-              }
+              // if store version does not exist, clean up the resources.
+              deleteStorageEngineOnRocksDBError(storeName, storeRepository, factory);
               continue;
             }
             LOGGER.error("Could not load the following store : " + storeName, e);
