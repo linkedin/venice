@@ -3194,6 +3194,8 @@ public class VenicePushJob implements AutoCloseable {
    * @param storeName, the store name
    * @param refresh, if true, query the controller to get the latest store response otherwise return the cached one.
    * @return the cached {@link StoreResponse} or the newly fetched {@link StoreResponse} when refresh is true.
+   *
+   * TODO: Need more refactoring to get rid of storeSetting, or even other POJOs in this class so codes can be cleaner.
    */
   private StoreResponse getStoreResponse(String storeName, boolean refresh) {
     if (storeSetting == null) {
