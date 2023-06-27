@@ -15,7 +15,6 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
@@ -140,7 +139,7 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Pair<ExecutionStatus, String> getPushStatusAndDetails(String topic) {
+  public ExecutionStatusWithDetails getPushStatusAndDetails(String topic) {
     return getPushMonitor(topic).getPushStatusAndDetails(topic);
   }
 
@@ -150,7 +149,7 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Pair<ExecutionStatus, String> getIncrementalPushStatusAndDetails(
+  public ExecutionStatusWithDetails getIncrementalPushStatusAndDetails(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
@@ -159,7 +158,7 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Pair<ExecutionStatus, String> getIncrementalPushStatusFromPushStatusStore(
+  public ExecutionStatusWithDetails getIncrementalPushStatusFromPushStatusStore(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,

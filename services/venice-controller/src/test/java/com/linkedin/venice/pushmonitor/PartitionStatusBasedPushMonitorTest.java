@@ -213,11 +213,11 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     partitionStatus.setReplicaStatuses(replicaStatuses1);
     offlinePushStatus.setPartitionStatus(partitionStatus);
     CachedReadOnlyStoreRepository readOnlyStoreRepository = mock(CachedReadOnlyStoreRepository.class);
-    doReturn(Arrays.asList(store)).when(readOnlyStoreRepository).getAllStores();
+    doReturn(Collections.singletonList(store)).when(readOnlyStoreRepository).getAllStores();
     AbstractPushMonitor pushMonitor = getPushMonitor(new MockStoreCleaner(clusterLockManager));
     Map<String, List<String>> map = new HashMap<>();
     String kafkaTopic = Version.composeKafkaTopic(store.getName(), 1);
-    map.put(kafkaTopic, Arrays.asList(HelixUtils.getPartitionName(kafkaTopic, 0)));
+    map.put(kafkaTopic, Collections.singletonList(HelixUtils.getPartitionName(kafkaTopic, 0)));
     doReturn(map).when(helixAdminClient).getDisabledPartitionsMap(anyString(), anyString());
     doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(anyString());
     doReturn(partitionAssignment1).when(mockRoutingDataRepo).getPartitionAssignments(anyString());
@@ -226,10 +226,10 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     pushMonitor.updatePushStatus(offlinePushStatus, STARTED, Optional.empty());
     pushMonitor.onExternalViewChange(partitionAssignment1);
 
-    Pair<ExecutionStatus, Optional<String>> statusOptionalPair =
+    ExecutionStatusWithDetails executionStatusWithDetails =
         PushStatusDecider.getDecider(offlinePushStatus.getStrategy())
             .checkPushStatusAndDetailsByPartitionsStatus(offlinePushStatus, partitionAssignment1, null);
-    Assert.assertEquals(statusOptionalPair.getFirst(), STARTED);
+    Assert.assertEquals(executionStatusWithDetails.getStatus(), STARTED);
 
     verify(helixAdminClient, times(1)).getDisabledPartitionsMap(eq(getClusterName()), eq(disabledHostName));
   }

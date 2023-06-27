@@ -9,10 +9,8 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.List;
-import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -77,16 +75,16 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   private void updatePushStatusByPartitionStatus(
       OfflinePushStatus offlinePushStatus,
       PartitionAssignment partitionAssignment) {
-    Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(
+    ExecutionStatusWithDetails statusWithDetails = checkPushStatus(
         offlinePushStatus,
         partitionAssignment,
         getDisableReplicaCallback(partitionAssignment.getTopic()));
-    if (status.getFirst().isTerminal()) {
+    if (statusWithDetails.getStatus().isTerminal()) {
       LOGGER.info(
-          "Found a offline pushes could be terminated: {} status: {}",
+          "Found a offline pushes could be terminated: {}, status: {}",
           offlinePushStatus.getKafkaTopic(),
-          status.getFirst());
-      handleOfflinePushUpdate(offlinePushStatus, status.getFirst(), status.getSecond());
+          statusWithDetails.getStatus());
+      handleTerminalOfflinePushUpdate(offlinePushStatus, statusWithDetails);
     }
   }
 
@@ -94,7 +92,7 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
    * Checking push status based on Venice offlinePush status
    */
   @Override
-  protected Pair<ExecutionStatus, Optional<String>> checkPushStatus(
+  protected ExecutionStatusWithDetails checkPushStatus(
       OfflinePushStatus pushStatus,
       PartitionAssignment partitionAssignment,
       DisableReplicaCallback callback) {
