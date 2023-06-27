@@ -186,7 +186,6 @@ public class StorageService extends AbstractVeniceService {
       store = storeRepository.getStoreOrThrow(storeName);
     } catch (VeniceNoStoreException e) {
       // The store does not exist in Venice anymore, so it will be deleted.
-      LOGGER.warn("Store {} does not exist, will delete it.", storageEngineName);
       return true;
     }
 
@@ -194,7 +193,7 @@ public class StorageService extends AbstractVeniceService {
     return !store.getVersion(versionNumber).isPresent() || versionNumber < store.getCurrentVersion();
   }
 
-  private void restoreAllStores(
+  void restoreAllStores(
       VeniceConfigLoader configLoader,
       boolean restoreDataPartitions,
       boolean restoreMetadataPartitions,
@@ -223,6 +222,7 @@ public class StorageService extends AbstractVeniceService {
             if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
               LOGGER.warn("Encountered RocksDB error while opening store: {}", storeName, e);
               if (deleteStorageEngine(storeName)) {
+                LOGGER.info("Store {} does not exist, will delete it.", storeName);
                 factory.removeStorageEngine(storeName);
               }
               continue;
