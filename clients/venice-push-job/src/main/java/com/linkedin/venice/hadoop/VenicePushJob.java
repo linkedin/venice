@@ -2373,6 +2373,8 @@ public class VenicePushJob implements AutoCloseable {
    */
   private StoreSetting validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
     StoreResponse storeResponse = getStoreResponse(pushJobSetting.storeName);
+    storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+    storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
 
     if (jobSetting.isTargetedRegionPushEnabled && jobSetting.targetedRegions == null) {
       // only override the targeted regions if it is not set and it is a single region push
@@ -3186,9 +3188,12 @@ public class VenicePushJob implements AutoCloseable {
 
   /**
    * Get the previously cached {@link StoreResponse} if available, otherwise query the controller.
+   * It's unlikely that a store configuration would change during a VenicePushJob so when we need to access the configuration
+   * of a store, it's recommended to access them from the cached {@link StoreResponse} to avoid unnecessary controller
+   * calls unless you need to access up-to-date {@link Version} from the controller.
    * @param storeName, the store name
-   * @param refresh, if true, query the controller to get the latest store response. Usually used for up-to-date Version.
-   * @return
+   * @param refresh, if true, query the controller to get the latest store response otherwise return the cached one.
+   * @return the cached {@link StoreResponse} or the newly fetched {@link StoreResponse} when refresh is true.
    */
   private StoreResponse getStoreResponse(String storeName, boolean refresh) {
     if (storeSetting == null) {
@@ -3202,7 +3207,6 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException("Can't get store info. " + storeResponse.getError());
       }
       storeSetting.storeResponse = storeResponse;
-      storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
       storeSetting.isSchemaAutoRegisterFromPushJobEnabled =
           storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
       storeSetting.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
@@ -3210,7 +3214,6 @@ public class VenicePushJob implements AutoCloseable {
       storeSetting.compressionStrategy = storeResponse.getStore().getCompressionStrategy();
       storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
       storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
-      storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
       storeSetting.hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
     }
     return storeSetting.storeResponse;
