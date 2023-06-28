@@ -1257,6 +1257,8 @@ public class VenicePushJob implements AutoCloseable {
   void postValidationConsumption(Set<String> candidateRegions) {
     // get the latest version of the store for data recovery
     Version sourceVersion = getStoreVersion(pushJobSetting.storeName, kafkaTopicInfo.version);
+    LOGGER
+        .info("Starting to push to rest of the regions {} after successful push to targeted region.", candidateRegions);
 
     if (sourceVersion.getHybridStoreConfig() != null) {
       // perform data recovery for HYBRID stores
