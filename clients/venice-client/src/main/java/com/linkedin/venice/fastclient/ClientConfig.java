@@ -78,6 +78,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * get based batchGet support.
    */
   private final boolean useStreamingBatchGetAsDefault;
+  private final boolean useGrpc;
+  private final Map<String, String> nettyServerToGrpc;
 
   private ClientConfig(
       String storeName,
@@ -108,12 +110,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       StoreMetadataFetchMode storeMetadataFetchMode,
       D2Client d2Client,
       String clusterDiscoveryD2Service,
-      boolean useStreamingBatchGetAsDefault) {
+      boolean useStreamingBatchGetAsDefault,
+      boolean useGrpc,
+      Map<String, String> nettyServerToGrpc) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
     if (r2Client == null) {
       throw new VeniceClientException("r2Client param shouldn't be null");
+    }
+    if (useGrpc && nettyServerToGrpc == null) {
+      // can maybe simplify to only pass nettyServerToGrpc, if it is null then we know useGrpc is false
+      throw new VeniceClientException("nettyServerToGrpc param shouldn't be null when useGrpc is true");
     }
     this.r2Client = r2Client;
     this.storeName = storeName;
@@ -224,6 +232,13 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     } else {
       LOGGER.warn("Deprecated: Batch get will use single get implementation");
     }
+
+    this.useGrpc = useGrpc;
+    if (this.useGrpc) {
+      LOGGER.info("Using gRPC for Venice Fast Client");
+    }
+
+    this.nettyServerToGrpc = this.useGrpc ? nettyServerToGrpc : null;
   }
 
   public String getStoreName() {
@@ -343,6 +358,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this.useStreamingBatchGetAsDefault;
   }
 
+  public boolean useGrpc() {
+    return useGrpc;
+  }
+
+  public Map<String, String> getNettyServerToGrpc() {
+    return nettyServerToGrpc;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -390,6 +413,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private D2Client d2Client;
     private String clusterDiscoveryD2Service;
     private boolean useStreamingBatchGetAsDefault = false;
+    private boolean useGrpc = false;
+    private Map<String, String> nettyServerToGrpc = null;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -547,6 +572,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setUseGrpc(boolean useGrpc) {
+      this.useGrpc = useGrpc;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setNettyServerToGrpc(Map<String, String> nettyServerToGrpc) {
+      this.nettyServerToGrpc = nettyServerToGrpc;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -576,7 +611,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setStoreMetadataFetchMode(storeMetadataFetchMode)
           .setD2Client(d2Client)
           .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
-          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+          .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
+          .setUseGrpc(useGrpc)
+          .setNettyServerToGrpc(nettyServerToGrpc);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -609,7 +646,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           storeMetadataFetchMode,
           d2Client,
           clusterDiscoveryD2Service,
-          useStreamingBatchGetAsDefault);
+          useStreamingBatchGetAsDefault,
+          useGrpc,
+          nettyServerToGrpc);
     }
   }
 }

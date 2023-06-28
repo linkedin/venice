@@ -14,6 +14,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
+import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
@@ -67,7 +68,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private RecordSerializer<MultiGetRouterRequestKeyV1> multiGetSerializer;
 
   public DispatchingAvroGenericStoreClient(StoreMetadata metadata, ClientConfig config) {
-    this(metadata, config, new R2TransportClient(config.getR2Client()));
+    this(
+        metadata,
+        config,
+        config.useGrpc()
+            ? new GrpcTransportClient(config.getNettyServerToGrpc())
+            : new R2TransportClient(config.getR2Client()));
   }
 
   // Visible for testing

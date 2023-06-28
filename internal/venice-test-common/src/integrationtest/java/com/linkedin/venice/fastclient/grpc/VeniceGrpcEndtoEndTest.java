@@ -33,9 +33,8 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -56,7 +55,7 @@ public class VeniceGrpcEndToEndTest {
   private static final int recordCnt = 100;
   private VeniceClusterWrapper cluster;
   private int grpcPort;
-  private List<Integer> grpcServerPorts;
+  private Map<String, String> nettyToGrpcPortMap;
   protected volatile RecordSerializer<String> serializer;
 
   public VeniceClusterWrapper getCluster() {
@@ -82,18 +81,19 @@ public class VeniceGrpcEndToEndTest {
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
             .numberOfPartitions(1)
             .maxNumberOfPartitions(1)
-            .minActiveReplica(1)
+            .minActiveReplica(3)
             .numberOfRouters(1)
-            .numberOfServers(1)
+            .numberOfServers(3)
             .sslToStorageNodes(true)
             .extraProperties(props)
             .build());
 
-    grpcServerPorts = new ArrayList<>();
+    nettyToGrpcPortMap = new HashMap<>();
 
     grpcPort = cluster.getVeniceServers().get(0).getGrpcPort();
     for (VeniceServerWrapper veniceServer: cluster.getVeniceServers()) {
-      grpcServerPorts.add(veniceServer.getGrpcPort());
+      // grpcServerPorts.add(veniceServer.getGrpcPort());
+      nettyToGrpcPortMap.put(veniceServer.getAddress(), String.valueOf(veniceServer.getGrpcPort()));
     }
   }
 
@@ -132,15 +132,24 @@ public class VeniceGrpcEndToEndTest {
     return uniqueStoreName;
   }
 
-  private AvroGenericStoreClient<String, GenericRecord> getGenericFastClient(
+  private ClientConfigBuilder<Object, Object, SpecificRecord> setUpConfigBuilder(
       ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder,
       MetricsRepository metricsRepository,
       D2Client d2Client) {
     clientConfigBuilder.setStoreMetadataFetchMode(StoreMetadataFetchMode.SERVER_BASED_METADATA);
-    clientConfigBuilder.setD2Client(d2Client);
     clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+    clientConfigBuilder.setD2Client(d2Client);
     clientConfigBuilder.setMetricsRepository(metricsRepository);
+
+    return clientConfigBuilder;
+  }
+
+  private AvroGenericStoreClient<String, GenericRecord> getGenericFastClient(
+      ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder,
+      MetricsRepository metricsRepository,
+      D2Client d2Client) {
+    setUpConfigBuilder(clientConfigBuilder, metricsRepository, d2Client);
 
     return com.linkedin.venice.fastclient.factory.ClientFactory
         .getAndStartGenericStoreClient(clientConfigBuilder.build());
@@ -179,6 +188,56 @@ public class VeniceGrpcEndToEndTest {
       String fastClientRecord = ((Utf8) fastClientRet.get(k)).toString();
 
       Assert.assertEquals(thinClientRecord, fastClientRecord);
+    }
+  }
+
+  @Test
+  public void testGrpcFastClient() throws Exception {
+    String storeName = writeData("new-store");
+
+    // 4. Create thin client
+    AvroGenericStoreClient<Object, Object> avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()));
+
+    int size = cluster.getVeniceServers().size();
+    LOGGER.debug("venice cluster size: " + size);
+
+    // 4. Create fastClient
+    Client r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT);
+
+    D2Client d2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
+
+    ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
+        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt)
+            .setSpeculativeQueryEnabled(false);
+
+    ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
+        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setUseGrpc(true)
+            .setNettyServerToGrpc(nettyToGrpcPortMap)
+            .setR2Client(r2Client)
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt)
+            .setSpeculativeQueryEnabled(false);
+
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
+
+    AvroGenericStoreClient<String, GenericRecord> grpcFastClient =
+        getGenericFastClient(grpcClientConfigBuilder, new MetricsRepository(), d2Client);
+
+    Set<String> keys = new HashSet<>();
+    for (int i = 1; i <= 100; i++) {
+      keys.add(Integer.toString(i));
+    }
+
+    for (String k: keys) {
+      String grpcClientRecord = grpcFastClient.get(k).get().toString();
+      System.out.println(grpcClientRecord);
+      LOGGER.info("key: {}, grpcClientRecord: {}", k, grpcClientRecord);
     }
   }
 
