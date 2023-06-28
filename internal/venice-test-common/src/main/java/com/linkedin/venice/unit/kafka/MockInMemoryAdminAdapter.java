@@ -157,11 +157,6 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public boolean isTopicDeletionUnderway() {
-    return false;
-  }
-
-  @Override
   public String getClassName() {
     return this.getClass().getName();
   }

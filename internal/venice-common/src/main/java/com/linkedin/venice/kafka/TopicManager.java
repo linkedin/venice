@@ -72,12 +72,6 @@ public class TopicManager implements Closeable {
    */
   public static final long DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS = 24 * Time.MS_PER_HOUR;
 
-  /**
-   * admin tool and venice topic consumer create this class.  We'll set this policy to false by default so those paths
-   * aren't necessarily compromised with potentially new bad behavior.
-   */
-  public static final boolean CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
-
   private static final List<Class<? extends Throwable>> CREATE_TOPIC_RETRIABLE_EXCEPTIONS =
       Collections.unmodifiableList(
           Arrays
