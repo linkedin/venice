@@ -41,7 +41,6 @@ public class D2ClientFactory {
           .setSSLContext(sslFactoryOptional.map(SSLFactory::getSSLContext).orElse(null))
           .setIsSSLEnabled(sslFactoryOptional.isPresent())
           .setSSLParameters(sslFactoryOptional.map(SSLFactory::getSSLParameters).orElse(null))
-          .setRetry(true)
           .build();
       if (!unitTestMode) {
         try {

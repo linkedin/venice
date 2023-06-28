@@ -98,7 +98,6 @@ public class IsolatedIngestionUtils {
   public static final String PID = "pid";
 
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionUtils.class);
-  private static final int D2_STARTUP_TIMEOUT = 60000;
   private static final int SHELL_COMMAND_WAIT_TIME = 1000;
 
   private static final InternalAvroSpecificSerializer<IngestionTaskCommand> ingestionTaskCommandSerializer =
