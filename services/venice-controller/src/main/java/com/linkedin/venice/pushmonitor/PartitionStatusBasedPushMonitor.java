@@ -96,7 +96,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       OfflinePushStatus pushStatus,
       PartitionAssignment partitionAssignment,
       DisableReplicaCallback callback) {
-    return PushStatusDecider.getDecider(pushStatus.getStrategy())
+    return pushStatus.getStrategy()
+        .getPushStatusDecider()
         .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment, callback);
   }
 

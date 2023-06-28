@@ -4641,7 +4641,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources clusterResources = getHelixVeniceClusterResources(clusterName);
     PushMonitor pushMonitor = clusterResources.getPushMonitor();
     RoutingDataRepository routingDataRepository = clusterResources.getRoutingDataRepository();
-    PushStatusDecider statusDecider = PushStatusDecider.getDecider(strategy);
+    PushStatusDecider statusDecider = strategy.getPushStatusDecider();
 
     Optional<String> notReadyReason = Optional.of("unknown");
     long startTime = System.currentTimeMillis();

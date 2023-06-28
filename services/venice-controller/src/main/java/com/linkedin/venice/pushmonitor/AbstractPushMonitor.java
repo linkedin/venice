@@ -493,7 +493,7 @@ public abstract class AbstractPushMonitor
       final ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
       final OfflinePushStrategy strategy = pushStatus.getStrategy();
       final int replicationFactor = pushStatus.getReplicationFactor();
-      final PushStatusDecider statusDecider = PushStatusDecider.getDecider(strategy);
+      final PushStatusDecider statusDecider = strategy.getPushStatusDecider();
       Optional<String> notReadyReason =
           statusDecider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment, Optional.empty());
       if (notReadyReason.isPresent()) {
@@ -544,7 +544,7 @@ public abstract class AbstractPushMonitor
     if (pushStatus == null || pushStatus.getCurrentStatus().equals(COMPLETED)) {
       return Collections.emptyList();
     }
-    PushStatusDecider decider = PushStatusDecider.getDecider(pushStatus.getStrategy());
+    PushStatusDecider decider = pushStatus.getStrategy().getPushStatusDecider();
     List<UncompletedPartition> uncompletedPartitions = new ArrayList<>();
     for (PartitionStatus partitionStatus: pushStatus.getPartitionStatuses()) {
       int completedReplicaInPartition = 0;

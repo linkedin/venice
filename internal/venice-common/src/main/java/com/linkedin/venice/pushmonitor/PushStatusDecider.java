@@ -7,7 +7,6 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.isDeterminedStatus;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Instance;
@@ -17,7 +16,6 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,13 +33,6 @@ public abstract class PushStatusDecider {
   private static final String REASON_NOT_ENOUGH_PARTITIONS_IN_EV = "not enough partitions in EXTERNALVIEW";
   private static final String REASON_UNDER_REPLICATED = "does not have enough replicas";
 
-  private static final Map<OfflinePushStrategy, PushStatusDecider> decidersMap = new HashMap<>();
-
-  static {
-    decidersMap.put(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, new WaitNMinusOnePushStatusDecider());
-    decidersMap.put(OfflinePushStrategy.WAIT_ALL_REPLICAS, new WaitAllPushStatusDecider());
-  }
-
   /**
    * Check the current status based on {@link PartitionStatus}
    */
@@ -57,7 +48,6 @@ public abstract class PushStatusDecider {
 
     boolean isAllPartitionCompleted = true;
     boolean isAllPartitionEndOfPushReceived = true;
-
     if (pushStatus.getPartitionStatuses().size() != pushStatus.getNumberOfPartition()) {
       isAllPartitionCompleted = false;
       isAllPartitionEndOfPushReceived = false;
@@ -251,29 +241,13 @@ public abstract class PushStatusDecider {
    */
   public static ExecutionStatus getReplicaCurrentStatus(List<StatusSnapshot> historicStatusList) {
     List<ExecutionStatus> statusList =
-        historicStatusList.stream().map(statusSnapshot -> statusSnapshot.getStatus()).collect(Collectors.toList());
-    // prep to traverse the list from the latest status.
+        historicStatusList.stream().map(StatusSnapshot::getStatus).collect(Collectors.toList());
     Collections.reverse(statusList);
-    ExecutionStatus status = STARTED;
     for (ExecutionStatus executionStatus: statusList) {
       if (isDeterminedStatus(executionStatus)) {
-        status = executionStatus;
-        break;
+        return executionStatus;
       }
     }
-
-    return status;
-  }
-
-  public static PushStatusDecider getDecider(OfflinePushStrategy strategy) {
-    if (!decidersMap.containsKey(strategy)) {
-      throw new VeniceException("Unknown offline push strategy:" + strategy);
-    } else {
-      return decidersMap.get(strategy);
-    }
-  }
-
-  protected static void updateDecider(OfflinePushStrategy strategy, PushStatusDecider decider) {
-    decidersMap.put(strategy, decider);
+    return STARTED;
   }
 }

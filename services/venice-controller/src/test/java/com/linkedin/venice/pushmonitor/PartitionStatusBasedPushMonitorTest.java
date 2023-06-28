@@ -1,7 +1,8 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
-import static org.mockito.ArgumentMatchers.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
@@ -96,11 +97,21 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     PartitionAssignment partitionAssignment = new PartitionAssignment(topic, getNumberOfPartition());
     doReturn(true).when(getMockRoutingDataRepo()).containsKafkaTopic(eq(topic));
     doReturn(partitionAssignment).when(getMockRoutingDataRepo()).getPartitionAssignments(topic);
-    PushStatusDecider decider = mock(PushStatusDecider.class);
-    ExecutionStatusWithDetails statusAndDetails = new ExecutionStatusWithDetails(COMPLETED);
-    doReturn(statusAndDetails).when(decider)
-        .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment, null);
-    PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
+    for (int i = 0; i < getNumberOfPartition(); i++) {
+      Partition partition = mock(Partition.class);
+      Map<Instance, HelixState> instanceToStateMap = new HashMap<>();
+      instanceToStateMap.put(new Instance("instance0", "host0", 1), HelixState.STANDBY);
+      instanceToStateMap.put(new Instance("instance1", "host1", 1), HelixState.STANDBY);
+      instanceToStateMap.put(new Instance("instance2", "host2", 1), HelixState.LEADER);
+      when(partition.getInstanceToHelixStateMap()).thenReturn(instanceToStateMap);
+      when(partition.getId()).thenReturn(i);
+      partitionAssignment.addPartition(partition);
+      PartitionStatus partitionStatus = mock(ReadOnlyPartitionStatus.class);
+      when(partitionStatus.getPartitionId()).thenReturn(i);
+      when(partitionStatus.getReplicaHistoricStatusList(anyString()))
+          .thenReturn(Collections.singletonList(new StatusSnapshot(COMPLETED, "")));
+      pushStatus.setPartitionStatus(partitionStatus);
+    }
     when(getMockAccessor().getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation -> {
       String kafkaTopic = invocation.getArgument(0);
       for (OfflinePushStatus status: statusList) {
@@ -116,11 +127,6 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
     // After offline push completed, bump up the current version of this store.
     Assert.assertEquals(store.getCurrentVersion(), 1);
-
-    // set the push status decider back
-    PushStatusDecider.updateDecider(
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        new WaitNMinusOnePushStatusDecider());
     Mockito.reset(getMockAccessor());
   }
 
@@ -139,11 +145,21 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     PartitionAssignment partitionAssignment = new PartitionAssignment(topic, getNumberOfPartition());
     doReturn(true).when(getMockRoutingDataRepo()).containsKafkaTopic(eq(topic));
     doReturn(partitionAssignment).when(getMockRoutingDataRepo()).getPartitionAssignments(topic);
-    PushStatusDecider decider = mock(PushStatusDecider.class);
-    ExecutionStatusWithDetails statusAndDetails = new ExecutionStatusWithDetails(ERROR);
-    doReturn(statusAndDetails).when(decider)
-        .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment, null);
-    PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
+    for (int i = 0; i < getNumberOfPartition(); i++) {
+      Partition partition = mock(Partition.class);
+      Map<Instance, HelixState> instanceToStateMap = new HashMap<>();
+      instanceToStateMap.put(new Instance("instance0", "host0", 1), HelixState.STANDBY);
+      instanceToStateMap.put(new Instance("instance1", "host1", 1), HelixState.STANDBY);
+      instanceToStateMap.put(new Instance("instance2", "host2", 1), HelixState.LEADER);
+      when(partition.getInstanceToHelixStateMap()).thenReturn(instanceToStateMap);
+      when(partition.getId()).thenReturn(i);
+      partitionAssignment.addPartition(partition);
+      PartitionStatus partitionStatus = mock(ReadOnlyPartitionStatus.class);
+      when(partitionStatus.getPartitionId()).thenReturn(i);
+      when(partitionStatus.getReplicaHistoricStatusList(anyString()))
+          .thenReturn(Collections.singletonList(new StatusSnapshot(ERROR, "")));
+      pushStatus.setPartitionStatus(partitionStatus);
+    }
     doThrow(new VeniceException("Could not delete.")).when(getMockStoreCleaner())
         .deleteOneStoreVersion(anyString(), anyString(), anyInt());
     when(getMockAccessor().getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation -> {
@@ -161,9 +177,12 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.ERROR);
 
     // set the push status decider back
+    /*
     PushStatusDecider.updateDecider(
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         new WaitNMinusOnePushStatusDecider());
+    
+     */
     Mockito.reset(getMockAccessor());
   }
 
@@ -225,9 +244,9 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     pushMonitor.updatePushStatus(offlinePushStatus, STARTED, Optional.empty());
     pushMonitor.onExternalViewChange(partitionAssignment1);
 
-    ExecutionStatusWithDetails executionStatusWithDetails =
-        PushStatusDecider.getDecider(offlinePushStatus.getStrategy())
-            .checkPushStatusAndDetailsByPartitionsStatus(offlinePushStatus, partitionAssignment1, null);
+    ExecutionStatusWithDetails executionStatusWithDetails = offlinePushStatus.getStrategy()
+        .getPushStatusDecider()
+        .checkPushStatusAndDetailsByPartitionsStatus(offlinePushStatus, partitionAssignment1, null);
     Assert.assertEquals(executionStatusWithDetails.getStatus(), STARTED);
 
     verify(helixAdminClient, times(1)).getDisabledPartitionsMap(eq(getClusterName()), eq(disabledHostName));
