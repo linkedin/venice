@@ -117,8 +117,8 @@ public abstract class AbstractPushMonitor
     this.pushStatusCollector = new PushStatusCollector(
         metadataRepository,
         pushStatusStoreReader,
-        this::handleCompletedPush,
-        this::handleErrorPush,
+        (topic) -> handleCompletedPush(topic),
+        (topic, details) -> handleErrorPush(topic, details),
         controllerConfig.isDaVinciPushStatusScanEnabled(),
         controllerConfig.getDaVinciPushStatusScanIntervalInSeconds(),
         controllerConfig.getDaVinciPushStatusScanThreadNumber(),

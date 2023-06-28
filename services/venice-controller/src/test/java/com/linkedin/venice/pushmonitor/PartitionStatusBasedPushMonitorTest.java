@@ -27,7 +27,6 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
@@ -98,7 +97,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     doReturn(true).when(getMockRoutingDataRepo()).containsKafkaTopic(eq(topic));
     doReturn(partitionAssignment).when(getMockRoutingDataRepo()).getPartitionAssignments(topic);
     PushStatusDecider decider = mock(PushStatusDecider.class);
-    Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(ExecutionStatus.COMPLETED, Optional.empty());
+    ExecutionStatusWithDetails statusAndDetails = new ExecutionStatusWithDetails(COMPLETED);
     doReturn(statusAndDetails).when(decider)
         .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment, null);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
@@ -141,7 +140,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     doReturn(true).when(getMockRoutingDataRepo()).containsKafkaTopic(eq(topic));
     doReturn(partitionAssignment).when(getMockRoutingDataRepo()).getPartitionAssignments(topic);
     PushStatusDecider decider = mock(PushStatusDecider.class);
-    Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(ExecutionStatus.ERROR, Optional.empty());
+    ExecutionStatusWithDetails statusAndDetails = new ExecutionStatusWithDetails(ERROR);
     doReturn(statusAndDetails).when(decider)
         .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment, null);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
