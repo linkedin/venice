@@ -26,8 +26,8 @@ public class GrpcTransportClient extends TransportClient {
   private final Map<String, String> nettyServerToGrpcDebug;
 
   public GrpcTransportClient(Map<String, String> nettyServerToGrpc) { // set default transport client to go around
-                                                                      // metadata requests, can pass thru requests when
-                                                                      // performing the get request
+    // metadata requests, can pass thru requests when
+    // performing the get request
     nettyServerToGrpcServerChannelMap = new HashMap<>();
     nettyServerToGrpcDebug = new HashMap<>();
 
@@ -45,6 +45,7 @@ public class GrpcTransportClient extends TransportClient {
   public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
     String[] requestParts = requestPath.split("/");
     // 0: nettyAddr, 1: requestType, 2: resourceName, 3: partition, 4: key
+    // need to refactor and use existing request parsing code
     String nettyAddr = requestParts[2]; // nettyAddr is of the form "host:port//requestType"
     ManagedChannel requestChannel = nettyServerToGrpcServerChannelMap.get(nettyAddr);
 
@@ -58,15 +59,8 @@ public class GrpcTransportClient extends TransportClient {
     VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = VeniceReadServiceGrpc.newStub(requestChannel);
 
     GrpcTransportClientCallback callback = new GrpcTransportClientCallback(clientStub, request);
-    CompletableFuture<TransportClientResponse> valueFuture = callback.get();
 
-    return valueFuture;
-
-    // GrpcTransportClientCallback response = new GrpcTransportClientCallback(new
-    // CompletableFuture<TransportClientResponse>());
-    // clientStub.get(request, response);
-    //
-    // return response.getValueFuture();
+    return callback.get();
   }
 
   @Override
@@ -127,46 +121,10 @@ public class GrpcTransportClient extends TransportClient {
         @Override
         public void onCompleted() {
           LOGGER.info("Completed gRPC request");
-
         }
       });
 
       return valueFuture;
     }
   }
-
-  // public class GrpcTransportClientCallback implements StreamObserver<VeniceServerResponse> {
-  // // start exception handling
-  // private final CompletableFuture<TransportClientResponse> valueFuture;
-  // private TransportClientResponse response;
-  // public GrpcTransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {
-  // this.valueFuture = valueFuture;
-  //
-  // }
-  //
-  // @Override
-  // public void onNext(VeniceServerResponse value) {
-  // LOGGER.info("Received response from grpc server: " + value);
-  // int schemaId = value.getSchemaId();
-  // byte [] valueBytes = value.getData().toByteArray();
-  //
-  // response = new TransportClientResponse(schemaId, CompressionStrategy.NO_OP, valueBytes);
-  // //valuefuture.completeExceptionally(venicereadexception)
-  // }
-  //
-  // @Override
-  // public void onError(Throwable t) {
-  //
-  // }
-  //
-  // @Override
-  // public void onCompleted() {
-  // LOGGER.info("Completed response from grpc server");
-  // valueFuture.complete(response);
-  // }
-  //
-  // public CompletableFuture<TransportClientResponse> getValueFuture() {
-  // return valueFuture;
-  // }
-  // }
 }

@@ -234,10 +234,13 @@ public class VeniceGrpcEndToEndTest {
       keys.add(Integer.toString(i));
     }
 
+    Map<String, GenericRecord> fastClientRet = genericFastClient.batchGet(keys).get();
     for (String k: keys) {
-      String grpcClientRecord = grpcFastClient.get(k).get().toString();
-      System.out.println(grpcClientRecord);
+      String grpcClientRecord = ((Utf8) grpcFastClient.get(k).get()).toString();
+      String fastClientRecord = ((Utf8) fastClientRet.get(k)).toString();
       LOGGER.info("key: {}, grpcClientRecord: {}", k, grpcClientRecord);
+
+      Assert.assertEquals(grpcClientRecord, fastClientRecord);
     }
   }
 
