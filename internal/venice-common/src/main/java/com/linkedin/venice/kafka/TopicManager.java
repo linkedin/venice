@@ -507,18 +507,6 @@ public class TopicManager implements Closeable {
       return;
     }
 
-    // TODO: Remove the isConcurrentTopicDeleteRequestsEnabled flag and make topic deletion to be always blocking or
-    // refactor this method to actually support concurrent topic deletion if that's something we want.
-    // This is trying to guard concurrent topic deletion in Kafka.
-    if (!CONCURRENT_TOPIC_DELETION_REQUEST_POLICY &&
-    /**
-     * TODO: Add support for this call in the {@link ApacheKafkaAdminAdapter}
-     * This is the last remaining call that depends on {@link kafka.utils.ZkUtils}.
-     */
-        kafkaReadOnlyAdmin.get().isTopicDeletionUnderway()) {
-      throw new VeniceException("Delete operation already in progress! Try again later.");
-    }
-
     Future<Void> future = ensureTopicIsDeletedAsync(topicName);
     if (future != null) {
       // Skip additional checks for Java kafka client since the result of the future can guarantee that the topic is
