@@ -7,10 +7,10 @@ permalink: /docs/proposals/vip-1.md
 
 # Venice Improvement Proposal Template
 
-* **Status**: _Under Discussion_
+* **Status**: _Accepted_
 * **Author(s)**: _Enrico Olivelli_
-* **Pull Request**: _(Link to the main pull request to resolve this VIP)_
-* **Release**: _(Which release include this VIP)_
+* **Pull Request**: [PR 471](https://github.com/linkedin/venice/pull/471)
+* **Release**: N/A
 
 ## Introduction
 
