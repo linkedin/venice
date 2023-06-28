@@ -3,8 +3,6 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
@@ -14,6 +12,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
@@ -296,9 +295,9 @@ public class VeniceController {
       Utils.exit(errorMessage + e.getMessage());
     }
 
-    D2Client d2Client =
-        new D2ClientBuilder().setZkHosts(controllerProps.getString(ZOOKEEPER_ADDRESS)).setIsSSLEnabled(false).build();
-    D2ClientUtils.startClient(d2Client);
+    String zkAddress = controllerProps.getString(ZOOKEEPER_ADDRESS);
+    D2Client d2Client = D2ClientFactory.getD2Client(zkAddress, Optional.empty());
+
     PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
         new ApacheKafkaProducerAdapterFactory(),
         new ApacheKafkaConsumerAdapterFactory(),
@@ -311,7 +310,7 @@ public class VeniceController {
             .setPubSubClientsFactory(pubSubClientsFactory)
             .build());
     controller.start();
-    addShutdownHook(controller, d2Client);
+    addShutdownHook(controller, zkAddress);
     if (joinThread) {
       try {
         Thread.currentThread().join();
@@ -321,12 +320,12 @@ public class VeniceController {
     }
   }
 
-  private static void addShutdownHook(VeniceController controller, D2Client d2Client) {
+  private static void addShutdownHook(VeniceController controller, String zkAddress) {
     Runtime.getRuntime().addShutdownHook(new Thread() {
       @Override
       public void run() {
         controller.stop();
-        D2ClientUtils.shutdownClient(d2Client);
+        D2ClientFactory.release(zkAddress);
       }
     });
   }
