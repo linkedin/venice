@@ -829,6 +829,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return getProps().getString(CHILD_CLUSTER_URL_PREFIX + fabric, "");
   }
 
+  public String getChildControllerD2ServiceName() {
+    return getProps().getString(CHILD_CLUSTER_D2_SERVICE_NAME, "");
+  }
+
   public String getChildControllerD2ZkHost(String fabric) {
     return getProps().getString(CHILD_CLUSTER_D2_PREFIX + fabric, "");
   }

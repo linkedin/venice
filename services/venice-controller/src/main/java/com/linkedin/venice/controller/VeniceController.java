@@ -202,6 +202,7 @@ public class VeniceController {
           Optional.of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreBackupVersionCleanupService is enabled");
     }
+    initializeSystemSchema(controllerService.getVeniceHelixAdmin());
   }
 
   /**
@@ -218,7 +219,6 @@ public class VeniceController {
     if (sslEnabled) {
       secureAdminServer.start();
     }
-    initializeSystemSchema(controllerService.getVeniceHelixAdmin());
     topicCleanupService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
@@ -232,9 +232,9 @@ public class VeniceController {
 
   private void initializeSystemSchema(Admin admin) {
     String systemStoreCluster = multiClusterConfigs.getSystemSchemaClusterName();
+    VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemStoreCluster);
     if (!multiClusterConfigs.isParent() && multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
-        && multiClusterConfigs.getControllerConfig(systemStoreCluster)
-            .isSystemSchemaInitializationAtStartTimeEnabled()) {
+        && systemStoreClusterConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
       ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
           new ControllerClientBackedSystemSchemaInitializer(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
@@ -243,7 +243,7 @@ public class VeniceController {
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
               VeniceHelixAdmin.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
               true,
-              multiClusterConfigs.isControllerEnforceSSLOnly());
+              systemStoreClusterConfig);
       metaSystemStoreSchemaInitializer.execute();
     }
   }
