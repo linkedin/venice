@@ -7,7 +7,6 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.isDeterminedStatus;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Instance;
@@ -15,10 +14,8 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.systemstore.schemas.StoreReplicaStatus;
-import com.linkedin.venice.utils.Pair;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,7 +25,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * Decide the offline push status by checking all of replicas statuses under different offline push strategies.
+ * Decide the offline push status by checking all replicas statuses under different offline push strategies.
  */
 public abstract class PushStatusDecider {
   private final Logger logger = LogManager.getLogger(PushStatusDecider.class);
@@ -36,29 +33,21 @@ public abstract class PushStatusDecider {
   private static final String REASON_NOT_ENOUGH_PARTITIONS_IN_EV = "not enough partitions in EXTERNALVIEW";
   private static final String REASON_UNDER_REPLICATED = "does not have enough replicas";
 
-  private static Map<OfflinePushStrategy, PushStatusDecider> decidersMap = new HashMap<>();
-
-  static {
-    decidersMap.put(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, new WaitNMinusOnePushStatusDecider());
-    decidersMap.put(OfflinePushStrategy.WAIT_ALL_REPLICAS, new WaitAllPushStatusDecider());
-  }
-
   /**
    * Check the current status based on {@link PartitionStatus}
    */
-  public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetailsByPartitionsStatus(
+  public ExecutionStatusWithDetails checkPushStatusAndDetailsByPartitionsStatus(
       OfflinePushStatus pushStatus,
       PartitionAssignment partitionAssignment,
       DisableReplicaCallback callback) {
     // Sanity check
     if (partitionAssignment == null || partitionAssignment.isMissingAssignedPartitions()) {
       logger.warn("partitionAssignment not ready: {}", partitionAssignment);
-      return new Pair<>(NOT_CREATED, Optional.empty());
+      return new ExecutionStatusWithDetails(NOT_CREATED);
     }
 
     boolean isAllPartitionCompleted = true;
     boolean isAllPartitionEndOfPushReceived = true;
-
     if (pushStatus.getPartitionStatuses().size() != pushStatus.getNumberOfPartition()) {
       isAllPartitionCompleted = false;
       isAllPartitionEndOfPushReceived = false;
@@ -77,11 +66,10 @@ public abstract class PushStatusDecider {
             callback);
 
         if (executionStatus == ERROR) {
-          return new Pair<>(
+          return new ExecutionStatusWithDetails(
               executionStatus,
-              Optional.of(
-                  "too many ERROR replicas in partition: " + partitionStatus.getPartitionId()
-                      + " for offlinePushStrategy: " + getStrategy().name()));
+              "too many ERROR replicas in partition: " + partitionStatus.getPartitionId() + " for offlinePushStrategy: "
+                  + getStrategy().name());
         }
 
         if (!executionStatus.equals(COMPLETED)) {
@@ -95,13 +83,12 @@ public abstract class PushStatusDecider {
     }
 
     if (isAllPartitionCompleted) {
-      return new Pair<>(COMPLETED, Optional.empty());
+      return new ExecutionStatusWithDetails(COMPLETED);
     }
     if (isAllPartitionEndOfPushReceived) {
-      return new Pair<>(END_OF_PUSH_RECEIVED, Optional.empty());
-    } else {
-      return new Pair<>(STARTED, Optional.empty());
+      return new ExecutionStatusWithDetails(END_OF_PUSH_RECEIVED);
     }
+    return new ExecutionStatusWithDetails(STARTED);
   }
 
   public static List<Instance> getReadyToServeInstances(
@@ -119,7 +106,7 @@ public abstract class PushStatusDecider {
   }
 
   /**
-   * Replicas from L/F and Online/Offline model will be considered ready to serve if their status is {@link ExecutionStatus.COMPLETED}.
+   * Replicas will be considered ready to serve if their status is {@link ExecutionStatus#COMPLETED}.
    * More information is needed if you'd like to change/support other behaviors such as routing to the leader replica.
    * @param replicaStatusMap
    * @return List of ready to serve instance ids
@@ -254,29 +241,13 @@ public abstract class PushStatusDecider {
    */
   public static ExecutionStatus getReplicaCurrentStatus(List<StatusSnapshot> historicStatusList) {
     List<ExecutionStatus> statusList =
-        historicStatusList.stream().map(statusSnapshot -> statusSnapshot.getStatus()).collect(Collectors.toList());
-    // prep to traverse the list from latest status.
+        historicStatusList.stream().map(StatusSnapshot::getStatus).collect(Collectors.toList());
     Collections.reverse(statusList);
-    ExecutionStatus status = STARTED;
     for (ExecutionStatus executionStatus: statusList) {
       if (isDeterminedStatus(executionStatus)) {
-        status = executionStatus;
-        break;
+        return executionStatus;
       }
     }
-
-    return status;
-  }
-
-  public static PushStatusDecider getDecider(OfflinePushStrategy strategy) {
-    if (!decidersMap.containsKey(strategy)) {
-      throw new VeniceException("Unknown offline push strategy:" + strategy);
-    } else {
-      return decidersMap.get(strategy);
-    }
-  }
-
-  protected static void updateDecider(OfflinePushStrategy strategy, PushStatusDecider decider) {
-    decidersMap.put(strategy, decider);
+    return STARTED;
   }
 }

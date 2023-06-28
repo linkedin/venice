@@ -11,6 +11,14 @@ public class ExecutionStatusWithDetails {
     this.noDaVinciStatusReport = noDaVinciStatusReport;
   }
 
+  public ExecutionStatusWithDetails(ExecutionStatus status, String details) {
+    this(status, details, true);
+  }
+
+  public ExecutionStatusWithDetails(ExecutionStatus status) {
+    this(status, null, true);
+  }
+
   public ExecutionStatus getStatus() {
     return status;
   }
