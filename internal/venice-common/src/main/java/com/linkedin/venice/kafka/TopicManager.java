@@ -72,12 +72,6 @@ public class TopicManager implements Closeable {
    */
   public static final long DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS = 24 * Time.MS_PER_HOUR;
 
-  /**
-   * admin tool and venice topic consumer create this class.  We'll set this policy to false by default so those paths
-   * aren't necessarily compromised with potentially new bad behavior.
-   */
-  public static final boolean CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
-
   private static final List<Class<? extends Throwable>> CREATE_TOPIC_RETRIABLE_EXCEPTIONS =
       Collections.unmodifiableList(
           Arrays
@@ -505,18 +499,6 @@ public class TopicManager implements Closeable {
     if (!containsTopicAndAllPartitionsAreOnline(topicName)) {
       // Topic doesn't exist
       return;
-    }
-
-    // TODO: Remove the isConcurrentTopicDeleteRequestsEnabled flag and make topic deletion to be always blocking or
-    // refactor this method to actually support concurrent topic deletion if that's something we want.
-    // This is trying to guard concurrent topic deletion in Kafka.
-    if (!CONCURRENT_TOPIC_DELETION_REQUEST_POLICY &&
-    /**
-     * TODO: Add support for this call in the {@link ApacheKafkaAdminAdapter}
-     * This is the last remaining call that depends on {@link kafka.utils.ZkUtils}.
-     */
-        kafkaReadOnlyAdmin.get().isTopicDeletionUnderway()) {
-      throw new VeniceException("Delete operation already in progress! Try again later.");
     }
 
     Future<Void> future = ensureTopicIsDeletedAsync(topicName);
