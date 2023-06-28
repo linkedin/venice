@@ -175,14 +175,6 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
     verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
     verify(getMockStoreCleaner(), atLeastOnce()).deleteOneStoreVersion(anyString(), anyString(), anyInt());
     Assert.assertEquals(getMonitor().getOfflinePushOrThrow(topic).getCurrentStatus(), ExecutionStatus.ERROR);
-
-    // set the push status decider back
-    /*
-    PushStatusDecider.updateDecider(
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
-        new WaitNMinusOnePushStatusDecider());
-    
-     */
     Mockito.reset(getMockAccessor());
   }
 
