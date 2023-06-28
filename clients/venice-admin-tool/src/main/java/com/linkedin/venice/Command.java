@@ -449,16 +449,16 @@ public enum Command {
   ),
   EXECUTE_DATA_RECOVERY(
       "execute-data-recovery", "Execute data recovery for a group of stores",
-      new Arg[] { URL, RECOVERY_COMMAND, STORES, SOURCE_FABRIC, DEST_FABRIC, DATETIME },
-      new Arg[] { EXTRA_COMMAND_ARGS, DEBUG, NON_INTERACTIVE }
+      new Arg[] { URL, RECOVERY_COMMAND, SOURCE_FABRIC, DEST_FABRIC, DATETIME },
+      new Arg[] { STORES, CLUSTER, EXTRA_COMMAND_ARGS, DEBUG, NON_INTERACTIVE }
   ),
   ESTIMATE_DATA_RECOVERY_TIME(
       "estimate-data-recovery-time", "Estimates the time it would take to execute data recovery for a group of stores.",
-      new Arg[] { URL, STORES, DEST_FABRIC }
+      new Arg[] { URL, DEST_FABRIC }, new Arg[] { STORES, CLUSTER }
   ),
   MONITOR_DATA_RECOVERY(
       "monitor-data-recovery", "Monitor data recovery progress for a group of stores",
-      new Arg[] { URL, STORES, DEST_FABRIC, DATETIME }, new Arg[] { INTERVAL }
+      new Arg[] { URL, DEST_FABRIC, DATETIME }, new Arg[] { STORES, CLUSTER, INTERVAL }
   );
 
   private final String commandName;
