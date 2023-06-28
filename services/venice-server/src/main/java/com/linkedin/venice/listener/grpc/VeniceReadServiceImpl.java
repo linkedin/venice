@@ -15,13 +15,13 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(VeniceReadServiceImpl.class);
-  StorageReadRequestsHandler _storageReadRequestsHandler;
+  StorageReadRequestsHandler storageReadRequestsHandler;
 
   public VeniceReadServiceImpl() {
   }
 
   public VeniceReadServiceImpl(StorageReadRequestsHandler storageReadRequestsHandler) {
-    _storageReadRequestsHandler = storageReadRequestsHandler;
+    this.storageReadRequestsHandler = storageReadRequestsHandler;
   }
 
   @Override
@@ -29,7 +29,7 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     GetRouterRequest getRouterRequest = GetRouterRequest.grpcGetRouterRequest(request);
 
     StorageResponseObject response =
-        (StorageResponseObject) _storageReadRequestsHandler.handleSingleGetGrpcRequest(getRouterRequest);
+        (StorageResponseObject) storageReadRequestsHandler.handleSingleGetGrpcRequest(getRouterRequest);
 
     ValueRecord valueRecord = response.getValueRecord();
 
