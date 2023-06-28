@@ -2367,7 +2367,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (currentLeaderTopic == null) {
             currentLeaderTopic = versionTopic;
           }
-
           final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
           // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
@@ -2378,10 +2377,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
           // Fall back to calculate offset lag in the original approach
           if (currentLeaderTopic.isRealTime()) {
-            // Since partition count in RT : partition count in VT = 1 : AMP, we will need amplification factor adaptor
-            // to calculate the offset for every subPartitions.
-            long lag = getLatestLeaderConsumedOffsetAndHybridTopicOffset(kafkaSourceAddress, currentLeaderTopic, pcs);
-            return lag - 1;
+            return this.measureHybridOffsetLag(pcs, false);
           } else {
             return (cachedKafkaMetadataGetter
                 .getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic, pcs.getPartition()) - 1)

@@ -1297,22 +1297,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     long offsetLagThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
     for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
       if (pcs.hasLagCaughtUp() && offsetLagThreshold >= 0) {
-        Set<String> sourceRealTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(pcs);
-        if (sourceRealTimeTopicKafkaURLs.isEmpty()) {
-          return true;
-        }
-        int numberOfUnreachableRegions = 0;
-        for (String sourceRealTimeTopicKafkaURL: sourceRealTimeTopicKafkaURLs) {
-          try {
-            // Return true if offset lag in any reachable region is larger than the threshold
-            if (measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, pcs, false) > offsetLagThreshold) {
-              return true;
-            }
-          } catch (Exception e) {
-            if (++numberOfUnreachableRegions > 1) {
-              return true;
-            }
+        // If pcs is marked has having caught up, but we're not ready to serve, that means we're lagging
+        // after having announced that we are ready to serve.
+        try {
+          if (!this.isReadyToServe(pcs)) {
+            return true;
           }
+        } catch (Exception e) {
+          // Something wasn't reachable, we'll report that something is amiss.
+          return true;
         }
       }
     }
