@@ -6,9 +6,11 @@ import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
+import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.ssl.ClientTlsStrategyBuilder;
 import org.apache.hc.core5.http.nio.ssl.TlsStrategy;
 import org.apache.hc.core5.http.ssl.TLS;
+import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.apache.hc.core5.reactor.IOReactorConfig;
 import org.apache.hc.core5.util.Timeout;
 
@@ -43,6 +45,10 @@ public class HttpClient5Utils {
     private int ioThreadCount = 48;
     private boolean skipCipherCheck = false;
 
+    private boolean http1 = false;
+    private int http1MaxConnectionsTotal = 0;
+    private int http1MaxConnectionsPerRoute = 0;
+
     public HttpClient5Builder setSslContext(SSLContext sslContext) {
       this.sslContext = sslContext;
       return this;
@@ -63,8 +69,23 @@ public class HttpClient5Utils {
       return this;
     }
 
+    public HttpClient5Builder setHttp1(boolean http1) {
+      this.http1 = http1;
+      return this;
+    }
+
+    public HttpClient5Builder setHttp1MaxConnectionsTotal(int http1MaxConnectionsTotal) {
+      this.http1MaxConnectionsTotal = http1MaxConnectionsTotal;
+      return this;
+    }
+
+    public HttpClient5Builder setHttp1MaxConnectionsPerRoute(int http1MaxConnectionsPerRoute) {
+      this.http1MaxConnectionsPerRoute = http1MaxConnectionsPerRoute;
+      return this;
+    }
+
     public CloseableHttpAsyncClient build() {
-      if (sslContext == null) {
+      if (sslContext == null && !http1) {
         throw new IllegalArgumentException("'sslContext' needs to be specified.");
       }
       final IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
@@ -74,28 +95,55 @@ public class HttpClient5Utils {
           .setIoThreadCount(ioThreadCount)
           .build();
 
-      final TlsStrategy tlsStrategy = skipCipherCheck
-          ? VeniceClientTlsStrategyBuilder.create()
-              .setSslContext(sslContext)
-              .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
-              .build()
-          : ClientTlsStrategyBuilder.create().setSslContext(sslContext).setTlsVersions(TLS.V_1_3, TLS.V_1_2).build();
+      final TlsStrategy tlsStrategy = sslContext == null
+          ? null
+          : skipCipherCheck
+              ? VeniceClientTlsStrategyBuilder.create()
+                  .setSslContext(sslContext)
+                  .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
+                  .build()
+              : ClientTlsStrategyBuilder.create()
+                  .setSslContext(sslContext)
+                  .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
+                  .build();
 
-      final CloseableHttpAsyncClient client = HttpAsyncClients.customHttp2()
-          .setTlsStrategy(tlsStrategy)
-          .setIOReactorConfig(ioReactorConfig)
-          .setDefaultConnectionConfig(
-              ConnectionConfig.custom()
-                  .setConnectTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-                  .setSocketTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-                  .build())
-          .setDefaultRequestConfig(
-              RequestConfig.custom()
-                  .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
-                  .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
-                  .build())
-          .build();
-      return client;
+      if (http1) {
+        return HttpAsyncClients.custom()
+            .setVersionPolicy(HttpVersionPolicy.FORCE_HTTP_1)
+            .setIOReactorConfig(ioReactorConfig)
+            .setConnectionManager(
+                PoolingAsyncClientConnectionManagerBuilder.create()
+                    .setMaxConnTotal(http1MaxConnectionsTotal)
+                    .setMaxConnPerRoute(http1MaxConnectionsPerRoute)
+                    .setTlsStrategy(tlsStrategy)
+                    .setDefaultConnectionConfig(
+                        ConnectionConfig.custom()
+                            .setConnectTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                            .setSocketTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                            .build())
+                    .build())
+            .setDefaultRequestConfig(
+                RequestConfig.custom()
+                    .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
+                    .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                    .build())
+            .build();
+      } else {
+        return HttpAsyncClients.customHttp2()
+            .setTlsStrategy(tlsStrategy)
+            .setIOReactorConfig(ioReactorConfig)
+            .setDefaultConnectionConfig(
+                ConnectionConfig.custom()
+                    .setConnectTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                    .setSocketTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                    .build())
+            .setDefaultRequestConfig(
+                RequestConfig.custom()
+                    .setResponseTimeout(Timeout.ofMilliseconds(requestTimeOutInMilliseconds))
+                    .setConnectionRequestTimeout(CONNECT_TIMEOUT_IN_MILLISECONDS)
+                    .build())
+            .build();
+      }
     }
 
     public CloseableHttpAsyncClient buildAndStart() {
