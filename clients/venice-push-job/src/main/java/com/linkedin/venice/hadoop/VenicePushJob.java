@@ -1160,7 +1160,8 @@ public class VenicePushJob implements AutoCloseable {
               controllerClient,
               pushJobSetting,
               kafkaTopicInfo,
-              pushJobSetting.targetedRegions);
+              pushJobSetting.targetedRegions,
+              pushJobSetting.isTargetedRegionPushEnabled);
         }
 
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
@@ -1287,7 +1288,8 @@ public class VenicePushJob implements AutoCloseable {
           controllerClient,
           pushJobSetting,
           kafkaTopicInfo,
-          RegionUtils.composeRegionList(candidateRegions));
+          RegionUtils.composeRegionList(candidateRegions),
+          false);
     }
   }
 
@@ -2645,21 +2647,25 @@ public class VenicePushJob implements AutoCloseable {
    * High level, we want to poll the consumption job status until it errors or is complete. This is more complicated
    * because we might be dealing with multiple destination clusters and we might not be able to reach all of them. We
    * are using a semantic of "poll until all accessible datacenters report success".
-   *
+   * <p>
    * If any datacenter report an explicit error status, we throw an exception and fail the job. However, datacenters
    * with COMPLETED status will be serving new data.
+   *
    * @param incrementalPushVersion, optional incremental push version
-   * @param controllerClient, controller client to send query to poll status
-   * @param pushJobSetting, push job setting
-   * @param topicInfo, the kafka topic info from the newly created Version
-   * @param targetedRegions if specified, only poll the status of the specified regions, otherwise it can be null
+   * @param controllerClient,       controller client to send query to poll status
+   * @param pushJobSetting,         push job setting
+   * @param topicInfo,              the kafka topic info from the newly created Version
+   * @param targetedRegions         if specified, only poll the status of the specified regions, otherwise it can be
+   *                                null
+   * @param isTargetedRegionPush
    */
   void pollStatusUntilComplete(
       Optional<String> incrementalPushVersion,
       ControllerClient controllerClient,
       PushJobSetting pushJobSetting,
       TopicInfo topicInfo,
-      String targetedRegions) {
+      String targetedRegions,
+      boolean isTargetedRegionPush) {
     // Set of datacenters that have reported a completed status at least once.
     Set<String> completedDatacenters = new HashSet<>();
     // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
@@ -2733,7 +2739,11 @@ public class VenicePushJob implements AutoCloseable {
         }
 
         // Every known datacenter have successfully reported a completed status at least once.
-        LOGGER.info("Successfully pushed {}", topicInfo.topic);
+        if (isTargetedRegionPush) {
+          LOGGER.info("Successfully pushed {} to targeted region {}", topicInfo.topic, targetedRegions);
+        } else {
+          LOGGER.info("Successfully pushed {} to regions {}", topicInfo.topic, completedDatacenters);
+        }
         return;
       }
       long bootstrapToOnlineTimeoutInHours = storeSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
@@ -2774,7 +2784,9 @@ public class VenicePushJob implements AutoCloseable {
 
     Optional<String> details = response.getOptionalStatusDetails();
     if (details.isPresent() && detailsAreDifferent(previousOverallDetails, details.get())) {
-      LOGGER.info("\t\tNew overall details: {}", details.get());
+      if (!details.get().isEmpty()) {
+        LOGGER.info("\t\tNew overall details: {}", details.get());
+      }
       newOverallDetails = details.get();
     }
 
