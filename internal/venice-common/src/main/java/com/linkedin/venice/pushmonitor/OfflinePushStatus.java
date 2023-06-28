@@ -173,7 +173,7 @@ public class OfflinePushStatus {
   }
 
   private void updateStatusDetails() {
-    PushStatusDecider decider = PushStatusDecider.getDecider(strategy);
+    PushStatusDecider decider = strategy.getPushStatusDecider();
     Set<Integer> incompletePartitions = new HashSet<>();
     int finishedPartitions = 0;
     for (PartitionStatus partitionStatus: getPartitionStatuses()) {
