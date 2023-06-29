@@ -19,8 +19,11 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -87,21 +90,20 @@ public class ControllerClientBackedSystemSchemaInitializer {
       return;
     }
 
-    for (int attempt = 1; true; attempt++) {
-      try {
-        controllerClient.getLeaderControllerUrl();
-        break;
-      } catch (Exception e) {
-        if (attempt == 3) {
-          LOGGER.info(
-              "Could not find leader controller after retries. This controller is very likely the first one in "
-                  + "region {}. Skip system schema registration via controller client.",
-              regionName);
-          return;
-        }
-        Utils.sleep(2000);
-      }
+    try {
+      RetryUtils.executeWithMaxAttempt(
+          () -> controllerClient.getLeaderControllerUrl(),
+          3,
+          Duration.ofSeconds(2),
+          Collections.singletonList(Exception.class));
+    } catch (Exception e) {
+      LOGGER.info(
+          "Could not find leader controller after retries. This controller is very likely the first one in "
+              + "region {}. Skip system schema registration via controller client.",
+          regionName);
+      return;
     }
+
     try {
       Pair<String, String> clusterNameAndD2 = admin.discoverCluster(storeName);
       String currSystemStoreCluster = clusterNameAndD2.getFirst();
