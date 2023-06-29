@@ -1,4 +1,4 @@
-package com.linkedin.venice.listener.request;
+package com.linkedin.venice.request;
 
 import java.net.URI;
 
