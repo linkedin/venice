@@ -2744,7 +2744,7 @@ public class VenicePushJob implements AutoCloseable {
         if (isTargetedRegionPush) {
           LOGGER.info("Successfully pushed {} to targeted region {}", topicInfo.topic, targetedRegions);
         } else {
-          LOGGER.info("Successfully pushed {} to regions {}", topicInfo.topic, completedDatacenters);
+          LOGGER.info("Successfully pushed {} to all the regions", topicInfo.topic);
         }
         return;
       }
