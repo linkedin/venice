@@ -7,6 +7,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.request.RequestHelper;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
@@ -14,50 +15,48 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public class GrpcTransportClient extends TransportClient {
   private static final Logger LOGGER = LogManager.getLogger(GrpcTransportClient.class);
-  private ConcurrentMap<String, VeniceReadServiceGrpc.VeniceReadServiceStub> clientStubCache;
+  private final TransportClient r2TransportClient; // used for metadata requests
   private final Map<String, ManagedChannel> nettyServerToGrpcServerChannelMap;
-  private final Map<String, String> nettyServerToGrpcDebug;
 
-  public GrpcTransportClient(Map<String, String> nettyServerToGrpc) { // set default transport client to go around
-    // metadata requests, can pass thru requests when
-    // performing the get request
+  public GrpcTransportClient(Map<String, String> nettyServerToGrpc, TransportClient r2TransportClient) {
     nettyServerToGrpcServerChannelMap = new HashMap<>();
-    nettyServerToGrpcDebug = new HashMap<>();
+    this.r2TransportClient = r2TransportClient;
 
     for (Map.Entry<String, String> entry: nettyServerToGrpc.entrySet()) {
-      String nettyServer = entry.getKey().split(":")[0]; // nettyServer is of the form "host:port"
+      String nettyServer = entry.getKey().split(":")[0];
       String grpcServer = nettyServer + ":" + entry.getValue();
 
       ManagedChannel channel = ManagedChannelBuilder.forTarget(grpcServer).usePlaintext().build();
       nettyServerToGrpcServerChannelMap.put(entry.getKey(), channel);
-      nettyServerToGrpcDebug.put(entry.getKey(), grpcServer);
     }
   }
 
   @Override
   public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
-    String[] requestParts = requestPath.split("/");
-    // 0: nettyAddr, 1: requestType, 2: resourceName, 3: partition, 4: key
-    // need to refactor and use existing request parsing code
-    String nettyAddr = requestParts[2]; // nettyAddr is of the form "host:port//requestType"
+    // TODO: refactor request parsing to use existing request parsing code
+    String[] requestParts = RequestHelper.getRequestParts(requestPath);
+    String requestPartForNetty = requestPath.split("/")[2]; // hacky way to get port for mapping to grpc server
+    if (!requestParts[1].equals("storage")) {
+      return r2TransportClient.get(requestPath, headers);
+    }
+
+    String nettyAddr = requestPartForNetty;
     ManagedChannel requestChannel = nettyServerToGrpcServerChannelMap.get(nettyAddr);
 
     VeniceClientRequest request = VeniceClientRequest.newBuilder()
-        .setStoreName(requestParts[4])
-        .setResourceName(requestParts[4])
-        .setPartition(Integer.parseInt(requestParts[5]))
-        .setKeyString(requestParts[6])
+        .setStoreName(requestParts[2])
+        .setResourceName(requestParts[2])
+        .setPartition(Integer.parseInt(requestParts[3]))
+        .setKeyString(requestParts[4])
         .build();
 
     VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = VeniceReadServiceGrpc.newStub(requestChannel);
-
     GrpcTransportClientCallback callback = new GrpcTransportClientCallback(clientStub, request);
 
     return callback.get();
@@ -68,6 +67,7 @@ public class GrpcTransportClient extends TransportClient {
       String requestPath,
       Map<String, String> headers,
       byte[] requestBody) {
+    // TODO:
     return null;
   }
 
@@ -78,7 +78,7 @@ public class GrpcTransportClient extends TransportClient {
       byte[] requestBody,
       TransportClientStreamingCallback callback,
       int keyCount) {
-
+    // TODO:
   }
 
   @Override
@@ -115,7 +115,8 @@ public class GrpcTransportClient extends TransportClient {
 
         @Override
         public void onError(Throwable t) {
-
+          LOGGER.error("Error in gRPC request", t);
+          valueFuture.completeExceptionally(t);
         }
 
         @Override

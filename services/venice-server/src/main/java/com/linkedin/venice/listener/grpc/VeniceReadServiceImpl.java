@@ -18,6 +18,7 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
   StorageReadRequestsHandler storageReadRequestsHandler;
 
   public VeniceReadServiceImpl() {
+
   }
 
   public VeniceReadServiceImpl(StorageReadRequestsHandler storageReadRequestsHandler) {

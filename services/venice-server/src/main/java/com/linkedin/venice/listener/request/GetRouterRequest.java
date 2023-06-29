@@ -5,6 +5,7 @@ import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.utils.EncodingUtils;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
