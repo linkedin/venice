@@ -6,6 +6,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -45,7 +46,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
   private final UpdateStoreQueryParams storeMetadataUpdate;
   private final boolean autoRegisterPartialUpdateSchema;
   private final VeniceControllerConfig controllerConfig;
-  private D2ControllerClient d2ControllerClient;
+  private ControllerClient controllerClient;
 
   public ControllerClientBackedSystemSchemaInitializer(
       AvroProtocolDefinition protocolDefinition,
@@ -68,21 +69,34 @@ public class ControllerClientBackedSystemSchemaInitializer {
     String storeName = protocolDefinition.getSystemStoreName();
     Map<Integer, Schema> schemasInLocalResources = Utils.getAllSchemasFromResources(protocolDefinition);
 
-    d2ControllerClient = new D2ControllerClient(
-        controllerConfig.getChildControllerD2ServiceName(),
-        clusterName,
-        controllerConfig.getChildControllerD2ZkHost(controllerConfig.getRegionName()),
-        controllerConfig.isControllerEnforceSSLOnly() ? admin.getSslFactory() : Optional.empty());
+    String regionName = controllerConfig.getRegionName();
+    if (!controllerConfig.getChildControllerUrl(regionName).isEmpty()) {
+      controllerClient = ControllerClient.constructClusterControllerClient(
+          clusterName,
+          controllerConfig.getChildControllerUrl(regionName),
+          admin.getSslFactory());
+    } else if (!controllerConfig.getChildControllerD2ServiceName().isEmpty()
+        && !controllerConfig.getChildControllerD2ZkHost(regionName).isEmpty()) {
+      controllerClient = new D2ControllerClient(
+          controllerConfig.getChildControllerD2ServiceName(),
+          clusterName,
+          controllerConfig.getChildControllerD2ZkHost(regionName),
+          controllerConfig.isControllerEnforceSSLOnly() ? admin.getSslFactory() : Optional.empty());
+    } else {
+      LOGGER.info("No child controller url or d2 configs. Skip system schema registration via controller client.");
+      return;
+    }
+
     for (int attempt = 1; true; attempt++) {
       try {
-        d2ControllerClient.getLeaderControllerUrl();
+        controllerClient.getLeaderControllerUrl();
         break;
       } catch (Exception e) {
         if (attempt == 3) {
           LOGGER.info(
               "Could not find leader controller after retries. This controller is very likely the first one in "
                   + "region {}. Skip system schema registration via controller client.",
-              controllerConfig.getRegionName());
+              regionName);
           return;
         }
         Utils.sleep(2000);
@@ -112,7 +126,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
     }
 
     MultiSchemaResponse multiSchemaResponse =
-        d2ControllerClient.retryableRequest(DEFAULT_RETRY_TIMES, c -> c.getAllValueSchema(storeName));
+        controllerClient.retryableRequest(DEFAULT_RETRY_TIMES, c -> c.getAllValueSchema(storeName));
     if (multiSchemaResponse.isError()) {
       throw new VeniceException(
           "Error when getting all value schemas from system store " + storeName + " in cluster " + clusterName
@@ -138,7 +152,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
   }
 
   private void checkAndMayCreateSystemStore(String storeName, Schema firstValueSchema) {
-    StoreResponse storeResponse = d2ControllerClient.retryableRequest(
+    StoreResponse storeResponse = controllerClient.retryableRequest(
         DEFAULT_RETRY_TIMES,
         c -> c.getStore(storeName),
         r -> r.getError().contains("does not exist"));
@@ -149,7 +163,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
         }
         String firstKeySchemaStr = keySchema == null ? DEFAULT_KEY_SCHEMA_STR : keySchema.toString();
         String firstValueSchemaStr = firstValueSchema.toString();
-        NewStoreResponse newStoreResponse = d2ControllerClient.retryableRequest(
+        NewStoreResponse newStoreResponse = controllerClient.retryableRequest(
             DEFAULT_RETRY_TIMES,
             c -> c.createNewSystemStore(
                 storeName,
@@ -164,7 +178,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
         }
 
         if (storeMetadataUpdate != null) {
-          ControllerResponse updateStoreResponse = d2ControllerClient
+          ControllerResponse updateStoreResponse = controllerClient
               .retryableRequest(DEFAULT_RETRY_TIMES, c -> c.updateStore(storeName, storeMetadataUpdate));
           if (updateStoreResponse.isError()) {
             throw new VeniceException(
@@ -183,7 +197,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
 
   private void checkIfKeySchemaMatches(String storeName) {
     SchemaResponse keySchemaResponse =
-        d2ControllerClient.retryableRequest(DEFAULT_RETRY_TIMES, c -> c.getKeySchema(storeName));
+        controllerClient.retryableRequest(DEFAULT_RETRY_TIMES, c -> c.getKeySchema(storeName));
     if (keySchemaResponse.isError()) {
       throw new VeniceException(
           "Error when getting key schema from system store " + storeName + " in cluster " + clusterName
@@ -207,7 +221,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
       Schema schemaInZk,
       Schema schemaInLocalResources) {
     if (schemaInZk == null) {
-      SchemaResponse addValueSchemaResponse = d2ControllerClient.retryableRequest(
+      SchemaResponse addValueSchemaResponse = controllerClient.retryableRequest(
           DEFAULT_RETRY_TIMES,
           c -> c.addValueSchema(storeName, schemaInLocalResources.toString(), valueSchemaId));
       if (addValueSchemaResponse.isError()) {
@@ -240,14 +254,14 @@ public class ControllerClientBackedSystemSchemaInitializer {
       Schema schemaInLocalResources) {
     String partialUpdateSchema =
         WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(schemaInLocalResources).toString();
-    SchemaResponse getSchemaResponse = d2ControllerClient.retryableRequest(
+    SchemaResponse getSchemaResponse = controllerClient.retryableRequest(
         DEFAULT_RETRY_TIMES,
         c -> c.getValueOrDerivedSchemaId(storeName, partialUpdateSchema),
         r -> r.getError().contains("Can not find any registered value schema nor derived schema"));
     if (getSchemaResponse.isError()) {
       if (getSchemaResponse.getError().contains("Can not find any registered value schema nor derived schema")) {
         // The derived schema doesn't exist right now, try to register it.
-        SchemaResponse addDerivedSchemaResponse = d2ControllerClient.retryableRequest(
+        SchemaResponse addDerivedSchemaResponse = controllerClient.retryableRequest(
             DEFAULT_RETRY_TIMES,
             c -> c.addDerivedSchema(storeName, valueSchemaId, partialUpdateSchema));
         if (addDerivedSchemaResponse.isError()) {
