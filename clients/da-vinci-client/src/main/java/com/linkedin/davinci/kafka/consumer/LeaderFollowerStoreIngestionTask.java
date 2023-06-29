@@ -3131,4 +3131,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
     return veniceWriter;
   }
+
+  // test method
+  protected void addPartititionConsumptionState(Integer partition, PartitionConsumptionState pcs) {
+    partitionConsumptionStateMap.put(partition, pcs);
+  }
 }

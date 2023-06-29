@@ -1,5 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.utils.ByteUtils.SIZE_OF_INT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -14,11 +17,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -28,12 +35,28 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -47,8 +70,12 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
+import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
@@ -60,6 +87,101 @@ import org.testng.annotations.Test;
 
 
 public class ActiveActiveStoreIngestionTaskTest {
+  String STORE_NAME = "Thvorusleikir_store";
+  String PUSH_JOB_ID = "yule";
+  String BOOTSTRAP_SERVER = "Stekkjastaur";
+  String TEST_CLUSTER_NAME = "venice-GRYLA";
+
+  @Test
+  public void testisReadyToServeAnnouncedWithRTLag() {
+    // Set up PubSubTopicRepository
+    PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
+    PubSubTopic pubSubTopic = new TestPubSubTopic(STORE_NAME + "_v1", STORE_NAME, PubSubTopicType.VERSION_TOPIC);
+    when(pubSubTopicRepository.getTopic("Thvorusleikir_store_v1")).thenReturn(pubSubTopic);
+
+    // Setup store/schema/storage repository
+    ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+    ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
+    StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
+    when(storageEngineRepository.getLocalStorageEngine(any())).thenReturn(new BlackHoleStorageEngine(STORE_NAME));
+
+    // Setup server config
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.freezeIngestionIfReadyToServeOrLocalDataExists()).thenReturn(false);
+    when(serverConfig.getKafkaClusterUrlResolver()).thenReturn(null);
+    when(serverConfig.getKafkaClusterUrlToIdMap()).thenReturn(new Object2IntArrayMap<>());
+    when(serverConfig.getKafkaClusterIdToUrlMap()).thenReturn(new Int2ObjectArrayMap<>());
+    when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(1);
+
+    // Set up IngestionTask Builder
+    StoreIngestionTaskFactory.Builder builder = new StoreIngestionTaskFactory.Builder();
+    builder.setPubSubTopicRepository(pubSubTopicRepository);
+    builder.setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class));
+    builder.setAggKafkaConsumerService(mock(AggKafkaConsumerService.class));
+    builder.setMetadataRepository(readOnlyStoreRepository);
+    builder.setServerConfig(serverConfig);
+    builder.setSchemaRepository(readOnlySchemaRepository);
+    builder.setStorageEngineRepository(storageEngineRepository);
+
+    // Set up version config and store config
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        100L,
+        100L,
+        100L,
+        DataReplicationPolicy.ACTIVE_ACTIVE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Version mockVersion = new VersionImpl(STORE_NAME, 1, PUSH_JOB_ID);
+    mockVersion.setHybridStoreConfig(hybridStoreConfig);
+
+    Store store = new ZKStore(
+        STORE_NAME,
+        "Felix",
+        100L,
+        PersistenceType.BLACK_HOLE,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    store.setHybridStoreConfig(hybridStoreConfig);
+
+    Properties kafkaConsumerProperties = new Properties();
+    kafkaConsumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, BOOTSTRAP_SERVER);
+    kafkaConsumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
+    kafkaConsumerProperties.put(ZOOKEEPER_ADDRESS, BOOTSTRAP_SERVER);
+    VeniceStoreVersionConfig storeVersionConfig =
+        new VeniceStoreVersionConfig(STORE_NAME + "_v1", new VeniceProperties(kafkaConsumerProperties));
+    ActiveActiveStoreIngestionTask ingestionTask = new ActiveActiveStoreIngestionTask(
+        builder,
+        store,
+        mockVersion,
+        kafkaConsumerProperties,
+        () -> true,
+        storeVersionConfig,
+        1,
+        false,
+        Optional.empty());
+
+    PartitionConsumptionState badPartitionConsumptionState = mock(PartitionConsumptionState.class);
+    when(badPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
+    // short circuit isReadyToServe
+    when(badPartitionConsumptionState.isEndOfPushReceived()).thenReturn(false);
+    ingestionTask.addPartititionConsumptionState(1, badPartitionConsumptionState);
+
+    Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
+
+    PartitionConsumptionState goodPartitionConsumptionState = mock(PartitionConsumptionState.class);
+    when(goodPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
+    when(goodPartitionConsumptionState.isEndOfPushReceived()).thenReturn(true);
+    when(goodPartitionConsumptionState.isWaitingForReplicationLag()).thenReturn(false);
+    ingestionTask.addPartititionConsumptionState(1, goodPartitionConsumptionState);
+
+    Assert.assertFalse(ingestionTask.isReadyToServeAnnouncedWithRTLag());
+
+    ingestionTask.addPartititionConsumptionState(2, badPartitionConsumptionState);
+
+    Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
+  }
+
   @Test
   public void testLeaderCanSendValueChunksIntoDrainer()
       throws ExecutionException, InterruptedException, TimeoutException {
