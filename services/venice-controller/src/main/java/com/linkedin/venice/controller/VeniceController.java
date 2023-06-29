@@ -202,6 +202,7 @@ public class VeniceController {
           Optional.of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreBackupVersionCleanupService is enabled");
     }
+    // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.
     initializeSystemSchema(controllerService.getVeniceHelixAdmin());
   }
 

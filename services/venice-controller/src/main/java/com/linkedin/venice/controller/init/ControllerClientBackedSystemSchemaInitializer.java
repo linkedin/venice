@@ -37,8 +37,8 @@ public class ControllerClientBackedSystemSchemaInitializer {
   private static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
   /**
    * Current leader controller might transit from leader to standby, clear cached store repository, and fail to handle
-   * schema requests. We leverage retries to cover the leader->standby period so that a later retry will be sent to the
-   * new leader controller, who can handle schema requests successfully.
+   * schema requests. Leverage 20 retries (38 seconds) to cover the leader->standby period so that a later retry will be
+   * sent to the new leader controller, who can handle schema requests successfully.
    */
   private static final int DEFAULT_RETRY_TIMES = 20;
 
@@ -90,17 +90,10 @@ public class ControllerClientBackedSystemSchemaInitializer {
       return;
     }
 
-    try {
-      RetryUtils.executeWithMaxAttempt(
-          () -> controllerClient.getLeaderControllerUrl(),
-          3,
-          Duration.ofSeconds(2),
-          Collections.singletonList(Exception.class));
-    } catch (Exception e) {
-      LOGGER.info(
-          "Could not find leader controller after retries. This controller is very likely the first one in "
-              + "region {}. Skip system schema registration via controller client.",
-          regionName);
+    if (!hasLeaderController()) {
+      LOGGER.warn(
+          "Could not find leader controller after retries. It's very likely that the region does not have any live "
+              + "controller yet. Skip system schema registration via controller client.");
       return;
     }
 
@@ -150,6 +143,19 @@ public class ControllerClientBackedSystemSchemaInitializer {
       if (autoRegisterPartialUpdateSchema) {
         checkAndMayRegisterPartialUpdateSchema(storeName, version, schemaInLocalResources);
       }
+    }
+  }
+
+  private boolean hasLeaderController() {
+    try {
+      RetryUtils.executeWithMaxAttempt(
+          () -> controllerClient.getLeaderControllerUrl(),
+          3,
+          Duration.ofSeconds(2),
+          Collections.singletonList(Exception.class));
+      return true;
+    } catch (Exception e) {
+      return false;
     }
   }
 
