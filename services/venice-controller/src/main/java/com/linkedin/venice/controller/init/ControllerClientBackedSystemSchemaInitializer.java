@@ -4,9 +4,11 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NA
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.VeniceConstants;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -17,10 +19,14 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -29,7 +35,12 @@ import org.apache.logging.log4j.Logger;
 public class ControllerClientBackedSystemSchemaInitializer {
   private static final Logger LOGGER = LogManager.getLogger(ControllerClientBackedSystemSchemaInitializer.class);
   private static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
-  private static final int DEFAULT_RETRY_TIMES = 10;
+  /**
+   * Current leader controller might transit from leader to standby, clear cached store repository, and fail to handle
+   * schema requests. Leverage 20 retries (38 seconds) to cover the leader->standby period so that a later retry will be
+   * sent to the new leader controller, who can handle schema requests successfully.
+   */
+  private static final int DEFAULT_RETRY_TIMES = 20;
 
   private final AvroProtocolDefinition protocolDefinition;
   private final String clusterName;
@@ -37,7 +48,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
   private final Schema keySchema;
   private final UpdateStoreQueryParams storeMetadataUpdate;
   private final boolean autoRegisterPartialUpdateSchema;
-  private final boolean enforceSSLOnly;
+  private final VeniceControllerConfig controllerConfig;
   private ControllerClient controllerClient;
 
   public ControllerClientBackedSystemSchemaInitializer(
@@ -47,23 +58,45 @@ public class ControllerClientBackedSystemSchemaInitializer {
       Schema keySchema,
       UpdateStoreQueryParams storeMetadataUpdate,
       boolean autoRegisterPartialUpdateSchema,
-      boolean enforceSSLOnly) {
+      VeniceControllerConfig controllerConfig) {
     this.protocolDefinition = protocolDefinition;
     this.clusterName = systemStoreCluster;
     this.admin = admin;
     this.keySchema = keySchema;
     this.storeMetadataUpdate = storeMetadataUpdate;
     this.autoRegisterPartialUpdateSchema = autoRegisterPartialUpdateSchema;
-    this.enforceSSLOnly = enforceSSLOnly;
+    this.controllerConfig = controllerConfig;
   }
 
   public void execute() {
     String storeName = protocolDefinition.getSystemStoreName();
     Map<Integer, Schema> schemasInLocalResources = Utils.getAllSchemasFromResources(protocolDefinition);
 
-    String leaderControllerUrl = admin.getLeaderController(clusterName).getUrl(enforceSSLOnly);
-    controllerClient =
-        ControllerClient.constructClusterControllerClient(clusterName, leaderControllerUrl, admin.getSslFactory());
+    String regionName = controllerConfig.getRegionName();
+    if (!controllerConfig.getChildControllerUrl(regionName).isEmpty()) {
+      controllerClient = ControllerClient.constructClusterControllerClient(
+          clusterName,
+          controllerConfig.getChildControllerUrl(regionName),
+          admin.getSslFactory());
+    } else if (!controllerConfig.getChildControllerD2ServiceName().isEmpty()
+        && !controllerConfig.getChildControllerD2ZkHost(regionName).isEmpty()) {
+      controllerClient = new D2ControllerClient(
+          controllerConfig.getChildControllerD2ServiceName(),
+          clusterName,
+          controllerConfig.getChildControllerD2ZkHost(regionName),
+          controllerConfig.isControllerEnforceSSLOnly() ? admin.getSslFactory() : Optional.empty());
+    } else {
+      LOGGER.info("No child controller url or d2 configs. Skip system schema registration via controller client.");
+      return;
+    }
+
+    if (!hasLeaderController()) {
+      LOGGER.warn(
+          "Could not find leader controller after retries. It's very likely that the region does not have any live "
+              + "controller yet. Skip system schema registration via controller client.");
+      return;
+    }
+
     try {
       Pair<String, String> clusterNameAndD2 = admin.discoverCluster(storeName);
       String currSystemStoreCluster = clusterNameAndD2.getFirst();
@@ -110,6 +143,19 @@ public class ControllerClientBackedSystemSchemaInitializer {
       if (autoRegisterPartialUpdateSchema) {
         checkAndMayRegisterPartialUpdateSchema(storeName, version, schemaInLocalResources);
       }
+    }
+  }
+
+  private boolean hasLeaderController() {
+    try {
+      RetryUtils.executeWithMaxAttempt(
+          () -> controllerClient.getLeaderControllerUrl(),
+          3,
+          Duration.ofSeconds(2),
+          Collections.singletonList(Exception.class));
+      return true;
+    } catch (Exception e) {
+      return false;
     }
   }
 
