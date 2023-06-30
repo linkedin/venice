@@ -183,15 +183,15 @@ public class TestAdminTool {
     String[] estimateArgs2 = { "--estimate-data-recovery-time", "--url", "http://localhost:7036", "--cluster",
         "venice-1", "--dest-fabric", "ei-ltx1" };
 
+    String[][] commands = { estimateArgs, estimateArgs2, executeArgs, monitorArgs };
     try {
-      AdminTool.main(estimateArgs);
-      AdminTool.main(estimateArgs2);
-      AdminTool.main(executeArgs);
-      AdminTool.main(monitorArgs);
+      for (String[] command: commands) {
+        AdminTool.main(command);
+      }
     } catch (VeniceClientException e) {
       // Expected exception.
     } catch (Exception err) {
-      Assert.fail("AdminTool should allow admin topic to be updated by config update API", err);
+      Assert.fail("Unexpected exception happens in data recovery APIs: ", err);
     }
   }
 }

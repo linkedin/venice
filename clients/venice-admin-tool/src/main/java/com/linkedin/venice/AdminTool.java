@@ -733,6 +733,11 @@ public class AdminTool {
   }
 
   private static Set<String> calculateRecoveryStoreNames(String multiStores, String cluster, String parentUrl) {
+    if (!StringUtils.isEmpty(multiStores) && !StringUtils.isEmpty(cluster)) {
+      System.out.println(
+          String.format("[WARN] --%s overwrites --%s value.", Arg.STORES.getArgName(), Arg.CLUSTER.getArgName()));
+    }
+
     if (!StringUtils.isEmpty(multiStores)) {
       return Utils.parseCommaSeparatedStringToSet(multiStores);
     }
