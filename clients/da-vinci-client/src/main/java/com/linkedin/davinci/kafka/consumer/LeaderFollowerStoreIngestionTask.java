@@ -2367,7 +2367,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (currentLeaderTopic == null) {
             currentLeaderTopic = versionTopic;
           }
-
           final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
           // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
@@ -2378,10 +2377,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
           // Fall back to calculate offset lag in the original approach
           if (currentLeaderTopic.isRealTime()) {
-            // Since partition count in RT : partition count in VT = 1 : AMP, we will need amplification factor adaptor
-            // to calculate the offset for every subPartitions.
-            long lag = getLatestLeaderConsumedOffsetAndHybridTopicOffset(kafkaSourceAddress, currentLeaderTopic, pcs);
-            return lag - 1;
+            return this.measureHybridOffsetLag(pcs, false);
           } else {
             return (cachedKafkaMetadataGetter
                 .getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic, pcs.getPartition()) - 1)
@@ -3002,24 +2998,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return VeniceSystemStoreUtils.isSystemStore(storeName);
   }
 
-  /**
-   * This method fetches/calculates latest leader consumed offset and last offset in RT topic. The method relies on
-   * {@link #getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState, String)} to fetch
-   * latest leader consumed offset for different data replication policy.
-   * @return the lag (lastOffsetInRealTimeTopic - latestConsumedLeaderOffset)
-   */
-  protected long getLatestLeaderConsumedOffsetAndHybridTopicOffset(
-      String sourceRealTimeTopicKafkaURL,
-      PubSubTopic leaderTopic,
-      PartitionConsumptionState pcs) {
-    return getLatestLeaderOffsetAndHybridTopicOffset(
-        sourceRealTimeTopicKafkaURL,
-        leaderTopic,
-        pcs,
-        this::getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement,
-        false);
-  }
-
   private long getLatestLeaderOffsetAndHybridTopicOffset(
       String sourceRealTimeTopicKafkaURL,
       PubSubTopic leaderTopic,
@@ -3134,5 +3112,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
     return veniceWriter;
+  }
+
+  // test method
+  protected void addPartititionConsumptionState(Integer partition, PartitionConsumptionState pcs) {
+    partitionConsumptionStateMap.put(partition, pcs);
   }
 }
