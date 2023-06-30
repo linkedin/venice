@@ -31,7 +31,7 @@ import org.apache.logging.log4j.Logger;
 public class KafkaDataIntegrityValidator {
   private static final Logger LOGGER = LogManager.getLogger(KafkaDataIntegrityValidator.class);
   public static final long DISABLED = -1;
-  private final String versionTopicName;
+  private final String topicName;
   private final long kafkaLogCompactionDelayInMs;
   private final long maxAgeInMs;
   /** The oldest producer timestamp we retained during the last run of {@link #clearExpiredState()} */
@@ -42,24 +42,20 @@ public class KafkaDataIntegrityValidator {
   protected final Function<GUID, ProducerTracker> producerTrackerCreator;
   private final Time time;
 
-  public KafkaDataIntegrityValidator(String versionTopicName, long kafkaLogCompactionDelayInMs) {
-    this(versionTopicName, kafkaLogCompactionDelayInMs, DISABLED);
+  public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs) {
+    this(topicName, kafkaLogCompactionDelayInMs, DISABLED);
   }
 
-  public KafkaDataIntegrityValidator(String versionTopicName, long kafkaLogCompactionDelayInMs, long maxAgeInMs) {
-    this(versionTopicName, kafkaLogCompactionDelayInMs, maxAgeInMs, SystemTime.INSTANCE);
+  public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs, long maxAgeInMs) {
+    this(topicName, kafkaLogCompactionDelayInMs, maxAgeInMs, SystemTime.INSTANCE);
   }
 
-  public KafkaDataIntegrityValidator(
-      String versionTopicName,
-      long kafkaLogCompactionDelayInMs,
-      long maxAgeInMs,
-      Time time) {
-    this.versionTopicName = versionTopicName;
+  public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs, long maxAgeInMs, Time time) {
+    this.topicName = topicName;
     this.kafkaLogCompactionDelayInMs = kafkaLogCompactionDelayInMs;
     this.maxAgeInMs = maxAgeInMs;
     this.producerTrackerMap = new VeniceConcurrentHashMap<>();
-    this.producerTrackerCreator = guid -> new ProducerTracker(guid, versionTopicName);
+    this.producerTrackerCreator = guid -> new ProducerTracker(guid, topicName);
     this.time = time;
   }
 
@@ -152,7 +148,7 @@ public class KafkaDataIntegrityValidator {
               this.oldestRetainedProducerTS = newOldestRetainedProducerTS;
             }
             if (numberOfClearedGUIDs > 0) {
-              LOGGER.info("Cleared {} expired producer GUID(s) for '{}'", numberOfClearedGUIDs, this.versionTopicName);
+              LOGGER.info("Cleared {} expired producer GUID(s) for '{}'", numberOfClearedGUIDs, this.topicName);
             }
           }
         }
