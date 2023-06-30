@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka.validation;
+package com.linkedin.davinci.validation;
 
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
@@ -11,6 +11,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfSegment;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -264,8 +265,8 @@ public class TestProducerTracker {
     Assert.assertThrows(
         DuplicateDataException.class,
         () -> producerTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE));
-    Assert.assertEquals(producerTracker.segments.get(partitionId).getSegmentNumber(), skipSegmentNumber);
-    Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), skipSequenceNumber);
+    Assert.assertEquals(producerTracker.segments.get(partitionId).getRef().getSegmentNumber(), skipSegmentNumber);
+    Assert.assertEquals(producerTracker.segments.get(partitionId).getRef().getSequenceNumber(), skipSequenceNumber);
   }
 
   @Test
@@ -291,7 +292,7 @@ public class TestProducerTracker {
         System.currentTimeMillis() + 1000,
         0);
     producerTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
-    Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 0);
+    Assert.assertEquals(producerTracker.segments.get(partitionId).getRef().getSequenceNumber(), 0);
 
     // send EOS
     ControlMessage endOfSegment = getEndOfSegment();
@@ -307,7 +308,7 @@ public class TestProducerTracker {
         System.currentTimeMillis() + 1000,
         0);
     producerTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.TRUE);
-    Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 5);
+    Assert.assertEquals(producerTracker.segments.get(partitionId).getRef().getSequenceNumber(), 5);
 
     // Send a put msg following EOS
     Put firstPut = getPutMessage("first_message".getBytes());
@@ -325,7 +326,7 @@ public class TestProducerTracker {
         DuplicateDataException.class,
         () -> producerTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE));
     // The sequence number should not change
-    Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 5);
+    Assert.assertEquals(producerTracker.segments.get(partitionId).getRef().getSequenceNumber(), 5);
   }
 
   /**

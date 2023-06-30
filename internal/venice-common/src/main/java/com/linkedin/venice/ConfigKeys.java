@@ -402,7 +402,7 @@ public class ConfigKeys {
 
   /**
    * This config key is a misspelling. It is now considered deprecated.
-   * @deprecated Use {@link KAFKA_OVER_SSL}
+   * @deprecated Use {@link #KAFKA_OVER_SSL}
    */
   @Deprecated
   public static final String SSL_TO_KAFKA_LEGACY = ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
@@ -1942,4 +1942,12 @@ public class ConfigKeys {
    * we want to do more optimization for non-mlock usage, we will ask the mlock user to enable this flag.
    */
   public static final String INGESTION_MLOCK_ENABLED = "ingestion.mlock.enabled";
+
+  /**
+   * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
+   * can prevent OOMing in cases where there is a lot of historical churn in RT producers.
+   *
+   * Old state clearing is disabled if this config is set to -1.
+   */
+  public static final String DIV_PRODUCER_STATE_MAX_AGE_MS = "div.producer.state.max.age.ms";
 }

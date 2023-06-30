@@ -1950,7 +1950,7 @@ public abstract class StoreIngestionTaskTest {
     return ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(number).array();
   }
 
-  @Test(dataProvider = "Two-True-and-False", invocationCount = 3, skipFailedInvocations = true, dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testDataValidationCheckPointing(boolean sortedInput, boolean isActiveActiveReplicationEnabled)
       throws Exception {
     final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();

@@ -1,7 +1,6 @@
-package com.linkedin.venice.kafka.validation;
+package com.linkedin.davinci.validation;
 
-import static com.linkedin.venice.utils.RedundantExceptionFilter.DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS;
-
+import com.linkedin.davinci.utils.locks.ReentrantLockWithRef;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
@@ -19,6 +18,7 @@ import com.linkedin.venice.kafka.protocol.StartOfSegment;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -26,16 +26,15 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -50,21 +49,20 @@ import org.apache.logging.log4j.Logger;
 @Threadsafe
 public class ProducerTracker {
   /**
-   * A logging throttler singleton for ProducerTracker with a 64KB bitset.
-   *
    * If an exception will be tolerated, there is no need to print a log for each single message;
    * we can log only once a minute. The error message identifier pattern for log throttling is:
    * topicName-partitionNum-exceptionType
    */
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter(64 * 1024, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
+      RedundantExceptionFilter.getRedundantExceptionFilter();
+
+  private static final IntFunction<ReentrantLockWithRef<Segment>> segmentProvider = i -> new ReentrantLockWithRef<>();
 
   private final Logger logger;
 
   private final GUID producerGUID;
-  // This will allow to create segments for different partitions in parallel.
-  protected final ConcurrentMap<Integer, Segment> segments = new VeniceConcurrentHashMap<>();
-  protected final ConcurrentMap<Integer, ReentrantLock> partitionLocks = new VeniceConcurrentHashMap<>();
+
+  protected final SparseConcurrentList<ReentrantLockWithRef<Segment>> segments = new SparseConcurrentList<>();
 
   private final String topicName;
 
@@ -79,8 +77,8 @@ public class ProducerTracker {
         + topicName + ")";
   }
 
-  public ReentrantLock getPartitionLock(int partition) {
-    return partitionLocks.computeIfAbsent(partition, key -> new ReentrantLock());
+  private ReentrantLockWithRef<Segment> getLockAndSegment(int partition) {
+    return segments.computeIfAbsent(partition, segmentProvider);
   }
 
   /**
@@ -91,12 +89,12 @@ public class ProducerTracker {
    * @param partition to clear state for
    */
   public void clearPartition(int partition) {
-    ReentrantLock partitionLock = getPartitionLock(partition);
-    partitionLock.lock();
+    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegment(partition);
+    lockAndSegment.lock();
     try {
-      segments.remove(partition);
+      lockAndSegment.removeRef();
     } finally {
-      partitionLock.unlock();
+      lockAndSegment.unlock();
     }
   }
 
@@ -105,49 +103,58 @@ public class ProducerTracker {
   }
 
   private void setPartitionState(int partition, Segment segment) {
-    ReentrantLock partitionLock = getPartitionLock(partition);
-    partitionLock.lock();
+    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegment(partition);
+    lockAndSegment.lock();
     try {
-      if (segments.containsKey(partition)) {
+      if (lockAndSegment.containsRef()) {
         logger.info(
             "{} will overwrite previous state for partition: {}, Previous state: {}, New state: {}",
             this,
             partition,
-            segments.get(partition),
+            lockAndSegment.getRef(),
             segment);
       } else {
         logger.info("{} will set state for partition: {}, New state: {}", this, partition, segment);
       }
-      segments.put(partition, segment);
+      lockAndSegment.setRef(segment);
     } finally {
-      partitionLock.unlock();
+      lockAndSegment.unlock();
     }
   }
 
   public void cloneProducerStates(int partition, ProducerTracker destProducerTracker) {
-    if (!segments.containsKey(partition)) {
-      // This producer didn't write anything to requested partition
+    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegment(partition);
+    if (!lockAndSegment.containsRef()) {
+      // This producer didn't write anything to requested partition (lock-free check)
       return;
     }
-    ReentrantLock partitionLock = getPartitionLock(partition);
-    partitionLock.lock();
+    lockAndSegment.lock();
     try {
-      Segment sourceSegment = segments.get(partition);
+      if (!lockAndSegment.containsRef()) {
+        // This producer didn't write anything to requested partition
+        return;
+      }
+      Segment sourceSegment = lockAndSegment.getRef();
       destProducerTracker.setPartitionState(partition, new Segment(sourceSegment));
     } finally {
-      partitionLock.unlock();
+      lockAndSegment.unlock();
     }
   }
 
   public void updateOffsetRecord(int partition, OffsetRecord offsetRecord) {
-    if (!segments.containsKey(partition)) {
-      // This producer didn't write anything to requested partition
+    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegment(partition);
+    if (!lockAndSegment.containsRef()) {
+      // This producer didn't write anything to requested partition (lock-free check)
       return;
     }
-    ReentrantLock partitionLock = getPartitionLock(partition);
-    partitionLock.lock();
+    lockAndSegment.lock();
     try {
-      Segment segment = segments.get(partition);
+      if (!lockAndSegment.containsRef()) {
+        // This producer didn't write anything to requested partition
+        return;
+      }
+
+      Segment segment = lockAndSegment.getRef();
       ProducerPartitionState state = offsetRecord.getProducerPartitionState(this.producerGUID);
       if (state == null) {
         state = new ProducerPartitionState();
@@ -182,7 +189,7 @@ public class ProducerTracker {
 
       offsetRecord.setProducerPartitionState(this.producerGUID, state);
     } finally {
-      partitionLock.unlock();
+      lockAndSegment.unlock();
     }
   }
 
@@ -202,10 +209,11 @@ public class ProducerTracker {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
-    ReentrantLock partitionLock = getPartitionLock(consumerRecord.getTopicPartition().getPartitionNumber());
-    partitionLock.lock();
+    ReentrantLockWithRef<Segment> lockAndSegment =
+        getLockAndSegment(consumerRecord.getTopicPartition().getPartitionNumber());
+    lockAndSegment.lock();
     try {
-      Segment segment = segments.get(consumerRecord.getTopicPartition().getPartitionNumber());
+      Segment segment = lockAndSegment.getRef();
       boolean hasPreviousSegment = segment != null;
       segment = trackSegment(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
       trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
@@ -214,7 +222,7 @@ public class ProducerTracker {
       segment.setLastSuccessfulOffset(consumerRecord.getOffset());
       segment.setNewSegment(false);
     } finally {
-      partitionLock.unlock();
+      lockAndSegment.unlock();
     }
   }
 
@@ -304,7 +312,9 @@ public class ProducerTracker {
         checkSumType,
         debugInfo,
         aggregates);
-    segments.put(consumerRecord.getTopicPartition().getPartitionNumber(), newSegment);
+    ReentrantLockWithRef<Segment> lockAndSegment =
+        getLockAndSegment(consumerRecord.getTopicPartition().getPartitionNumber());
+    lockAndSegment.setRef(newSegment);
 
     if (unregisteredProducer) {
       handleUnregisteredProducer(
@@ -574,20 +584,17 @@ public class ProducerTracker {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback,
       long kafkaLogCompactionDelayInMs) throws DataValidationException {
+    ReentrantLockWithRef<Segment> lockAndSegment =
+        getLockAndSegment(consumerRecord.getTopicPartition().getPartitionNumber());
 
-    Segment segment = null;
-    ReentrantLock partitionLock = getPartitionLock(consumerRecord.getTopicPartition().getPartitionNumber());
-    partitionLock.lock();
+    Segment segment;
+    lockAndSegment.lock();
     try {
       try {
         /**
          * Explicitly suppress UNREGISTERED_PRODUCER DIV error.
          */
-        segment = trackSegment(
-            segments.get(consumerRecord.getTopicPartition().getPartitionNumber()),
-            consumerRecord,
-            true,
-            Lazy.FALSE);
+        segment = trackSegment(lockAndSegment.getRef(), consumerRecord, true, Lazy.FALSE);
       } catch (DuplicateDataException duplicate) {
         /**
          * Tolerate a segment rewind and not necessary to validate a previous segment;
@@ -632,8 +639,45 @@ public class ProducerTracker {
           // no-op
       }
     } finally {
-      partitionLock.unlock();
+      lockAndSegment.unlock();
     }
+  }
+
+  /**
+   * @param maxRecordProducerTimestamp Max allowed value for the {@link Segment#lastRecordProducerTimestamp}
+   * @return {@link Long#MAX_VALUE} if all segments were cleared, or else the oldest retained producer timestamp
+   */
+  public long clearExpiredState(long maxRecordProducerTimestamp) {
+    long oldestRetainedProducerTS = Long.MAX_VALUE;
+    Segment segment;
+    ReentrantLockWithRef<Segment> lockAndSegment;
+    int length = segments.size();
+    for (int i = 0; i < length; i++) {
+      lockAndSegment = segments.get(i);
+      if (lockAndSegment != null) {
+        lockAndSegment.lock();
+        try {
+          segment = lockAndSegment.getRef();
+          if (segment.getLastRecordProducerTimestamp() < maxRecordProducerTimestamp) {
+            segments.remove(i);
+          } else {
+            oldestRetainedProducerTS = Math.min(oldestRetainedProducerTS, segment.getLastRecordProducerTimestamp());
+          }
+        } finally {
+          lockAndSegment.unlock();
+        }
+      }
+    }
+    return oldestRetainedProducerTS;
+  }
+
+  /**
+   * N.B.: intended for tests...
+   *
+   * @return number of unique partitions tracked by this instance
+   */
+  public int getNumberOfTrackedPartitions() {
+    return segments.values().size();
   }
 
   enum DataFaultType {

@@ -246,7 +246,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
-    this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
+    this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(
+        kafkaVersionTopic,
+        KafkaDataIntegrityValidator.DISABLED,
+        getServerConfig().getDivProducerStateMaxAgeMs());
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
       viewWriters = builder.getVeniceViewWriterFactory()
           .buildStoreViewWriters(
@@ -1960,7 +1963,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * override the DIV info for messages from RT; as a result, both leaders and followers will persisted duplicated
          * messages to disk, and potentially rewind a k/v pair to an old value.
          */
-        divErrorMetricCallback.execute(e);
+        divErrorMetricCallback.accept(e);
         LOGGER.debug("{} : Skipping a duplicate record at offset: {}", consumerTaskId, consumerRecord.getOffset());
         return DelegateConsumerRecordResult.DUPLICATE_MESSAGE;
       }

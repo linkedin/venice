@@ -4,16 +4,20 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.*;
 
+import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.StartOfSegment;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
@@ -22,10 +26,14 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -34,6 +42,53 @@ import org.testng.annotations.Test;
 
 public class KafkaDataIntegrityValidatorTest {
   private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
+  @Test
+  public void testClearExpiredState() throws InterruptedException {
+    final long maxAgeInMs = 1000;
+    Time time = new TestMockTime();
+    String kafkaTopic = Utils.getUniqueString("TestStore") + "_v1";
+    KafkaDataIntegrityValidator validator =
+        new KafkaDataIntegrityValidator(kafkaTopic, KafkaDataIntegrityValidator.DISABLED, maxAgeInMs, time);
+
+    GUID producerGUID = GuidUtils.getGUID(VeniceProperties.empty());
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record1 =
+        buildSoSConsumerRecord(kafkaTopic, 0, 100, producerGUID, 0, time.getMilliseconds());
+    validator.validateMessage(record1, false, Lazy.FALSE);
+
+    time.sleep(10);
+
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record2 =
+        buildConsumerRecord(kafkaTopic, 0, 101, producerGUID, 0, 1, time.getMilliseconds());
+    validator.validateMessage(record2, false, Lazy.FALSE);
+
+    ProducerTracker producerTracker = validator.registerProducer(producerGUID);
+    assertEquals(producerTracker.getNumberOfTrackedPartitions(), 1);
+
+    // Nothing should be cleared yet
+    validator.clearExpiredState();
+    assertEquals(producerTracker.getNumberOfTrackedPartitions(), 1);
+
+    // Even if we wait some more, the max age is not yet reached, so the state should still be retained
+    time.sleep(maxAgeInMs / 2);
+    validator.clearExpiredState();
+    assertEquals(producerTracker.getNumberOfTrackedPartitions(), 1);
+
+    // At exactly the max age, clearing should still not kick in
+    time.sleep(maxAgeInMs / 2);
+    validator.clearExpiredState();
+    assertEquals(producerTracker.getNumberOfTrackedPartitions(), 1);
+
+    // Finally, after the max age is exceeded, it should clear
+    time.sleep(1);
+    validator.clearExpiredState();
+    assertEquals(producerTracker.getNumberOfTrackedPartitions(), 0);
+
+    // If, somehow, a message still came for this producer GUID after clearing the state, DIV should catch it
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record3 =
+        buildConsumerRecord(kafkaTopic, 0, 102, producerGUID, 0, 2, time.getMilliseconds());
+    assertThrows(ImproperlyStartedSegmentException.class, () -> validator.validateMessage(record3, false, Lazy.FALSE));
+  }
 
   @Test
   public void testStatelessDIV() {
@@ -155,6 +210,44 @@ public class KafkaDataIntegrityValidatorTest {
     putPayload.replicationMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
     putPayload.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
     messageEnvelope.payloadUnion = putPayload;
+
+    return new ImmutablePubSubMessage<>(
+        kafkaKey,
+        messageEnvelope,
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(kafkaTopic), partition),
+        offset,
+        brokerTimestamp,
+        0);
+  }
+
+  private static PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> buildSoSConsumerRecord(
+      String kafkaTopic,
+      int partition,
+      long offset,
+      GUID producerGUID,
+      int segmentNumber,
+      long brokerTimestamp) {
+    KafkaKeySerializer kafkaKeySerializer = new KafkaKeySerializer();
+    KafkaKey kafkaKey = kafkaKeySerializer.deserialize(kafkaTopic, "key".getBytes());
+    KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
+    messageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
+
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = producerGUID;
+    producerMetadata.segmentNumber = segmentNumber;
+    producerMetadata.messageSequenceNumber = 0;
+    producerMetadata.messageTimestamp = brokerTimestamp;
+    messageEnvelope.producerMetadata = producerMetadata;
+    messageEnvelope.leaderMetadataFooter = new LeaderMetadata();
+    messageEnvelope.leaderMetadataFooter.upstreamOffset = -1;
+
+    ControlMessage controlMessage = new ControlMessage();
+    controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
+    StartOfSegment startOfSegment = new StartOfSegment();
+    startOfSegment.checksumType = CheckSumType.MD5.getValue();
+    startOfSegment.upcomingAggregates = Collections.emptyList();
+    controlMessage.controlMessageUnion = startOfSegment;
+    messageEnvelope.payloadUnion = controlMessage;
 
     return new ImmutablePubSubMessage<>(
         kafkaKey,
