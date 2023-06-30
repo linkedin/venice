@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -256,6 +257,11 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
     @Override
     public String getPubSubClusterName() {
       return pubSubClusterName;
+    }
+
+    @Override
+    public Map<String, String> getAdditionalConfig() {
+      return Collections.singletonMap("pubsub.region.to.pubsub.broker.map", getRegionName() + ":" + getAddress());
     }
   }
 }

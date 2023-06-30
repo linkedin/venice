@@ -220,15 +220,14 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       Map<String, Map<String, String>> kafkaClusterMap =
           addKafkaClusterIDMappingToServerConfigs(serverProperties, childRegionName, allPubSubBrokerWrappers);
 
-      Map<String, String> pubSubBrokerAdditionalProperties =
-          PubSubBrokerWrapper.combineAdditionalConfigs(allPubSubBrokerWrappers);
-      parentControllerProps.putAll(pubSubBrokerAdditionalProperties);
-      finalChildControllerProperties.putAll(pubSubBrokerAdditionalProperties);
+      Map<String, String> pubSubBrokerProps = PubSubBrokerWrapper.combineAdditionalConfigs(allPubSubBrokerWrappers);
+      finalParentControllerProperties.putAll(pubSubBrokerProps); // parent controllers
+      finalChildControllerProperties.putAll(pubSubBrokerProps); // child controllers
 
       Properties additionalServerProps = new Properties();
       serverProperties
           .ifPresent(veniceProperties -> additionalServerProps.putAll(veniceProperties.getPropertiesCopy()));
-      additionalServerProps.putAll(pubSubBrokerAdditionalProperties);
+      additionalServerProps.putAll(pubSubBrokerProps);
       serverProperties = Optional.of(new VeniceProperties(additionalServerProps));
 
       VeniceMultiClusterCreateOptions.Builder builder =
@@ -263,7 +262,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           false,
           VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
           VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
-      VeniceControllerCreateOptions options =
+      VeniceControllerCreateOptions parentControllerCreateOptions =
           new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper)
               .replicationFactor(replicationFactor)
               .childControllers(childControllers)
@@ -275,7 +274,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       // Create parentControllers for multi-cluster
       for (int i = 0; i < numberOfParentControllers; i++) {
         // random controller from each multi-cluster, in reality this should include all controllers, not just one
-        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(options);
+        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(parentControllerCreateOptions);
         parentControllers.add(parentController);
       }
 
