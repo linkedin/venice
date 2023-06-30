@@ -4,6 +4,8 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_SECURE_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
+import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_SERVICE_NAME;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
@@ -30,6 +32,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -252,6 +255,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
                   childController.getKafkaBootstrapServers(options.isSslToKafka()));
             }
           }
+        } else {
+          builder.put(CHILD_CLUSTER_D2_SERVICE_NAME, D2_SERVICE_NAME);
+          String regionName = options.getExtraProperties().getProperty(LOCAL_REGION_NAME, options.getRegionName());
+          builder.put(LOCAL_REGION_NAME, regionName);
+          builder.put(CHILD_CLUSTER_D2_PREFIX + regionName, options.getZkAddress());
         }
         builder.put(CHILD_CLUSTER_ALLOWLIST, fabricAllowList);
 
