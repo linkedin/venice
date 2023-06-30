@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -631,11 +632,12 @@ public class AdminTool {
     String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
     String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
     String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
-    String stores = getRequiredArgument(cmd, Arg.STORES);
     String timestamp = getRequiredArgument(cmd, Arg.DATETIME);
-    String url = getRequiredArgument(cmd, Arg.URL);
+    String parentUrl = getRequiredArgument(cmd, Arg.URL);
 
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
+    String stores = getOptionalArgument(cmd, Arg.STORES);
+    String cluster = getOptionalArgument(cmd, Arg.CLUSTER);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
     boolean isNonInteractive = cmd.hasOption(Arg.NON_INTERACTIVE.toString());
 
@@ -644,17 +646,18 @@ public class AdminTool {
         .setSourceFabric(sourceFabric)
         .setTimestamp(LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME))
         .setSSLFactory(sslFactory)
-        .setUrl(url);
+        .setUrl(parentUrl);
     if (extraCommandArgs != null) {
       builder.setExtraCommandArgs(extraCommandArgs);
     }
     builder.setDebug(isDebuggingEnabled);
 
+    Set<String> storeSet = calculateRecoveryStoreNames(stores, cluster, parentUrl);
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(storeSet);
     params.setNonInteractive(isNonInteractive);
 
-    try (ControllerClient cli = new ControllerClient("*", url, sslFactory)) {
+    try (ControllerClient cli = new ControllerClient("*", parentUrl, sslFactory)) {
       builder.setPCtrlCliWithoutCluster(cli);
       StoreRepushCommand.Params cmdParams = builder.build();
       dataRecoveryClient.execute(params, cmdParams);
@@ -662,13 +665,15 @@ public class AdminTool {
   }
 
   private static void estimateDataRecoveryTime(CommandLine cmd) {
-    String stores = getRequiredArgument(cmd, Arg.STORES);
     String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
     String parentUrl = getRequiredArgument(cmd, Arg.URL);
 
-    DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
+    String stores = getOptionalArgument(cmd, Arg.STORES);
+    String cluster = getOptionalArgument(cmd, Arg.CLUSTER);
 
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    Set<String> storeSet = calculateRecoveryStoreNames(stores, cluster, parentUrl);
+    DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(storeSet);
 
     Long total;
 
@@ -693,10 +698,11 @@ public class AdminTool {
   private static void monitorDataRecovery(CommandLine cmd) {
     String parentUrl = getRequiredArgument(cmd, Arg.URL);
     String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
-    String stores = getRequiredArgument(cmd, Arg.STORES);
     String dateTimeStr = getRequiredArgument(cmd, Arg.DATETIME);
 
     String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL);
+    String stores = getOptionalArgument(cmd, Arg.STORES);
+    String cluster = getOptionalArgument(cmd, Arg.CLUSTER);
 
     MonitorCommand.Params.Builder builder = new MonitorCommand.Params.Builder().setTargetRegion(destFabric)
         .setParentUrl(parentUrl)
@@ -712,8 +718,9 @@ public class AdminTool {
               DateTimeFormatter.ISO_LOCAL_DATE_TIME));
     }
 
+    Set<String> storeSet = calculateRecoveryStoreNames(stores, cluster, parentUrl);
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(storeSet);
     if (intervalStr != null) {
       params.setInterval(Integer.parseInt(intervalStr));
     }
@@ -723,6 +730,31 @@ public class AdminTool {
       MonitorCommand.Params monitorParams = builder.build();
       dataRecoveryClient.monitor(params, monitorParams);
     }
+  }
+
+  private static Set<String> calculateRecoveryStoreNames(String multiStores, String cluster, String parentUrl) {
+    if (!StringUtils.isEmpty(multiStores) && !StringUtils.isEmpty(cluster)) {
+      System.out.println(
+          String.format("[WARN] --%s overwrites --%s value.", Arg.STORES.getArgName(), Arg.CLUSTER.getArgName()));
+    }
+
+    if (!StringUtils.isEmpty(multiStores)) {
+      return Utils.parseCommaSeparatedStringToSet(multiStores);
+    }
+
+    if (!StringUtils.isEmpty(cluster)) {
+      try (ControllerClient parentCtrlCli = new ControllerClient(cluster, parentUrl, sslFactory)) {
+        MultiStoreResponse response = parentCtrlCli.queryStoreList(false);
+        if (response.isError()) {
+          throw new VeniceClientException("Error in getting store list for " + cluster + ": " + response.getError());
+        }
+        if (response.getStores() == null) {
+          return null;
+        }
+        return new HashSet<>(Arrays.asList(response.getStores()));
+      }
+    }
+    return null;
   }
 
   private static void createNewStore(CommandLine cmd) throws Exception {
