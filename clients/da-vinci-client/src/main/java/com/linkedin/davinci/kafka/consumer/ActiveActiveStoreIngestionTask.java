@@ -1297,7 +1297,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     long offsetLagThreshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
     for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
       if (pcs.hasLagCaughtUp() && offsetLagThreshold >= 0) {
-        // If pcs is marked has having caught up, but we're not ready to serve, that means we're lagging
+        // If pcs is marked as having caught up, but we're not ready to serve, that means we're lagging
         // after having announced that we are ready to serve.
         try {
           if (!this.isReadyToServe(pcs)) {

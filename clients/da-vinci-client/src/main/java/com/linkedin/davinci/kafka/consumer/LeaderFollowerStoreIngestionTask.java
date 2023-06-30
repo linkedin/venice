@@ -2998,24 +2998,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return VeniceSystemStoreUtils.isSystemStore(storeName);
   }
 
-  /**
-   * This method fetches/calculates latest leader consumed offset and last offset in RT topic. The method relies on
-   * {@link #getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(PartitionConsumptionState, String)} to fetch
-   * latest leader consumed offset for different data replication policy.
-   * @return the lag (lastOffsetInRealTimeTopic - latestConsumedLeaderOffset)
-   */
-  protected long getLatestLeaderConsumedOffsetAndHybridTopicOffset(
-      String sourceRealTimeTopicKafkaURL,
-      PubSubTopic leaderTopic,
-      PartitionConsumptionState pcs) {
-    return getLatestLeaderOffsetAndHybridTopicOffset(
-        sourceRealTimeTopicKafkaURL,
-        leaderTopic,
-        pcs,
-        this::getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement,
-        false);
-  }
-
   private long getLatestLeaderOffsetAndHybridTopicOffset(
       String sourceRealTimeTopicKafkaURL,
       PubSubTopic leaderTopic,
