@@ -302,6 +302,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           }
         }
 
+        // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
+        Map<String, String> brokerDetails = options.getKafkaBroker().getAdditionalConfig();
+        for (Map.Entry<String, String> entry: brokerDetails.entrySet()) {
+          builder.putIfAbsent(entry.getKey(), entry.getValue());
+        }
+
         VeniceProperties props = builder.build();
         propertiesList.add(props);
       }

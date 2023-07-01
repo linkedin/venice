@@ -183,7 +183,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             "PubSubBrokerWrapper region name " + pubSubBrokerWrapper.getRegionName()
                 + " does not match with the region name " + options.getRegionName() + " in the options");
       }
-
+      pubSubBrokerWrapper.getAdditionalConfig().forEach((k, v) -> options.getExtraProperties().putIfAbsent(k, v));
       // Setup D2 for controller
       String zkAddress = zkServerWrapper.getAddress();
       D2TestUtils.setupD2Config(

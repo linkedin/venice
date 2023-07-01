@@ -228,6 +228,16 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       }
 
+      // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
+      Map<String, String> brokerDetails = pubSubBrokerWrapper.getAdditionalConfig();
+      for (Map.Entry<String, String> entry: brokerDetails.entrySet()) {
+        if (clusterProps.containsKey(entry.getKey())) {
+          // skip if the key is already present in cluster.properties
+          continue;
+        }
+        serverPropsBuilder.putIfAbsent(entry.getKey(), entry.getValue());
+      }
+
       VeniceProperties serverProps = serverPropsBuilder.build();
 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
