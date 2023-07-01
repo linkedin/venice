@@ -840,4 +840,15 @@ public class TestUtils {
       throw new RuntimeException(e);
     }
   }
+
+  public static Map<String, String> combineConfigs(List<Map<String, String>> configMaps) {
+    Map<String, String> aggregateConfigMap = new HashMap<>(2);
+
+    for (Map<String, String> configMap: configMaps) {
+      for (Map.Entry<String, String> entry: configMap.entrySet()) {
+        aggregateConfigMap.compute(entry.getKey(), (k, v) -> v == null ? entry.getValue() : v + "," + entry.getValue());
+      }
+    }
+    return aggregateConfigMap;
+  }
 }

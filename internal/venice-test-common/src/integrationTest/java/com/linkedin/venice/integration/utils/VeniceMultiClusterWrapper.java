@@ -69,6 +69,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
             "PubSubBrokerWrapper region name " + pubSubBrokerWrapper.getRegionName()
                 + " does not match with the region name " + options.getRegionName() + " in the options");
       }
+      Map<String, String> pubBrokerDetails = pubSubBrokerWrapper.getAdditionalConfig();
       String[] clusterNames = new String[options.getNumberOfClusters()];
       Map<String, String> clusterToD2 = new HashMap<>();
       Map<String, String> clusterToServerD2 = new HashMap<>();
@@ -106,6 +107,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           ClientConfig.defaultGenericClientConfig("")
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(clientConfigD2Client));
+      pubBrokerDetails.forEach((key, value) -> controllerProperties.putIfAbsent(key, value));
       VeniceControllerCreateOptions controllerCreateOptions =
           new VeniceControllerCreateOptions.Builder(clusterNames, zkServerWrapper, pubSubBrokerWrapper)
               .regionName(options.getRegionName())
@@ -127,6 +129,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       Properties extraProperties = options.getVeniceProperties().toProperties();
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
       extraProperties.putAll(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
+      pubBrokerDetails.forEach((key, value) -> extraProperties.putIfAbsent(key, value));
       VeniceClusterCreateOptions.Builder vccBuilder =
           new VeniceClusterCreateOptions.Builder().regionName(options.getRegionName())
               .standalone(false)

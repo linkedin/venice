@@ -7,6 +7,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
@@ -182,7 +183,7 @@ public class VeniceMultiClusterCreateOptions {
         .toString();
   }
 
-  public VeniceMultiClusterCreateOptions(Builder builder) {
+  private VeniceMultiClusterCreateOptions(Builder builder) {
     regionName = builder.regionName;
     numberOfClusters = builder.numberOfClusters;
     numberOfControllers = builder.numberOfControllers;
@@ -342,7 +343,7 @@ public class VeniceMultiClusterCreateOptions {
         kafkaClusterMap = Collections.emptyMap();
       }
       if (regionName == null) {
-        throw new IllegalArgumentException("regionName cannot be null");
+        regionName = STANDALONE_REGION_NAME;
       }
     }
 
