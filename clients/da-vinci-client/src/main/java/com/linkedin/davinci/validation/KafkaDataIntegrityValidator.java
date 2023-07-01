@@ -42,6 +42,11 @@ public class KafkaDataIntegrityValidator {
   protected final Function<GUID, ProducerTracker> producerTrackerCreator;
   private final Time time;
 
+  /**
+   * This constructor is used by a proprietary ETL project. Do not clean up (yet)!
+   *
+   * TODO: Open source the ETL or make it stop depending on an exotic open source API
+   */
   public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs) {
     this(topicName, kafkaLogCompactionDelayInMs, DISABLED);
   }
@@ -50,7 +55,8 @@ public class KafkaDataIntegrityValidator {
     this(topicName, kafkaLogCompactionDelayInMs, maxAgeInMs, SystemTime.INSTANCE);
   }
 
-  public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs, long maxAgeInMs, Time time) {
+  /** N.B.: Package-private as it is only intended for tests */
+  KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs, long maxAgeInMs, Time time) {
     this.topicName = topicName;
     this.kafkaLogCompactionDelayInMs = kafkaLogCompactionDelayInMs;
     this.maxAgeInMs = maxAgeInMs;
@@ -112,7 +118,9 @@ public class KafkaDataIntegrityValidator {
    * exception will not be thrown because it's expected that log compaction would compact old messages. However, if data
    * are fresh and missing message is detected, MISSING exception will be thrown.
    *
-   * This API can be used for ETL.
+   * This API is used by a proprietary ETL project. Do not clean up (yet)!
+   *
+   * TODO: Open source the ETL or make it stop depending on an exotic open source API
    */
   public void checkMissingMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
@@ -143,7 +151,7 @@ public class KafkaDataIntegrityValidator {
                 newOldestRetainedProducerTS = Math.min(newOldestRetainedProducerTS, currentProducerOldestRetainedTS);
               }
             }
-            if (newOldestRetainedProducerTS == Long.MAX_VALUE) {
+            if (newOldestRetainedProducerTS != Long.MAX_VALUE) {
               /** We only update the {@link #oldestRetainedProducerTS} if there is any state we retained. */
               this.oldestRetainedProducerTS = newOldestRetainedProducerTS;
             }
