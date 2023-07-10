@@ -7,10 +7,15 @@ import io.tehuti.metrics.stats.Gauge;
 import java.util.concurrent.atomic.LongAdder;
 
 
+/**
+ * This metric class is to optimize for high write throughput, low read throughput measurement use case instead of real-time
+ * measurement. The smallest measurement interval is 1 minute.
+ */
 public class LongAdderRateGauge extends Gauge {
   private final Time time;
   private final LongAdder adder = new LongAdder();
   private long lastMeasurementTime;
+  private double lastMeasuredValue = 0.0D;
 
   public LongAdderRateGauge() {
     this(new SystemTime());
@@ -38,14 +43,17 @@ public class LongAdderRateGauge extends Gauge {
     return getRate(time.getMilliseconds());
   }
 
+  /**
+   * N.B.: We are not looking for great precision at a very short timescale. The intended use case is for this
+   * function to be queried by the metric system ~1/minute.
+   */
   private double getRate(long currentTimeMs) {
-    /**
-     * N.B.: We are not looking for great precision at a very short timescale. The intended use case is for this
-     * function to be queried by the metric system ~1/minute. So the goal here is just to avoid a division by zero.
-     */
-    double elapsedTimeInSeconds =
-        Math.max((double) (currentTimeMs - this.lastMeasurementTime) / Time.MS_PER_SECOND, 0.001);
+    double elapsedTimeInSeconds = (double) (currentTimeMs - this.lastMeasurementTime) / Time.MS_PER_SECOND;
+    if (elapsedTimeInSeconds < Time.SECONDS_PER_MINUTE) {
+      return lastMeasuredValue;
+    }
     this.lastMeasurementTime = currentTimeMs;
-    return (double) this.adder.sumThenReset() / elapsedTimeInSeconds;
+    this.lastMeasuredValue = this.adder.sumThenReset() / elapsedTimeInSeconds;
+    return lastMeasuredValue;
   }
 }
