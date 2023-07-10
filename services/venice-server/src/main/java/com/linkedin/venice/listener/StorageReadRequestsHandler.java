@@ -25,6 +25,7 @@ import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.listener.request.AdminRequest;
@@ -296,7 +297,10 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           context.writeAndFlush(
               new HttpShortcutResponse("No storage exists for: " + e.getStoreName(), HttpResponseStatus.BAD_REQUEST));
         } catch (VeniceRequestEarlyTerminationException e) {
-          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), e.getHttpResponseStatus()));
+          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.REQUEST_TIMEOUT));
+        } catch (PersistenceFailureException e) {
+          // TODO: need to confirm whether PersistenceFailureException only throwns when there's a balancing
+          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.BAD_GATEWAY));
         } catch (Exception e) {
           LOGGER.error("Exception thrown for {}", request.getResourceName(), e);
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));

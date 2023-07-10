@@ -2,6 +2,7 @@ package com.linkedin.venice.router.api;
 
 import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.HttpConstants.VENICE_REQUEST_RCU;
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_GATEWAY;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static io.netty.handler.codec.http.HttpResponseStatus.METHOD_NOT_ALLOWED;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
@@ -71,7 +72,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
 
   private static final Set<Integer> PASS_THROUGH_ERROR_CODES = Utils.setOf(TOO_MANY_REQUESTS.code());
   private static final Set<Integer> RETRIABLE_ERROR_CODES =
-      Utils.setOf(INTERNAL_SERVER_ERROR.code(), SERVICE_UNAVAILABLE.code());
+      Utils.setOf(INTERNAL_SERVER_ERROR.code(), SERVICE_UNAVAILABLE.code(), BAD_GATEWAY.code());
 
   private final VeniceRouterConfig routerConfig;
   private final ReadOnlyStoreRepository storeRepository;
@@ -159,7 +160,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       try {
         int statusCode = response != null ? response.getStatusCode() : HttpStatus.SC_INTERNAL_SERVER_ERROR;
         if (!retryFuture.isCancelled() && RETRIABLE_ERROR_CODES.contains(statusCode)) {
-          retryFuture.setSuccess(INTERNAL_SERVER_ERROR);
+          retryFuture.setSuccess(HttpResponseStatus.valueOf(statusCode));
           return;
         }
 

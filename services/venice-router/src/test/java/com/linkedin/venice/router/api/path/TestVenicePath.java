@@ -112,7 +112,7 @@ public class TestVenicePath {
   }
 
   @Test
-  public void testRetryLogicWhenMetBothCriterions() {
+  public void testRetryLogicWhenMetBothCriteria() {
     TestMockTime time = new TestMockTime();
     time.setTime(1);
     SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time);
