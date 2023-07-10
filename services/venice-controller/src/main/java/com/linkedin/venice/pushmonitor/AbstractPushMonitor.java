@@ -1000,6 +1000,34 @@ public abstract class AbstractPushMonitor
         newStatus = VersionStatus.PUSHED;
       }
 
+      /**
+       * The offline push job for this version has been killed by {@link com.linkedin.venice.controller.Admin#killOfflinePush}.
+       * Don't set the status to ONLINE or swap current version.
+       */
+      Optional<Version> version = store.getVersion(versionNumber);
+      if (version.isPresent() && VersionStatus.isVersionKilled(version.get().getStatus())) {
+        if (newStatus == VersionStatus.ONLINE) {
+          /**
+           * When a version is first killed and then completed, don't continue to update overall push status to complete
+           * or retire old versions. Throw an exception to stop executing the follow-up logic in its caller
+           * {@link AbstractPushMonitor#handleCompletedPush}.
+           */
+          throw new VeniceException(
+              String.format(
+                  "store: %s version: %d has been killed by killOfflinePush. Abort version status update and current version swapping",
+                  storeName,
+                  versionNumber));
+        }
+
+        if (VersionStatus.isVersionErrored(newStatus)) {
+          /**
+           * When a version is first killed and then errored, don't need to update its version status to ERROR.
+           * Return to its caller to continue following clean-up work in {@link AbstractPushMonitor#handleErrorPush}.
+           */
+          return;
+        }
+      }
+
       store.updateVersionStatus(versionNumber, newStatus);
       LOGGER.info("Updated store: {} version: {} to status: {}", store.getName(), versionNumber, newStatus.toString());
       if (newStatus.equals(VersionStatus.ONLINE)) {

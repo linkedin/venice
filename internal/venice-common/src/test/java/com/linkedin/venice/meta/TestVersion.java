@@ -134,4 +134,15 @@ public class TestVersion {
     topic = "abc_v1_cc";
     Assert.assertEquals(Version.parseVersionFromKafkaTopicName(topic), version);
   }
+
+  @Test
+  void testVersionStatus() {
+    for (VersionStatus status: VersionStatus.values()) {
+      if (status == VersionStatus.KILLED) {
+        Assert.assertTrue(VersionStatus.isVersionKilled(status));
+      } else {
+        Assert.assertFalse(VersionStatus.isVersionKilled(status));
+      }
+    }
+  }
 }
