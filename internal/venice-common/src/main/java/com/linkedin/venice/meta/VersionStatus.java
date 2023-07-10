@@ -50,7 +50,7 @@ public enum VersionStatus {
    * @return true if it can be deleted immediately, false otherwise
    */
   public static boolean canDelete(VersionStatus status) {
-    return ERROR == status;
+    return status == ERROR || status == KILLED;
   }
 
   /**
@@ -74,5 +74,15 @@ public enum VersionStatus {
    */
   public static boolean isBootstrapCompleted(VersionStatus status) {
     return status.equals(ONLINE) || status.equals(PUSHED);
+  }
+
+  // Check if the version has been killed.
+  public static boolean isVersionKilled(VersionStatus status) {
+    return status == KILLED;
+  }
+
+  // Check if the version is in ERROR state.
+  public static boolean isVersionErrored(VersionStatus status) {
+    return status == ERROR;
   }
 }
