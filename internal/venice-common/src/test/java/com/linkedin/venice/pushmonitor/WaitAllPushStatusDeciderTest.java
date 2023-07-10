@@ -15,7 +15,7 @@ import org.testng.annotations.Test;
 
 
 public class WaitAllPushStatusDeciderTest extends TestPushStatusDecider {
-  private WaitAllPushStatusDecider statusDecider = new WaitAllPushStatusDecider();
+  private final WaitAllPushStatusDecider statusDecider = new WaitAllPushStatusDecider();
 
   @BeforeMethod
   public void setUp() {

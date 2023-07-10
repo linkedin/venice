@@ -9,7 +9,6 @@ import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENC
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_SOME_TOPIC_CONFIGS;
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_CONFIG;
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_TOPIC_CONFIG_WITH_RETRY;
-import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.IS_TOPIC_DELETION_UNDER_WAY;
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.LIST_ALL_TOPICS;
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.SET_TOPIC_CONFIG;
 
@@ -137,11 +136,6 @@ public class InstrumentedApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   @Override
   public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
     return instrument(GET_SOME_TOPIC_CONFIGS, () -> kafkaAdmin.getSomeTopicConfigs(topicNames));
-  }
-
-  @Override
-  public boolean isTopicDeletionUnderway() {
-    return instrument(IS_TOPIC_DELETION_UNDER_WAY, () -> kafkaAdmin.isTopicDeletionUnderway());
   }
 
   @Override

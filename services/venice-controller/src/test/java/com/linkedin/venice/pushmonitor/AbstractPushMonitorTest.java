@@ -384,7 +384,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.NOT_CREATED);
   }
 
@@ -403,7 +403,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -427,7 +427,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -452,7 +452,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -474,7 +474,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -499,7 +499,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -527,7 +527,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -554,7 +554,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -577,7 +577,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -599,7 +599,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.ERROR);
   }
 
@@ -617,7 +617,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.NOT_CREATED);
   }
 

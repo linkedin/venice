@@ -72,6 +72,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -828,10 +829,7 @@ public class VenicePushJob implements AutoCloseable {
 
     // This mode of passing the topic name to VPJ is going to be deprecated.
     if (userProvidedTopicNameOptional.isPresent()) {
-      return getUserProvidedTopicName(
-          userProvidedStoreName,
-          userProvidedTopicNameOptional.get(),
-          pushJobSetting.controllerRetries);
+      return getUserProvidedTopicName(userProvidedStoreName, userProvidedTopicNameOptional.get());
     }
     // If VPJ has fabric name available use that to find the child colo version otherwise
     // use the largest version among the child colo to use as KIF input topic.
@@ -851,10 +849,7 @@ public class VenicePushJob implements AutoCloseable {
     return Version.composeKafkaTopic(userProvidedStoreName, version);
   }
 
-  private String getUserProvidedTopicName(
-      final String userProvidedStoreName,
-      String userProvidedTopicName,
-      int retryAttempts) {
+  private String getUserProvidedTopicName(final String userProvidedStoreName, String userProvidedTopicName) {
     String derivedStoreName = Version.parseStoreFromKafkaTopicName(userProvidedTopicName);
     if (!Objects.equals(derivedStoreName, userProvidedStoreName)) {
       throw new IllegalArgumentException(
@@ -866,15 +861,7 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     LOGGER.info("userProvidedStoreName: {}", userProvidedStoreName);
-    StoreResponse storeResponse =
-        ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getStore(userProvidedStoreName));
-    if (storeResponse.isError()) {
-      throw new VeniceException(
-          String.format(
-              "Fail to get store information for store %s with error %s",
-              userProvidedStoreName,
-              storeResponse.getError()));
-    }
+    StoreResponse storeResponse = getStoreResponse(userProvidedStoreName, true);
     Map<String, Integer> coloToCurrentVersions = getCurrentStoreVersions(storeResponse);
     if (new HashSet<>(coloToCurrentVersions.values()).size() > 1) {
       LOGGER.info(
@@ -965,7 +952,7 @@ public class VenicePushJob implements AutoCloseable {
       validateKafkaMessageEnvelopeSchema(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
       inputDirectory = getInputURI(props);
-      storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
+      validateStoreSettingAndPopulate(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
 
       if (pushJobSetting.repushTTLEnabled && storeSetting.isWriteComputeEnabled) {
@@ -1173,7 +1160,8 @@ public class VenicePushJob implements AutoCloseable {
               controllerClient,
               pushJobSetting,
               kafkaTopicInfo,
-              pushJobSetting.targetedRegions);
+              pushJobSetting.targetedRegions,
+              pushJobSetting.isTargetedRegionPushEnabled);
         }
 
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
@@ -1269,6 +1257,8 @@ public class VenicePushJob implements AutoCloseable {
   void postValidationConsumption(Set<String> candidateRegions) {
     // get the latest version of the store for data recovery
     Version sourceVersion = getStoreVersion(pushJobSetting.storeName, kafkaTopicInfo.version);
+    LOGGER
+        .info("Starting to push to rest of the regions {} after successful push to targeted region.", candidateRegions);
 
     if (sourceVersion.getHybridStoreConfig() != null) {
       // perform data recovery for HYBRID stores
@@ -1300,7 +1290,8 @@ public class VenicePushJob implements AutoCloseable {
           controllerClient,
           pushJobSetting,
           kafkaTopicInfo,
-          RegionUtils.composeRegionList(candidateRegions));
+          RegionUtils.composeRegionList(candidateRegions),
+          false);
     }
   }
 
@@ -2023,22 +2014,24 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalZstdWithDictCompressedValueBytes =
           MRJobCounterHelper.getTotalZstdWithDictCompressedValueSize(runningJob.getCounters());
       LOGGER.info(
-          "pushJobDetails MR Counters: " + "\n\tTotal number of records: {} " + "\n\tSize of keys: {} Bytes "
-              + "\n\tsize of uncompressed value: {} Bytes " + "\n\tConfigured value Compression Strategy: {} "
-              + "\n\tFinal data size stored in Venice based on this compression strategy: {} Bytes "
+          "pushJobDetails MR Counters: " + "\n\tTotal number of records: {} " + "\n\tSize of keys: {} "
+              + "\n\tsize of uncompressed value: {} " + "\n\tConfigured value Compression Strategy: {} "
+              + "\n\tFinal data size stored in Venice based on this compression strategy: {} "
               + "\n\tCompression Metrics collection is: {} ",
           pushJobDetails.totalNumberOfRecords,
-          pushJobDetails.totalKeyBytes,
-          pushJobDetails.totalRawValueBytes,
+          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes),
+          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes),
           CompressionStrategy.valueOf(pushJobDetails.valueCompressionStrategy).name(),
-          pushJobDetails.totalCompressedValueBytes,
+          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes),
           pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled");
       if (pushJobSetting.compressionMetricCollectionEnabled) {
-        LOGGER.info("\tData size if compressed using Gzip: {} Bytes ", pushJobDetails.totalGzipCompressedValueBytes);
+        LOGGER.info(
+            "\tData size if compressed using Gzip: {} ",
+            ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalGzipCompressedValueBytes));
         if (isZstdDictCreationSuccess) {
           LOGGER.info(
-              "\tData size if compressed using Zstd with Dictionary: {} Bytes",
-              pushJobDetails.totalZstdWithDictCompressedValueBytes);
+              "\tData size if compressed using Zstd with Dictionary: {} ",
+              ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalZstdWithDictCompressedValueBytes));
         } else {
           LOGGER.info("\tZstd Dictionary creation Failed");
         }
@@ -2260,12 +2253,7 @@ public class VenicePushJob implements AutoCloseable {
 
   protected void validateRemoteHybridSettings(PushJobSetting setting) {
     if (setting.validateRemoteReplayPolicy != null) {
-      StoreResponse response = ControllerClient
-          .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
-      if (response.isError()) {
-        throw new VeniceException(
-            "Failed to get store information to validate push settings! Error: " + response.getError());
-      }
+      StoreResponse response = getStoreResponse(setting.storeName);
       HybridStoreConfig hybridStoreConfig = response.getStore().getHybridStoreConfig();
       if (!setting.validateRemoteReplayPolicy.equals(hybridStoreConfig.getBufferReplayPolicy())) {
         throw new VeniceException(
@@ -2384,36 +2372,28 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private StoreSetting getSettingsFromController(ControllerClient controllerClient, PushJobSetting setting) {
-    StoreSetting storeSetting = new StoreSetting();
-    StoreResponse storeResponse = ControllerClient
-        .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
-
-    if (storeResponse.isError()) {
-      throw new VeniceException("Can't get store info. " + storeResponse.getError());
-    }
-    storeSetting.storeResponse = storeResponse;
-    storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
-    storeSetting.isSchemaAutoRegisterFromPushJobEnabled =
-        storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
-    storeSetting.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
-    storeSetting.isRmdChunkingEnabled = storeResponse.getStore().isRmdChunkingEnabled();
-    storeSetting.compressionStrategy = storeResponse.getStore().getCompressionStrategy();
-    storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
-    storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
+  /**
+   * Validate the store settings against the Push job settings and populate additional information, e.g. keySchema, if needed.
+   * @param controllerClient
+   * @param jobSetting
+   * @return
+   */
+  private StoreSetting validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
+    StoreResponse storeResponse = getStoreResponse(pushJobSetting.storeName);
     storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
-    if (setting.isTargetedRegionPushEnabled && setting.targetedRegions == null) {
+    storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
+
+    if (jobSetting.isTargetedRegionPushEnabled && jobSetting.targetedRegions == null) {
       // only override the targeted regions if it is not set and it is a single region push
-      setting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
-      if (StringUtils.isEmpty(setting.targetedRegions)) {
+      jobSetting.targetedRegions = storeResponse.getStore().getNativeReplicationSourceFabric();
+      if (StringUtils.isEmpty(jobSetting.targetedRegions)) {
         throw new VeniceException(
             "The store either does not have native replication mode enabled or set up default source fabric.");
       }
     }
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
-    storeSetting.hybridStoreConfig = hybridStoreConfig;
-    if (setting.repushTTLEnabled) {
+    if (jobSetting.repushTTLEnabled) {
       if (hybridStoreConfig == null) {
         throw new VeniceException("Repush TTL is only supported for real-time only store.");
       } else {
@@ -2421,27 +2401,28 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
-    if (setting.enableWriteCompute && !storeSetting.isWriteComputeEnabled) {
+    if (jobSetting.enableWriteCompute && !storeSetting.isWriteComputeEnabled) {
       throw new VeniceException("Store does not have write compute enabled.");
     }
 
-    if (setting.enableWriteCompute && (!storeSetting.isIncrementalPushEnabled || !setting.isIncrementalPush)) {
+    if (jobSetting.enableWriteCompute && (!storeSetting.isIncrementalPushEnabled || !jobSetting.isIncrementalPush)) {
       throw new VeniceException("Write compute is only available for incremental push jobs.");
     }
 
-    if (setting.enableWriteCompute && storeSetting.isWriteComputeEnabled) {
+    if (jobSetting.enableWriteCompute && storeSetting.isWriteComputeEnabled) {
       /*
         If write compute is enabled, we would perform a topic switch from the controller and have the
         controller be in charge of broadcasting start and end messages. We will disable
         sendControlMessagesDirectly to prevent races between the messages sent by the VenicePushJob and
         by the controller for topic switch.
        */
-      setting.sendControlMessagesDirectly = false;
+      jobSetting.sendControlMessagesDirectly = false;
     }
 
-    storeSetting.keySchema = getKeySchemaFromController(controllerClient, setting.controllerRetries, setting.storeName);
+    storeSetting.keySchema =
+        getKeySchemaFromController(controllerClient, jobSetting.controllerRetries, jobSetting.storeName);
 
-    if (setting.isSourceKafka) {
+    if (jobSetting.isSourceKafka) {
       int sourceVersionNumber = Version.parseVersionFromKafkaTopicName(pushJobSetting.kafkaInputTopic);
       Optional<Version> sourceVersion = storeResponse.getStore().getVersion(sourceVersionNumber);
 
@@ -2668,21 +2649,25 @@ public class VenicePushJob implements AutoCloseable {
    * High level, we want to poll the consumption job status until it errors or is complete. This is more complicated
    * because we might be dealing with multiple destination clusters and we might not be able to reach all of them. We
    * are using a semantic of "poll until all accessible datacenters report success".
-   *
+   * <p>
    * If any datacenter report an explicit error status, we throw an exception and fail the job. However, datacenters
    * with COMPLETED status will be serving new data.
+   *
    * @param incrementalPushVersion, optional incremental push version
-   * @param controllerClient, controller client to send query to poll status
-   * @param pushJobSetting, push job setting
-   * @param topicInfo, the kafka topic info from the newly created Version
-   * @param targetedRegions if specified, only poll the status of the specified regions, otherwise it can be null
+   * @param controllerClient,       controller client to send query to poll status
+   * @param pushJobSetting,         push job setting
+   * @param topicInfo,              the kafka topic info from the newly created Version
+   * @param targetedRegions         if specified, only poll the status of the specified regions, otherwise it can be
+   *                                null
+   * @param isTargetedRegionPush
    */
   void pollStatusUntilComplete(
       Optional<String> incrementalPushVersion,
       ControllerClient controllerClient,
       PushJobSetting pushJobSetting,
       TopicInfo topicInfo,
-      String targetedRegions) {
+      String targetedRegions,
+      boolean isTargetedRegionPush) {
     // Set of datacenters that have reported a completed status at least once.
     Set<String> completedDatacenters = new HashSet<>();
     // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
@@ -2756,7 +2741,11 @@ public class VenicePushJob implements AutoCloseable {
         }
 
         // Every known datacenter have successfully reported a completed status at least once.
-        LOGGER.info("Successfully pushed {}", topicInfo.topic);
+        if (isTargetedRegionPush) {
+          LOGGER.info("Successfully pushed {} to targeted region {}", topicInfo.topic, targetedRegions);
+        } else {
+          LOGGER.info("Successfully pushed {} to all the regions", topicInfo.topic);
+        }
         return;
       }
       long bootstrapToOnlineTimeoutInHours = storeSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
@@ -2797,7 +2786,9 @@ public class VenicePushJob implements AutoCloseable {
 
     Optional<String> details = response.getOptionalStatusDetails();
     if (details.isPresent() && detailsAreDifferent(previousOverallDetails, details.get())) {
-      LOGGER.info("\t\tNew overall details: {}", details.get());
+      if (!details.get().isEmpty()) {
+        LOGGER.info("\t\tNew overall details: {}", details.get());
+      }
       newOverallDetails = details.get();
     }
 
@@ -3197,13 +3188,7 @@ public class VenicePushJob implements AutoCloseable {
    * @return
    */
   private Version getStoreVersion(String storeName, int version) {
-    StoreResponse storeResponse = ControllerClient
-        .retryableRequest(controllerClient, pushJobSetting.controllerRetries, c -> c.getStore(storeName));
-    if (storeResponse.isError()) {
-      throw new VeniceException(
-          "Failed to retrieve store response with urls: " + pushJobSetting.veniceControllerUrl + ", error: "
-              + storeResponse.getError());
-    }
+    StoreResponse storeResponse = getStoreResponse(storeName, true);
     Optional<Version> newVersion = storeResponse.getStore().getVersion(version);
     if (!newVersion.isPresent()) {
       throw new VeniceException(
@@ -3212,6 +3197,45 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     return newVersion.get();
+  }
+
+  private StoreResponse getStoreResponse(String storeName) {
+    return getStoreResponse(storeName, false);
+  }
+
+  /**
+   * Get the previously cached {@link StoreResponse} if available, otherwise query the controller.
+   * It's unlikely that a store configuration would change during a VenicePushJob so when we need to access the configuration
+   * of a store, it's recommended to access them from the cached {@link StoreResponse} to avoid unnecessary controller
+   * calls unless you need to access up-to-date {@link Version} from the controller.
+   * @param storeName, the store name
+   * @param refresh, if true, query the controller to get the latest store response otherwise return the cached one.
+   * @return the cached {@link StoreResponse} or the newly fetched {@link StoreResponse} when refresh is true.
+   *
+   * TODO: Need more refactoring to get rid of storeSetting, or even other POJOs in this class so codes can be cleaner.
+   */
+  private StoreResponse getStoreResponse(String storeName, boolean refresh) {
+    if (storeSetting == null) {
+      storeSetting = new StoreSetting();
+      refresh = true;
+    }
+    if (refresh) {
+      StoreResponse storeResponse = ControllerClient
+          .retryableRequest(controllerClient, pushJobSetting.controllerRetries, c -> c.getStore(storeName));
+      if (storeResponse.isError()) {
+        throw new VeniceException("Can't get store info. " + storeResponse.getError());
+      }
+      storeSetting.storeResponse = storeResponse;
+      storeSetting.isSchemaAutoRegisterFromPushJobEnabled =
+          storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
+      storeSetting.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
+      storeSetting.isRmdChunkingEnabled = storeResponse.getStore().isRmdChunkingEnabled();
+      storeSetting.compressionStrategy = storeResponse.getStore().getCompressionStrategy();
+      storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
+      storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
+      storeSetting.hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
+    }
+    return storeSetting.storeResponse;
   }
 
   private void logPushJobProperties(

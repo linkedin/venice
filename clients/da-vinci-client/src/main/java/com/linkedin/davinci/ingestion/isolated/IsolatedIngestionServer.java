@@ -9,7 +9,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_WAIT_RETRIE
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -30,6 +29,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
@@ -366,7 +366,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
    * and child process.
    * One previous example of the deadlock situation could happen when VersionBackend is trying to unsubscribe a topic partition,
    * it will hold VersionBackend instance lock, and send a blocking call to isolated ingestion service to call
-   * {@link KafkaStoreIngestionService#stopConsumptionAndWait(VeniceStoreVersionConfig, int, int, int)}, inside which it will
+   * {@link KafkaStoreIngestionService#stopConsumptionAndWait(VeniceStoreVersionConfig, int, int, int, boolean)}, inside which it will
    * wait up to 30 seconds to drain internal messages for the partition. For SOP message, it will call
    * {@link com.linkedin.davinci.notifier.VeniceNotifier#started(String, int)} and in ingestion isolation case it will
    * send a blocking call to main process to report progress. The logic inside Da Vinci Client ingestion notifier's
@@ -629,20 +629,9 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 180);
 
     // Initialize D2Client.
-    SSLFactory sslFactory = null;
-    D2Client d2Client;
     String d2ZkHosts = configLoader.getCombinedProperties().getString(D2_ZK_HOSTS_ADDRESS);
-    sslFactory = IsolatedIngestionUtils.getSSLFactoryForIngestion(configLoader).orElse(null);
-    if (sslFactory != null) {
-      d2Client = new D2ClientBuilder().setZkHosts(d2ZkHosts)
-          .setIsSSLEnabled(true)
-          .setSSLParameters(sslFactory.getSSLParameters())
-          .setSSLContext(sslFactory.getSSLContext())
-          .build();
-    } else {
-      d2Client = new D2ClientBuilder().setZkHosts(d2ZkHosts).build();
-    }
-    IsolatedIngestionUtils.startD2Client(d2Client);
+    Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactoryForIngestion(configLoader);
+    D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
 
     final String clusterDiscoveryD2ServiceName = configLoader.getCombinedProperties()
         .getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);

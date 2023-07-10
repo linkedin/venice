@@ -376,11 +376,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     for (PartitionInfo partitionInfo: partitionInfos) {
       if (partitionInfo.topic().equals(topic.getName())) {
         pubSubTopicPartitionInfos.add(
-            new PubSubTopicPartitionInfo(
-                topic,
-                partitionInfo.partition(),
-                partitionInfo.replicas().length,
-                partitionInfo.inSyncReplicas().length > 0));
+            new PubSubTopicPartitionInfo(topic, partitionInfo.partition(), partitionInfo.inSyncReplicas().length > 0));
       }
     }
     return pubSubTopicPartitionInfos;

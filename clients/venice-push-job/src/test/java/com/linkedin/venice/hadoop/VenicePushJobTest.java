@@ -198,7 +198,7 @@ public class VenicePushJobTest {
     pushJob.storeSetting.storeResponse.setStore(storeInfo);
     VeniceException exception = Assert.expectThrows(
         VeniceException.class,
-        () -> pushJob.pollStatusUntilComplete(Optional.empty(), client, pushJobSetting, topicInfo, null));
+        () -> pushJob.pollStatusUntilComplete(Optional.empty(), client, pushJobSetting, topicInfo, null, false));
     Assert.assertEquals(exception.getMessage(), "Failing push-job for store abc which is still running after 0 hours.");
   }
 

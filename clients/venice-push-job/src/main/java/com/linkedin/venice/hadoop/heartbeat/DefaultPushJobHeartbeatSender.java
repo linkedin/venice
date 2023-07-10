@@ -189,7 +189,6 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
       Duration sendDuration = Duration.between(sendStartTime, Instant.now());
       if (exception == null) {
         successfulHeartbeatCount++;
-        LOGGER.info("Sending one heartbeat event successfully. Took: {} ms", sendDuration.toMillis());
       } else {
         failedHeartbeatCount++;
         if (firstSendHeartbeatException == null) {

@@ -4641,7 +4641,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources clusterResources = getHelixVeniceClusterResources(clusterName);
     PushMonitor pushMonitor = clusterResources.getPushMonitor();
     RoutingDataRepository routingDataRepository = clusterResources.getRoutingDataRepository();
-    PushStatusDecider statusDecider = PushStatusDecider.getDecider(strategy);
+    PushStatusDecider statusDecider = strategy.getPushStatusDecider();
 
     Optional<String> notReadyReason = Optional.of("unknown");
     long startTime = System.currentTimeMillis();
@@ -5402,7 +5402,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return list.get(0);
   }
 
-  private Pair<ExecutionStatus, String> getIncrementalPushStatus(
+  private ExecutionStatusWithDetails getIncrementalPushStatus(
       String clusterName,
       String kafkaTopic,
       String incrementalPushVersion,
@@ -5430,7 +5430,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Store store,
       int versionNumber,
       boolean isTargetPush) {
-    Pair<ExecutionStatus, String> statusAndDetails;
+    ExecutionStatusWithDetails statusAndDetails;
 
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     MaintenanceSignal maintenanceSignal =
@@ -5450,8 +5450,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     } else {
       statusAndDetails = monitor.getPushStatusAndDetails(kafkaTopic);
     }
-    ExecutionStatus executionStatus = statusAndDetails.getFirst();
-    String details = statusAndDetails.getSecond();
+    ExecutionStatus executionStatus = statusAndDetails.getStatus();
+    String details = statusAndDetails.getDetails();
     if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
       StringBuilder moreDetailsBuilder = new StringBuilder(details == null ? "" : details + " and ");
 
@@ -5617,7 +5617,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
     HelixConfigScope configScope =
         new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
-    Map<String, String> helixClusterProperties = new HashMap<String, String>();
+    Map<String, String> helixClusterProperties = new HashMap<>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     long delayedTime = config.getDelayToRebalanceMS();
     if (delayedTime > 0) {
@@ -7286,13 +7286,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getEmergencySourceRegion()
+   * @see Admin#getEmergencySourceRegion(String)
    */
   @Override
-  public Optional<String> getEmergencySourceRegion() {
-    return multiClusterConfigs.getEmergencySourceRegion().equals("")
-        ? Optional.empty()
-        : Optional.of(multiClusterConfigs.getEmergencySourceRegion());
+  public Optional<String> getEmergencySourceRegion(@Nonnull String clusterName) {
+    String emergencySourceRegion = multiClusterConfigs.getEmergencySourceRegion(clusterName);
+    if (StringUtils.isNotEmpty(emergencySourceRegion)) {
+      return Optional.of(emergencySourceRegion);
+    } else {
+      return Optional.empty();
+    }
   }
 
   /**
