@@ -9,7 +9,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -120,6 +119,11 @@ public class DataRecoveryClient {
 
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
+    if (storeNames == null || storeNames.isEmpty()) {
+      LOGGER.warn("store list is empty, exit.");
+      return;
+    }
+
     Map<String, Pair<Boolean, String>> pushMap = getRepushViability(storeNames, cmdParams);
     Set<String> filteredStoreNames = new HashSet<>();
 
@@ -190,26 +194,16 @@ public class DataRecoveryClient {
   }
 
   public static class DataRecoveryParams {
-    private final String multiStores;
     private final Set<String> recoveryStores;
     private boolean isNonInteractive = false;
     private int interval = INTERVAL_UNSET;
 
-    public DataRecoveryParams(String multiStores) {
-      this.multiStores = multiStores;
-      this.recoveryStores = calculateRecoveryStoreNames(this.multiStores);
+    public DataRecoveryParams(Set<String> stores) {
+      this.recoveryStores = stores;
     }
 
     public Set<String> getRecoveryStores() {
       return recoveryStores;
-    }
-
-    private Set<String> calculateRecoveryStoreNames(String multiStores) {
-      Set<String> storeNames = null;
-      if (multiStores != null && !multiStores.isEmpty()) {
-        storeNames = Utils.parseCommaSeparatedStringToSet(multiStores);
-      }
-      return storeNames;
     }
 
     public void setInterval(int interval) {

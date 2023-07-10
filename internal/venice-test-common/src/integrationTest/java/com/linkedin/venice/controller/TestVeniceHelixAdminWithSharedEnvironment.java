@@ -109,7 +109,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Controller shutdown needs to complete within 5 minutes
     ExecutorService ex = Executors.newSingleThreadExecutor();
     Future clusterShutdownFuture = ex.submit(this::cleanupCluster);
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.MINUTES, () -> clusterShutdownFuture.isDone());
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.MINUTES, clusterShutdownFuture::isDone);
     ex.shutdownNow();
   }
 
@@ -794,7 +794,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
         TimeUnit.MILLISECONDS,
         () -> monitor.getPushStatusAndDetails(Version.composeKafkaTopic(storeName, 2))
-            .getFirst()
+            .getStatus()
             .equals(ExecutionStatus.COMPLETED));
   }
 
