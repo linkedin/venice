@@ -4,6 +4,7 @@ import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECON
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
@@ -162,6 +163,35 @@ public class TestAdminTool {
       AdminTool.main(args2);
     } catch (Exception e) {
       Assert.fail("AdminTool should allow admin topic to be queried by config query API", e);
+    }
+  }
+
+  @Test
+  public void testAdminToolDataRecoveryApi() {
+    String storeNames = "test1,test2,test3";
+
+    String[] estimateArgs = { "--estimate-data-recovery-time", "--url", "http://localhost:7036", "--stores", storeNames,
+        "--dest-fabric", "ei-ltx1" };
+
+    String[] executeArgs = { "--execute-data-recovery", "--recovery-command", "venice-tools", "--extra-command-args",
+        "repush kafka --force --format", "--url", "http://localhost:7036", "--stores", storeNames, "--source-fabric",
+        "ei4", "--dest-fabric", "ei-ltx1", "--non-interactive", "--datetime", "2023-06-27T14:19:25" };
+
+    String[] monitorArgs = { "--monitor-data-recovery", "--url", "http://localhost:7036", "--stores", storeNames,
+        "--dest-fabric", "ei-ltx1", "--datetime", "2023-06-27T14:19:25", "--interval", "300" };
+
+    String[] estimateArgs2 = { "--estimate-data-recovery-time", "--url", "http://localhost:7036", "--cluster",
+        "venice-1", "--dest-fabric", "ei-ltx1" };
+
+    String[][] commands = { estimateArgs, estimateArgs2, executeArgs, monitorArgs };
+    try {
+      for (String[] command: commands) {
+        AdminTool.main(command);
+      }
+    } catch (VeniceClientException e) {
+      // Expected exception.
+    } catch (Exception err) {
+      Assert.fail("Unexpected exception happens in data recovery APIs: ", err);
     }
   }
 }

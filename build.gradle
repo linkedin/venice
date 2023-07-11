@@ -73,8 +73,8 @@ ext.libraries = [
     helix: 'org.apache.helix:helix-core:1.0.4',
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.2.1',
-    httpCore5: 'org.apache.httpcomponents.core5:httpcore5:5.2.1',
-    httpCore5H2: 'org.apache.httpcomponents.core5:httpcore5-h2:5.2.1',
+    httpCore5: 'org.apache.httpcomponents.core5:httpcore5:5.2.2',
+    httpCore5H2: 'org.apache.httpcomponents.core5:httpcore5-h2:5.2.2',
     httpClient: 'org.apache.httpcomponents:httpclient:4.5.2',
     httpCore: 'org.apache.httpcomponents:httpcore:4.4.5',
     jacksonCore: 'com.fasterxml.jackson.core:jackson-core:' + jacksonVersion,
@@ -440,18 +440,18 @@ subprojects {
       def testName = removeSquareBrackets(descriptor.displayName)
       def out = services.get(StyledTextOutputFactory).create("an-ouput")
 
-      def style = result.resultType == TestResult.ResultType.SUCCESS 
-        ? Style.Identifier 
+      def style = result.resultType == TestResult.ResultType.SUCCESS
+        ? Style.Identifier
         : result.resultType == TestResult.ResultType.FAILURE
           ? Style.Failure
           : Style.Normal
 
-      def status = result.resultType == TestResult.ResultType.SUCCESS 
-        ? 'PASSED ' 
+      def status = result.resultType == TestResult.ResultType.SUCCESS
+        ? 'PASSED '
         : result.resultType == TestResult.ResultType.FAILURE
           ? 'FAILED '
           : 'SKIPPED '
- 
+
       out.style(Style.Normal).text("$descriptor.className > $testName ")
           .style(style).text(status)
           .style(Style.Normal).println("($prettyTime)")

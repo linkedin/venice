@@ -21,6 +21,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -178,6 +179,28 @@ public class StorageService extends AbstractVeniceService {
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
   }
 
+  static void deleteStorageEngineOnRocksDBError(
+      String storageEngineName,
+      ReadOnlyStoreRepository storeRepository,
+      StorageEngineFactory factory) {
+    String storeName = Version.parseStoreFromKafkaTopicName(storageEngineName);
+    Store store;
+    boolean doDeleteStorageEngine;
+    try {
+      int versionNumber = Version.parseVersionFromKafkaTopicName(storageEngineName);
+      store = storeRepository.getStoreOrThrow(storeName);
+      doDeleteStorageEngine = !store.getVersion(versionNumber).isPresent() || versionNumber < store.getCurrentVersion();
+    } catch (VeniceNoStoreException e) {
+      // The store does not exist in Venice anymore, so it will be deleted.
+      doDeleteStorageEngine = true;
+    }
+
+    if (doDeleteStorageEngine) {
+      LOGGER.info("Storage for {} does not exist, will delete it.", storageEngineName);
+      factory.removeStorageEngine(storageEngineName);
+    }
+  }
+
   private void restoreAllStores(
       VeniceConfigLoader configLoader,
       boolean restoreDataPartitions,
@@ -205,10 +228,13 @@ public class StorageService extends AbstractVeniceService {
             storageEngine = openStore(storeConfig, () -> null);
           } catch (Exception e) {
             if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
-              LOGGER.error("Could not load the following store : " + storeName, e);
-              aggVersionedStorageEngineStats.recordRocksDBOpenFailure(storeName);
+              LOGGER.warn("Encountered RocksDB error while opening store: {}", storeName, e);
+              // if store version does not exist, clean up the resources.
+              deleteStorageEngineOnRocksDBError(storeName, storeRepository, factory);
               continue;
             }
+            LOGGER.error("Could not load the following store : " + storeName, e);
+            aggVersionedStorageEngineStats.recordRocksDBOpenFailure(storeName);
             throw new VeniceException("Error caught during opening store " + storeName, e);
           }
 

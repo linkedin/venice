@@ -126,8 +126,6 @@ public interface PubSubAdminAdapter extends Closeable {
     }
   }
 
-  boolean isTopicDeletionUnderway();
-
   String getClassName();
 
   Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames);

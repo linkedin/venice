@@ -15,7 +15,7 @@ import org.testng.annotations.Test;
 
 
 public class WaitNMinusOnePushStatusDeciderTest extends TestPushStatusDecider {
-  private WaitNMinusOnePushStatusDecider statusDecider = new WaitNMinusOnePushStatusDecider();
+  private final WaitNMinusOnePushStatusDecider statusDecider = new WaitNMinusOnePushStatusDecider();
 
   @BeforeMethod
   public void setUp() {

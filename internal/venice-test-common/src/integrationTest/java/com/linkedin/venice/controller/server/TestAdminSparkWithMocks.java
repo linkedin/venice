@@ -213,7 +213,7 @@ public class TestAdminSparkWithMocks {
     doReturn(sourceGridFabricKafka).when(admin).getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric);
 
     if (emergencySourceRegionPresent) {
-      doReturn(Optional.of(emergencySourceRegion)).when(admin).getEmergencySourceRegion();
+      doReturn(Optional.of(emergencySourceRegion)).when(admin).getEmergencySourceRegion(clusterName);
       optionalemergencySourceRegion = Optional.of(emergencySourceRegion);
     }
 

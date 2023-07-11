@@ -744,7 +744,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         }
         sleep(retryIntervalInMs);
       }
-      LOGGER.error(
+      LOGGER.warn(
           "Topic: {}, partition: {} is still having pending ingestion action for it to stop for {} ms.",
           topicName,
           partition,
@@ -888,11 +888,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                 partitionId,
                 topicName,
                 LatencyUtils.getElapsedTimeInMs(startTimeInMs));
-            break;
+            return;
           }
           sleep((long) sleepSeconds * Time.MS_PER_SECOND);
         }
-        LOGGER.error(
+        LOGGER.warn(
             "Partition: {} of store: {} is still consuming after waiting for it to stop for {} seconds.",
             partitionId,
             topicName,

@@ -780,7 +780,7 @@ public interface Admin extends AutoCloseable, Closeable {
   /**
    * Return the emergency source region configuration.
    */
-  Optional<String> getEmergencySourceRegion();
+  Optional<String> getEmergencySourceRegion(String clusterName);
 
   /**
    * Return the source Kafka boostrap server url for aggregate real-time topic updates

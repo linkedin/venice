@@ -245,6 +245,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
@@ -4816,13 +4817,16 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#getEmergencySourceRegion()
+   * @see Admin#getEmergencySourceRegion(String)
    */
   @Override
-  public Optional<String> getEmergencySourceRegion() {
-    return getMultiClusterConfigs().getEmergencySourceRegion().equals("")
-        ? Optional.empty()
-        : Optional.of(getMultiClusterConfigs().getEmergencySourceRegion());
+  public Optional<String> getEmergencySourceRegion(@Nonnull String clusterName) {
+    String emergencySourceRegion = multiClusterConfigs.getEmergencySourceRegion(clusterName);
+    if (StringUtils.isNotEmpty(emergencySourceRegion)) {
+      return Optional.of(emergencySourceRegion);
+    } else {
+      return Optional.empty();
+    }
   }
 
   /**

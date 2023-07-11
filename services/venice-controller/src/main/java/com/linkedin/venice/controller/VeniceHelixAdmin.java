@@ -4641,7 +4641,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     HelixVeniceClusterResources clusterResources = getHelixVeniceClusterResources(clusterName);
     PushMonitor pushMonitor = clusterResources.getPushMonitor();
     RoutingDataRepository routingDataRepository = clusterResources.getRoutingDataRepository();
-    PushStatusDecider statusDecider = PushStatusDecider.getDecider(strategy);
+    PushStatusDecider statusDecider = strategy.getPushStatusDecider();
 
     Optional<String> notReadyReason = Optional.of("unknown");
     long startTime = System.currentTimeMillis();
@@ -5402,7 +5402,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return list.get(0);
   }
 
-  private Pair<ExecutionStatus, String> getIncrementalPushStatus(
+  private ExecutionStatusWithDetails getIncrementalPushStatus(
       String clusterName,
       String kafkaTopic,
       String incrementalPushVersion,
@@ -5430,7 +5430,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Store store,
       int versionNumber,
       boolean isTargetPush) {
-    Pair<ExecutionStatus, String> statusAndDetails;
+    ExecutionStatusWithDetails statusAndDetails;
 
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     MaintenanceSignal maintenanceSignal =
@@ -5450,8 +5450,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     } else {
       statusAndDetails = monitor.getPushStatusAndDetails(kafkaTopic);
     }
-    ExecutionStatus executionStatus = statusAndDetails.getFirst();
-    String details = statusAndDetails.getSecond();
+    ExecutionStatus executionStatus = statusAndDetails.getStatus();
+    String details = statusAndDetails.getDetails();
     if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
       StringBuilder moreDetailsBuilder = new StringBuilder(details == null ? "" : details + " and ");
 
@@ -5617,7 +5617,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
     HelixConfigScope configScope =
         new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
-    Map<String, String> helixClusterProperties = new HashMap<String, String>();
+    Map<String, String> helixClusterProperties = new HashMap<>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     long delayedTime = config.getDelayToRebalanceMS();
     if (delayedTime > 0) {
@@ -6081,46 +6081,68 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     if (!isForcedKill) {
-      /**
-       * Check whether the specified store is already terminated or not.
-       * If yes, the kill job message will be skipped.
-       */
-      Optional<Version> version;
-      try {
-        version = getStoreVersion(clusterName, kafkaTopic);
-      } catch (VeniceNoStoreException e) {
-        LOGGER.warn(
-            "Kill job will be skipped since the corresponding store for topic: {} doesn't exist in cluster: {}",
-            kafkaTopic,
-            clusterName);
-        return;
-      }
-      if (version.isPresent() && VersionStatus.isBootstrapCompleted(version.get().getStatus())) {
+      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLockOnly(storeName)) {
         /**
-         * This is trying to avoid kill job entry in participant store if the version is already online.
-         * This won't solve all the edge cases since the following race condition could still happen, but it is fine.
-         * The race condition could be:
-         * 1. The version status is still not 'ONLINE' yet from Controller's view, then kill job message will be sent to storage node;
-         * 2. When storage node receives the kill job message, the version from storage node's perspective could be already
-         *    'online';
-         *
-         * The reason not to fix this race condition:
-         * 1. It should happen rarely;
-         * 2. This will change the lifecycle of store version greatly, which might introduce other potential issues;
-         *
-         * The target use case is for new fabric build out.
-         * In Blueshift project, we are planning to leverage participant store to short-circuit
-         * the bootstrap if the corresponding version has been killed in the source fabric.
-         * So in the new fabric, we need the kill-job message to be as accurate as possible to
-         * avoid the discrepancy.
+         * Check whether the specified store is already terminated or not.
+         * If yes, the kill job message will be skipped.
          */
-        LOGGER.info("Resource: {} has finished bootstrapping, so kill job will be skipped", kafkaTopic);
-        return;
+        Optional<Version> version;
+        try {
+          version = getStoreVersion(clusterName, kafkaTopic);
+        } catch (VeniceNoStoreException e) {
+          LOGGER.warn(
+              "Kill job will be skipped since the corresponding store for topic: {} doesn't exist in cluster: {}",
+              kafkaTopic,
+              clusterName);
+          return;
+        }
+        if (version.isPresent()) {
+          VersionStatus status = version.get().getStatus();
+          if (VersionStatus.isBootstrapCompleted(status)) {
+            /**
+             * This is trying to avoid kill job entry in participant store if the version is already online.
+             * This won't solve all the edge cases since the following race condition could still happen, but it is fine.
+             * The race condition could be:
+             * 1. The version status is still not 'ONLINE' yet from Controller's view, then kill job message will be sent to storage node;
+             * 2. When storage node receives the kill job message, the version from storage node's perspective could be already
+             *    'online';
+             *
+             * The reason not to fix this race condition:
+             * 1. It should happen rarely;
+             * 2. This will change the lifecycle of store version greatly, which might introduce other potential issues;
+             *
+             * The target use case is for new fabric build out.
+             * In Blueshift project, we are planning to leverage participant store to short-circuit
+             * the bootstrap if the corresponding version has been killed in the source fabric.
+             * So in the new fabric, we need the kill-job message to be as accurate as possible to
+             * avoid the discrepancy.
+             */
+            LOGGER.info("Resource: {} has finished bootstrapping, so kill job will be skipped", kafkaTopic);
+            return;
+          }
+
+          // If the version has already been killed/errored in the past, skip updating.
+          if (VersionStatus.isVersionKilled(status) || VersionStatus.isVersionErrored(status)) {
+            LOGGER.info(
+                "Resource: {} has been updated to {} previously, so kill job will be skipped",
+                kafkaTopic,
+                status.name());
+            return;
+          }
+
+          // Update version status to KILLED on ZkNode.
+          ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+          Store store = repository.getStore(storeName);
+          store.updateVersionStatus(version.get().getNumber(), VersionStatus.KILLED);
+          repository.updateStore(store);
+        }
       }
     }
 
-    StatusMessageChannel messageChannel = getHelixVeniceClusterResources(clusterName).getMessageChannel();
+    StatusMessageChannel messageChannel = resources.getMessageChannel();
     // As we should already have retry outside of this function call, so we do not need to retry again inside.
     int retryCount = 1;
     // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send
@@ -7286,13 +7308,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getEmergencySourceRegion()
+   * @see Admin#getEmergencySourceRegion(String)
    */
   @Override
-  public Optional<String> getEmergencySourceRegion() {
-    return multiClusterConfigs.getEmergencySourceRegion().equals("")
-        ? Optional.empty()
-        : Optional.of(multiClusterConfigs.getEmergencySourceRegion());
+  public Optional<String> getEmergencySourceRegion(@Nonnull String clusterName) {
+    String emergencySourceRegion = multiClusterConfigs.getEmergencySourceRegion(clusterName);
+    if (StringUtils.isNotEmpty(emergencySourceRegion)) {
+      return Optional.of(emergencySourceRegion);
+    } else {
+      return Optional.empty();
+    }
   }
 
   /**

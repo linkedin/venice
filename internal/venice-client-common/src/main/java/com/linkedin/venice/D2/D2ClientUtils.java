@@ -26,7 +26,7 @@ import org.apache.logging.log4j.Logger;
 
 public class D2ClientUtils {
   private static final Logger LOGGER = LogManager.getLogger(D2ClientUtils.class);
-  private static long DEFAULT_D2_STARTUP_TIMEOUT_MS = 5_000;
+  private static long DEFAULT_D2_STARTUP_TIMEOUT_MS = 60_000;
   private static long DEFAULT_D2_SHUTDOWN_TIMEOUT_MS = 60_000;
 
   public static void startClient(D2Client client) {

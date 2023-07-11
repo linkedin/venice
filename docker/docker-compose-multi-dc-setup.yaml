@@ -34,7 +34,7 @@ services:
 
 
   venice-controller.dc-parent.venicedb.io:
-    image: venicedb/venice-controller:0.4.17
+    image: venicedb/venice-controller:0.4.85
     container_name: venice-controller.dc-parent.venicedb.io
     hostname: venice-controller.dc-parent.venicedb.io
     depends_on:
@@ -85,7 +85,7 @@ services:
 
 
   venice-controller.dc-0.venicedb.io:
-    image: venicedb/venice-controller:0.4.17
+    image: venicedb/venice-controller:0.4.85
     container_name: venice-controller.dc-0.venicedb.io
     hostname: venice-controller.dc-0.venicedb.io
     depends_on:
@@ -101,7 +101,7 @@ services:
 
 
   venice-server-0.dc-0.venicedb.io:
-    image: venicedb/venice-server:0.4.17
+    image: venicedb/venice-server:0.4.85
     container_name: venice-server-0.dc-0.venicedb.io
     hostname: venice-server-0.dc-0.venicedb.io
     depends_on:
@@ -117,7 +117,7 @@ services:
 
 
   venice-server-1.dc-0.venicedb.io:
-    image: venicedb/venice-server:0.4.17
+    image: venicedb/venice-server:0.4.85
     container_name: venice-server-1.dc-0.venicedb.io
     hostname: venice-server-1.dc-0.venicedb.io
     depends_on:
@@ -133,7 +133,7 @@ services:
 
 
   venice-server-2.dc-0.venicedb.io:
-    image: venicedb/venice-server:0.4.17
+    image: venicedb/venice-server:0.4.85
     container_name: venice-server-2.dc-0.venicedb.io
     hostname: venice-server-2.dc-0.venicedb.io
     depends_on:
@@ -149,7 +149,7 @@ services:
 
 
   venice-router.dc-0.venicedb.io:
-    image: venicedb/venice-router:0.4.17
+    image: venicedb/venice-router:0.4.85
     container_name: venice-router.dc-0.venicedb.io
     hostname: venice-router.dc-0.venicedb.io
     depends_on:
@@ -200,7 +200,7 @@ services:
 
 
   venice-controller.dc-1.venicedb.io:
-    image: venicedb/venice-controller:0.4.17
+    image: venicedb/venice-controller:0.4.85
     container_name: venice-controller.dc-1.venicedb.io
     hostname: venice-controller.dc-1.venicedb.io
     depends_on:
@@ -216,7 +216,7 @@ services:
 
 
   venice-server-0.dc-1.venicedb.io:
-    image: venicedb/venice-server:0.4.17
+    image: venicedb/venice-server:0.4.85
     container_name: venice-server-0.dc-1.venicedb.io
     hostname: venice-server-0.dc-1.venicedb.io
     depends_on:
@@ -232,7 +232,7 @@ services:
 
 
   venice-server-1.dc-1.venicedb.io:
-    image: venicedb/venice-server:0.4.17
+    image: venicedb/venice-server:0.4.85
     container_name: venice-server-1.dc-1.venicedb.io
     hostname: venice-server-1.dc-1.venicedb.io
     depends_on:
@@ -248,7 +248,7 @@ services:
 
 
   venice-server-2.dc-1.venicedb.io:
-    image: venicedb/venice-server:0.4.17
+    image: venicedb/venice-server:0.4.85
     container_name: venice-server-2.dc-1.venicedb.io
     hostname: venice-server-2.dc-1.venicedb.io
     depends_on:
@@ -264,7 +264,7 @@ services:
 
 
   venice-router.dc-1.venicedb.io:
-    image: venicedb/venice-router:0.4.17
+    image: venicedb/venice-router:0.4.85
     container_name: venice-router.dc-1.venicedb.io
     hostname: venice-router.dc-1.venicedb.io
     depends_on:
@@ -280,7 +280,7 @@ services:
 
 
   venice-client:
-    image: venicedb/venice-client:0.4.17
+    image: venicedb/venice-client:0.4.85
     container_name: venice-client
     hostname: venice-client
     tty: true

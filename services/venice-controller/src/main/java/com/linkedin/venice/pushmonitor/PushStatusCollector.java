@@ -27,10 +27,9 @@ import org.apache.logging.log4j.Logger;
 /**
  * This class serves as a collector of offline push status for both Venice Server and Da Vinci clients.
  * It will try to aggregate push status from Server and Da Vinci and produce the final aggregated result.
- * For Venice Server, it will receive status update and may report directly if push status store is not enabled, othewise
- * it will wait for Da Vinci push status and compute final state.
- * For Da Vinci push status, it will be
- *
+ * If push status store is not enabled for the store, it will report directly upon receiving terminal server status,
+ * otherwise it will record the server status and keep polling Da Vinci status to determine the aggregate status and will
+ * only report if the aggregate status is terminal status.
  */
 public class PushStatusCollector {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusCollector.class);
@@ -40,11 +39,9 @@ public class PushStatusCollector {
   private final PushStatusStoreReader pushStatusStoreReader;
   private final ReadWriteStoreRepository storeRepository;
   private final int daVinciPushStatusScanPeriodInSeconds;
-
   private final int daVinciPushStatusScanThreadNumber;
   private final boolean daVinciPushStatusScanEnabled;
   private final int daVinciPushStatusNoReportRetryMaxAttempts;
-
   private final int daVinciPushStatusScanMaxOfflineInstance;
   private ScheduledExecutorService offlinePushCheckScheduler;
   private ExecutorService pushStatusStoreScanExecutor;
@@ -160,7 +157,7 @@ public class PushStatusCollector {
           return v + 1;
         });
         if (noDaVinciStatusRetryAttempts <= daVinciPushStatusNoReportRetryMaxAttempts) {
-          daVinciStatus = new ExecutionStatusWithDetails(ExecutionStatus.NOT_STARTED, daVinciStatus.getDetails(), true);
+          daVinciStatus = new ExecutionStatusWithDetails(ExecutionStatus.NOT_STARTED, daVinciStatus.getDetails());
           pushStatus.setDaVinciStatus(daVinciStatus);
         } else {
           topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
@@ -213,7 +210,7 @@ public class PushStatusCollector {
   public void handleServerPushStatusUpdate(String topicName, ExecutionStatus executionStatus, String detailsString) {
     // Update the server topic status in the data structure and wait for async DVC status scan thread to pick up.
     TopicPushStatus topicPushStatus = topicToPushStatusMap.computeIfPresent(topicName, (topic, pushStatus) -> {
-      pushStatus.setServerStatus(new ExecutionStatusWithDetails(executionStatus, detailsString, true));
+      pushStatus.setServerStatus(new ExecutionStatusWithDetails(executionStatus, detailsString));
       return pushStatus;
     });
     // If scanning is not enabled or the topic is not subscribed for DVC push status scanning we will directly handle
