@@ -48,5 +48,10 @@ public class ByteUtilsTest {
     byte[] data = "111222333".getBytes();
     ByteBuffer nonEmptyByteBuffer = ByteBuffer.wrap(data, 3, 3);
     Assert.assertTrue(Arrays.equals(ByteUtils.copyByteArray(nonEmptyByteBuffer), "222".getBytes()));
+
+    ByteBuffer directBuffer = ByteBuffer.allocateDirect(data.length);
+    directBuffer.put(data);
+    directBuffer.flip();
+    Assert.assertTrue(Arrays.equals(ByteUtils.copyByteArray(directBuffer), data));
   }
 }

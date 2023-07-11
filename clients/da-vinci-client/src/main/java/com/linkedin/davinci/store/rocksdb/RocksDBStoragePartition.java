@@ -15,7 +15,9 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -26,6 +28,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.BlockBasedTableConfig;
+import org.rocksdb.ByteBufferGetStatus;
 import org.rocksdb.Cache;
 import org.rocksdb.ColumnFamilyDescriptor;
 import org.rocksdb.ColumnFamilyHandle;
@@ -44,6 +47,7 @@ import org.rocksdb.Slice;
 import org.rocksdb.SstFileManager;
 import org.rocksdb.SstFileWriter;
 import org.rocksdb.Statistics;
+import org.rocksdb.Status;
 import org.rocksdb.WriteOptions;
 
 
@@ -541,6 +545,87 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       makeSureRocksDBIsStillOpen();
       return rocksDB.get(keyBuffer.array(), keyBuffer.position(), keyBuffer.remaining());
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+    } finally {
+      readCloseRWLock.readLock().unlock();
+    }
+  }
+
+  public List<byte[]> multiGet(List<byte[]> keys) {
+    readCloseRWLock.readLock().lock();
+    try {
+      makeSureRocksDBIsStillOpen();
+      return rocksDB.multiGetAsList(keys);
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+    } finally {
+      readCloseRWLock.readLock().unlock();
+    }
+  }
+
+  public List<ByteBuffer> multiGet(List<ByteBuffer> keys, List<ByteBuffer> values) {
+    readCloseRWLock.readLock().lock();
+
+    try {
+      makeSureRocksDBIsStillOpen();
+      List<ByteBufferGetStatus> statusList = rocksDB.multiGetByteBuffers(keys, values);
+      int keyCnt = keys.size();
+      int statusCnt = statusList.size();
+      int valueCnt = values.size();
+      if (keyCnt != statusCnt) {
+        throw new VeniceException(
+            "RocksDB returns inconsistent number of statuses, key count: " + keys.size() + ", but returns: " + statusCnt
+                + " in store: " + storeName + ", partition: " + partitionId);
+      }
+      if (keyCnt != valueCnt) {
+        throw new VeniceException(
+            "RocksDB returns inconsistent number of results, key count: " + keys.size() + ", but returns: " + valueCnt
+                + " in store: " + storeName + ", partition: " + partitionId);
+      }
+
+      List<ByteBuffer> resultList = new ArrayList<>(keys.size());
+      Iterator<ByteBufferGetStatus> statusIter = statusList.iterator();
+      Iterator<ByteBuffer> keyIter = keys.iterator();
+      ListIterator<ByteBuffer> valueIter = values.listIterator();
+      while (keyIter.hasNext()) {
+        ByteBuffer key = keyIter.next();
+        ByteBufferGetStatus bbStatus = statusIter.next();
+        Status.Code statusCode = bbStatus.status.getCode();
+        ByteBuffer value = valueIter.next();
+        if (statusCode.equals(Status.Code.Ok)) {
+          // Need to check whether the result is complete or not by comparing length
+          if (value.remaining() == bbStatus.requiredSize) {
+            // good
+            resultList.add(value);
+          } else {
+            // Need to look it up again since the passed buffer is too small
+            byte[] newValue;
+            if (key.isDirect()) {
+              byte[] keyBytes = new byte[key.remaining()];
+              key.mark();
+              key.get(keyBytes, 0, key.remaining());
+              key.reset();
+              newValue = get(keyBytes);
+            } else {
+              newValue = get(key);
+            }
+            ByteBuffer newValueBuffer = ByteBuffer.allocateDirect(newValue.length);
+            newValueBuffer.put(newValue);
+            newValueBuffer.flip();
+            resultList.add(newValueBuffer);
+            valueIter.set(newValueBuffer);
+          }
+        } else if (statusCode.equals(Status.Code.NotFound)) {
+          resultList.add(null);
+        } else {
+          throw new VeniceException(
+              "Received unexpected code from RocksDB: " + statusCode + " in store: " + storeName + ", partition: "
+                  + partitionId);
+        }
+      }
+
+      return resultList;
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {
