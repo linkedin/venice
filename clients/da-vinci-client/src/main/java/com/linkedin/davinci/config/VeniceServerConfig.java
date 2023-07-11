@@ -121,6 +121,9 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
@@ -663,19 +666,16 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.divProducerStateMaxAgeMs =
         serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, KafkaDataIntegrityValidator.DISABLED);
     try {
-      String producerFactoryClassName = serverProperties.getString(
-          PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
-          "com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory");
+      String producerFactoryClassName = serverProperties
+          .getString(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
       pubSubProducerAdapterFactory =
           (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
-      String consumerFactoryClassName = serverProperties.getString(
-          PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
-          "com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory");
+      String consumerFactoryClassName = serverProperties
+          .getString(PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS, ApacheKafkaConsumerAdapterFactory.class.getName());
       pubSubConsumerAdapterFactory =
           (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
-      String adminFactoryClassName = serverProperties.getString(
-          PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
-          "com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory");
+      String adminFactoryClassName = serverProperties
+          .getString(PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
       pubSubAdminAdapterFactory = (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
     } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
       LOGGER.error("Failed to create an instance of pub sub clients factory", e);
