@@ -298,9 +298,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
               new HttpShortcutResponse("No storage exists for: " + e.getStoreName(), HttpResponseStatus.BAD_REQUEST));
         } catch (VeniceRequestEarlyTerminationException e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.REQUEST_TIMEOUT));
-        } catch (PersistenceFailureException e) {
-          // TODO: need to confirm whether PersistenceFailureException only throwns when there's a balancing
-          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.BAD_GATEWAY));
         } catch (Exception e) {
           LOGGER.error("Exception thrown for {}", request.getResourceName(), e);
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));

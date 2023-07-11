@@ -150,7 +150,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   @Override
   public void setRetryRequest(HttpResponseStatus hrs) {
     this.retryRequest = true;
-    if (hrs.equals(HttpResponseStatus.BAD_GATEWAY)) {
+    if (hrs.code() >= 500) {
+      // ignore slow storage nodes for retry requests with 5xx status code
       this.ignoreSlowStorageNodes = true;
     }
   }
