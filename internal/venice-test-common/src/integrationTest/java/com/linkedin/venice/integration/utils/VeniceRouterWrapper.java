@@ -21,6 +21,7 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
@@ -111,7 +112,9 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     }
 
     return (serviceName, dataDirectory) -> {
-      int port = TestUtils.getFreePort();
+      String listenerPort =
+          properties.getOrDefault(ConfigKeys.LISTENER_PORT, Integer.toString(TestUtils.getFreePort())).toString();
+      int port = Integer.parseInt(listenerPort);
       int sslPort = TestUtils.getFreePort();
       PropertyBuilder builder = new PropertyBuilder().put(CLUSTER_NAME, clusterName)
           .put(LISTENER_PORT, port)
