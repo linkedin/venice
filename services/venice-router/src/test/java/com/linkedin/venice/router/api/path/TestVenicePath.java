@@ -128,7 +128,8 @@ public class TestVenicePath {
     assertFalse(retryPath.isRetryRequestTooLate());
     assertFalse(retryPath.canRequestStorageNode(STORAGE_NODE1));
 
-    // although the slow node set contains node 1, due to 500 status, the set would be ignored and node 1 can be requested
+    // although the slow node set contains node 1, due to 500 status, the set would be ignored and node 1 can be
+    // requested
     retryPath.setRetryRequest(HttpResponseStatus.INTERNAL_SERVER_ERROR);
     assertTrue(retryPath.canRequestStorageNode(STORAGE_NODE1));
   }
