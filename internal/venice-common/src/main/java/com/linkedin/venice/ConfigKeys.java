@@ -1945,7 +1945,14 @@ public class ConfigKeys {
 
   /**
    * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
-   * can prevent OOMing in cases where there is a lot of historical churn in RT producers.
+   * can prevent OOMing in cases where there is a lot of historical churn in RT producers. The age of a given
+   * producer's state is defined as:
+   *
+   * most_recent_timestamp_of_all_producers - most_recent_timestamp_of_given_producer
+   *
+   * This math is computed within a single partition, not across partitions. If enabled, the clearing of old
+   * state will happen when subscribing to a partition (e.g. on server start up), and prior to syncing progress
+   * to disk (e.g. when {@link #SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE} is reached).
    *
    * Old state clearing is disabled if this config is set to -1.
    */

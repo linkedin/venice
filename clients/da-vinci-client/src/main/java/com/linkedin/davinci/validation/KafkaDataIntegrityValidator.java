@@ -1,14 +1,13 @@
 package com.linkedin.davinci.validation;
 
 import com.linkedin.venice.exceptions.validation.DataValidationException;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.utils.SystemTime;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Iterator;
@@ -34,13 +33,9 @@ public class KafkaDataIntegrityValidator {
   private final String topicName;
   private final long kafkaLogCompactionDelayInMs;
   private final long maxAgeInMs;
-  /** The oldest producer timestamp we retained during the last run of {@link #clearExpiredState()} */
-  private volatile long oldestRetainedProducerTS = 0;
-
   /** Keeps track of every upstream producer this consumer task has seen so far. */
   protected final Map<GUID, ProducerTracker> producerTrackerMap;
   protected final Function<GUID, ProducerTracker> producerTrackerCreator;
-  private final Time time;
 
   /**
    * This constructor is used by a proprietary ETL project. Do not clean up (yet)!
@@ -52,17 +47,11 @@ public class KafkaDataIntegrityValidator {
   }
 
   public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs, long maxAgeInMs) {
-    this(topicName, kafkaLogCompactionDelayInMs, maxAgeInMs, SystemTime.INSTANCE);
-  }
-
-  /** N.B.: Package-private as it is only intended for tests */
-  KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs, long maxAgeInMs, Time time) {
     this.topicName = topicName;
     this.kafkaLogCompactionDelayInMs = kafkaLogCompactionDelayInMs;
     this.maxAgeInMs = maxAgeInMs;
     this.producerTrackerMap = new VeniceConcurrentHashMap<>();
     this.producerTrackerCreator = guid -> new ProducerTracker(guid, topicName);
-    this.time = time;
   }
 
   /** N.B.: Package-private for test purposes */
@@ -74,8 +63,49 @@ public class KafkaDataIntegrityValidator {
     producerTrackerMap.values().forEach(producerTracker -> producerTracker.clearPartition(partition));
   }
 
-  public void setPartitionState(int partition, GUID producerGuid, ProducerPartitionState partitionState) {
-    registerProducer(producerGuid).setPartitionState(partition, partitionState);
+  public void setPartitionState(int partition, OffsetRecord offsetRecord) {
+    // TODO: The logic below seems complicated... can we improve it?
+    long minimumRequiredRecordProducerTimestamp =
+        this.maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - this.maxAgeInMs;
+    Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
+        offsetRecord.getProducerPartitionStateMap().entrySet().iterator();
+    Map.Entry<CharSequence, ProducerPartitionState> entry;
+    GUID producerGuid;
+    ProducerPartitionState producerPartitionState;
+    while (iterator.hasNext()) {
+      entry = iterator.next();
+      producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
+      producerPartitionState = entry.getValue();
+      if (producerPartitionState.messageTimestamp >= minimumRequiredRecordProducerTimestamp) {
+        /**
+         * This {@link producerPartitionState} is eligible to be retained, so we'll set the state in the
+         * {@link ProducerTracker}.
+         */
+        registerProducer(producerGuid).setPartitionState(partition, producerPartitionState);
+      } else {
+        // TODO: Decide if it's really necessary to clear the state in this case, and if so, choose one of the syntax...
+
+        // The state is eligible to be cleared.
+        producerTrackerMap.compute(producerGuid, (k, v) -> {
+          if (v == null) {
+            /** If the {@link ProducerTracker} did not exist yet, we leave things as is. This is the expected case. */
+            return null;
+          }
+
+          v.removeState(partition);
+          if (v.isEmpty()) {
+            /**
+             * If the {@link ProducerTracker} carries no other state after removing that belonging to the
+             * {@link partition} of interest, then we also clear it from the {@link producerTrackerMap}.
+             */
+            return null;
+          }
+          /** Finally, if the {@link ProducerTracker} is still carrying state for other partitions, we leave it in. */
+          return v;
+        });
+        iterator.remove();
+      }
+    }
   }
 
   /**
@@ -92,13 +122,41 @@ public class KafkaDataIntegrityValidator {
 
   /**
    * For a given partition, find all the producers that has written to this partition and update the offsetRecord using
-   * segment information.
-   * @param partition
-   * @param offsetRecord
+   * segment information. Prior to this, the state which is expired according to {@link #maxAgeInMs} will be cleared.
+   *
+   * @param partition to extract info for
+   * @param offsetRecord to modify
    */
   public void updateOffsetRecordForPartition(int partition, OffsetRecord offsetRecord) {
-    clearExpiredState();
-    producerTrackerMap.values().forEach(producerTracker -> producerTracker.updateOffsetRecord(partition, offsetRecord));
+    if (this.maxAgeInMs != DISABLED) {
+      clearExpiredStateAndUpdateOffsetRecordForPartition(partition, offsetRecord);
+    } else {
+      Iterator<ProducerTracker> iterator = this.producerTrackerMap.values().iterator();
+      while (iterator.hasNext()) {
+        iterator.next().updateOffsetRecord(partition, offsetRecord);
+      }
+    }
+  }
+
+  void clearExpiredStateAndUpdateOffsetRecordForPartition(int partition, OffsetRecord offsetRecord) {
+    long minimumRequiredRecordProducerTimestamp = offsetRecord.getMaxMessageTimeInMs() - this.maxAgeInMs;
+    int numberOfClearedGUIDs = 0;
+    Iterator<ProducerTracker> iterator = this.producerTrackerMap.values().iterator();
+    ProducerTracker producerTracker;
+    while (iterator.hasNext()) {
+      producerTracker = iterator.next();
+      if (producerTracker.clearExpiredState(partition, minimumRequiredRecordProducerTimestamp)
+          && producerTracker.isEmpty()) {
+        iterator.remove();
+        offsetRecord.setProducerPartitionState(producerTracker.getProducerGUID(), null);
+        numberOfClearedGUIDs++;
+      } else {
+        producerTracker.updateOffsetRecord(partition, offsetRecord);
+      }
+    }
+    if (numberOfClearedGUIDs > 0) {
+      LOGGER.info("Cleared {} expired producer GUID(s) for '{}'", numberOfClearedGUIDs, this.topicName);
+    }
   }
 
   public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
@@ -130,37 +188,8 @@ public class KafkaDataIntegrityValidator {
     producerTracker.checkMissingMessage(consumerRecord, errorMetricCallback, this.kafkaLogCompactionDelayInMs);
   }
 
-  void clearExpiredState() {
-    if (this.maxAgeInMs != DISABLED) {
-      long currentTime = time.getMilliseconds();
-      long maxRecordProducerTimestamp = currentTime - this.maxAgeInMs;
-      if (this.oldestRetainedProducerTS < maxRecordProducerTimestamp) {
-        synchronized (this) {
-          if (this.oldestRetainedProducerTS < maxRecordProducerTimestamp) {
-            int numberOfClearedGUIDs = 0;
-            long newOldestRetainedProducerTS = Long.MAX_VALUE;
-            Iterator<ProducerTracker> iterator = this.producerTrackerMap.values().iterator();
-            ProducerTracker producerTracker;
-            while (iterator.hasNext()) {
-              producerTracker = iterator.next();
-              long currentProducerOldestRetainedTS = producerTracker.clearExpiredState(maxRecordProducerTimestamp);
-              if (currentProducerOldestRetainedTS == Long.MAX_VALUE) {
-                iterator.remove();
-                numberOfClearedGUIDs++;
-              } else {
-                newOldestRetainedProducerTS = Math.min(newOldestRetainedProducerTS, currentProducerOldestRetainedTS);
-              }
-            }
-            if (newOldestRetainedProducerTS != Long.MAX_VALUE) {
-              /** We only update the {@link #oldestRetainedProducerTS} if there is any state we retained. */
-              this.oldestRetainedProducerTS = newOldestRetainedProducerTS;
-            }
-            if (numberOfClearedGUIDs > 0) {
-              LOGGER.info("Cleared {} expired producer GUID(s) for '{}'", numberOfClearedGUIDs, this.topicName);
-            }
-          }
-        }
-      }
-    }
+  /** N.B. Intended for tests */
+  int getNumberOfTrackedProducerGUIDs() {
+    return this.producerTrackerMap.size();
   }
 }

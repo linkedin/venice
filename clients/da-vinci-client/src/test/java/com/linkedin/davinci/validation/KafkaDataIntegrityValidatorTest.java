@@ -1,9 +1,6 @@
 package com.linkedin.davinci.validation;
 
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
@@ -20,6 +17,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -36,11 +34,14 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class KafkaDataIntegrityValidatorTest {
+  private static final Logger LOGGER = LogManager.getLogger(KafkaDataIntegrityValidatorTest.class);
   private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @Test
@@ -49,105 +50,123 @@ public class KafkaDataIntegrityValidatorTest {
     Time time = new TestMockTime();
     String kafkaTopic = Utils.getUniqueString("TestStore") + "_v1";
     KafkaDataIntegrityValidator validator =
-        new KafkaDataIntegrityValidator(kafkaTopic, KafkaDataIntegrityValidator.DISABLED, maxAgeInMs, time);
+        new KafkaDataIntegrityValidator(kafkaTopic, KafkaDataIntegrityValidator.DISABLED, maxAgeInMs);
     PubSubTopicPartition topicPartition0 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(kafkaTopic), 0);
     PubSubTopicPartition topicPartition1 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(kafkaTopic), 1);
     long offsetForPartition0 = 0;
     long offsetForPartition1 = 0;
     int seqNumberForPartition0Guid1 = 1;
-    int seqNumberForPartition1Guid1 = 1;
+    GUID producerGuid0 = GuidUtils.getGUID(VeniceProperties.empty());
     GUID producerGuid1 = GuidUtils.getGUID(VeniceProperties.empty());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record1p0 =
-        buildSoSRecord(topicPartition0, offsetForPartition0++, producerGuid1, 0, time.getMilliseconds());
-    validator.validateMessage(record1p0, false, Lazy.FALSE);
+    OffsetRecord p0offsetRecord = mock(OffsetRecord.class);
+    OffsetRecord p1offsetRecord = mock(OffsetRecord.class);
+    if (producerGuid0.equals(producerGuid1)) {
+      LOGGER.info("Got two equal producer GUIDs! Buy a lottery ticket!");
+      // Extremely unlikely, but theoretically possible... let's just re-run the test
+      testClearExpiredState();
+      return;
+    }
+    assertNotEquals(producerGuid0, producerGuid1);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g0record0 = buildSoSRecord(
+        topicPartition0,
+        offsetForPartition0++,
+        producerGuid0,
+        0,
+        time.getMilliseconds(),
+        p0offsetRecord);
+    validator.validateMessage(p0g0record0, false, Lazy.FALSE);
 
     time.sleep(10);
 
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record2p0 = buildPutRecord(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g0record1 = buildPutRecord(
         topicPartition0,
         offsetForPartition0++,
-        producerGuid1,
+        producerGuid0,
         0,
         seqNumberForPartition0Guid1++,
-        time.getMilliseconds());
-    validator.validateMessage(record2p0, false, Lazy.FALSE);
+        time.getMilliseconds(),
+        p0offsetRecord);
+    validator.validateMessage(p0g0record1, false, Lazy.FALSE);
 
-    ProducerTracker guid1ProducerTracker = validator.registerProducer(producerGuid1);
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    ProducerTracker guid0ProducerTracker = validator.registerProducer(producerGuid0);
+    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     // Nothing should be cleared yet
-    validator.clearExpiredState();
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    validator.clearExpiredStateAndUpdateOffsetRecordForPartition(0, p0offsetRecord);
+    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
-    // Even if we wait some more, the max age is not yet reached, so the state should still be retained
-    time.sleep(maxAgeInMs / 2);
-    validator.clearExpiredState();
+    // Even if we wait some more, the state should still be retained, since the wall-clock time does not matter, only
+    // the last consumed time does.
+    time.sleep(2 * maxAgeInMs);
+    validator.clearExpiredStateAndUpdateOffsetRecordForPartition(0, p0offsetRecord);
+    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
+
+    /**
+     * Start writing into the same partition with another producer GUID. In effect, this will bump up the highest
+     * timestamp of that partition, which will make the first producer eligible for getting cleared, but it will not
+     * be cleared yet, since {@link KafkaDataIntegrityValidator#clearExpiredState(int, LongSupplier)} will not have
+     * been called.
+     */
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g1record0 =
+        buildSoSRecord(topicPartition0, offsetForPartition0, producerGuid1, 0, time.getMilliseconds(), p0offsetRecord);
+    validator.validateMessage(p0g1record0, false, Lazy.FALSE);
+    ProducerTracker guid1ProducerTracker = validator.registerProducer(producerGuid1);
+    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 1);
     assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
+
+    // After calling clear, now we should see the update to the internal state...
+    validator.clearExpiredStateAndUpdateOffsetRecordForPartition(0, p0offsetRecord);
+    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 0);
+    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     // Start writing into another partition
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record1p1 =
-        buildSoSRecord(topicPartition1, offsetForPartition1++, producerGuid1, 0, time.getMilliseconds());
-    validator.validateMessage(record1p1, false, Lazy.FALSE);
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 2);
-
-    // At exactly the max age, clearing should still not kick in
-    time.sleep(maxAgeInMs / 2);
-    validator.clearExpiredState();
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 2);
-
-    // Finally, after the max age is exceeded, it should clear partition 0 and thus be left with only 1 partition
-    time.sleep(1);
-    validator.clearExpiredState();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p1g0record0 = buildSoSRecord(
+        topicPartition1,
+        offsetForPartition1++,
+        producerGuid0,
+        0,
+        time.getMilliseconds(),
+        p1offsetRecord);
+    validator.validateMessage(p1g0record0, false, Lazy.FALSE);
+    assertEquals(
+        guid0ProducerTracker.getNumberOfTrackedPartitions(),
+        0,
+        "The old producer tracker instance should not be updated, since it should have been cleared from the validator!");
+    guid0ProducerTracker = validator.registerProducer(producerGuid0);
+    assertEquals(
+        guid0ProducerTracker.getNumberOfTrackedPartitions(),
+        1,
+        "The new producer tracker instance should be tracking just 1 partition, since the other partition should have been cleared!");
     assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
 
     // If, somehow, a message still came from this GUID in partition 0, after clearing the state, DIV should catch it
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record3p0 = buildPutRecord(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g0record2 = buildPutRecord(
         topicPartition0,
         offsetForPartition0++,
-        producerGuid1,
+        producerGuid0,
         0,
         seqNumberForPartition0Guid1,
-        time.getMilliseconds());
+        time.getMilliseconds(),
+        p0offsetRecord);
     assertThrows(
         ImproperlyStartedSegmentException.class,
-        () -> validator.validateMessage(record3p0, false, Lazy.FALSE));
+        () -> validator.validateMessage(p0g0record2, false, Lazy.FALSE));
+    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 2);
+    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
 
-    // After waiting more, partition 1 should also get cleared
-    time.sleep(maxAgeInMs / 2);
-    validator.clearExpiredState();
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 0);
-
-    // If, somehow, a message still came from this GUID in partition 1, after clearing the state, DIV should catch it
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record2p1 = buildPutRecord(
-        topicPartition1,
-        offsetForPartition1,
-        producerGuid1,
-        0,
-        seqNumberForPartition1Guid1,
-        time.getMilliseconds());
-    assertThrows(
-        ImproperlyStartedSegmentException.class,
-        () -> validator.validateMessage(record2p1, false, Lazy.FALSE));
-
-    // Another producer GUID starts producing
-    GUID producerGuid2 = GuidUtils.getGUID(VeniceProperties.empty());
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record4p0 =
-        buildSoSRecord(topicPartition0, offsetForPartition0, producerGuid2, 0, time.getMilliseconds());
-    validator.validateMessage(record4p0, false, Lazy.FALSE);
-    ProducerTracker guid2ProducerTracker = validator.registerProducer(producerGuid2);
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 0);
-    assertEquals(guid2ProducerTracker.getNumberOfTrackedPartitions(), 1);
-
-    // State shouldn't change even after clearing
-    validator.clearExpiredState();
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 0);
-    assertEquals(guid2ProducerTracker.getNumberOfTrackedPartitions(), 1);
-
-    // Sleep beyond max age, see if the second GUID gets cleared
-    time.sleep(maxAgeInMs + 1);
-    validator.clearExpiredState();
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 0);
-    assertEquals(guid2ProducerTracker.getNumberOfTrackedPartitions(), 0);
+    // This is a stable state, so no changes are expected...
+    validator.clearExpiredStateAndUpdateOffsetRecordForPartition(0, p0offsetRecord);
+    validator.clearExpiredStateAndUpdateOffsetRecordForPartition(1, p1offsetRecord);
+    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 2);
+    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
   }
 
   @Test
@@ -243,6 +262,17 @@ public class KafkaDataIntegrityValidatorTest {
       int segmentNumber,
       int sequenceNumber,
       long brokerTimestamp) {
+    return buildPutRecord(topicPartition, offset, producerGUID, segmentNumber, sequenceNumber, brokerTimestamp, null);
+  }
+
+  private static PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> buildPutRecord(
+      PubSubTopicPartition topicPartition,
+      long offset,
+      GUID producerGUID,
+      int segmentNumber,
+      int sequenceNumber,
+      long brokerTimestamp,
+      OffsetRecord offsetRecord) {
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap("value".getBytes());
     putPayload.schemaId = 0;
@@ -256,7 +286,8 @@ public class KafkaDataIntegrityValidatorTest {
         sequenceNumber,
         brokerTimestamp,
         MessageType.PUT,
-        putPayload);
+        putPayload,
+        offsetRecord);
   }
 
   private static PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> buildSoSRecord(
@@ -264,7 +295,8 @@ public class KafkaDataIntegrityValidatorTest {
       long offset,
       GUID producerGUID,
       int segmentNumber,
-      long brokerTimestamp) {
+      long brokerTimestamp,
+      OffsetRecord offsetRecord) {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     StartOfSegment startOfSegment = new StartOfSegment();
@@ -279,7 +311,8 @@ public class KafkaDataIntegrityValidatorTest {
         0,
         brokerTimestamp,
         MessageType.CONTROL_MESSAGE,
-        controlMessage);
+        controlMessage,
+        offsetRecord);
   }
 
   private static PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> buildRecord(
@@ -290,7 +323,8 @@ public class KafkaDataIntegrityValidatorTest {
       int sequenceNumber,
       long brokerTimestamp,
       MessageType messageType,
-      Object payload) {
+      Object payload,
+      OffsetRecord offsetRecord) {
     KafkaKeySerializer kafkaKeySerializer = new KafkaKeySerializer();
     KafkaKey kafkaKey = kafkaKeySerializer.deserialize(null, "key".getBytes());
     KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
@@ -303,6 +337,10 @@ public class KafkaDataIntegrityValidatorTest {
     messageEnvelope.leaderMetadataFooter = new LeaderMetadata();
     messageEnvelope.leaderMetadataFooter.upstreamOffset = -1;
     messageEnvelope.payloadUnion = payload;
+
+    if (offsetRecord != null && offsetRecord.getMaxMessageTimeInMs() < brokerTimestamp) {
+      when(offsetRecord.getMaxMessageTimeInMs()).thenReturn(brokerTimestamp);
+    }
 
     return new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, topicPartition, offset, brokerTimestamp, 0);
   }

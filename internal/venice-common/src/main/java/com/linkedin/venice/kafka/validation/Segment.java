@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.validation;
 import static com.linkedin.venice.kafka.validation.SegmentStatus.END_OF_FINAL_SEGMENT;
 import static com.linkedin.venice.kafka.validation.SegmentStatus.NOT_STARTED;
 
+import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -15,10 +16,8 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -37,17 +36,17 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - The current sequence number.
  * - The running checksum.
  */
+@NotThreadsafe
 public class Segment {
   // Immutable state
   private final int partition;
   private final int segmentNumber;
-  private final CheckSumType checkSumType;
-  private final Optional<CheckSum> checkSum;
-  private final AtomicInteger sequenceNumber;
+  private final CheckSum checkSum;
   private final Map<CharSequence, CharSequence> debugInfo;
   private final Map<CharSequence, Long> aggregates;
 
   // Mutable state
+  private int sequenceNumber;
   private boolean registered;
   private boolean started;
   private boolean ended;
@@ -72,9 +71,8 @@ public class Segment {
       Map<CharSequence, Long> aggregates) {
     this.partition = partition;
     this.segmentNumber = segmentNumber;
-    this.checkSumType = checkSumType;
     this.checkSum = CheckSum.getInstance(checkSumType);
-    this.sequenceNumber = new AtomicInteger(sequenceNumber);
+    this.sequenceNumber = sequenceNumber;
     this.started = (sequenceNumber > 0);
     this.ended = false;
     this.finalSegment = false;
@@ -84,7 +82,7 @@ public class Segment {
   }
 
   public Segment(int partition, int segmentNumber, CheckSumType checkSumType) {
-    this(partition, segmentNumber, 0, checkSumType, new HashMap<>(), new HashMap<>());
+    this(partition, segmentNumber, 0, checkSumType, Collections.emptyMap(), Collections.emptyMap());
   }
 
   /**
@@ -93,9 +91,8 @@ public class Segment {
   public Segment(int partition, ProducerPartitionState state) {
     this.partition = partition;
     this.segmentNumber = state.segmentNumber;
-    this.checkSumType = CheckSumType.valueOf(state.checksumType);
     this.checkSum = CheckSum.getInstance(CheckSumType.valueOf(state.checksumType), state.checksumState.array());
-    this.sequenceNumber = new AtomicInteger(state.messageSequenceNumber);
+    this.sequenceNumber = state.getMessageSequenceNumber();
 
     /** TODO: Decide if we should only hang on to this SegmentStatus here, rather the more granular states. */
     SegmentStatus segmentStatus = SegmentStatus.valueOf(state.segmentStatus);
@@ -112,9 +109,8 @@ public class Segment {
   public Segment(Segment segment) {
     this.partition = segment.partition;
     this.segmentNumber = segment.segmentNumber;
-    this.checkSumType = segment.checkSumType;
-    this.checkSum = CheckSum.getInstance(segment.checkSumType, segment.getCheckSumState());
-    this.sequenceNumber = new AtomicInteger(segment.sequenceNumber.get());
+    this.checkSum = CheckSum.getInstance(segment.getCheckSumType(), segment.getCheckSumState());
+    this.sequenceNumber = segment.sequenceNumber;
 
     this.started = segment.started;
     this.ended = segment.ended;
@@ -134,8 +130,9 @@ public class Segment {
     return this.partition;
   }
 
+  /** N.B. This function is not threadsafe. Locking must be handled by the caller. */
   public int getAndIncrementSequenceNumber() {
-    return this.sequenceNumber.getAndIncrement();
+    return this.sequenceNumber++;
   }
 
   /**
@@ -143,11 +140,11 @@ public class Segment {
    * @param sequenceNum
    */
   public void setSequenceNumber(int sequenceNum) {
-    this.sequenceNumber.set(sequenceNum);
+    this.sequenceNumber = sequenceNum;
   }
 
   public int getSequenceNumber() {
-    return this.sequenceNumber.get();
+    return this.sequenceNumber;
   }
 
   public Map<CharSequence, CharSequence> getDebugInfo() {
@@ -164,15 +161,15 @@ public class Segment {
    * @return
    */
   public synchronized byte[] getCheckSumState() {
-    if (this.checkSum.isPresent()) {
-      return this.checkSum.get().getEncodedState();
+    if (this.checkSum != null) {
+      return this.checkSum.getEncodedState();
     } else {
       return new byte[] {};
     }
   }
 
   public CheckSumType getCheckSumType() {
-    return this.checkSum.map(CheckSum::getType).orElse(CheckSumType.NONE);
+    return this.checkSum == null ? CheckSumType.NONE : this.checkSum.getType();
   }
 
   public boolean isStarted() {
@@ -313,8 +310,8 @@ public class Segment {
   }
 
   private void updateCheckSum(byte[] content, int startIndex, int length) {
-    if (checkSum.isPresent()) {
-      checkSum.get().update(content, startIndex, length);
+    if (checkSum != null) {
+      checkSum.update(content, startIndex, length);
     }
   }
 
@@ -325,14 +322,14 @@ public class Segment {
    * @param content to add into the running checksum
    */
   private void updateCheckSum(int content) {
-    if (checkSum.isPresent()) {
-      checkSum.get().update(content);
+    if (checkSum != null) {
+      checkSum.update(content);
     }
   }
 
   public synchronized byte[] getFinalCheckSum() {
-    if (this.checkSum.isPresent()) {
-      return checkSum.get().getCheckSum();
+    if (this.checkSum != null) {
+      return checkSum.getCheckSum();
     } else {
       return new byte[] {};
     }

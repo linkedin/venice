@@ -16,7 +16,6 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import javax.annotation.Nonnull;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
 import org.apache.avro.io.Encoder;
@@ -104,13 +103,12 @@ public class OffsetRecord {
   /**
    * @return the last messageTimeStamp across all producers tracked by this OffsetRecord
    */
-  public long getEventTimeEpochMs() {
-    return this.partitionState.producerStates.values()
-        .stream()
-        .map(producerPartitionState -> producerPartitionState.messageTimestamp)
-        .sorted((o1, o2) -> o1.compareTo(o2) * -1)
-        .findFirst()
-        .orElse(-1L);
+  public long getMaxMessageTimeInMs() {
+    long maxMessageTimestamp = -1;
+    for (ProducerPartitionState state: this.partitionState.producerStates.values()) {
+      maxMessageTimestamp = Math.max(maxMessageTimestamp, state.messageTimestamp);
+    }
+    return maxMessageTimestamp;
   }
 
   public long getLatestProducerProcessingTimeInMs() {
@@ -270,7 +268,7 @@ public class OffsetRecord {
   public String toString() {
     return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset() + ", upstreamOffset="
         + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
-        + ", eventTimeEpochMs=" + getEventTimeEpochMs() + ", latestProducerProcessingTimeInMs="
+        + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
         + getDatabaseInfo() + '}';
   }
@@ -292,37 +290,6 @@ public class OffsetRecord {
       return Long.toString(this.partitionState.leaderOffset);
     }
     return this.partitionState.upstreamOffsetMap.toString();
-  }
-
-  /**
-   * This function will print out detailed offset info, which including info per producerGuid.
-   * The reason is not using the default {@link PartitionState#toString} since it won't print GUID properly.
-   *
-   * This function is mostly used in AdminOffsetManager since the offset record update frequency for
-   * admin topic is very low.
-   */
-  public String toDetailedString() {
-    final String producerStatesFieldName = "producerStates";
-    StringBuilder sb = new StringBuilder();
-    sb.append("OffsetRecord{");
-    for (Schema.Field f: partitionState.getSchema().getFields()) {
-      if (f.name().equals(producerStatesFieldName)) {
-        sb.append("\n" + producerStatesFieldName + ":");
-        if (partitionState.producerStates != null) {
-          sb.append("{");
-          partitionState.producerStates.forEach((charSeq, producerState) -> {
-            sb.append("\n{").append(GuidUtils.getGuidFromCharSequence(charSeq)).append(":").append(producerState);
-          });
-          sb.append("\n}");
-        } else {
-          sb.append("null");
-        }
-      } else {
-        sb.append("\n" + f.name() + ": " + partitionState.get(f.pos()));
-      }
-    }
-    sb.append("\n}");
-    return sb.toString();
   }
 
   /**

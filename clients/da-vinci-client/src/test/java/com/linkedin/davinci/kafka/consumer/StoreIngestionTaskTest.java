@@ -2186,10 +2186,10 @@ public abstract class StoreIngestionTaskTest {
     // intentionally not sending the EOP so that expectedSSTFileChecksum calculation does not get reset.
     // veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    Optional<CheckSum> checksum = CheckSum.getInstance(CheckSumType.MD5);
-    checksum.get().update(putKeyFoo);
-    checksum.get().update(SCHEMA_ID);
-    checksum.get().update(putValue);
+    CheckSum checksum = CheckSum.getInstance(CheckSumType.MD5);
+    checksum.update(putKeyFoo);
+    checksum.update(SCHEMA_ID);
+    checksum.update(putValue);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the Offset Manager
@@ -2208,7 +2208,7 @@ public abstract class StoreIngestionTaskTest {
           .beginBatchWrite(eq(deferredWritePartitionConfig), any(), checksumCaptor.capture());
       Optional<Supplier<byte[]>> checksumSupplier = checksumCaptor.getValue();
       Assert.assertTrue(checksumSupplier.isPresent());
-      Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.get().getCheckSum()));
+      Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.getCheckSum()));
     }, isActiveActiveReplicationEnabled);
   }
 

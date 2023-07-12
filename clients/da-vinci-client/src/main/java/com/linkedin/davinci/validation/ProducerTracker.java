@@ -29,8 +29,10 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -44,7 +46,8 @@ import org.apache.logging.log4j.Logger;
  * It keeps track of the last segment, last sequence number and incrementally computed
  * checksum for any given partition.
  *
- * This class is thread safe at partition level. Multiple threads can process records from same partition concurrently.
+ * This class is thread safe. Locking is at the granularity of partitions. Multiple
+ * threads can process records from the same partition concurrently.
  */
 @Threadsafe
 public class ProducerTracker {
@@ -59,26 +62,38 @@ public class ProducerTracker {
   private static final IntFunction<ReentrantLockWithRef<Segment>> segmentProvider = i -> new ReentrantLockWithRef<>();
 
   private final Logger logger;
-
   private final GUID producerGUID;
-
   protected final SparseConcurrentList<ReentrantLockWithRef<Segment>> segments = new SparseConcurrentList<>();
-
-  private final String topicName;
 
   public ProducerTracker(GUID producerGUID, String topicName) {
     this.producerGUID = producerGUID;
-    this.topicName = topicName;
-    this.logger = LogManager.getLogger(this.toString());
+    this.logger = LogManager.getLogger(
+        ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ", topic: "
+            + topicName + ")");
+  }
+
+  public GUID getProducerGUID() {
+    return producerGUID;
   }
 
   public final String toString() {
-    return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ", topic: "
-        + topicName + ")";
+    return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ")";
   }
 
+  /**
+   * @param partition for which to retrieve the lock and segment
+   * @return a non-null {@link ReentrantLockWithRef} (but which can have {@link ReentrantLockWithRef#containsRef()} == false)
+   */
   private ReentrantLockWithRef<Segment> getLockAndSegment(int partition) {
-    return segments.computeIfAbsent(partition, segmentProvider);
+    return this.segments.computeIfAbsent(partition, segmentProvider);
+  }
+
+  /**
+   * @param partition for which to retrieve the lock and segment
+   * @return a {@link ReentrantLockWithRef} or null if it's absent
+   */
+  private ReentrantLockWithRef<Segment> getLockAndSegmentIfPresent(int partition) {
+    return this.segments.get(partition);
   }
 
   /**
@@ -89,10 +104,14 @@ public class ProducerTracker {
    * @param partition to clear state for
    */
   public void clearPartition(int partition) {
-    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegment(partition);
+    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegmentIfPresent(partition);
+    if (lockAndSegment == null) {
+      return;
+    }
     lockAndSegment.lock();
     try {
       lockAndSegment.removeRef();
+      this.segments.remove(partition);
     } finally {
       lockAndSegment.unlock();
     }
@@ -123,8 +142,8 @@ public class ProducerTracker {
   }
 
   public void cloneProducerStates(int partition, ProducerTracker destProducerTracker) {
-    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegment(partition);
-    if (!lockAndSegment.containsRef()) {
+    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegmentIfPresent(partition);
+    if (lockAndSegment == null || !lockAndSegment.containsRef()) {
       // This producer didn't write anything to requested partition (lock-free check)
       return;
     }
@@ -142,8 +161,8 @@ public class ProducerTracker {
   }
 
   public void updateOffsetRecord(int partition, OffsetRecord offsetRecord) {
-    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegment(partition);
-    if (!lockAndSegment.containsRef()) {
+    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegmentIfPresent(partition);
+    if (lockAndSegment == null || !lockAndSegment.containsRef()) {
       // This producer didn't write anything to requested partition (lock-free check)
       return;
     }
@@ -291,30 +310,43 @@ public class ProducerTracker {
       boolean tolerateAnyMessageType) {
     CheckSumType checkSumType = CheckSumType.NONE;
     boolean unregisteredProducer = true;
-    Map<CharSequence, CharSequence> debugInfo = new HashMap<>();
-    Map<CharSequence, Long> aggregates = new HashMap<>();
+    Map<CharSequence, CharSequence> debugInfo = Collections.emptyMap();
+    Map<CharSequence, Long> aggregates = Collections.emptyMap();
 
     if (MessageType.valueOf(consumerRecord.getValue()) == MessageType.CONTROL_MESSAGE) {
-      ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
+      ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().getPayloadUnion();
       if (ControlMessageType.valueOf(controlMessage) == ControlMessageType.START_OF_SEGMENT) {
-        StartOfSegment startOfSegment = (StartOfSegment) controlMessage.controlMessageUnion;
-        checkSumType = CheckSumType.valueOf(startOfSegment.checksumType);
-        debugInfo = controlMessage.debugInfo;
-        startOfSegment.upcomingAggregates.stream().forEach(aggregate -> aggregates.put(aggregate, 0L));
+        StartOfSegment startOfSegment = (StartOfSegment) controlMessage.getControlMessageUnion();
+        checkSumType = CheckSumType.valueOf(startOfSegment.getChecksumType());
+        if (controlMessage.getDebugInfo() != null && !controlMessage.getDebugInfo().isEmpty()) {
+          debugInfo = controlMessage.getDebugInfo();
+        }
+        if (startOfSegment.getUpcomingAggregates() != null && !startOfSegment.getUpcomingAggregates().isEmpty()) {
+          aggregates = new HashMap<>(startOfSegment.getUpcomingAggregates().size());
+          for (CharSequence name: startOfSegment.getUpcomingAggregates()) {
+            aggregates.put(name, 0L);
+          }
+        }
         unregisteredProducer = false;
       }
     }
 
     Segment newSegment = new Segment(
         consumerRecord.getTopicPartition().getPartitionNumber(),
-        consumerRecord.getValue().producerMetadata.segmentNumber,
-        consumerRecord.getValue().producerMetadata.messageSequenceNumber,
+        consumerRecord.getValue().getProducerMetadata().getSegmentNumber(),
+        consumerRecord.getValue().getProducerMetadata().getMessageSequenceNumber(),
         checkSumType,
         debugInfo,
         aggregates);
+    newSegment.setLastRecordProducerTimestamp(consumerRecord.getValue().getProducerMetadata().getMessageTimestamp());
     ReentrantLockWithRef<Segment> lockAndSegment =
         getLockAndSegment(consumerRecord.getTopicPartition().getPartitionNumber());
-    lockAndSegment.setRef(newSegment);
+    lockAndSegment.lock();
+    try {
+      lockAndSegment.setRef(newSegment);
+    } finally {
+      lockAndSegment.unlock();
+    }
 
     if (unregisteredProducer) {
       handleUnregisteredProducer(
@@ -644,31 +676,35 @@ public class ProducerTracker {
   }
 
   /**
-   * @param maxRecordProducerTimestamp Max allowed value for the {@link Segment#lastRecordProducerTimestamp}
-   * @return {@link Long#MAX_VALUE} if all segments were cleared, or else the oldest retained producer timestamp
+   * @param partition to be potentially cleared
+   * @param minimumRequiredRecordProducerTimestamp Min required value for the {@link Segment#lastRecordProducerTimestamp}
+   * @return true if there is no tracked state left for the provided partition, false otherwise
    */
-  public long clearExpiredState(long maxRecordProducerTimestamp) {
-    long oldestRetainedProducerTS = Long.MAX_VALUE;
-    Segment segment;
-    ReentrantLockWithRef<Segment> lockAndSegment;
-    int length = segments.size();
-    for (int i = 0; i < length; i++) {
-      lockAndSegment = segments.get(i);
-      if (lockAndSegment != null) {
-        lockAndSegment.lock();
-        try {
-          segment = lockAndSegment.getRef();
-          if (segment.getLastRecordProducerTimestamp() < maxRecordProducerTimestamp) {
-            segments.remove(i);
-          } else {
-            oldestRetainedProducerTS = Math.min(oldestRetainedProducerTS, segment.getLastRecordProducerTimestamp());
-          }
-        } finally {
-          lockAndSegment.unlock();
-        }
-      }
+  public boolean clearExpiredState(int partition, long minimumRequiredRecordProducerTimestamp) {
+    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegmentIfPresent(partition);
+    if (lockAndSegment == null || !lockAndSegment.containsRef()) {
+      // lock-free check
+      return true;
     }
-    return oldestRetainedProducerTS;
+    lockAndSegment.lock();
+    try {
+      if (!lockAndSegment.containsRef()) {
+        // lock-ful check
+        return true;
+      }
+      if (lockAndSegment.getRef().getLastRecordProducerTimestamp() < minimumRequiredRecordProducerTimestamp) {
+        lockAndSegment.removeRef();
+        segments.remove(partition);
+        return true;
+      }
+      return false;
+    } finally {
+      lockAndSegment.unlock();
+    }
+  }
+
+  public void removeState(int partition) {
+    segments.remove(partition);
   }
 
   /**
@@ -677,7 +713,34 @@ public class ProducerTracker {
    * @return number of unique partitions tracked by this instance
    */
   public int getNumberOfTrackedPartitions() {
-    return segments.values().size();
+    int size = 0;
+    for (ReentrantLockWithRef<Segment> lockAndSegment: segments.values()) {
+      if (lockAndSegment.containsRef()) {
+        size++;
+      }
+    }
+    return size;
+  }
+
+  /**
+   * @return true if this {@link ProducerTracker} does not currently track any partition, false otherwise
+   */
+  public boolean isEmpty() {
+    /**
+     * N.B. This function is called in production code, so we want it to be efficient. Although it would be correct to
+     * return {@code this.getNumberOfTrackedPartitions() == 0}, that would not take advantage of short-circuiting.
+     * Furthermore, a {@link com.linkedin.venice.utils.collections.NullSkippingIteratorWrapper} is instantiated by the
+     * other function.
+     */
+    Iterator<ReentrantLockWithRef<Segment>> iterator = segments.iterator();
+    ReentrantLockWithRef<Segment> lockAndSegment;
+    while (iterator.hasNext()) {
+      lockAndSegment = iterator.next();
+      if (lockAndSegment != null && lockAndSegment.containsRef()) {
+        return false;
+      }
+    }
+    return true;
   }
 
   enum DataFaultType {
@@ -733,12 +796,6 @@ public class ProducerTracker {
         Optional<String> extraInfo) {
       ProducerMetadata producerMetadata = consumerRecord.getValue().producerMetadata;
       MessageType messageType = MessageType.valueOf(consumerRecord.getValue());
-      String messageTypeString = messageType.name();
-      if (MessageType.CONTROL_MESSAGE.equals(messageType)) {
-        ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
-        messageTypeString += " (" + ControlMessageType.valueOf(controlMessage).name() + ")";
-      }
-
       String previousSegment, previousSequenceNumber;
 
       if (segment == null) {
@@ -750,51 +807,73 @@ public class ProducerTracker {
       StringBuilder sb = new StringBuilder();
       // during parsing the logs, you can pipe these lines to
       // "tr ';' '\n' " and get the more readable presentation
-      sb.append(name() + " data detected for producer GUID: ")
+      sb.append(name())
+          .append(" data detected for producer GUID: ")
           .append(GuidUtils.getHexFromGuid(producerMetadata.producerGUID))
-          .append("; message type: " + messageTypeString)
-          .append("; partition: " + consumerRecord.getTopicPartition().getPartitionNumber());
-      if (segment != null) {
-        sb.append(",; previous successful offset (in same segment): " + segment.getLastSuccessfulOffset());
+          .append("; message type: ")
+          .append(messageType.name());
+      if (MessageType.CONTROL_MESSAGE.equals(messageType)) {
+        ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
+        sb.append(" (").append(ControlMessageType.valueOf(controlMessage).name()).append(")");
       }
-      sb.append("; incoming offset: " + consumerRecord.getOffset())
-          .append(";previous segment: " + previousSegment)
-          .append("; incoming segment: " + producerMetadata.segmentNumber)
-          .append("; previous sequence number: " + previousSequenceNumber)
-          .append("; incoming sequence number: " + producerMetadata.messageSequenceNumber)
-          .append(
-              "; consumer record timestamp: " + consumerRecord.getPubSubMessageTime() + " ("
-                  + new Date(consumerRecord.getPubSubMessageTime()).toString() + ")")
-          .append(
-              "; producer timestamp: " + producerMetadata.messageTimestamp + " ("
-                  + new Date(producerMetadata.messageTimestamp).toString() + ")");
+
+      sb.append("; partition: ").append(consumerRecord.getTopicPartition().getPartitionNumber());
+      if (segment != null) {
+        sb.append("; previous successful offset (in same segment): ").append(segment.getLastSuccessfulOffset());
+      }
+      sb.append("; incoming offset: ")
+          .append(consumerRecord.getOffset())
+          .append(";previous segment: ")
+          .append(previousSegment)
+          .append("; incoming segment: ")
+          .append(producerMetadata.segmentNumber)
+          .append("; previous sequence number: ")
+          .append(previousSequenceNumber)
+          .append("; incoming sequence number: ")
+          .append(producerMetadata.messageSequenceNumber)
+          .append("; consumer record timestamp: ")
+          .append(consumerRecord.getPubSubMessageTime())
+          .append(" (")
+          .append(new Date(consumerRecord.getPubSubMessageTime()))
+          .append(")")
+          .append("; producer timestamp: ")
+          .append(producerMetadata.messageTimestamp)
+          .append(" (")
+          .append(new Date(producerMetadata.messageTimestamp))
+          .append(")");
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
-        sb.append(
-            "; leader metadata's upstream offset: " + consumerRecord.getValue().leaderMetadataFooter.upstreamOffset)
-            .append("; leader metadata's host name: " + consumerRecord.getValue().leaderMetadataFooter.hostName);
+        sb.append("; leader metadata's upstream offset: ")
+            .append(consumerRecord.getValue().leaderMetadataFooter.upstreamOffset)
+            .append("; leader metadata's host name: ")
+            .append(consumerRecord.getValue().leaderMetadataFooter.hostName);
       }
       if (segment != null) {
-        sb.append("; aggregates: " + printMap(segment.getAggregates()))
-            .append("; debugInfo: " + printMap(segment.getDebugInfo()));
+        sb.append("; aggregates: ");
+        printMap(segment.getAggregates(), sb);
+        sb.append("; debugInfo: ");
+        printMap(segment.getDebugInfo(), sb);
       }
-      sb.append(extraInfo.map(info -> "; extra info: " + info).orElse(""));
+      if (extraInfo.isPresent()) {
+        sb.append("; extra info: ").append(extraInfo.get());
+      }
 
       return exceptionSupplier.apply(sb.toString());
     }
 
-    private <K, V> String printMap(Map<K, V> map) {
-      StringBuilder sb = new StringBuilder();
+    private <K, V> void printMap(Map<K, V> map, StringBuilder sb) {
       sb.append("{");
+      boolean first = true;
       for (Map.Entry<K, V> entry: map.entrySet()) {
-        sb.append("\n\t");
+        if (first) {
+          first = false;
+        } else {
+          sb.append(", ");
+        }
         sb.append(entry.getKey());
+        sb.append(": ");
         sb.append(entry.getValue());
       }
-      if (!map.isEmpty()) {
-        sb.append("\n");
-      }
       sb.append("}");
-      return sb.toString();
     }
   }
 

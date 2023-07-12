@@ -43,7 +43,6 @@ import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
-import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -645,7 +644,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (serverConfig.isDatabaseChecksumVerificationEnabled() && partitionConsumptionState.isDeferredWrite()
         && !serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) {
       partitionConsumptionState.initializeExpectedChecksum();
-      partitionChecksumSupplier = Optional.of(() -> {
+      partitionChecksumSupplier = Optional.ofNullable(() -> {
         byte[] checksum = partitionConsumptionState.getExpectedChecksum();
         partitionConsumptionState.resetExpectedChecksum();
         return checksum;
@@ -1624,11 +1623,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-        offsetRecord.getProducerPartitionStateMap()
-            .entrySet()
-            .forEach(
-                entry -> kafkaDataIntegrityValidator
-                    .setPartitionState(partition, GuidUtils.getGuidFromCharSequence(entry.getKey()), entry.getValue()));
+        kafkaDataIntegrityValidator.setPartitionState(partition, offsetRecord);
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
