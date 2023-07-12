@@ -64,7 +64,6 @@ public class KafkaDataIntegrityValidator {
   }
 
   public void setPartitionState(int partition, OffsetRecord offsetRecord) {
-    // TODO: The logic below seems complicated... can we improve it?
     long minimumRequiredRecordProducerTimestamp =
         this.maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - this.maxAgeInMs;
     Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
@@ -83,8 +82,6 @@ public class KafkaDataIntegrityValidator {
          */
         registerProducer(producerGuid).setPartitionState(partition, producerPartitionState);
       } else {
-        // TODO: Decide if it's really necessary to clear the state in this case, and if so, choose one of the syntax...
-
         // The state is eligible to be cleared.
         producerTrackerMap.compute(producerGuid, (k, v) -> {
           if (v == null) {

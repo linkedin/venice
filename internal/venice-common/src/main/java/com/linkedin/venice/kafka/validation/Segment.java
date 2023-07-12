@@ -15,6 +15,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.utils.CollectionUtils;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
@@ -100,8 +101,8 @@ public class Segment {
     this.ended = segmentStatus.isTerminal();
     this.finalSegment = segmentStatus == END_OF_FINAL_SEGMENT;
     this.newSegment = false;
-    this.debugInfo = state.debugInfo;
-    this.aggregates = state.aggregates;
+    this.debugInfo = CollectionUtils.substituteEmptyMap(state.getDebugInfo());
+    this.aggregates = CollectionUtils.substituteEmptyMap(state.getAggregates());
     this.registered = state.isRegistered;
     this.lastRecordProducerTimestamp = state.messageTimestamp;
   }
@@ -251,7 +252,7 @@ public class Segment {
     // Some of the instances could be re-used and clobbered in a single-threaded setting. TODO: Explore GC tuning later.
     switch (MessageType.valueOf(messageEnvelope)) {
       case CONTROL_MESSAGE:
-        ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
+        ControlMessage controlMessage = (ControlMessage) messageEnvelope.getPayloadUnion();
         switch (ControlMessageType.valueOf(controlMessage)) {
           case END_OF_SEGMENT:
             // No-op for an end of segment.
@@ -264,38 +265,38 @@ public class Segment {
           case TOPIC_SWITCH:
           case VERSION_SWAP:
             // All other control messages are handled the same way.
-            updateCheckSum(messageEnvelope.messageType);
-            updateCheckSum(controlMessage.controlMessageType);
+            updateCheckSum(messageEnvelope.getMessageType());
+            updateCheckSum(controlMessage.getControlMessageType());
             return true;
           default:
             throw new UnsupportedMessageTypeException(
                 "This version of Venice does not support the following control message type: "
-                    + controlMessage.controlMessageType);
+                    + controlMessage.getControlMessageType());
         }
       case PUT:
-        updateCheckSum(messageEnvelope.messageType);
+        updateCheckSum(messageEnvelope.getMessageType());
         updateCheckSum(key.getKey());
-        Put putPayload = (Put) messageEnvelope.payloadUnion;
-        updateCheckSum(putPayload.schemaId);
-        ByteBuffer putValue = putPayload.putValue;
+        Put putPayload = (Put) messageEnvelope.getPayloadUnion();
+        updateCheckSum(putPayload.getSchemaId());
+        ByteBuffer putValue = putPayload.getPutValue();
         updateCheckSum(putValue.array(), putValue.position(), putValue.remaining());
         return true;
       case UPDATE:
-        updateCheckSum(messageEnvelope.messageType);
+        updateCheckSum(messageEnvelope.getMessageType());
         updateCheckSum(key.getKey());
-        Update updatePayload = (Update) messageEnvelope.payloadUnion;
-        updateCheckSum(updatePayload.schemaId);
-        updateCheckSum(updatePayload.updateSchemaId);
-        ByteBuffer updateValue = updatePayload.updateValue;
+        Update updatePayload = (Update) messageEnvelope.getPayloadUnion();
+        updateCheckSum(updatePayload.getSchemaId());
+        updateCheckSum(updatePayload.getUpdateSchemaId());
+        ByteBuffer updateValue = updatePayload.getUpdateValue();
         updateCheckSum(updateValue.array(), updateValue.position(), updateValue.remaining());
         return true;
       case DELETE:
-        updateCheckSum(messageEnvelope.messageType);
+        updateCheckSum(messageEnvelope.getMessageType());
         updateCheckSum(key.getKey());
         return true;
       default:
         throw new UnsupportedMessageTypeException(
-            "This version of Venice does not support the following message type: " + messageEnvelope.messageType);
+            "This version of Venice does not support the following message type: " + messageEnvelope.getMessageType());
     }
   }
 

@@ -24,6 +24,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SparseConcurrentList;
@@ -318,9 +319,7 @@ public class ProducerTracker {
       if (ControlMessageType.valueOf(controlMessage) == ControlMessageType.START_OF_SEGMENT) {
         StartOfSegment startOfSegment = (StartOfSegment) controlMessage.getControlMessageUnion();
         checkSumType = CheckSumType.valueOf(startOfSegment.getChecksumType());
-        if (controlMessage.getDebugInfo() != null && !controlMessage.getDebugInfo().isEmpty()) {
-          debugInfo = controlMessage.getDebugInfo();
-        }
+        debugInfo = CollectionUtils.substituteEmptyMap(controlMessage.getDebugInfo());
         if (startOfSegment.getUpcomingAggregates() != null && !startOfSegment.getUpcomingAggregates().isEmpty()) {
           aggregates = new HashMap<>(startOfSegment.getUpcomingAggregates().size());
           for (CharSequence name: startOfSegment.getUpcomingAggregates()) {
