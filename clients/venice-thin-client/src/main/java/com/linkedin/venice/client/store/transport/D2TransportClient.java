@@ -264,7 +264,7 @@ public class D2TransportClient extends TransportClient {
 
   private Map<String, String> injectSecurityHeaders(Map<String, String> headers) {
     if (authenticationProvider != null) {
-      if (headers == null) {
+      if (headers == null || headers.isEmpty()) {
         return authenticationProvider.getHTTPAuthenticationHeaders();
       } else {
         Map<String, String> copy = new HashMap<>(headers);
