@@ -1748,10 +1748,8 @@ public class VeniceParentHelixAdmin implements Admin {
     addVersion.versionNum = version.getNumber();
     addVersion.numberOfPartitions = numberOfPartitions;
     addVersion.pushType = pushType.getValue();
-    // Check whether native replication is enabled
-    if (version.isNativeReplicationEnabled()) {
-      addVersion.pushStreamSourceAddress = version.getPushStreamSourceAddress();
-    }
+    addVersion.pushStreamSourceAddress = version.getPushStreamSourceAddress();
+
     if (version.getHybridStoreConfig() != null) {
       addVersion.rewindTimeInSecondsOverride = version.getHybridStoreConfig().getRewindTimeInSeconds();
     } else {

@@ -165,12 +165,6 @@ public class ConfigKeys {
   public static final String ENABLE_NATIVE_REPLICATION_FOR_HYBRID = "enable.native.replication.for.hybrid";
 
   /**
-   * Cluster-level config to enable native replication for new batch-only stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY =
-      "enable.native.replication.as.default.for.batch.only";
-
-  /**
    * Cluster-level config to enable native replication for new incremental push stores.
    */
   public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH =

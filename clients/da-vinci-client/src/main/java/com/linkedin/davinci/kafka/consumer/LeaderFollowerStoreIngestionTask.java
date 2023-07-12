@@ -130,7 +130,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private final long newLeaderInactiveTime;
   private final StoreWriteComputeProcessor storeWriteComputeHandler;
-  private final boolean isNativeReplicationEnabled;
   private final String nativeReplicationSourceVersionTopicKafkaURL;
   private final Set<String> nativeReplicationSourceVersionTopicKafkaURLSingletonSet;
   private final VeniceWriterFactory veniceWriterFactory;
@@ -191,7 +190,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
     this.storeWriteComputeHandler = new StoreWriteComputeProcessor(storeName, schemaRepository, mergeRecordHelper);
-    this.isNativeReplicationEnabled = version.isNativeReplicationEnabled();
 
     /**
      * Native replication could also be used to perform data recovery by pointing the source version topic kafka url to
@@ -725,19 +723,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-    if (isNativeReplicationEnabled) {
-      if (nativeReplicationSourceVersionTopicKafkaURL == null
-          || nativeReplicationSourceVersionTopicKafkaURL.isEmpty()) {
-        throw new VeniceException("Native replication is enabled but remote source address is not found");
-      }
-      if (shouldNewLeaderSwitchToRemoteConsumption(partitionConsumptionState)) {
-        partitionConsumptionState.setConsumeRemotely(true);
-        LOGGER.info(
-            "{} enabled remote consumption from topic {} partition {}",
-            consumerTaskId,
-            offsetRecord.getLeaderTopic(pubSubTopicRepository),
-            partition);
-      }
+    if (nativeReplicationSourceVersionTopicKafkaURL == null || nativeReplicationSourceVersionTopicKafkaURL.isEmpty()) {
+      throw new VeniceException("Native replication is enabled but remote source address is not found");
+    }
+    if (shouldNewLeaderSwitchToRemoteConsumption(partitionConsumptionState)) {
+      partitionConsumptionState.setConsumeRemotely(true);
+      LOGGER.info(
+          "{} enabled remote consumption from topic {} partition {}",
+          consumerTaskId,
+          offsetRecord.getLeaderTopic(pubSubTopicRepository),
+          partition);
     }
 
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
@@ -829,7 +824,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             partition));
 
     // subscribe to the new upstream
-    if (isNativeReplicationEnabled && !newSourceKafkaServer.equals(localKafkaServer)) {
+    if (!newSourceKafkaServer.equals(localKafkaServer)) {
       partitionConsumptionState.setConsumeRemotely(true);
       LOGGER.info("{} enabled remote consumption from {}", consumerTaskId, newSourceTopicPartition);
     }
@@ -922,9 +917,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected Set<String> getRealTimeDataSourceKafkaAddress(PartitionConsumptionState partitionConsumptionState) {
-    if (!isNativeReplicationEnabled) {
-      return localKafkaServerSingletonSet;
-    }
     TopicSwitchWrapper topicSwitchWrapper = partitionConsumptionState.getTopicSwitch();
     if (topicSwitchWrapper == null) {
       return Collections.emptySet();
@@ -1793,26 +1785,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (isUserSystemStore()) {
       return;
     }
-    if (isNativeReplicationEnabled) {
-      // Emit latency metrics separately for leaders and followers
-      boolean isLeader = partitionConsumptionState.getLeaderFollowerState().equals(LEADER);
-      if (isLeader) {
-        versionedDIVStats.recordLeaderLatencies(
-            storeName,
-            versionNumber,
-            consumerTimestampMs,
-            producerBrokerLatencyMs,
-            brokerConsumerLatencyMs,
-            producerConsumerLatencyMs);
-      } else {
-        versionedDIVStats.recordFollowerLatencies(
-            storeName,
-            versionNumber,
-            consumerTimestampMs,
-            producerBrokerLatencyMs,
-            brokerConsumerLatencyMs,
-            producerConsumerLatencyMs);
-      }
+    // Emit latency metrics separately for leaders and followers
+    boolean isLeader = partitionConsumptionState.getLeaderFollowerState().equals(LEADER);
+    if (isLeader) {
+      versionedDIVStats.recordLeaderLatencies(
+          storeName,
+          versionNumber,
+          consumerTimestampMs,
+          producerBrokerLatencyMs,
+          brokerConsumerLatencyMs,
+          producerConsumerLatencyMs);
     } else {
       super.recordWriterStats(
           consumerTimestampMs,

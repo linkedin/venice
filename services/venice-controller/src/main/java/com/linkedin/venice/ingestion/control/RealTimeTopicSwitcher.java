@@ -291,7 +291,7 @@ public class RealTimeTopicSwitcher {
 
     if (version.isActiveActiveReplicationEnabled()) {
       remoteKafkaUrls.addAll(activeActiveRealTimeSourceKafkaURLs);
-    } else if (version.isNativeReplicationEnabled() && (isAggregate(store) || (isIncrementalPush(version)))) {
+    } else if (isAggregate(store) || (isIncrementalPush(version))) {
       remoteKafkaUrls.add(aggregateRealTimeSourceKafkaUrl);
     }
     LOGGER.info(

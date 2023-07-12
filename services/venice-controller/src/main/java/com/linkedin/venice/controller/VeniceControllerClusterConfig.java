@@ -26,7 +26,6 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY;
@@ -157,12 +156,6 @@ public class VeniceControllerClusterConfig {
    * as the store has leader follower also enabled.
    */
   private boolean nativeReplicationEnabledForHybrid;
-
-  /**
-   * When this option is enabled, all new batch-only stores will have native replication enabled in store config so long
-   * as the store has leader follower also enabled.
-   */
-  private boolean nativeReplicationEnabledAsDefaultForBatchOnly;
 
   /**
    * When this option is enabled, all new incremental push enabled stores will have native replication enabled in store
@@ -334,8 +327,6 @@ public class VeniceControllerClusterConfig {
     }
 
     nativeReplicationEnabledForBatchOnly = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, false);
-    nativeReplicationEnabledAsDefaultForBatchOnly =
-        props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, false);
     nativeReplicationEnabledForIncremental = props.getBoolean(ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH, false);
     nativeReplicationEnabledAsDefaultForIncremental =
         props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH, false);
@@ -609,10 +600,6 @@ public class VeniceControllerClusterConfig {
 
   public boolean isNativeReplicationEnabledForBatchOnly() {
     return nativeReplicationEnabledForBatchOnly;
-  }
-
-  public boolean isNativeReplicationEnabledAsDefaultForBatchOnly() {
-    return nativeReplicationEnabledAsDefaultForBatchOnly;
   }
 
   public boolean isNativeReplicationEnabledForIncremental() {
