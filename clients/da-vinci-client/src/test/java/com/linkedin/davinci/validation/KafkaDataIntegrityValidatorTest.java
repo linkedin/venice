@@ -110,8 +110,13 @@ public class KafkaDataIntegrityValidatorTest {
      * be cleared yet, since {@link KafkaDataIntegrityValidator#clearExpiredState(int, LongSupplier)} will not have
      * been called.
      */
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g1record0 =
-        buildSoSRecord(topicPartition0, offsetForPartition0, producerGuid1, 0, time.getMilliseconds(), p0offsetRecord);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g1record0 = buildSoSRecord(
+        topicPartition0,
+        offsetForPartition0++,
+        producerGuid1,
+        0,
+        time.getMilliseconds(),
+        p0offsetRecord);
     validator.validateMessage(p0g1record0, false, Lazy.FALSE);
     ProducerTracker guid1ProducerTracker = validator.registerProducer(producerGuid1);
     assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 1);
@@ -125,13 +130,8 @@ public class KafkaDataIntegrityValidatorTest {
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     // Start writing into another partition
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p1g0record0 = buildSoSRecord(
-        topicPartition1,
-        offsetForPartition1++,
-        producerGuid0,
-        0,
-        time.getMilliseconds(),
-        p1offsetRecord);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p1g0record0 =
+        buildSoSRecord(topicPartition1, offsetForPartition1, producerGuid0, 0, time.getMilliseconds(), p1offsetRecord);
     validator.validateMessage(p1g0record0, false, Lazy.FALSE);
     assertEquals(
         guid0ProducerTracker.getNumberOfTrackedPartitions(),
@@ -148,7 +148,7 @@ public class KafkaDataIntegrityValidatorTest {
     // If, somehow, a message still came from this GUID in partition 0, after clearing the state, DIV should catch it
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g0record2 = buildPutRecord(
         topicPartition0,
-        offsetForPartition0++,
+        offsetForPartition0,
         producerGuid0,
         0,
         seqNumberForPartition0Guid1,
