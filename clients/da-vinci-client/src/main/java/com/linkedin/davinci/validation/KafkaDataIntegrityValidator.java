@@ -142,11 +142,24 @@ public class KafkaDataIntegrityValidator {
     ProducerTracker producerTracker;
     while (iterator.hasNext()) {
       producerTracker = iterator.next();
-      if (producerTracker.clearExpiredState(partition, minimumRequiredRecordProducerTimestamp)
-          && producerTracker.isEmpty()) {
-        iterator.remove();
-        offsetRecord.setProducerPartitionState(producerTracker.getProducerGUID(), null);
-        numberOfClearedGUIDs++;
+      if (producerTracker.clearExpiredState(partition, minimumRequiredRecordProducerTimestamp)) {
+        if (producerTracker.isEmpty()) {
+          /**
+           * N.B.: There is technically a race condition right here. If we clear the last partition, and then
+           * {@link ProducerTracker#isEmpty()} is true, but right after that, a new partition starts getting tracked,
+           * we would still go ahead and remove the previously-empty {@link ProducerTracker} out of the
+           * {@link producerTrackerMap}. Guarding against this race condition could be done by locking a bunch of other
+           * functions in this class, but this seems impractical. So instead, we redo the {@link ProducerTracker#isEmpty()}
+           * check one more time to check if the race happened, and if it did, we add it back into the map.
+           */
+          iterator.remove();
+          if (producerTracker.isEmpty()) {
+            offsetRecord.removeProducerPartitionState(producerTracker.getProducerGUID());
+            numberOfClearedGUIDs++;
+          } else {
+            this.producerTrackerMap.put(producerTracker.getProducerGUID(), producerTracker);
+          }
+        }
       } else {
         producerTracker.updateOffsetRecord(partition, offsetRecord);
       }
