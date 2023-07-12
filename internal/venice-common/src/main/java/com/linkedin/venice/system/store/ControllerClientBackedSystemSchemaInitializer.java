@@ -1,24 +1,23 @@
-package com.linkedin.venice.controller.init;
+package com.linkedin.venice.system.store;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.VeniceConstants;
-import com.linkedin.venice.controller.VeniceControllerConfig;
-import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import java.time.Duration;
@@ -27,6 +26,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -41,53 +41,62 @@ public class ControllerClientBackedSystemSchemaInitializer {
    * sent to the new leader controller, who can handle schema requests successfully.
    */
   private static final int DEFAULT_RETRY_TIMES = 20;
+  public static final UpdateStoreQueryParams DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS =
+      new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
+          .setHybridOffsetLagThreshold(1)
+          .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
+          .setWriteComputationEnabled(true)
+          .setPartitionCount(1);
 
   private final AvroProtocolDefinition protocolDefinition;
   private final String clusterName;
-  private final VeniceHelixAdmin admin;
   private final Schema keySchema;
   private final UpdateStoreQueryParams storeMetadataUpdate;
   private final boolean autoRegisterPartialUpdateSchema;
-  private final VeniceControllerConfig controllerConfig;
+  private final Optional<SSLFactory> sslFactory;
+  private final String controllerUrl;
+  private final String controllerD2ServiceName;
+  private final String d2ZkHost;
+  private final boolean enforceSslOnly;
   private ControllerClient controllerClient;
 
   public ControllerClientBackedSystemSchemaInitializer(
       AvroProtocolDefinition protocolDefinition,
       String systemStoreCluster,
-      VeniceHelixAdmin admin,
       Schema keySchema,
       UpdateStoreQueryParams storeMetadataUpdate,
       boolean autoRegisterPartialUpdateSchema,
-      VeniceControllerConfig controllerConfig) {
+      Optional<SSLFactory> sslFactory,
+      String controllerUrl,
+      String controllerD2ServiceName,
+      String d2ZkHost,
+      boolean enforceSslOnly) {
     this.protocolDefinition = protocolDefinition;
     this.clusterName = systemStoreCluster;
-    this.admin = admin;
     this.keySchema = keySchema;
     this.storeMetadataUpdate = storeMetadataUpdate;
     this.autoRegisterPartialUpdateSchema = autoRegisterPartialUpdateSchema;
-    this.controllerConfig = controllerConfig;
+    this.sslFactory = sslFactory;
+    this.controllerUrl = controllerUrl;
+    this.controllerD2ServiceName = controllerD2ServiceName;
+    this.d2ZkHost = d2ZkHost;
+    this.enforceSslOnly = enforceSslOnly;
   }
 
   public void execute() {
-    String storeName = protocolDefinition.getSystemStoreName();
-    Map<Integer, Schema> schemasInLocalResources = Utils.getAllSchemasFromResources(protocolDefinition);
-
-    String regionName = controllerConfig.getRegionName();
-    if (!controllerConfig.getChildControllerUrl(regionName).isEmpty()) {
-      controllerClient = ControllerClient.constructClusterControllerClient(
-          clusterName,
-          controllerConfig.getChildControllerUrl(regionName),
-          admin.getSslFactory());
-    } else if (!controllerConfig.getChildControllerD2ServiceName().isEmpty()
-        && !controllerConfig.getChildControllerD2ZkHost(regionName).isEmpty()) {
-      controllerClient = new D2ControllerClient(
-          controllerConfig.getChildControllerD2ServiceName(),
-          clusterName,
-          controllerConfig.getChildControllerD2ZkHost(regionName),
-          controllerConfig.isControllerEnforceSSLOnly() ? admin.getSslFactory() : Optional.empty());
-    } else {
-      LOGGER.info("No child controller url or d2 configs. Skip system schema registration via controller client.");
-      return;
+    if (controllerClient == null) {
+      if (!controllerUrl.isEmpty()) {
+        controllerClient = ControllerClient.constructClusterControllerClient(clusterName, controllerUrl, sslFactory);
+      } else if (!controllerD2ServiceName.isEmpty() && !d2ZkHost.isEmpty()) {
+        controllerClient = new D2ControllerClient(
+            controllerD2ServiceName,
+            clusterName,
+            d2ZkHost,
+            enforceSslOnly ? sslFactory : Optional.empty());
+      } else {
+        throw new VeniceException(
+            "System schema initialization is enabled but neither controller url nor d2 config is provided.");
+      }
     }
 
     if (!hasLeaderController()) {
@@ -97,22 +106,32 @@ public class ControllerClientBackedSystemSchemaInitializer {
       return;
     }
 
-    try {
-      Pair<String, String> clusterNameAndD2 = admin.discoverCluster(storeName);
-      String currSystemStoreCluster = clusterNameAndD2.getFirst();
+    String storeName = protocolDefinition.getSystemStoreName();
+    Map<Integer, Schema> schemasInLocalResources = Utils.getAllSchemasFromResources(protocolDefinition);
+    D2ServiceDiscoveryResponse discoveryResponse = controllerClient.retryableRequest(
+        DEFAULT_RETRY_TIMES,
+        c -> c.discoverCluster(storeName),
+        r -> ErrorType.STORE_NOT_FOUND.equals(r.getErrorType()));
+    if (discoveryResponse.isError()) {
+      if (ErrorType.STORE_NOT_FOUND.equals(discoveryResponse.getErrorType())) {
+        checkAndMayCreateSystemStore(storeName, schemasInLocalResources.get(1));
+      } else {
+        throw new VeniceException(
+            "Error when discovering system store " + storeName + " after retries. Error: "
+                + discoveryResponse.getError());
+      }
+    } else {
+      String currSystemStoreCluster = discoveryResponse.getCluster();
       if (!currSystemStoreCluster.equals(clusterName)) {
         LOGGER.warn(
-            "The system store for {} already exists in cluster {}, "
-                + "which is inconsistent with the config {} which specifies that it "
-                + "should be in cluster {}. Will abort the initialization routine.",
+            "The system store for {} already exists in cluster {}, which is inconsistent with the config {} which "
+                + "specifies that it should be in cluster {}. Will abort the initialization routine.",
             protocolDefinition.name(),
             currSystemStoreCluster,
             CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME,
             clusterName);
         return;
       }
-    } catch (VeniceNoStoreException e) {
-      checkAndMayCreateSystemStore(storeName, schemasInLocalResources.get(1));
     }
 
     // Only verify the key schema if it is explicitly specified by the caller. We don't care about the dummy key schema.
@@ -163,9 +182,9 @@ public class ControllerClientBackedSystemSchemaInitializer {
     StoreResponse storeResponse = controllerClient.retryableRequest(
         DEFAULT_RETRY_TIMES,
         c -> c.getStore(storeName),
-        r -> r.getError().contains("does not exist"));
+        r -> ErrorType.STORE_NOT_FOUND.equals(r.getErrorType()));
     if (storeResponse.isError()) {
-      if (storeResponse.getError().contains("does not exist")) {
+      if (ErrorType.STORE_NOT_FOUND.equals(storeResponse.getErrorType())) {
         if (firstValueSchema == null) {
           throw new VeniceException("Protocol definition: " + protocolDefinition.name() + " does not have version 1");
         }
@@ -288,5 +307,10 @@ public class ControllerClientBackedSystemSchemaInitializer {
                 + " after retries. Error: " + getSchemaResponse.getError());
       }
     }
+  }
+
+  // For testing
+  void setControllerClient(ControllerClient controllerClient) {
+    this.controllerClient = controllerClient;
   }
 }

@@ -772,6 +772,10 @@ public class ConfigKeys {
    */
   public static final String SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT = "server.schema.fast.class.warmup.timeout";
 
+  public static final String LOCAL_CONTROLLER_URL = "local.controller.url";
+  public static final String LOCAL_CONTROLLER_D2_SERVICE_NAME = "local.controller.d2.service.name";
+  public static final String LOCAL_D2_ZK_HOST = "local.d2.zk.host";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
