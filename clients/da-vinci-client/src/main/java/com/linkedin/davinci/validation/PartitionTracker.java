@@ -717,6 +717,7 @@ public class PartitionTracker {
         if (lockAndSegment.getRef().getLastRecordProducerTimestamp() < minimumRequiredRecordProducerTimestamp) {
           lockAndSegment.removeRef();
           iterator.remove();
+          offsetRecord.removeProducerPartitionState(entry.getKey());
           numberOfClearedGUIDs++;
         } else {
           updateOffsetRecord(entry.getKey(), lockAndSegment, offsetRecord);
