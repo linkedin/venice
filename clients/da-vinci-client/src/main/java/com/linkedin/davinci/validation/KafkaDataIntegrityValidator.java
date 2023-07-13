@@ -3,15 +3,15 @@ package com.linkedin.davinci.validation;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.lazy.Lazy;
-import java.util.Map;
+import java.util.HashSet;
 import java.util.Optional;
-import java.util.function.Function;
+import java.util.Set;
+import java.util.function.IntFunction;
 
 
 /**
@@ -24,28 +24,50 @@ import java.util.function.Function;
  * 4. Whether producers have produced duplicate messages, which is fine and expected due to producer retries (DUPLICATE).
  */
 public class KafkaDataIntegrityValidator {
+  public static final long DISABLED = -1;
   private final long kafkaLogCompactionDelayInMs;
+  private final long maxAgeInMs;
+  /** Keeps track of every upstream producer this consumer task has seen so far for each partition. */
+  protected final SparseConcurrentList<PartitionTracker> partitionTrackers = new SparseConcurrentList<>();
+  protected final IntFunction<PartitionTracker> partitionTrackerCreator;
 
-  /** Keeps track of every upstream producer this consumer task has seen so far. */
-  protected final Map<GUID, ProducerTracker> producerTrackerMap;
-  protected final Function<GUID, ProducerTracker> producerTrackerCreator;
-
-  public KafkaDataIntegrityValidator(String kafkaVersionTopic) {
-    this(kafkaVersionTopic, -1);
+  public KafkaDataIntegrityValidator(String topicName) {
+    this(topicName, DISABLED, DISABLED);
   }
 
-  public KafkaDataIntegrityValidator(String kafkaVersionTopic, long kafkaLogCompactionDelayInMs) {
+  /**
+   * This constructor is used by a proprietary ETL project. Do not clean up (yet)!
+   *
+   * TODO: Open source the ETL or make it stop depending on an exotic open source API
+   */
+  public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs) {
+    this(topicName, kafkaLogCompactionDelayInMs, DISABLED);
+  }
+
+  public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs, long maxAgeInMs) {
     this.kafkaLogCompactionDelayInMs = kafkaLogCompactionDelayInMs;
-    this.producerTrackerMap = new VeniceConcurrentHashMap<>();
-    this.producerTrackerCreator = guid -> new ProducerTracker(guid, kafkaVersionTopic);
+    this.maxAgeInMs = maxAgeInMs;
+    this.partitionTrackerCreator = p -> new PartitionTracker(topicName, p);
   }
 
-  public ProducerTracker registerProducer(GUID producerGuid) {
-    return producerTrackerMap.computeIfAbsent(producerGuid, producerTrackerCreator);
+  /** N.B.: Package-private for test purposes */
+  PartitionTracker registerPartition(int partition) {
+    return partitionTrackers.computeIfAbsent(partition, partitionTrackerCreator);
   }
 
+  /**
+   * In some cases, such as when resetting offsets or unsubscribing from a partition,
+   * the {@link PartitionTracker} should forget about the state that it accumulated
+   * for a given partition.
+   *
+   * @param partition to clear state for
+   */
   public void clearPartition(int partition) {
-    producerTrackerMap.values().forEach(producerTracker -> producerTracker.clearPartition(partition));
+    partitionTrackers.remove(partition);
+  }
+
+  public void setPartitionState(int partition, OffsetRecord offsetRecord) {
+    registerPartition(partition).setPartitionState(offsetRecord, this.maxAgeInMs);
   }
 
   /**
@@ -55,28 +77,29 @@ public class KafkaDataIntegrityValidator {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
-    final GUID producerGUID = consumerRecord.getValue().producerMetadata.producerGUID;
-    ProducerTracker producerTracker = registerProducer(producerGUID);
-    producerTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+    PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
+    partitionTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
   }
 
   /**
    * For a given partition, find all the producers that has written to this partition and update the offsetRecord using
-   * segment information.
-   * @param partition
-   * @param offsetRecord
+   * segment information. Prior to this, the state which is expired according to {@link #maxAgeInMs} will be cleared.
+   *
+   * @param partition to extract info for
+   * @param offsetRecord to modify
    */
   public void updateOffsetRecordForPartition(int partition, OffsetRecord offsetRecord) {
-    producerTrackerMap.values().forEach(producerTracker -> producerTracker.updateOffsetRecord(partition, offsetRecord));
+    PartitionTracker partitionTracker = registerPartition(partition);
+    if (this.maxAgeInMs != DISABLED) {
+      partitionTracker.clearExpiredStateAndUpdateOffsetRecord(offsetRecord, this.maxAgeInMs);
+    } else {
+      partitionTracker.updateOffsetRecord(offsetRecord);
+    }
   }
 
   public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
-    for (Map.Entry<GUID, ProducerTracker> entry: producerTrackerMap.entrySet()) {
-      GUID producerGUID = entry.getKey();
-      ProducerTracker sourceProducerTracker = entry.getValue();
-      ProducerTracker destProducerTracker = newValidator.registerProducer(producerGUID);
-      sourceProducerTracker.cloneProducerStates(partition, destProducerTracker);
-    }
+    PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
+    this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker);
   }
 
   /**
@@ -87,14 +110,28 @@ public class KafkaDataIntegrityValidator {
    * exception will not be thrown because it's expected that log compaction would compact old messages. However, if data
    * are fresh and missing message is detected, MISSING exception will be thrown.
    *
-   * This API can be used for ETL.
+   * This API is used by a proprietary ETL project. Do not clean up (yet)!
+   *
+   * TODO: Open source the ETL or make it stop depending on an exotic open source API
    */
   public void checkMissingMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
-    final GUID producerGUID = consumerRecord.getValue().producerMetadata.producerGUID;
-    ProducerTracker producerTracker = registerProducer(producerGUID);
-    producerTracker.checkMissingMessage(consumerRecord, errorMetricCallback, this.kafkaLogCompactionDelayInMs);
+      Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
+    PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
+    partitionTracker.checkMissingMessage(consumerRecord, errorMetricCallback, this.kafkaLogCompactionDelayInMs);
   }
 
+  /** N.B. Intended for tests */
+  int getNumberOfTrackedProducerGUIDs() {
+    Set<GUID> guids = new HashSet<>();
+    for (PartitionTracker partitionTracker: this.partitionTrackers.values()) {
+      guids.addAll(partitionTracker.getTrackedGUIDs());
+    }
+    return guids.size();
+  }
+
+  /** N.B. Intended for tests */
+  int getNumberOfTrackedPartitions() {
+    return this.partitionTrackers.values().size();
+  }
 }

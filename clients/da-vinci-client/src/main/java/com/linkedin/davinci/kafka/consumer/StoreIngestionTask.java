@@ -9,7 +9,6 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -39,17 +38,16 @@ import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
+import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
-import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
-import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
@@ -60,7 +58,6 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -120,6 +117,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -201,7 +199,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AggVersionedIngestionStats versionedIngestionStats;
   protected final BooleanSupplier isCurrentVersion;
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
-  protected final ProducerTracker.DIVErrorMetricCallback divErrorMetricCallback;
+  protected final Consumer<DataValidationException> divErrorMetricCallback;
 
   protected final long readCycleDelayMs;
   protected final long emptyPollSleepMs;
@@ -337,7 +335,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(this.kafkaVersionTopic);
+    this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(
+        this.kafkaVersionTopic,
+        KafkaDataIntegrityValidator.DISABLED,
+        builder.getServerConfig().getDivProducerStateMaxAgeMs());
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
     this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(storeConfig.getTopicOffsetCheckIntervalMs());
@@ -358,13 +359,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.diskUsage = builder.getDiskUsage();
 
-    this.storageEngine = Validate.notNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
+    this.storageEngine = Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
 
     this.serverConfig = builder.getServerConfig();
 
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
 
-    this.aggKafkaConsumerService = Validate.notNull(builder.getAggKafkaConsumerService());
+    this.aggKafkaConsumerService = Objects.requireNonNull(builder.getAggKafkaConsumerService());
 
     this.errorPartitionId = errorPartitionId;
     this.startReportingReadyToServeTimestamp = builder.getStartReportingReadyToServeTimestamp();
@@ -643,7 +644,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (serverConfig.isDatabaseChecksumVerificationEnabled() && partitionConsumptionState.isDeferredWrite()
         && !serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) {
       partitionConsumptionState.initializeExpectedChecksum();
-      partitionChecksumSupplier = Optional.of(() -> {
+      partitionChecksumSupplier = Optional.ofNullable(() -> {
         byte[] checksum = partitionConsumptionState.getExpectedChecksum();
         partitionConsumptionState.resetExpectedChecksum();
         return checksum;
@@ -1622,11 +1623,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
-        offsetRecord.getProducerPartitionStateMap().entrySet().forEach(entry -> {
-          GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
-          ProducerTracker producerTracker = kafkaDataIntegrityValidator.registerProducer(producerGuid);
-          producerTracker.setPartitionState(partition, entry.getValue());
-        });
+        kafkaDataIntegrityValidator.setPartitionState(partition, offsetRecord);
 
         long consumptionStatePrepTimeStart = System.currentTimeMillis();
         if (!checkDatabaseIntegrity(partition, topic, offsetRecord, newPartitionConsumptionState)) {
@@ -2611,7 +2608,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestampNs),
           currentTimeMs);
     } catch (DuplicateDataException e) {
-      divErrorMetricCallback.execute(e);
+      divErrorMetricCallback.accept(e);
       if (LOGGER.isDebugEnabled()) {
         LOGGER.debug("{} : Skipping a duplicate record at offset: {}", consumerTaskId, consumerRecord.getOffset());
       }
@@ -2708,7 +2705,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     try {
       validator.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
     } catch (FatalDataValidationException fatalException) {
-      divErrorMetricCallback.execute(fatalException);
+      divErrorMetricCallback.accept(fatalException);
       /**
        * If DIV errors happens after EOP is received, we will not error out the replica.
        */

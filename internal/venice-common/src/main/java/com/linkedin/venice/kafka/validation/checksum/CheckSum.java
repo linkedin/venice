@@ -19,7 +19,6 @@ package com.linkedin.venice.kafka.validation.checksum;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.IncomingDataAfterSegmentEndedException;
 import com.linkedin.venice.utils.ByteUtils;
-import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -123,30 +122,30 @@ public abstract class CheckSum {
     update(input, 0, input.length);
   }
 
-  public static Optional<CheckSum> getInstance(CheckSumType type) {
+  public static CheckSum getInstance(CheckSumType type) {
     switch (type) {
       case NONE:
-        return Optional.empty();
+        return null;
       case ADLER32:
-        return Optional.of(new Adler32CheckSum());
+        return new Adler32CheckSum();
       case CRC32:
-        return Optional.of(new CRC32CheckSum());
+        return new CRC32CheckSum();
       case MD5:
-        return Optional.of(new MD5CheckSum());
+        return new MD5CheckSum();
       default:
-        return Optional.empty();
+        return null;
     }
   }
 
-  public static Optional<CheckSum> getInstance(CheckSumType type, byte[] encodedState) {
+  public static CheckSum getInstance(CheckSumType type, byte[] encodedState) {
     if (type.isCheckpointingSupported()) {
       switch (type) {
         case NONE:
-          return Optional.empty();
+          return null;
         case MD5:
-          return Optional.of(new MD5CheckSum(encodedState));
+          return new MD5CheckSum(encodedState);
         default:
-          return Optional.empty();
+          return null;
       }
     } else {
       // TODO: Consider throwing exception here, instead.
@@ -154,7 +153,7 @@ public abstract class CheckSum {
           "CheckSum.getInstance(type, encodedState) called for a type which does not support checkpointing: {}",
           type);
       // Not a very big deal since the default checksumming strategy is MD5 anyway.
-      return Optional.empty();
+      return null;
     }
   }
 
