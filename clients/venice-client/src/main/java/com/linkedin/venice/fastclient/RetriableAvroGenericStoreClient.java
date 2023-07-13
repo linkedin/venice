@@ -189,6 +189,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           nonExistingKeys.add(key);
         } else {
           valueMap.put(key, value);
+          requestContext.successRequestKeyCount.incrementAndGet();
         }
       }
 

@@ -21,6 +21,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -33,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.testng.annotations.BeforeClass;
@@ -40,6 +42,7 @@ import org.testng.annotations.Test;
 
 
 public class DispatchingAvroGenericStoreClientTest {
+  private static final int TEST_TIMEOUT = 10 * Time.MS_PER_SECOND;
   private static final String SINGLE_GET_VALUE_RESPONSE = "test_value";
   private static final String STORE_NAME = "test_store";
   private static final Set<String> BATCH_GET_KEYS = new HashSet<>();
@@ -51,7 +54,7 @@ public class DispatchingAvroGenericStoreClientTest {
   private DispatchingAvroGenericStoreClient dispatchingAvroGenericStoreClient;
   private StatsAvroGenericStoreClient statsAvroGenericStoreClient = null;
   private Map<String, ? extends Metric> metrics;
-  private StoreMetadata mockMetadata = null;
+  private StoreMetadata storeMetadata = null;
 
   @BeforeClass
   public void setUp() {
@@ -62,7 +65,7 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   private void setUpClient() {
-    setUpClient(false, false);
+    setUpClient(false);
   }
 
   private void setUpClient(boolean useStreamingBatchGetAsDefault) {
@@ -70,60 +73,89 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   private void setUpClient(boolean useStreamingBatchGetAsDefault, boolean transportClientThrowsException) {
+    setUpClient(useStreamingBatchGetAsDefault, transportClientThrowsException, true, TimeUnit.SECONDS.toMillis(30));
+  }
+
+  private void setUpClient(
+      boolean useStreamingBatchGetAsDefault,
+      boolean transportClientThrowsException,
+      boolean mockTransportClient,
+      long routingLeakedRequestCleanupThresholdMS) {
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
         .setR2Client(mock(Client.class))
         .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
-        .setMetadataRefreshIntervalInSeconds(1L);
+        .setMetadataRefreshIntervalInSeconds(1L)
+        .setRoutingLeakedRequestCleanupThresholdMS(routingLeakedRequestCleanupThresholdMS);
 
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();
 
-    mockMetadata = RequestBasedMetadataTestUtils.getMockMetaData(clientConfig, STORE_NAME);
-    TransportClient mockTransportClient = mock(TransportClient.class);
+    storeMetadata = RequestBasedMetadataTestUtils.getMockMetaData(clientConfig, STORE_NAME);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
 
-    dispatchingAvroGenericStoreClient =
-        new DispatchingAvroGenericStoreClient(mockMetadata, clientConfig, mockTransportClient);
+    TransportClient mockedTransportClient = null;
+    if (mockTransportClient) {
+      mockedTransportClient = mock(TransportClient.class);
+      dispatchingAvroGenericStoreClient =
+          new DispatchingAvroGenericStoreClient(storeMetadata, clientConfig, mockedTransportClient);
+    } else {
+      dispatchingAvroGenericStoreClient = new DispatchingAvroGenericStoreClient(storeMetadata, clientConfig);
+    }
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(dispatchingAvroGenericStoreClient, clientConfig);
     statsAvroGenericStoreClient.start();
 
-    // Initialize metadata
-    dispatchingAvroGenericStoreClient.verifyMetadataInitialized();
-    // mock get()
-    doReturn(valueFuture).when(mockTransportClient).get(any());
-    if (!transportClientThrowsException) {
-      TransportClientResponse singleGetResponse = new TransportClientResponse(
-          1,
-          CompressionStrategy.NO_OP,
-          SerializerDeserializerFactory
-              .getAvroGenericSerializer(Schema.parse(RequestBasedMetadataTestUtils.VALUE_SCHEMA))
-              .serialize(SINGLE_GET_VALUE_RESPONSE));
-      valueFuture.complete(singleGetResponse);
-    } else {
-      valueFuture.completeExceptionally(new VeniceClientException("Exception for client to return 503"));
+    // Wait till metadata is initialized
+    while (true) {
+      try {
+        dispatchingAvroGenericStoreClient.verifyMetadataInitialized();
+        break;
+      } catch (VeniceClientException e) {
+        if (e.getMessage().endsWith("metadata is not ready, attempting to re-initialize")) {
+          // retry until its initialized
+          continue;
+        }
+        throw e;
+      }
     }
 
-    // mock post()
-    CompletableFuture<TransportClientResponseForRoute> batchGetValueFuture = new CompletableFuture<>();
-    TransportClientResponseForRoute batchGetResponse;
-    if (!transportClientThrowsException) {
-      batchGetResponse = new TransportClientResponseForRoute(
-          "0",
-          1,
-          CompressionStrategy.NO_OP,
-          serializeBatchGetResponse(BATCH_GET_KEYS));
-      doReturn(batchGetValueFuture).when(mockTransportClient).post(any(), any(), any());
-      batchGetValueFuture.complete(batchGetResponse);
-    } else {
-      doReturn(batchGetValueFuture).when(mockTransportClient).post(any(), any(), any());
-      batchGetValueFuture.completeExceptionally(new VeniceClientException("Exception for client to return 503"));
+    if (mockTransportClient) {
+      // mock get()
+      doReturn(valueFuture).when(mockedTransportClient).get(any());
+      if (!transportClientThrowsException) {
+        TransportClientResponse singleGetResponse = new TransportClientResponse(
+            1,
+            CompressionStrategy.NO_OP,
+            SerializerDeserializerFactory
+                .getAvroGenericSerializer(Schema.parse(RequestBasedMetadataTestUtils.VALUE_SCHEMA))
+                .serialize(SINGLE_GET_VALUE_RESPONSE));
+        valueFuture.complete(singleGetResponse);
+      } else {
+        valueFuture.completeExceptionally(new VeniceClientException("Exception for client to return 503"));
+      }
+
+      // mock post()
+      CompletableFuture<TransportClientResponseForRoute> batchGetValueFuture = new CompletableFuture<>();
+      TransportClientResponseForRoute batchGetResponse;
+      if (!transportClientThrowsException) {
+        batchGetResponse = new TransportClientResponseForRoute(
+            "0",
+            1,
+            CompressionStrategy.NO_OP,
+            serializeBatchGetResponse(BATCH_GET_KEYS),
+            mock(CompletableFuture.class));
+        doReturn(batchGetValueFuture).when(mockedTransportClient).post(any(), any(), any());
+        batchGetValueFuture.complete(batchGetResponse);
+      } else {
+        doReturn(batchGetValueFuture).when(mockedTransportClient).post(any(), any(), any());
+        batchGetValueFuture.completeExceptionally(new VeniceClientException("Exception for client to return 503"));
+      }
     }
   }
 
   private void tearDown() throws IOException {
-    if (mockMetadata != null) {
-      mockMetadata.close();
-      mockMetadata = null;
+    if (storeMetadata != null) {
+      storeMetadata.close();
+      storeMetadata = null;
     }
     if (statsAvroGenericStoreClient != null) {
       statsAvroGenericStoreClient.close();
@@ -184,7 +216,7 @@ public class DispatchingAvroGenericStoreClientTest {
     return dispatchingAvroGenericStoreClient.getMultiGetSerializer().serializeObjects(routerRequestValues);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testGet() throws ExecutionException, InterruptedException, IOException {
     try {
       setUpClient();
@@ -208,7 +240,7 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testGetWithExceptionFromTransportLayer() throws IOException {
     try {
       setUpClient(false, true);
@@ -216,6 +248,7 @@ public class DispatchingAvroGenericStoreClientTest {
       statsAvroGenericStoreClient.get(getRequestContext, "test_key").get().toString();
       fail();
     } catch (Exception e) {
+      assertTrue(e.getMessage().endsWith("Exception for client to return 503"));
       metrics = getStats(clientConfig);
       assertFalse(metrics.get("." + STORE_NAME + "--healthy_request.OccurrenceRate").value() > 0);
       assertFalse(metrics.get("." + STORE_NAME + "--healthy_request_latency.Avg").value() > 0);
@@ -233,7 +266,33 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testGetToUnreachableClient() throws IOException {
+    try {
+      setUpClient(false, false, false, 2 * Time.MS_PER_SECOND);
+      getRequestContext = new GetRequestContext();
+      statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
+      fail();
+    } catch (Exception e) {
+      assertTrue(e.getMessage().endsWith("http status: 410, Request timed out"));
+      metrics = getStats(clientConfig);
+      assertFalse(metrics.get("." + STORE_NAME + "--healthy_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + "--healthy_request_latency.Avg").value() > 0);
+      assertTrue(metrics.get("." + STORE_NAME + "--unhealthy_request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get("." + STORE_NAME + "--unhealthy_request_latency.Avg").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + "--no_available_replica_request_count.OccurrenceRate").value() > 0);
+      assertFalse(getRequestContext.noAvailableReplica);
+      assertEquals(metrics.get("." + STORE_NAME + "--request_key_count.Max").value(), 1.0);
+      assertFalse(metrics.get("." + STORE_NAME + "--success_request_key_count.Max").value() > 0);
+      assertEquals(getRequestContext.successRequestKeyCount.get(), 0);
+
+      validateRetryMetrics();
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testBatchGet(boolean useStreamingBatchGetAsDefault)
       throws ExecutionException, InterruptedException, IOException {
 
@@ -281,7 +340,7 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testBatchGetWithExceptionFromTransportLayer(boolean useStreamingBatchGetAsDefault) throws IOException {
     try {
       setUpClient(useStreamingBatchGetAsDefault, true);
@@ -289,6 +348,46 @@ public class DispatchingAvroGenericStoreClientTest {
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } catch (Exception e) {
+      if (useStreamingBatchGetAsDefault) {
+        assertTrue(e.getMessage().endsWith("At least one route did not complete"));
+      } else {
+        assertTrue(e.getMessage().endsWith("Exception for client to return 503"));
+      }
+      metrics = getStats(clientConfig, RequestType.MULTI_GET);
+      String metricPrefix = useStreamingBatchGetAsDefault ? "--multiget_" : "--";
+      assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request_latency.Avg").value() > 0);
+      assertTrue(metrics.get("." + STORE_NAME + metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get("." + STORE_NAME + metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
+      if (useStreamingBatchGetAsDefault) {
+        assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 2.0);
+        assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value() > 0);
+        assertEquals(batchGetRequestContext.successRequestKeyCount.get(), 0);
+      } else {
+        // using single get: so 1 will be recorded twice rather than 2
+        assertEquals(metrics.get("." + STORE_NAME + metricPrefix + "request_key_count.Max").value(), 1.0);
+        assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "success_request_key_count.Max").value() > 0);
+      }
+
+      validateRetryMetrics(true, metricPrefix, useStreamingBatchGetAsDefault);
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testBatchGetToUnreachableClient(boolean useStreamingBatchGetAsDefault) throws IOException {
+    try {
+      setUpClient(useStreamingBatchGetAsDefault, false, false, 2 * Time.MS_PER_SECOND);
+      batchGetRequestContext = new BatchGetRequestContext<>();
+      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
+      fail();
+    } catch (Exception e) {
+      if (useStreamingBatchGetAsDefault) {
+        assertTrue(e.getMessage().endsWith("At least one route did not complete"));
+      } else {
+        assertTrue(e.getMessage().endsWith("http status: 410, Request timed out"));
+      }
       metrics = getStats(clientConfig, RequestType.MULTI_GET);
       String metricPrefix = useStreamingBatchGetAsDefault ? "--multiget_" : "--";
       assertFalse(metrics.get("." + STORE_NAME + metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
