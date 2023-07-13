@@ -127,7 +127,7 @@ public class PartitionTracker {
          * This {@link producerPartitionState} is eligible to be retained, so we'll set the state in the
          * {@link PartitionTracker}.
          */
-        setPartitionState(producerGuid, new Segment(partition, producerPartitionState));
+        setSegment(producerGuid, new Segment(partition, producerPartitionState));
       } else {
         // The state is eligible to be cleared.
         segments.remove(producerGuid);
@@ -136,7 +136,7 @@ public class PartitionTracker {
     }
   }
 
-  private void setPartitionState(GUID guid, Segment segment) {
+  private void setSegment(GUID guid, Segment segment) {
     ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegment(guid);
     lockAndSegment.lock();
     try {
@@ -171,7 +171,7 @@ public class PartitionTracker {
           continue;
         }
         Segment sourceSegment = lockAndSegment.getRef();
-        destProducerTracker.setPartitionState(entry.getKey(), new Segment(sourceSegment));
+        destProducerTracker.setSegment(entry.getKey(), new Segment(sourceSegment));
       } finally {
         lockAndSegment.unlock();
       }
