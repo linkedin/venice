@@ -35,6 +35,10 @@ public class DataRecoveryTask implements Runnable {
     return taskParams;
   }
 
+  public Command getCommand() {
+    return command;
+  }
+
   public static class TaskResult {
     private final Command.Result cmdResult;
 

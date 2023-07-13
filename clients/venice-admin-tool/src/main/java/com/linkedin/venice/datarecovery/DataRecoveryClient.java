@@ -3,23 +3,11 @@ package com.linkedin.venice.datarecovery;
 import static com.linkedin.venice.datarecovery.DataRecoveryWorker.INTERVAL_UNSET;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
-import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.RegionPushDetails;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Utils;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
 import java.util.Set;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -60,94 +48,28 @@ public class DataRecoveryClient {
     return monitor;
   }
 
-  public Map<String, Pair<Boolean, String>> getRepushViability(
-      Set<String> storesList,
-      StoreRepushCommand.Params params) {
-    Map<String, Pair<Boolean, String>> ret = new HashMap<>();
-    String url = params.getUrl();
-    ControllerClient cli = params.getPCtrlCliWithoutCluster();
-    LocalDateTime timestamp = params.getTimestamp();
-    String destFabric = params.getDestFabric();
-    for (String s: storesList) {
-      try {
-        String clusterName = cli.discoverCluster(s).getCluster();
-        if (clusterName == null) {
-          ret.put(s, Pair.of(false, "unable to discover cluster for store (likely invalid store name)"));
-          continue;
-        }
-        try (ControllerClient parentCtrlCli = buildControllerClient(clusterName, url, params.getSSLFactory())) {
-          StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(s, false);
-          Map<String, RegionPushDetails> regionPushDetails = storeHealthInfo.getRegionPushDetails();
-          if (!regionPushDetails.containsKey(destFabric)) {
-            ret.put(s, Pair.of(false, "nothing to repush, store version 0"));
-            continue;
-          }
-          String latestTimestamp = regionPushDetails.get(destFabric).getPushStartTimestamp();
-          LocalDateTime latestPushStartTime =
-              LocalDateTime.parse(latestTimestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-
-          if (latestPushStartTime.isAfter(timestamp)) {
-            ret.put(s, Pair.of(false, "input timestamp earlier than latest push"));
-            continue;
-          }
-
-          MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, s);
-          // No future version status for target region.
-          if (!response.getStoreStatusMap().containsKey(destFabric)) {
-            ret.put(s, Pair.of(true, StringUtils.EMPTY));
-            continue;
-          }
-
-          int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(destFabric));
-          // No ongoing offline pushes detected for target region.
-          if (futureVersion == Store.NON_EXISTING_VERSION) {
-            ret.put(s, Pair.of(true, StringUtils.EMPTY));
-            continue;
-          }
-          // Find ongoing pushes for this store, skip.
-          ret.put(s, Pair.of(false, String.format("find ongoing push, version: %d", futureVersion)));
-        }
-      } catch (VeniceException e) {
-        ret.put(s, Pair.of(false, "VeniceHttpException " + e.getErrorType().toString()));
-      }
-    }
-    return ret;
-  }
-
   public ControllerClient buildControllerClient(String clusterName, String url, Optional<SSLFactory> sslFactory) {
     return new ControllerClient(clusterName, url, sslFactory);
   }
 
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
-    Map<String, Pair<Boolean, String>> pushMap = getRepushViability(storeNames, cmdParams);
-    Set<String> filteredStoreNames = new HashSet<>();
 
-    for (Map.Entry<String, Pair<Boolean, String>> e: pushMap.entrySet()) {
-      if (e.getValue().getLeft()) {
-        filteredStoreNames.add(e.getKey());
-      } else {
-        this.getExecutor().getSkippedStores().add(e.getKey());
-      }
-    }
-
-    if (!filteredStoreNames.isEmpty()) {
-      if (!drParams.isNonInteractive && !confirmStores(filteredStoreNames)) {
+    if (!storeNames.isEmpty()) {
+      if (!drParams.isNonInteractive && !confirmStores(storeNames)) {
         return;
       }
-      getExecutor().perform(filteredStoreNames, cmdParams);
+      getExecutor().perform(storeNames, cmdParams);
     } else {
       LOGGER.warn("store list is empty, exit.");
     }
 
     // check if we filtered stores based on push info, report them
-    if (getExecutor().getSkippedStores().size() > 0) {
-      LOGGER.info("================");
-      LOGGER.info("STORES STORES WERE SKIPPED:");
-      for (String store: getExecutor().getSkippedStores()) {
-        LOGGER.info(store + " : " + pushMap.get(store).getRight());
+    for (DataRecoveryTask t: getExecutor().getTasks()) {
+      StoreRepushCommand cmd = (StoreRepushCommand) t.getCommand();
+      if (cmd.getResult().getError() != null) {
+        LOGGER.info("Store " + t.getTaskParams().getStore() + " skipped: " + t.getTaskResult().getError());
       }
-      LOGGER.info("================");
     }
     getExecutor().shutdownAndAwaitTermination();
   }
