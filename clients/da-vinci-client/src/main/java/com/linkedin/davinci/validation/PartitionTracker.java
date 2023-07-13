@@ -1,5 +1,7 @@
 package com.linkedin.davinci.validation;
 
+import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
+
 import com.linkedin.davinci.utils.locks.ReentrantLockWithRef;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
@@ -48,6 +50,12 @@ import org.apache.logging.log4j.Logger;
  *
  * This class is thread safe. Locking is at the granularity of producers. Multiple
  * threads can process records from the same partition concurrently.
+ *
+ * This class also encapsulates the capability to clear expired state, in the functions
+ * which take in the maxAgeInMs parameter:
+ *
+ * - {@link #clearExpiredStateAndUpdateOffsetRecord(OffsetRecord, long)}
+ * - {@link #setPartitionState(OffsetRecord, long)}
  */
 @Threadsafe
 public class PartitionTracker {
@@ -102,8 +110,30 @@ public class PartitionTracker {
     return this.segments.get(guid);
   }
 
-  public void setPartitionState(GUID guid, ProducerPartitionState state) {
-    setPartitionState(guid, new Segment(partition, state));
+  public void setPartitionState(OffsetRecord offsetRecord, long maxAgeInMs) {
+    long minimumRequiredRecordProducerTimestamp =
+        maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
+    Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
+        offsetRecord.getProducerPartitionStateMap().entrySet().iterator();
+    Map.Entry<CharSequence, ProducerPartitionState> entry;
+    GUID producerGuid;
+    ProducerPartitionState producerPartitionState;
+    while (iterator.hasNext()) {
+      entry = iterator.next();
+      producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
+      producerPartitionState = entry.getValue();
+      if (producerPartitionState.messageTimestamp >= minimumRequiredRecordProducerTimestamp) {
+        /**
+         * This {@link producerPartitionState} is eligible to be retained, so we'll set the state in the
+         * {@link PartitionTracker}.
+         */
+        setPartitionState(producerGuid, new Segment(partition, producerPartitionState));
+      } else {
+        // The state is eligible to be cleared.
+        segments.remove(producerGuid);
+        iterator.remove();
+      }
+    }
   }
 
   private void setPartitionState(GUID guid, Segment segment) {
@@ -698,10 +728,6 @@ public class PartitionTracker {
     if (numberOfClearedGUIDs > 0) {
       logger.info("Cleared {} expired producer GUID(s).", numberOfClearedGUIDs);
     }
-  }
-
-  public void removeState(GUID guid) {
-    segments.remove(guid);
   }
 
   enum DataFaultType {

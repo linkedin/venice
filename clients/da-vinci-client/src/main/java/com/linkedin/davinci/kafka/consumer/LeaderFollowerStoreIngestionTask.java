@@ -140,6 +140,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * if leader and drainer share the same DIV validator, leader will pollute the data in shared DIV validator;
    * in other words, if leader shares the same DIV validator with drainer, leader will move the DIV info ahead of the
    * actual persisted data.
+   *
+   * N.B.: Note that currently the state clearing happens only in the "main" {@link KafkaDataIntegrityValidator},
+   * located in the parent class, used by drainers, and which persist its state to disk. This one here is transient
+   * and not persisted to disk. As such, its state is not expected to grow as large, and bouncing effectively clears
+   * it (which is not the case for the other one which gets persisted). Later on, we could trigger state cleaning
+   * for this leader validator as well, if deemed necessary.
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidatorForLeaders;
 
@@ -246,10 +252,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
-    this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(
-        kafkaVersionTopic,
-        KafkaDataIntegrityValidator.DISABLED,
-        getServerConfig().getDivProducerStateMaxAgeMs());
+    this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
     if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
       viewWriters = builder.getVeniceViewWriterFactory()
           .buildStoreViewWriters(

@@ -1,18 +1,14 @@
 package com.linkedin.davinci.validation;
 
 import com.linkedin.venice.exceptions.validation.DataValidationException;
-import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.IntFunction;
@@ -34,6 +30,10 @@ public class KafkaDataIntegrityValidator {
   /** Keeps track of every upstream producer this consumer task has seen so far for each partition. */
   protected final SparseConcurrentList<PartitionTracker> partitionTrackers = new SparseConcurrentList<>();
   protected final IntFunction<PartitionTracker> partitionTrackerCreator;
+
+  public KafkaDataIntegrityValidator(String topicName) {
+    this(topicName, DISABLED, DISABLED);
+  }
 
   /**
    * This constructor is used by a proprietary ETL project. Do not clean up (yet)!
@@ -67,30 +67,7 @@ public class KafkaDataIntegrityValidator {
   }
 
   public void setPartitionState(int partition, OffsetRecord offsetRecord) {
-    long minimumRequiredRecordProducerTimestamp =
-        this.maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - this.maxAgeInMs;
-    Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
-        offsetRecord.getProducerPartitionStateMap().entrySet().iterator();
-    Map.Entry<CharSequence, ProducerPartitionState> entry;
-    GUID producerGuid;
-    ProducerPartitionState producerPartitionState;
-    PartitionTracker partitionTracker = registerPartition(partition);
-    while (iterator.hasNext()) {
-      entry = iterator.next();
-      producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
-      producerPartitionState = entry.getValue();
-      if (producerPartitionState.messageTimestamp >= minimumRequiredRecordProducerTimestamp) {
-        /**
-         * This {@link producerPartitionState} is eligible to be retained, so we'll set the state in the
-         * {@link PartitionTracker}.
-         */
-        partitionTracker.setPartitionState(producerGuid, producerPartitionState);
-      } else {
-        // The state is eligible to be cleared.
-        partitionTracker.removeState(producerGuid);
-        iterator.remove();
-      }
-    }
+    registerPartition(partition).setPartitionState(offsetRecord, this.maxAgeInMs);
   }
 
   /**
