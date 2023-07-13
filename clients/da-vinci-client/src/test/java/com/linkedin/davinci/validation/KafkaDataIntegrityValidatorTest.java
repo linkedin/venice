@@ -1,7 +1,13 @@
 package com.linkedin.davinci.validation;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
@@ -67,13 +73,8 @@ public class KafkaDataIntegrityValidatorTest {
       return;
     }
     assertNotEquals(producerGuid0, producerGuid1);
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g0record0 = buildSoSRecord(
-        topicPartition0,
-        offsetForPartition0++,
-        producerGuid0,
-        0,
-        time.getMilliseconds(),
-        p0offsetRecord);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g0record0 =
+        buildSoSRecord(topicPartition0, offsetForPartition0++, producerGuid0, time.getMilliseconds(), p0offsetRecord);
     validator.validateMessage(p0g0record0, false, Lazy.FALSE);
 
     time.sleep(10);
@@ -88,20 +89,19 @@ public class KafkaDataIntegrityValidatorTest {
         p0offsetRecord);
     validator.validateMessage(p0g0record1, false, Lazy.FALSE);
 
-    ProducerTracker guid0ProducerTracker = validator.registerProducer(producerGuid0);
-    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     // Nothing should be cleared yet
-    validator.clearExpiredStateAndUpdateOffsetRecordForPartition(0, p0offsetRecord);
-    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    validator.updateOffsetRecordForPartition(0, p0offsetRecord);
+    assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     // Even if we wait some more, the state should still be retained, since the wall-clock time does not matter, only
     // the last consumed time does.
     time.sleep(2 * maxAgeInMs);
-    validator.clearExpiredStateAndUpdateOffsetRecordForPartition(0, p0offsetRecord);
-    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    validator.updateOffsetRecordForPartition(0, p0offsetRecord);
+    assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     /**
@@ -110,39 +110,22 @@ public class KafkaDataIntegrityValidatorTest {
      * be cleared yet, since {@link KafkaDataIntegrityValidator#clearExpiredState(int, LongSupplier)} will not have
      * been called.
      */
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g1record0 = buildSoSRecord(
-        topicPartition0,
-        offsetForPartition0++,
-        producerGuid1,
-        0,
-        time.getMilliseconds(),
-        p0offsetRecord);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p0g1record0 =
+        buildSoSRecord(topicPartition0, offsetForPartition0++, producerGuid1, time.getMilliseconds(), p0offsetRecord);
     validator.validateMessage(p0g1record0, false, Lazy.FALSE);
-    ProducerTracker guid1ProducerTracker = validator.registerProducer(producerGuid1);
-    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 1);
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
 
     // After calling clear, now we should see the update to the internal state...
-    validator.clearExpiredStateAndUpdateOffsetRecordForPartition(0, p0offsetRecord);
-    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 0);
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    validator.updateOffsetRecordForPartition(0, p0offsetRecord);
+    assertEquals(validator.getNumberOfTrackedPartitions(), 1);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 1);
 
     // Start writing into another partition
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> p1g0record0 =
-        buildSoSRecord(topicPartition1, offsetForPartition1, producerGuid0, 0, time.getMilliseconds(), p1offsetRecord);
+        buildSoSRecord(topicPartition1, offsetForPartition1, producerGuid0, time.getMilliseconds(), p1offsetRecord);
     validator.validateMessage(p1g0record0, false, Lazy.FALSE);
-    assertEquals(
-        guid0ProducerTracker.getNumberOfTrackedPartitions(),
-        0,
-        "The old producer tracker instance should not be updated, since it should have been cleared from the validator!");
-    guid0ProducerTracker = validator.registerProducer(producerGuid0);
-    assertEquals(
-        guid0ProducerTracker.getNumberOfTrackedPartitions(),
-        1,
-        "The new producer tracker instance should be tracking just 1 partition, since the other partition should have been cleared!");
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedPartitions(), 2);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
 
     // If, somehow, a message still came from this GUID in partition 0, after clearing the state, DIV should catch it
@@ -157,15 +140,13 @@ public class KafkaDataIntegrityValidatorTest {
     assertThrows(
         ImproperlyStartedSegmentException.class,
         () -> validator.validateMessage(p0g0record2, false, Lazy.FALSE));
-    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 2);
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    assertEquals(validator.getNumberOfTrackedPartitions(), 2);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
 
     // This is a stable state, so no changes are expected...
-    validator.clearExpiredStateAndUpdateOffsetRecordForPartition(0, p0offsetRecord);
-    validator.clearExpiredStateAndUpdateOffsetRecordForPartition(1, p1offsetRecord);
-    assertEquals(guid0ProducerTracker.getNumberOfTrackedPartitions(), 2);
-    assertEquals(guid1ProducerTracker.getNumberOfTrackedPartitions(), 1);
+    validator.updateOffsetRecordForPartition(0, p0offsetRecord);
+    validator.updateOffsetRecordForPartition(1, p1offsetRecord);
+    assertEquals(validator.getNumberOfTrackedPartitions(), 2);
     assertEquals(validator.getNumberOfTrackedProducerGUIDs(), 2);
   }
 
@@ -237,7 +218,7 @@ public class KafkaDataIntegrityValidatorTest {
         MissingDataException.class,
         () -> stateLessDIVValidator.checkMissingMessage(record4, Optional.empty()));
 
-    ProducerTracker.DIVErrorMetricCallback errorMetricCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
+    PartitionTracker.DIVErrorMetricCallback errorMetricCallback = mock(PartitionTracker.DIVErrorMetricCallback.class);
 
     /**
      * Create a record with a gap in segment number. MISSING_MESSAGE exception should be thrown
@@ -294,7 +275,6 @@ public class KafkaDataIntegrityValidatorTest {
       PubSubTopicPartition topicPartition,
       long offset,
       GUID producerGUID,
-      int segmentNumber,
       long brokerTimestamp,
       OffsetRecord offsetRecord) {
     ControlMessage controlMessage = new ControlMessage();
@@ -307,7 +287,7 @@ public class KafkaDataIntegrityValidatorTest {
         topicPartition,
         offset,
         producerGUID,
-        segmentNumber,
+        0,
         0,
         brokerTimestamp,
         MessageType.CONTROL_MESSAGE,

@@ -33,10 +33,11 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class TestProducerTracker {
-  private ProducerTracker producerTracker;
+public class TestPartitionTracker {
+  private PartitionTracker partitionTracker;
   private GUID guid;
   private String topic;
+  int partitionId = 0;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod(alwaysRun = true)
@@ -45,7 +46,7 @@ public class TestProducerTracker {
     this.guid = new GUID();
     guid.bytes(testGuid.getBytes());
     this.topic = "test_topic_" + System.currentTimeMillis() + "_v1";
-    this.producerTracker = new ProducerTracker(guid, topic);
+    this.partitionTracker = new PartitionTracker(topic, partitionId);
   }
 
   private KafkaMessageEnvelope getKafkaMessageEnvelope(
@@ -126,7 +127,6 @@ public class TestProducerTracker {
 
   @Test
   public void testSequenceNumber() {
-    int partitionId = 0;
     Segment currentSegment = new Segment(partitionId, 0, CheckSumType.NONE);
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
@@ -143,7 +143,7 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(controlMessageConsumerRecord, false, Lazy.FALSE);
+    partitionTracker.validateMessage(controlMessageConsumerRecord, false, Lazy.FALSE);
 
     Put firstPut = getPutMessage("first_message".getBytes());
     KafkaMessageEnvelope firstMessage =
@@ -157,7 +157,7 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(firstConsumerRecord, false, Lazy.FALSE);
+    partitionTracker.validateMessage(firstConsumerRecord, false, Lazy.FALSE);
 
     // Message with gap
     Put secondPut = getPutMessage("second_message".getBytes());
@@ -174,7 +174,7 @@ public class TestProducerTracker {
         0);
     Assert.assertThrows(
         MissingDataException.class,
-        () -> producerTracker.validateMessage(secondConsumerRecord, false, Lazy.FALSE));
+        () -> partitionTracker.validateMessage(secondConsumerRecord, false, Lazy.FALSE));
 
     // Message without gap
     Put thirdPut = getPutMessage("third_message".getBytes());
@@ -190,7 +190,7 @@ public class TestProducerTracker {
         System.currentTimeMillis() + 1000,
         0);
     // It doesn't matter whether EOP is true/false. The result is same.
-    producerTracker.validateMessage(thirdConsumerRecord, false, Lazy.FALSE);
+    partitionTracker.validateMessage(thirdConsumerRecord, false, Lazy.FALSE);
 
     // Message with gap but tolerate messages is allowed
     Put fourthPut = getPutMessage("fourth_message".getBytes());
@@ -205,12 +205,11 @@ public class TestProducerTracker {
         offset,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(fourthConsumerRecord, false, Lazy.TRUE);
+    partitionTracker.validateMessage(fourthConsumerRecord, false, Lazy.TRUE);
   }
 
   @Test
   public void testSegmentNumber() {
-    int partitionId = 0;
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
 
@@ -234,7 +233,7 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
+    partitionTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
 
     // Send the second segment. Notice this segment number has a gap than previous one
     Put firstPut = getPutMessage("message".getBytes());
@@ -254,24 +253,26 @@ public class TestProducerTracker {
      */
     Assert.assertThrows(
         MissingDataException.class,
-        () -> producerTracker.validateMessage(firstConsumerRecord, true, Lazy.FALSE));
+        () -> partitionTracker.validateMessage(firstConsumerRecord, true, Lazy.FALSE));
     /**
      * The new message with segment number gap will be accepted and tracked if tolerate message flag is true
      */
-    producerTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE);
+    partitionTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE);
     /**
      * Adding the same message again will be treated as duplicated
      */
     Assert.assertThrows(
         DuplicateDataException.class,
-        () -> producerTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE));
-    Assert.assertEquals(producerTracker.segments.get(partitionId).getRef().getSegmentNumber(), skipSegmentNumber);
-    Assert.assertEquals(producerTracker.segments.get(partitionId).getRef().getSequenceNumber(), skipSequenceNumber);
+        () -> partitionTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE));
+    Assert
+        .assertEquals(partitionTracker.getLockAndSegmentIfPresent(guid).getRef().getSegmentNumber(), skipSegmentNumber);
+    Assert.assertEquals(
+        partitionTracker.getLockAndSegmentIfPresent(guid).getRef().getSequenceNumber(),
+        skipSequenceNumber);
   }
 
   @Test
   public void testDuplicateMsgsDetected() {
-    int partitionId = 0;
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
     Segment firstSegment = new Segment(partitionId, 0, CheckSumType.MD5);
@@ -291,8 +292,8 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
-    Assert.assertEquals(producerTracker.segments.get(partitionId).getRef().getSequenceNumber(), 0);
+    partitionTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
+    Assert.assertEquals(partitionTracker.getLockAndSegmentIfPresent(guid).getRef().getSequenceNumber(), 0);
 
     // send EOS
     ControlMessage endOfSegment = getEndOfSegment();
@@ -307,8 +308,8 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.TRUE);
-    Assert.assertEquals(producerTracker.segments.get(partitionId).getRef().getSequenceNumber(), 5);
+    partitionTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.TRUE);
+    Assert.assertEquals(partitionTracker.getLockAndSegmentIfPresent(guid).getRef().getSequenceNumber(), 5);
 
     // Send a put msg following EOS
     Put firstPut = getPutMessage("first_message".getBytes());
@@ -324,9 +325,9 @@ public class TestProducerTracker {
         0);
     Assert.assertThrows(
         DuplicateDataException.class,
-        () -> producerTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE));
+        () -> partitionTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE));
     // The sequence number should not change
-    Assert.assertEquals(producerTracker.segments.get(partitionId).getRef().getSequenceNumber(), 5);
+    Assert.assertEquals(partitionTracker.getLockAndSegmentIfPresent(guid).getRef().getSequenceNumber(), 5);
   }
 
   /**
@@ -335,7 +336,6 @@ public class TestProducerTracker {
    */
   @Test
   public void testMidSegmentCheckSumStates() {
-    int partitionId = 0;
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
     Segment firstSegment = new Segment(partitionId, 0, CheckSumType.MD5);
@@ -354,8 +354,8 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
-    producerTracker.updateOffsetRecord(partitionId, record);
+    partitionTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
+    partitionTracker.updateOffsetRecord(record);
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.MD5.getValue());
 
     // The msg is a put msg without check sum type
@@ -370,8 +370,8 @@ public class TestProducerTracker {
         offset,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE);
-    producerTracker.updateOffsetRecord(partitionId, record);
+    partitionTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE);
+    partitionTracker.updateOffsetRecord(record);
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.NONE.getValue());
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumState, ByteBuffer.wrap(new byte[0]));
   }

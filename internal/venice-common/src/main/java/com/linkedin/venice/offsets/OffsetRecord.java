@@ -143,10 +143,6 @@ public class OffsetRecord {
     this.partitionState.producerStates.put(guidToUtf8(producerGuid), state);
   }
 
-  public synchronized void removeProducerPartitionState(GUID producerGuid) {
-    this.partitionState.producerStates.remove(guidToUtf8(producerGuid));
-  }
-
   public synchronized Map<CharSequence, ProducerPartitionState> getProducerPartitionStateMap() {
     return this.partitionState.producerStates;
   }

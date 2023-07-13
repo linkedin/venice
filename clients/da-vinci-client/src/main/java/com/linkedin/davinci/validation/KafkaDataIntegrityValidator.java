@@ -8,16 +8,14 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Function;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import java.util.Set;
+import java.util.function.IntFunction;
 
 
 /**
@@ -30,15 +28,12 @@ import org.apache.logging.log4j.Logger;
  * 4. Whether producers have produced duplicate messages, which is fine and expected due to producer retries (DUPLICATE).
  */
 public class KafkaDataIntegrityValidator {
-  private static final Logger LOGGER = LogManager.getLogger(KafkaDataIntegrityValidator.class);
   public static final long DISABLED = -1;
-  private final String topicName;
   private final long kafkaLogCompactionDelayInMs;
   private final long maxAgeInMs;
-  /** Keeps track of every upstream producer this consumer task has seen so far. */
-  protected final Map<GUID, ProducerTracker> producerTrackerMap;
-  protected final Function<GUID, ProducerTracker> producerTrackerCreator;
-  private final ReadWriteLock producerTrackerLock = new ReentrantReadWriteLock();
+  /** Keeps track of every upstream producer this consumer task has seen so far for each partition. */
+  protected final SparseConcurrentList<PartitionTracker> partitionTrackers = new SparseConcurrentList<>();
+  protected final IntFunction<PartitionTracker> partitionTrackerCreator;
 
   /**
    * This constructor is used by a proprietary ETL project. Do not clean up (yet)!
@@ -50,25 +45,25 @@ public class KafkaDataIntegrityValidator {
   }
 
   public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs, long maxAgeInMs) {
-    this.topicName = topicName;
     this.kafkaLogCompactionDelayInMs = kafkaLogCompactionDelayInMs;
     this.maxAgeInMs = maxAgeInMs;
-    this.producerTrackerMap = new VeniceConcurrentHashMap<>();
-    this.producerTrackerCreator = guid -> new ProducerTracker(guid, topicName);
+    this.partitionTrackerCreator = p -> new PartitionTracker(topicName, p);
   }
 
   /** N.B.: Package-private for test purposes */
-  ProducerTracker registerProducer(GUID producerGuid) {
-    producerTrackerLock.readLock().lock();
-    try {
-      return producerTrackerMap.computeIfAbsent(producerGuid, producerTrackerCreator);
-    } finally {
-      producerTrackerLock.readLock().unlock();
-    }
+  PartitionTracker registerPartition(int partition) {
+    return partitionTrackers.computeIfAbsent(partition, partitionTrackerCreator);
   }
 
+  /**
+   * In some cases, such as when resetting offsets or unsubscribing from a partition,
+   * the {@link PartitionTracker} should forget about the state that it accumulated
+   * for a given partition.
+   *
+   * @param partition to clear state for
+   */
   public void clearPartition(int partition) {
-    producerTrackerMap.values().forEach(producerTracker -> producerTracker.clearPartition(partition));
+    partitionTrackers.remove(partition);
   }
 
   public void setPartitionState(int partition, OffsetRecord offsetRecord) {
@@ -79,6 +74,7 @@ public class KafkaDataIntegrityValidator {
     Map.Entry<CharSequence, ProducerPartitionState> entry;
     GUID producerGuid;
     ProducerPartitionState producerPartitionState;
+    PartitionTracker partitionTracker = registerPartition(partition);
     while (iterator.hasNext()) {
       entry = iterator.next();
       producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
@@ -86,34 +82,13 @@ public class KafkaDataIntegrityValidator {
       if (producerPartitionState.messageTimestamp >= minimumRequiredRecordProducerTimestamp) {
         /**
          * This {@link producerPartitionState} is eligible to be retained, so we'll set the state in the
-         * {@link ProducerTracker}.
+         * {@link PartitionTracker}.
          */
-        registerProducer(producerGuid).setPartitionState(partition, producerPartitionState);
+        partitionTracker.setPartitionState(producerGuid, producerPartitionState);
       } else {
+        // The state is eligible to be cleared.
+        partitionTracker.removeState(producerGuid);
         iterator.remove();
-        producerTrackerLock.writeLock().lock();
-        try {
-          // The state is eligible to be cleared.
-          producerTrackerMap.compute(producerGuid, (k, v) -> {
-            if (v == null) {
-              /** If the {@link ProducerTracker} did not exist yet, we leave things as is. This is the expected case. */
-              return null;
-            }
-
-            v.removeState(partition);
-            if (v.isEmpty()) {
-              /**
-               * If the {@link ProducerTracker} carries no other state after removing that belonging to the
-               * {@link partition} of interest, then we also clear it from the {@link producerTrackerMap}.
-               */
-              return null;
-            }
-            /** Finally, if the {@link ProducerTracker} is still carrying state for other partitions, we leave it in. */
-            return v;
-          });
-        } finally {
-          producerTrackerLock.writeLock().unlock();
-        }
       }
     }
   }
@@ -125,9 +100,8 @@ public class KafkaDataIntegrityValidator {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
-    final GUID producerGUID = consumerRecord.getValue().producerMetadata.producerGUID;
-    ProducerTracker producerTracker = registerProducer(producerGUID);
-    producerTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+    PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
+    partitionTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
   }
 
   /**
@@ -138,63 +112,17 @@ public class KafkaDataIntegrityValidator {
    * @param offsetRecord to modify
    */
   public void updateOffsetRecordForPartition(int partition, OffsetRecord offsetRecord) {
+    PartitionTracker partitionTracker = registerPartition(partition);
     if (this.maxAgeInMs != DISABLED) {
-      clearExpiredStateAndUpdateOffsetRecordForPartition(partition, offsetRecord);
+      partitionTracker.clearExpiredStateAndUpdateOffsetRecord(offsetRecord, this.maxAgeInMs);
     } else {
-      Iterator<ProducerTracker> iterator = this.producerTrackerMap.values().iterator();
-      while (iterator.hasNext()) {
-        iterator.next().updateOffsetRecord(partition, offsetRecord);
-      }
-    }
-  }
-
-  void clearExpiredStateAndUpdateOffsetRecordForPartition(int partition, OffsetRecord offsetRecord) {
-    long minimumRequiredRecordProducerTimestamp = offsetRecord.getMaxMessageTimeInMs() - this.maxAgeInMs;
-    int numberOfClearedGUIDs = 0;
-    Iterator<ProducerTracker> iterator = this.producerTrackerMap.values().iterator();
-    ProducerTracker producerTracker;
-    while (iterator.hasNext()) {
-      producerTracker = iterator.next();
-      if (producerTracker.clearExpiredState(partition, minimumRequiredRecordProducerTimestamp)) {
-        offsetRecord.removeProducerPartitionState(producerTracker.getProducerGUID());
-        if (producerTracker.isEmpty()) {
-          /**
-           * N.B.: There is a very slim race condition right here. If we clear the last partition, and thus
-           * {@link ProducerTracker#isEmpty()} is true, but right after that, a new partition starts getting tracked,
-           * we could still remove the previously-empty {@link ProducerTracker} out of the {@link producerTrackerMap},
-           * which would be wrong.
-           *
-           * Guarding against this race condition is done by using the {@link producerTrackerLock}, so that if another
-           * thread reads from the {@link producerTrackerMap}, it will be blocked until the code below finishes. In
-           * order to minimize contention, we do the {@link ProducerTracker#isEmpty()} twice, first lock-free, then
-           * inside the lock.
-           */
-          this.producerTrackerLock.writeLock().lock();
-          try {
-            if (producerTracker.isEmpty()) {
-              iterator.remove();
-              numberOfClearedGUIDs++;
-            }
-          } finally {
-            this.producerTrackerLock.writeLock().unlock();
-          }
-        }
-      } else {
-        producerTracker.updateOffsetRecord(partition, offsetRecord);
-      }
-    }
-    if (numberOfClearedGUIDs > 0) {
-      LOGGER.info("Cleared {} expired producer GUID(s) for '{}'", numberOfClearedGUIDs, this.topicName);
+      partitionTracker.updateOffsetRecord(offsetRecord);
     }
   }
 
   public void cloneProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
-    for (Map.Entry<GUID, ProducerTracker> entry: producerTrackerMap.entrySet()) {
-      GUID producerGUID = entry.getKey();
-      ProducerTracker sourceProducerTracker = entry.getValue();
-      ProducerTracker destProducerTracker = newValidator.registerProducer(producerGUID);
-      sourceProducerTracker.cloneProducerStates(partition, destProducerTracker);
-    }
+    PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
+    this.partitionTrackers.get(partition).cloneProducerStates(destPartitionTracker);
   }
 
   /**
@@ -211,14 +139,22 @@ public class KafkaDataIntegrityValidator {
    */
   public void checkMissingMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
-    final GUID producerGUID = consumerRecord.getValue().producerMetadata.producerGUID;
-    ProducerTracker producerTracker = registerProducer(producerGUID);
-    producerTracker.checkMissingMessage(consumerRecord, errorMetricCallback, this.kafkaLogCompactionDelayInMs);
+      Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
+    PartitionTracker partitionTracker = registerPartition(consumerRecord.getPartition());
+    partitionTracker.checkMissingMessage(consumerRecord, errorMetricCallback, this.kafkaLogCompactionDelayInMs);
   }
 
   /** N.B. Intended for tests */
   int getNumberOfTrackedProducerGUIDs() {
-    return this.producerTrackerMap.size();
+    Set<GUID> guids = new HashSet<>();
+    for (PartitionTracker partitionTracker: this.partitionTrackers.values()) {
+      guids.addAll(partitionTracker.getTrackedGUIDs());
+    }
+    return guids.size();
+  }
+
+  /** N.B. Intended for tests */
+  int getNumberOfTrackedPartitions() {
+    return this.partitionTrackers.values().size();
   }
 }
