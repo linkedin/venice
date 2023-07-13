@@ -13,6 +13,8 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,6 +38,7 @@ public class KafkaDataIntegrityValidator {
   /** Keeps track of every upstream producer this consumer task has seen so far. */
   protected final Map<GUID, ProducerTracker> producerTrackerMap;
   protected final Function<GUID, ProducerTracker> producerTrackerCreator;
+  private final ReadWriteLock producerTrackerLock = new ReentrantReadWriteLock();
 
   /**
    * This constructor is used by a proprietary ETL project. Do not clean up (yet)!
@@ -56,7 +59,12 @@ public class KafkaDataIntegrityValidator {
 
   /** N.B.: Package-private for test purposes */
   ProducerTracker registerProducer(GUID producerGuid) {
-    return producerTrackerMap.computeIfAbsent(producerGuid, producerTrackerCreator);
+    producerTrackerLock.readLock().lock();
+    try {
+      return producerTrackerMap.computeIfAbsent(producerGuid, producerTrackerCreator);
+    } finally {
+      producerTrackerLock.readLock().unlock();
+    }
   }
 
   public void clearPartition(int partition) {
@@ -82,25 +90,30 @@ public class KafkaDataIntegrityValidator {
          */
         registerProducer(producerGuid).setPartitionState(partition, producerPartitionState);
       } else {
-        // The state is eligible to be cleared.
-        producerTrackerMap.compute(producerGuid, (k, v) -> {
-          if (v == null) {
-            /** If the {@link ProducerTracker} did not exist yet, we leave things as is. This is the expected case. */
-            return null;
-          }
-
-          v.removeState(partition);
-          if (v.isEmpty()) {
-            /**
-             * If the {@link ProducerTracker} carries no other state after removing that belonging to the
-             * {@link partition} of interest, then we also clear it from the {@link producerTrackerMap}.
-             */
-            return null;
-          }
-          /** Finally, if the {@link ProducerTracker} is still carrying state for other partitions, we leave it in. */
-          return v;
-        });
         iterator.remove();
+        producerTrackerLock.writeLock().lock();
+        try {
+          // The state is eligible to be cleared.
+          producerTrackerMap.compute(producerGuid, (k, v) -> {
+            if (v == null) {
+              /** If the {@link ProducerTracker} did not exist yet, we leave things as is. This is the expected case. */
+              return null;
+            }
+
+            v.removeState(partition);
+            if (v.isEmpty()) {
+              /**
+               * If the {@link ProducerTracker} carries no other state after removing that belonging to the
+               * {@link partition} of interest, then we also clear it from the {@link producerTrackerMap}.
+               */
+              return null;
+            }
+            /** Finally, if the {@link ProducerTracker} is still carrying state for other partitions, we leave it in. */
+            return v;
+          });
+        } finally {
+          producerTrackerLock.writeLock().unlock();
+        }
       }
     }
   }
@@ -143,21 +156,27 @@ public class KafkaDataIntegrityValidator {
     while (iterator.hasNext()) {
       producerTracker = iterator.next();
       if (producerTracker.clearExpiredState(partition, minimumRequiredRecordProducerTimestamp)) {
+        offsetRecord.removeProducerPartitionState(producerTracker.getProducerGUID());
         if (producerTracker.isEmpty()) {
           /**
-           * N.B.: There is technically a race condition right here. If we clear the last partition, and then
+           * N.B.: There is a very slim race condition right here. If we clear the last partition, and thus
            * {@link ProducerTracker#isEmpty()} is true, but right after that, a new partition starts getting tracked,
-           * we would still go ahead and remove the previously-empty {@link ProducerTracker} out of the
-           * {@link producerTrackerMap}. Guarding against this race condition could be done by locking a bunch of other
-           * functions in this class, but this seems impractical. So instead, we redo the {@link ProducerTracker#isEmpty()}
-           * check one more time to check if the race happened, and if it did, we add it back into the map.
+           * we could still remove the previously-empty {@link ProducerTracker} out of the {@link producerTrackerMap},
+           * which would be wrong.
+           *
+           * Guarding against this race condition is done by using the {@link producerTrackerLock}, so that if another
+           * thread reads from the {@link producerTrackerMap}, it will be blocked until the code below finishes. In
+           * order to minimize contention, we do the {@link ProducerTracker#isEmpty()} twice, first lock-free, then
+           * inside the lock.
            */
-          iterator.remove();
-          if (producerTracker.isEmpty()) {
-            offsetRecord.removeProducerPartitionState(producerTracker.getProducerGUID());
-            numberOfClearedGUIDs++;
-          } else {
-            this.producerTrackerMap.put(producerTracker.getProducerGUID(), producerTracker);
+          this.producerTrackerLock.writeLock().lock();
+          try {
+            if (producerTracker.isEmpty()) {
+              iterator.remove();
+              numberOfClearedGUIDs++;
+            }
+          } finally {
+            this.producerTrackerLock.writeLock().unlock();
           }
         }
       } else {
