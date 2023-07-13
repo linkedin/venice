@@ -1,7 +1,8 @@
-package com.linkedin.venice.kafka.validation;
+package com.linkedin.davinci.validation;
 
-import static com.linkedin.venice.utils.RedundantExceptionFilter.DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS;
+import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
 
+import com.linkedin.davinci.utils.locks.ReentrantLockWithRef;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
@@ -19,136 +20,178 @@ import com.linkedin.venice.kafka.protocol.StartOfSegment;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.Set;
 import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class maintains state about what an upstream producer has written into Kafka.
+ * This class maintains state about all the upstream producers for a given partition.
  * It keeps track of the last segment, last sequence number and incrementally computed
- * checksum for any given partition.
+ * checksum for each producer (identified by a producer GUID).
  *
- * This class is thread safe at partition level. Multiple threads can process records from same partition concurrently.
+ * This class is thread safe. Locking is at the granularity of producers. Multiple
+ * threads can process records from the same partition concurrently.
+ *
+ * This class also encapsulates the capability to clear expired state, in the functions
+ * which take in the maxAgeInMs parameter:
+ *
+ * - {@link #clearExpiredStateAndUpdateOffsetRecord(OffsetRecord, long)}
+ * - {@link #setPartitionState(OffsetRecord, long)}
  */
 @Threadsafe
-public class ProducerTracker {
+public class PartitionTracker {
   /**
-   * A logging throttler singleton for ProducerTracker with a 64KB bitset.
-   *
    * If an exception will be tolerated, there is no need to print a log for each single message;
    * we can log only once a minute. The error message identifier pattern for log throttling is:
    * topicName-partitionNum-exceptionType
    */
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter(64 * 1024, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
+      RedundantExceptionFilter.getRedundantExceptionFilter();
+
+  private static final Function<GUID, ReentrantLockWithRef<Segment>> segmentProvider =
+      guid -> new ReentrantLockWithRef<>();
 
   private final Logger logger;
-
-  private final GUID producerGUID;
-  // This will allow to create segments for different partitions in parallel.
-  protected final ConcurrentMap<Integer, Segment> segments = new VeniceConcurrentHashMap<>();
-  protected final ConcurrentMap<Integer, ReentrantLock> partitionLocks = new VeniceConcurrentHashMap<>();
-
   private final String topicName;
+  private final int partition;
+  private final Map<GUID, ReentrantLockWithRef<Segment>> segments = new VeniceConcurrentHashMap<>();
 
-  public ProducerTracker(GUID producerGUID, String topicName) {
-    this.producerGUID = producerGUID;
+  public PartitionTracker(String topicName, int partition) {
     this.topicName = topicName;
+    this.partition = partition;
     this.logger = LogManager.getLogger(this.toString());
   }
 
-  public final String toString() {
-    return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ", topic: "
-        + topicName + ")";
+  public int getPartition() {
+    return partition;
   }
 
-  public ReentrantLock getPartitionLock(int partition) {
-    return partitionLocks.computeIfAbsent(partition, key -> new ReentrantLock());
+  public final String toString() {
+    return PartitionTracker.class.getSimpleName() + "(topic: " + topicName + ", partition: " + partition + ")";
+  }
+
+  /** N.B. Intended for tests */
+  Set<GUID> getTrackedGUIDs() {
+    return Collections.unmodifiableSet(this.segments.keySet());
   }
 
   /**
-   * In some cases, such as when resetting offsets or unsubscribing from a partition,
-   * the {@link ProducerTracker} should forget about the state that it accumulated
-   * for a given partition.
-   *
-   * @param partition to clear state for
+   * @param guid for which to retrieve the lock and segment
+   * @return a non-null {@link ReentrantLockWithRef} (but which can have {@link ReentrantLockWithRef#containsRef()} == false)
    */
-  public void clearPartition(int partition) {
-    ReentrantLock partitionLock = getPartitionLock(partition);
-    partitionLock.lock();
-    try {
-      segments.remove(partition);
-    } finally {
-      partitionLock.unlock();
+  private ReentrantLockWithRef<Segment> getLockAndSegment(GUID guid) {
+    return this.segments.computeIfAbsent(guid, segmentProvider);
+  }
+
+  /**
+   * @param guid for which to retrieve the lock and segment
+   * @return a {@link ReentrantLockWithRef} or null if it's absent
+   */
+  ReentrantLockWithRef<Segment> getLockAndSegmentIfPresent(GUID guid) {
+    return this.segments.get(guid);
+  }
+
+  public void setPartitionState(OffsetRecord offsetRecord, long maxAgeInMs) {
+    long minimumRequiredRecordProducerTimestamp =
+        maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
+    Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
+        offsetRecord.getProducerPartitionStateMap().entrySet().iterator();
+    Map.Entry<CharSequence, ProducerPartitionState> entry;
+    GUID producerGuid;
+    ProducerPartitionState producerPartitionState;
+    while (iterator.hasNext()) {
+      entry = iterator.next();
+      producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
+      producerPartitionState = entry.getValue();
+      if (producerPartitionState.messageTimestamp >= minimumRequiredRecordProducerTimestamp) {
+        /**
+         * This {@link producerPartitionState} is eligible to be retained, so we'll set the state in the
+         * {@link PartitionTracker}.
+         */
+        setSegment(producerGuid, new Segment(partition, producerPartitionState));
+      } else {
+        // The state is eligible to be cleared.
+        segments.remove(producerGuid);
+        iterator.remove();
+      }
     }
   }
 
-  public void setPartitionState(int partition, ProducerPartitionState state) {
-    setPartitionState(partition, new Segment(partition, state));
-  }
-
-  private void setPartitionState(int partition, Segment segment) {
-    ReentrantLock partitionLock = getPartitionLock(partition);
-    partitionLock.lock();
+  private void setSegment(GUID guid, Segment segment) {
+    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegment(guid);
+    lockAndSegment.lock();
     try {
-      if (segments.containsKey(partition)) {
+      if (lockAndSegment.containsRef()) {
         logger.info(
             "{} will overwrite previous state for partition: {}, Previous state: {}, New state: {}",
             this,
             partition,
-            segments.get(partition),
+            lockAndSegment.getRef(),
             segment);
       } else {
         logger.info("{} will set state for partition: {}, New state: {}", this, partition, segment);
       }
-      segments.put(partition, segment);
+      lockAndSegment.setRef(segment);
     } finally {
-      partitionLock.unlock();
+      lockAndSegment.unlock();
     }
   }
 
-  public void cloneProducerStates(int partition, ProducerTracker destProducerTracker) {
-    if (!segments.containsKey(partition)) {
-      // This producer didn't write anything to requested partition
-      return;
-    }
-    ReentrantLock partitionLock = getPartitionLock(partition);
-    partitionLock.lock();
-    try {
-      Segment sourceSegment = segments.get(partition);
-      destProducerTracker.setPartitionState(partition, new Segment(sourceSegment));
-    } finally {
-      partitionLock.unlock();
+  public void cloneProducerStates(PartitionTracker destProducerTracker) {
+    ReentrantLockWithRef<Segment> lockAndSegment;
+    for (Map.Entry<GUID, ReentrantLockWithRef<Segment>> entry: this.segments.entrySet()) {
+      lockAndSegment = entry.getValue();
+      if (!lockAndSegment.containsRef()) {
+        // This producer didn't write anything to this GUID (lock-free check)
+        continue;
+      }
+      lockAndSegment.lock();
+      try {
+        if (!lockAndSegment.containsRef()) {
+          // This producer didn't write anything to this GUID
+          continue;
+        }
+        Segment sourceSegment = lockAndSegment.getRef();
+        destProducerTracker.setSegment(entry.getKey(), new Segment(sourceSegment));
+      } finally {
+        lockAndSegment.unlock();
+      }
     }
   }
 
-  public void updateOffsetRecord(int partition, OffsetRecord offsetRecord) {
-    if (!segments.containsKey(partition)) {
-      // This producer didn't write anything to requested partition
+  private void updateOffsetRecord(GUID guid, ReentrantLockWithRef<Segment> lockAndSegment, OffsetRecord offsetRecord) {
+    if (!lockAndSegment.containsRef()) {
+      // This producer didn't write anything to this GUID (lock-free check)
       return;
     }
-    ReentrantLock partitionLock = getPartitionLock(partition);
-    partitionLock.lock();
+    lockAndSegment.lock();
     try {
-      Segment segment = segments.get(partition);
-      ProducerPartitionState state = offsetRecord.getProducerPartitionState(this.producerGUID);
+      if (!lockAndSegment.containsRef()) {
+        // This producer didn't write anything to this GUID
+        return;
+      }
+
+      Segment segment = lockAndSegment.getRef();
+      ProducerPartitionState state = offsetRecord.getProducerPartitionState(guid);
       if (state == null) {
         state = new ProducerPartitionState();
 
@@ -180,9 +223,15 @@ public class ProducerTracker {
       state.segmentStatus = segment.getStatus().getValue();
       state.isRegistered = segment.isRegistered();
 
-      offsetRecord.setProducerPartitionState(this.producerGUID, state);
+      offsetRecord.setProducerPartitionState(guid, state);
     } finally {
-      partitionLock.unlock();
+      lockAndSegment.unlock();
+    }
+  }
+
+  public void updateOffsetRecord(OffsetRecord offsetRecord) {
+    for (Map.Entry<GUID, ReentrantLockWithRef<Segment>> entry: this.segments.entrySet()) {
+      updateOffsetRecord(entry.getKey(), entry.getValue(), offsetRecord);
     }
   }
 
@@ -202,10 +251,11 @@ public class ProducerTracker {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
-    ReentrantLock partitionLock = getPartitionLock(consumerRecord.getTopicPartition().getPartitionNumber());
-    partitionLock.lock();
+    ReentrantLockWithRef<Segment> lockAndSegment =
+        getLockAndSegment(consumerRecord.getValue().getProducerMetadata().getProducerGUID());
+    lockAndSegment.lock();
     try {
-      Segment segment = segments.get(consumerRecord.getTopicPartition().getPartitionNumber());
+      Segment segment = lockAndSegment.getRef();
       boolean hasPreviousSegment = segment != null;
       segment = trackSegment(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
       trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
@@ -214,7 +264,7 @@ public class ProducerTracker {
       segment.setLastSuccessfulOffset(consumerRecord.getOffset());
       segment.setNewSegment(false);
     } finally {
-      partitionLock.unlock();
+      lockAndSegment.unlock();
     }
   }
 
@@ -283,28 +333,41 @@ public class ProducerTracker {
       boolean tolerateAnyMessageType) {
     CheckSumType checkSumType = CheckSumType.NONE;
     boolean unregisteredProducer = true;
-    Map<CharSequence, CharSequence> debugInfo = new HashMap<>();
-    Map<CharSequence, Long> aggregates = new HashMap<>();
+    Map<CharSequence, CharSequence> debugInfo = Collections.emptyMap();
+    Map<CharSequence, Long> aggregates = Collections.emptyMap();
 
     if (MessageType.valueOf(consumerRecord.getValue()) == MessageType.CONTROL_MESSAGE) {
-      ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
+      ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().getPayloadUnion();
       if (ControlMessageType.valueOf(controlMessage) == ControlMessageType.START_OF_SEGMENT) {
-        StartOfSegment startOfSegment = (StartOfSegment) controlMessage.controlMessageUnion;
-        checkSumType = CheckSumType.valueOf(startOfSegment.checksumType);
-        debugInfo = controlMessage.debugInfo;
-        startOfSegment.upcomingAggregates.stream().forEach(aggregate -> aggregates.put(aggregate, 0L));
+        StartOfSegment startOfSegment = (StartOfSegment) controlMessage.getControlMessageUnion();
+        checkSumType = CheckSumType.valueOf(startOfSegment.getChecksumType());
+        debugInfo = CollectionUtils.substituteEmptyMap(controlMessage.getDebugInfo());
+        if (startOfSegment.getUpcomingAggregates() != null && !startOfSegment.getUpcomingAggregates().isEmpty()) {
+          aggregates = new HashMap<>(startOfSegment.getUpcomingAggregates().size());
+          for (CharSequence name: startOfSegment.getUpcomingAggregates()) {
+            aggregates.put(name, 0L);
+          }
+        }
         unregisteredProducer = false;
       }
     }
 
     Segment newSegment = new Segment(
         consumerRecord.getTopicPartition().getPartitionNumber(),
-        consumerRecord.getValue().producerMetadata.segmentNumber,
-        consumerRecord.getValue().producerMetadata.messageSequenceNumber,
+        consumerRecord.getValue().getProducerMetadata().getSegmentNumber(),
+        consumerRecord.getValue().getProducerMetadata().getMessageSequenceNumber(),
         checkSumType,
         debugInfo,
         aggregates);
-    segments.put(consumerRecord.getTopicPartition().getPartitionNumber(), newSegment);
+    newSegment.setLastRecordProducerTimestamp(consumerRecord.getValue().getProducerMetadata().getMessageTimestamp());
+    ReentrantLockWithRef<Segment> lockAndSegment =
+        getLockAndSegment(consumerRecord.getValue().getProducerMetadata().getProducerGUID());
+    lockAndSegment.lock();
+    try {
+      lockAndSegment.setRef(newSegment);
+    } finally {
+      lockAndSegment.unlock();
+    }
 
     if (unregisteredProducer) {
       handleUnregisteredProducer(
@@ -312,7 +375,7 @@ public class ProducerTracker {
           consumerRecord,
           null,
           endOfPushReceived,
-          Optional.of(tolerateAnyMessageType));
+          tolerateAnyMessageType);
     } else {
       newSegment.registeredSegment();
     }
@@ -325,7 +388,7 @@ public class ProducerTracker {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       Segment segment,
       boolean endOfPushReceived) {
-    handleUnregisteredProducer(scenario, consumerRecord, segment, endOfPushReceived, Optional.empty());
+    handleUnregisteredProducer(scenario, consumerRecord, segment, endOfPushReceived, true);
   }
 
   /**
@@ -338,20 +401,19 @@ public class ProducerTracker {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       Segment segment,
       boolean endOfPushReceived,
-      Optional<Boolean> tolerateAnyMessageType) {
-    String extraInfo = scenario + ", endOfPushReceived=" + endOfPushReceived;
-    if (tolerateAnyMessageType.isPresent()) {
-      extraInfo += ", tolerateAnyMessageType=" + tolerateAnyMessageType;
-    }
-    if (endOfPushReceived && tolerateAnyMessageType.orElse(true)) {
+      boolean tolerateAnyMessageType) {
+    if (endOfPushReceived && tolerateAnyMessageType) {
       String errorMsgIdentifier = consumerRecord.getTopicPartition().getPubSubTopic().getName() + "-"
           + consumerRecord.getTopicPartition().getPartitionNumber() + "-" + DataFaultType.UNREGISTERED_PRODUCER;
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsgIdentifier)) {
-        logger.warn("Will {}", extraInfo);
+        logger.warn("Will {}, endOfPushReceived=true, tolerateAnyMessageType=true", scenario);
       }
     } else {
-      throw DataFaultType.UNREGISTERED_PRODUCER
-          .getNewException(segment, consumerRecord, Optional.of("Cannot " + extraInfo));
+      throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(
+          segment,
+          consumerRecord,
+          "Cannot " + scenario + ", endOfPushReceived=" + endOfPushReceived + ", tolerateAnyMessageType="
+              + tolerateAnyMessageType);
     }
   }
 
@@ -572,22 +634,19 @@ public class ProducerTracker {
 
   public void checkMissingMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback,
+      Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback,
       long kafkaLogCompactionDelayInMs) throws DataValidationException {
+    ReentrantLockWithRef<Segment> lockAndSegment =
+        getLockAndSegment(consumerRecord.getValue().getProducerMetadata().getProducerGUID());
 
-    Segment segment = null;
-    ReentrantLock partitionLock = getPartitionLock(consumerRecord.getTopicPartition().getPartitionNumber());
-    partitionLock.lock();
+    Segment segment;
+    lockAndSegment.lock();
     try {
       try {
         /**
          * Explicitly suppress UNREGISTERED_PRODUCER DIV error.
          */
-        segment = trackSegment(
-            segments.get(consumerRecord.getTopicPartition().getPartitionNumber()),
-            consumerRecord,
-            true,
-            Lazy.FALSE);
+        segment = trackSegment(lockAndSegment.getRef(), consumerRecord, true, Lazy.FALSE);
       } catch (DuplicateDataException duplicate) {
         /**
          * Tolerate a segment rewind and not necessary to validate a previous segment;
@@ -632,7 +691,43 @@ public class ProducerTracker {
           // no-op
       }
     } finally {
-      partitionLock.unlock();
+      lockAndSegment.unlock();
+    }
+  }
+
+  void clearExpiredStateAndUpdateOffsetRecord(OffsetRecord offsetRecord, long maxAgeInMs) {
+    long minimumRequiredRecordProducerTimestamp = offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
+    int numberOfClearedGUIDs = 0;
+    Iterator<Map.Entry<GUID, ReentrantLockWithRef<Segment>>> iterator = this.segments.entrySet().iterator();
+    Map.Entry<GUID, ReentrantLockWithRef<Segment>> entry;
+    ReentrantLockWithRef<Segment> lockAndSegment;
+    while (iterator.hasNext()) {
+      entry = iterator.next();
+      lockAndSegment = entry.getValue();
+      if (!lockAndSegment.containsRef()) {
+        // lock-free check
+        continue;
+      }
+      lockAndSegment.lock();
+      try {
+        if (!lockAndSegment.containsRef()) {
+          // lock-ful check
+          continue;
+        }
+        if (lockAndSegment.getRef().getLastRecordProducerTimestamp() < minimumRequiredRecordProducerTimestamp) {
+          lockAndSegment.removeRef();
+          iterator.remove();
+          offsetRecord.removeProducerPartitionState(entry.getKey());
+          numberOfClearedGUIDs++;
+        } else {
+          updateOffsetRecord(entry.getKey(), lockAndSegment, offsetRecord);
+        }
+      } finally {
+        lockAndSegment.unlock();
+      }
+    }
+    if (numberOfClearedGUIDs > 0) {
+      logger.info("Cleared {} expired producer GUID(s).", numberOfClearedGUIDs);
     }
   }
 
@@ -680,21 +775,15 @@ public class ProducerTracker {
     DataValidationException getNewException(
         Segment segment,
         PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord) {
-      return getNewException(segment, consumerRecord, Optional.<String>empty());
+      return getNewException(segment, consumerRecord, null);
     }
 
     DataValidationException getNewException(
         Segment segment,
         PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-        Optional<String> extraInfo) {
+        String extraInfo) {
       ProducerMetadata producerMetadata = consumerRecord.getValue().producerMetadata;
       MessageType messageType = MessageType.valueOf(consumerRecord.getValue());
-      String messageTypeString = messageType.name();
-      if (MessageType.CONTROL_MESSAGE.equals(messageType)) {
-        ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
-        messageTypeString += " (" + ControlMessageType.valueOf(controlMessage).name() + ")";
-      }
-
       String previousSegment, previousSequenceNumber;
 
       if (segment == null) {
@@ -706,51 +795,72 @@ public class ProducerTracker {
       StringBuilder sb = new StringBuilder();
       // during parsing the logs, you can pipe these lines to
       // "tr ';' '\n' " and get the more readable presentation
-      sb.append(name() + " data detected for producer GUID: ")
+      sb.append(name())
+          .append(" data detected for producer GUID: ")
           .append(GuidUtils.getHexFromGuid(producerMetadata.producerGUID))
-          .append("; message type: " + messageTypeString)
-          .append("; partition: " + consumerRecord.getTopicPartition().getPartitionNumber());
-      if (segment != null) {
-        sb.append(",; previous successful offset (in same segment): " + segment.getLastSuccessfulOffset());
+          .append("; message type: ")
+          .append(messageType.name());
+      if (MessageType.CONTROL_MESSAGE.equals(messageType)) {
+        ControlMessage controlMessage = (ControlMessage) consumerRecord.getValue().payloadUnion;
+        sb.append(" (").append(ControlMessageType.valueOf(controlMessage).name()).append(")");
       }
-      sb.append("; incoming offset: " + consumerRecord.getOffset())
-          .append(";previous segment: " + previousSegment)
-          .append("; incoming segment: " + producerMetadata.segmentNumber)
-          .append("; previous sequence number: " + previousSequenceNumber)
-          .append("; incoming sequence number: " + producerMetadata.messageSequenceNumber)
-          .append(
-              "; consumer record timestamp: " + consumerRecord.getPubSubMessageTime() + " ("
-                  + new Date(consumerRecord.getPubSubMessageTime()).toString() + ")")
-          .append(
-              "; producer timestamp: " + producerMetadata.messageTimestamp + " ("
-                  + new Date(producerMetadata.messageTimestamp).toString() + ")");
+
+      sb.append("; partition: ").append(consumerRecord.getTopicPartition().getPartitionNumber());
+      if (segment != null) {
+        sb.append("; previous successful offset (in same segment): ").append(segment.getLastSuccessfulOffset());
+      }
+      sb.append("; incoming offset: ")
+          .append(consumerRecord.getOffset())
+          .append(";previous segment: ")
+          .append(previousSegment)
+          .append("; incoming segment: ")
+          .append(producerMetadata.segmentNumber)
+          .append("; previous sequence number: ")
+          .append(previousSequenceNumber)
+          .append("; incoming sequence number: ")
+          .append(producerMetadata.messageSequenceNumber)
+          .append("; consumer record timestamp: ")
+          .append(consumerRecord.getPubSubMessageTime())
+          .append(" (")
+          .append(new Date(consumerRecord.getPubSubMessageTime()))
+          .append("); producer timestamp: ")
+          .append(producerMetadata.messageTimestamp)
+          .append(" (")
+          .append(new Date(producerMetadata.messageTimestamp))
+          .append(")");
       if (consumerRecord.getValue().leaderMetadataFooter != null) {
-        sb.append(
-            "; leader metadata's upstream offset: " + consumerRecord.getValue().leaderMetadataFooter.upstreamOffset)
-            .append("; leader metadata's host name: " + consumerRecord.getValue().leaderMetadataFooter.hostName);
+        sb.append("; leader metadata's upstream offset: ")
+            .append(consumerRecord.getValue().leaderMetadataFooter.upstreamOffset)
+            .append("; leader metadata's host name: ")
+            .append(consumerRecord.getValue().leaderMetadataFooter.hostName);
       }
       if (segment != null) {
-        sb.append("; aggregates: " + printMap(segment.getAggregates()))
-            .append("; debugInfo: " + printMap(segment.getDebugInfo()));
+        sb.append("; aggregates: ");
+        printMap(segment.getAggregates(), sb);
+        sb.append("; debugInfo: ");
+        printMap(segment.getDebugInfo(), sb);
       }
-      sb.append(extraInfo.map(info -> "; extra info: " + info).orElse(""));
+      if (extraInfo != null) {
+        sb.append("; extra info: ").append(extraInfo);
+      }
 
       return exceptionSupplier.apply(sb.toString());
     }
 
-    private <K, V> String printMap(Map<K, V> map) {
-      StringBuilder sb = new StringBuilder();
+    private <K, V> void printMap(Map<K, V> map, StringBuilder sb) {
       sb.append("{");
+      boolean first = true;
       for (Map.Entry<K, V> entry: map.entrySet()) {
-        sb.append("\n\t");
+        if (first) {
+          first = false;
+        } else {
+          sb.append(", ");
+        }
         sb.append(entry.getKey());
+        sb.append(": ");
         sb.append(entry.getValue());
       }
-      if (!map.isEmpty()) {
-        sb.append("\n");
-      }
       sb.append("}");
-      return sb.toString();
     }
   }
 

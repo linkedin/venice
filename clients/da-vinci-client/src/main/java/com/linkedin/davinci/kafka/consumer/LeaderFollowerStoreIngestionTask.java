@@ -140,6 +140,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * if leader and drainer share the same DIV validator, leader will pollute the data in shared DIV validator;
    * in other words, if leader shares the same DIV validator with drainer, leader will move the DIV info ahead of the
    * actual persisted data.
+   *
+   * N.B.: Note that currently the state clearing happens only in the "main" {@link KafkaDataIntegrityValidator},
+   * located in the parent class, used by drainers, and which persist its state to disk. This one here is transient
+   * and not persisted to disk. As such, its state is not expected to grow as large, and bouncing effectively clears
+   * it (which is not the case for the other one which gets persisted). Later on, we could trigger state cleaning
+   * for this leader validator as well, if deemed necessary.
    */
   private final KafkaDataIntegrityValidator kafkaDataIntegrityValidatorForLeaders;
 
@@ -1960,7 +1966,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * override the DIV info for messages from RT; as a result, both leaders and followers will persisted duplicated
          * messages to disk, and potentially rewind a k/v pair to an old value.
          */
-        divErrorMetricCallback.execute(e);
+        divErrorMetricCallback.accept(e);
         LOGGER.debug("{} : Skipping a duplicate record at offset: {}", consumerTaskId, consumerRecord.getOffset());
         return DelegateConsumerRecordResult.DUPLICATE_MESSAGE;
       }

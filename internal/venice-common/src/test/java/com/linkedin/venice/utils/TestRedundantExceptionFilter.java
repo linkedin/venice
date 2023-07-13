@@ -51,11 +51,8 @@ public class TestRedundantExceptionFilter {
 
   @Test
   public void testGetFilter() {
-    long duration = 1000;
-    RedundantExceptionFilter filter =
-        RedundantExceptionFilter.getRedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, duration);
-    RedundantExceptionFilter filter1 = RedundantExceptionFilter
-        .getRedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, duration * 10);
+    RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+    RedundantExceptionFilter filter1 = RedundantExceptionFilter.getRedundantExceptionFilter();
     Assert.assertTrue(filter == filter1);
   }
 }

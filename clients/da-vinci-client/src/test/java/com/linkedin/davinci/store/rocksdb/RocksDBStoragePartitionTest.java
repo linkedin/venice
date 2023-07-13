@@ -115,7 +115,7 @@ public class RocksDBStoragePartitionTest {
       boolean interrupted,
       boolean reopenDatabaseDuringInterruption,
       boolean verifyChecksum) {
-    Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
+    CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -142,8 +142,8 @@ public class RocksDBStoragePartitionTest {
     Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
     if (verifyChecksum) {
       checksumSupplier = Optional.of(() -> {
-        byte[] checksum = runningChecksum.get().getCheckSum();
-        runningChecksum.get().reset();
+        byte[] checksum = runningChecksum.getCheckSum();
+        runningChecksum.reset();
         return checksum;
       });
     }
@@ -157,8 +157,8 @@ public class RocksDBStoragePartitionTest {
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
       if (verifyChecksum) {
-        runningChecksum.get().update(entry.getKey().getBytes());
-        runningChecksum.get().update(entry.getValue().getBytes());
+        runningChecksum.update(entry.getKey().getBytes());
+        runningChecksum.update(entry.getValue().getBytes());
       }
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
@@ -197,14 +197,14 @@ public class RocksDBStoragePartitionTest {
           int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
           int replayEnd = interruptedRecord;
           int replayCnt = 0;
-          runningChecksum.get().reset();
+          runningChecksum.reset();
           for (Map.Entry<String, String> innerEntry: inputRecords.entrySet()) {
             ++replayCnt;
             if (replayCnt >= replayStart && replayCnt <= replayEnd) {
               storagePartition.put(innerEntry.getKey().getBytes(), innerEntry.getValue().getBytes());
               if (verifyChecksum) {
-                runningChecksum.get().update(innerEntry.getKey().getBytes());
-                runningChecksum.get().update(innerEntry.getValue().getBytes());
+                runningChecksum.update(innerEntry.getKey().getBytes());
+                runningChecksum.update(innerEntry.getValue().getBytes());
               }
             }
             if (replayCnt > replayEnd) {
@@ -256,7 +256,7 @@ public class RocksDBStoragePartitionTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testIngestionFormatVersionChange(boolean sorted) throws RocksDBException {
-    Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
+    CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -292,8 +292,8 @@ public class RocksDBStoragePartitionTest {
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
       if (false) {
-        runningChecksum.get().update(entry.getKey().getBytes());
-        runningChecksum.get().update(entry.getValue().getBytes());
+        runningChecksum.update(entry.getKey().getBytes());
+        runningChecksum.update(entry.getValue().getBytes());
       }
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
@@ -331,7 +331,7 @@ public class RocksDBStoragePartitionTest {
         int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
         int replayEnd = interruptedRecord;
         int replayCnt = 0;
-        runningChecksum.get().reset();
+        runningChecksum.reset();
         for (Map.Entry<String, String> innerEntry: inputRecords.entrySet()) {
           ++replayCnt;
           if (replayCnt >= replayStart && replayCnt <= replayEnd) {
@@ -399,7 +399,7 @@ public class RocksDBStoragePartitionTest {
       boolean interrupted,
       boolean reopenDatabaseDuringInterruption,
       boolean verifyChecksum) {
-    Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
+    CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -429,8 +429,8 @@ public class RocksDBStoragePartitionTest {
     Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
     if (verifyChecksum) {
       checksumSupplier = Optional.of(() -> {
-        byte[] checksum = runningChecksum.get().getCheckSum();
-        runningChecksum.get().reset();
+        byte[] checksum = runningChecksum.getCheckSum();
+        runningChecksum.reset();
         return checksum;
       });
     }
@@ -444,8 +444,8 @@ public class RocksDBStoragePartitionTest {
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
       if (verifyChecksum) {
-        runningChecksum.get().update(entry.getKey().getBytes());
-        runningChecksum.get().update(entry.getValue().getBytes());
+        runningChecksum.update(entry.getKey().getBytes());
+        runningChecksum.update(entry.getValue().getBytes());
       }
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
@@ -483,14 +483,14 @@ public class RocksDBStoragePartitionTest {
           int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
           int replayEnd = interruptedRecord;
           int replayCnt = 0;
-          runningChecksum.get().reset();
+          runningChecksum.reset();
           for (Map.Entry<String, String> innerEntry: inputRecords.entrySet()) {
             ++replayCnt;
             if (replayCnt >= replayStart && replayCnt <= replayEnd) {
               storagePartition.put(innerEntry.getKey().getBytes(), innerEntry.getValue().getBytes());
               if (verifyChecksum) {
-                runningChecksum.get().update(innerEntry.getKey().getBytes());
-                runningChecksum.get().update(innerEntry.getValue().getBytes());
+                runningChecksum.update(innerEntry.getKey().getBytes());
+                runningChecksum.update(innerEntry.getValue().getBytes());
               }
             }
             if (replayCnt > replayEnd) {
