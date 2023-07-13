@@ -96,19 +96,19 @@ public class InstanceHealthMonitor implements Closeable {
       return v + 1;
     });
 
-    TimeoutProcessor.TimeoutFuture timeoutFuture = timeoutProcessor.schedule(
-        /** Using a special http status to indicate the leaked request */
-        () -> {
-          if (transportFuture != null) {
+    TimeoutProcessor.TimeoutFuture timeoutFuture = null;
+    if (transportFuture != null) {
+      timeoutFuture = timeoutProcessor.schedule(
+          /** Using a special http status to indicate the leaked request */
+          () -> {
             transportFuture.completeExceptionally(
                 new VeniceClientHttpException("Request timed out", HttpStatus.S_410_GONE.getCode()));
-          } else {
-            requestFuture.complete(HttpStatus.S_410_GONE);
-          }
-        },
-        clientConfig.getRoutingLeakedRequestCleanupThresholdMS(),
-        TimeUnit.MILLISECONDS);
+          },
+          clientConfig.getRoutingLeakedRequestCleanupThresholdMS(),
+          TimeUnit.MILLISECONDS);
+    }
 
+    TimeoutProcessor.TimeoutFuture finalTimeoutFuture = timeoutFuture;
     requestFuture.whenComplete((httpStatus, throwable) -> {
       if (throwable != null) {
         /**
@@ -121,8 +121,8 @@ public class InstanceHealthMonitor implements Closeable {
         return;
       }
 
-      if (!timeoutFuture.isDone()) {
-        timeoutFuture.cancel();
+      if (finalTimeoutFuture != null && !finalTimeoutFuture.isDone()) {
+        finalTimeoutFuture.cancel();
       }
 
       long counterResetDelayMS = 0;
