@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -47,6 +48,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
    * which will be treated as slow storage nodes, and Router will try to avoid retry requests to the storage nodes from this set.
    */
   private Set<String> slowStorageNodeSet = new ConcurrentSkipListSet<>();
+  private boolean ignoreSlowStorageNodes = false;
+
   // Whether the request supports streaming or not
   private VeniceChunkedResponse chunkedResponse = null;
   // Response decompressor
@@ -144,6 +147,15 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     this.retryRequest = true;
   }
 
+  @Override
+  public void setRetryRequest(HttpResponseStatus hrs) {
+    this.retryRequest = true;
+    if (hrs.code() >= 500) {
+      // ignore slow storage nodes for retry requests with 5xx status code
+      this.ignoreSlowStorageNodes = true;
+    }
+  }
+
   protected void setupRetryRelatedInfo(VenicePath originalPath) {
     if (originalPath.isRetryRequest()) {
       setRetryRequest();
@@ -155,6 +167,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
      * storage node set.
      */
     slowStorageNodeSet = originalPath.slowStorageNodeSet;
+    ignoreSlowStorageNodes = originalPath.ignoreSlowStorageNodes;
     setOriginalRequestStartTs(originalPath.getOriginalRequestStartTs());
 
     this.chunkedResponse = originalPath.chunkedResponse;
@@ -214,7 +227,8 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       return true;
     }
     return !isRetryRequest() || // original request
-        !slowStorageNodeSet.contains(storageNode); // retry request
+        ignoreSlowStorageNodes || // retry request but ignore slowNodeSet
+        !slowStorageNodeSet.contains(storageNode); // retry request and not in slowNodeSet
   }
 
   public void recordOriginalRequestStartTimestamp() {
