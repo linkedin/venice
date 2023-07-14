@@ -1,4 +1,4 @@
-package com.linkedin.davinci.config;
+package com.linkedin.venice.pubsub.adapter;
 
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -23,11 +23,13 @@ import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.KafkaSSLUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -53,7 +55,7 @@ import org.apache.logging.log4j.Logger;
  * class that maintains config very specific to a Venice cluster
  */
 public class VeniceClusterConfig {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceServerConfig.class.getName());
+  private static final Logger LOGGER = LogManager.getLogger(VeniceClusterConfig.class.getName());
 
   private final String clusterName;
   private final String zookeeperAddress;
@@ -242,6 +244,31 @@ public class VeniceClusterConfig {
         tmpKafkaClusterAliasToIdMap);
     this.clusterProperties = clusterProps;
     this.kafkaClusterMap = kafkaClusterMap;
+  }
+
+  public static String flattenKafkaClusterMapToStr(Map<String, Map<String, String>> kafkaRegionClusterMap)
+      throws Exception {
+    ObjectMapper mapper = ObjectMapperFactory.getInstance();
+    Map<String, String> flatMap = new HashMap<>();
+    for (Map.Entry<String, Map<String, String>> entry: kafkaRegionClusterMap.entrySet()) {
+      flatMap.put(entry.getKey(), mapper.writeValueAsString(entry.getValue()));
+    }
+    return mapper.writeValueAsString(flatMap);
+  }
+
+  public static Map<String, Map<String, String>> getKafkaClusterMapFromStr(VeniceProperties properties)
+      throws Exception {
+    if (properties.containsKey("flatten.kafka.cluster.map")) {
+      String flatMapString = properties.getString("flatten.kafka.cluster.map");
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
+      Map<String, String> flatMap = mapper.readValue(flatMapString, Map.class);
+      Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
+      for (Map.Entry<String, String> entry: flatMap.entrySet()) {
+        kafkaClusterMap.put(entry.getKey(), mapper.readValue(entry.getValue(), Map.class));
+      }
+      return kafkaClusterMap;
+    }
+    return Collections.emptyMap();
   }
 
   public String getClusterName() {

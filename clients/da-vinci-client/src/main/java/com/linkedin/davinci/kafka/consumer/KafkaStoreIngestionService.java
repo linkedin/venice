@@ -1,18 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_AUTO_OFFSET_RESET_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_BYTES_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MIN_BYTES_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_GROUP_ID_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_POLL_RECORDS_CONFIG;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static java.lang.Thread.currentThread;
@@ -314,7 +303,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setTopicDeletionStatusPollIntervalMs(DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS)
         .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
-        .setPubSubProperties(this::getPubSubSSLPropertiesFromServerConfig)
+        .setPubSubProperties(this::getPubSubPropertiesFromServerConfig)
         .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
         .build();
 
@@ -408,7 +397,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     aggKafkaConsumerService = new AggKafkaConsumerService(
         pubSubClientsFactory.getConsumerAdapterFactory(),
-        this::getPubSubSSLPropertiesFromServerConfig,
+        this::getPubSubPropertiesFromServerConfig,
         serverConfig,
         bandwidthThrottler,
         recordsThrottler,
@@ -1097,6 +1086,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         String.valueOf(serverConfig.getKafkaPollRetryBackoffMs()));
 
     return kafkaConsumerProperties;
+  }
+
+  private VeniceProperties getPubSubPropertiesFromServerConfig(String kafkaBootstrapUrls) {
+    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
+    Properties properties = serverConfig.getClusterProperties().toProperties();
+    try {
+      properties.setProperty(
+          "flatten.kafka.cluster.map",
+          serverConfig.flattenKafkaClusterMapToStr(serverConfig.getKafkaClusterMap()));
+    } catch (Exception e) {
+      LOGGER.error("Failed to obtain flatten.kafka.cluster.map from: {}", properties, e);
+    }
+    properties.setProperty(PUB_SUB_COMPONENTS_USAGE, "server");
+    properties.setProperty(PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE, kafkaBootstrapUrls);
+    return new VeniceProperties(properties);
   }
 
   private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {

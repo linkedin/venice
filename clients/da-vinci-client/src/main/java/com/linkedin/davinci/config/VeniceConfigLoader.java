@@ -3,6 +3,7 @@ package com.linkedin.davinci.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.pubsub.adapter.VeniceClusterConfig;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;

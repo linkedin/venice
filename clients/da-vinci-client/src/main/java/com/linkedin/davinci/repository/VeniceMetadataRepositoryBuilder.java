@@ -1,6 +1,5 @@
 package com.linkedin.davinci.repository;
 
-import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -17,6 +16,7 @@ import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
+import com.linkedin.venice.pubsub.adapter.VeniceClusterConfig;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.VeniceProperties;

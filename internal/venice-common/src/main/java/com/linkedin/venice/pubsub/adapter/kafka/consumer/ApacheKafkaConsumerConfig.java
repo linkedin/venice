@@ -1,13 +1,22 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.adapter.VeniceClusterConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminConfig;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -38,12 +47,13 @@ public class ApacheKafkaConsumerConfig {
   private final Properties consumerProperties;
 
   public ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
-    Properties properties;
-    if (veniceProperties.containsKey(ConfigKeys.PUB_SUB_COMPONENTS_USAGE)
-        && veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE).equals("controller")) {
-      properties = ApacheKafkaAdminConfig.preparePubSubSSLProperties(veniceProperties);
-    } else {
-      properties = veniceProperties.toProperties();
+    Properties properties = veniceProperties.toProperties();
+    if (veniceProperties.containsKey(ConfigKeys.PUB_SUB_COMPONENTS_USAGE)) {
+      if (veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE).equals("controller")) {
+        properties = ApacheKafkaAdminConfig.preparePubSubSSLProperties(veniceProperties);
+      } else if (veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE).equals("server")) {
+        properties = preparePubSubSSLPropertiesForServer(veniceProperties);
+      }
     }
     VeniceProperties postVeniceProperties = new VeniceProperties(properties);
 
@@ -62,6 +72,48 @@ public class ApacheKafkaConsumerConfig {
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+  }
+
+  public static Properties preparePubSubSSLPropertiesForServer(VeniceProperties veniceProperties) {
+
+    Properties properties = veniceProperties.toProperties();
+    String kafkaBootstrapUrls = ApacheKafkaProducerConfig.getPubsubBrokerAddress(veniceProperties);
+    if (veniceProperties.containsKey(ConfigKeys.PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE)) {
+      kafkaBootstrapUrls = veniceProperties.getString(ConfigKeys.PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE);
+    }
+
+    try {
+      Map<String, Map<String, String>> kafkaClusterMap =
+          VeniceClusterConfig.getKafkaClusterMapFromStr(veniceProperties);
+      VeniceClusterConfig clusterConfig = new VeniceClusterConfig(veniceProperties, kafkaClusterMap);
+      if (!kafkaBootstrapUrls.equals(clusterConfig.getKafkaBootstrapServers())) {
+        Properties clonedProperties = clusterConfig.getClusterProperties().toProperties();
+        clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
+        clusterConfig =
+            new VeniceClusterConfig(new VeniceProperties(clonedProperties), clusterConfig.getKafkaClusterMap());
+      }
+      VeniceProperties clusterProperties = clusterConfig.getClusterProperties();
+      properties = clusterConfig.getClusterProperties().getPropertiesCopy();
+      ApacheKafkaProducerConfig.copyKafkaSASLProperties(clusterProperties, properties, false);
+      kafkaBootstrapUrls = clusterConfig.getKafkaBootstrapServers();
+      String resolvedKafkaUrl = clusterConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
+      if (resolvedKafkaUrl != null) {
+        kafkaBootstrapUrls = resolvedKafkaUrl;
+      }
+      properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
+      SecurityProtocol securityProtocol = clusterConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
+      if (KafkaSSLUtils.isKafkaSSLProtocol(securityProtocol)) {
+        Optional<SSLConfig> sslConfig = clusterConfig.getSslConfig();
+        if (!sslConfig.isPresent()) {
+          throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
+        }
+        properties.putAll(sslConfig.get().getKafkaSSLConfig());
+      }
+      properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to get Kafka cluster map from Venice properties", e);
+    }
+    return properties;
   }
 
   public Properties getConsumerProperties() {

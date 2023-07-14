@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.adapter.kafka.admin;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.SSLConfig.*;
+import static com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig.*;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
@@ -32,6 +33,8 @@ public class ApacheKafkaAdminConfig {
       if (veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE).equals("controller")) {
         LOGGER.info("Before preparePubSubSSLProperties: " + veniceProperties);
         properties = preparePubSubSSLProperties(veniceProperties);
+      } else if (veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE).equals("server")) {
+        properties = preparePubSubSSLPropertiesForServer(veniceProperties);
       }
     }
 
@@ -56,10 +59,10 @@ public class ApacheKafkaAdminConfig {
   public static Properties preparePubSubSSLProperties(VeniceProperties veniceProperties) {
     Properties clonedProperties = veniceProperties.toProperties();
     String brokerAddress = ApacheKafkaProducerConfig.getPubsubBrokerAddress(veniceProperties);
-    ;
     if (veniceProperties.containsKey(ConfigKeys.PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE)) {
       brokerAddress = veniceProperties.getString(ConfigKeys.PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE);
     }
+
     if (veniceProperties.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false)) {
       LOGGER.info("Using SSL brokers: " + brokerAddress);
       clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
