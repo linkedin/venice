@@ -5,15 +5,18 @@ import com.linkedin.venice.listener.grpc.interceptors.AuthTokenProvideIntercepto
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
-import io.grpc.*;
+import io.grpc.Channel;
+import io.grpc.ClientInterceptor;
+import io.grpc.ClientInterceptors;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public class VeniceReadServiceClient {
-  private final ManagedChannel originChannel;
   private final static Logger LOGGER = LogManager.getLogger(VeniceReadServiceClient.class);
-
+  private final ManagedChannel originChannel;
   private final VeniceReadServiceGrpc.VeniceReadServiceBlockingStub stub;
 
   public VeniceReadServiceClient(String address) {
