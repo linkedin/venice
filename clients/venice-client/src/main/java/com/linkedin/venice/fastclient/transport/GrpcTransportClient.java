@@ -155,7 +155,6 @@ public class GrpcTransportClient extends TransportClient {
     private final CompletableFuture<TransportClientResponse> valueFuture;
     private final VeniceReadServiceGrpc.VeniceReadServiceStub clientStub;
     private final VeniceClientBatchRequest request;
-    private int counter;
 
     public GrpcTransportClientBatchCallback(
         VeniceReadServiceGrpc.VeniceReadServiceStub clientStub,
