@@ -2,6 +2,8 @@ package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminConfig;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
@@ -36,12 +38,21 @@ public class ApacheKafkaConsumerConfig {
   private final Properties consumerProperties;
 
   public ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
-    this.consumerProperties = veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties();
+    Properties properties;
+    if (veniceProperties.containsKey(ConfigKeys.PUB_SUB_COMPONENTS_USAGE)
+        && veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE).equals("controller")) {
+      properties = ApacheKafkaAdminConfig.preparePubSubSSLProperties(veniceProperties);
+    } else {
+      properties = veniceProperties.toProperties();
+    }
+    VeniceProperties postVeniceProperties = new VeniceProperties(properties);
+
+    this.consumerProperties = postVeniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties();
     if (consumerName != null) {
       consumerProperties.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerName);
     }
     // Setup ssl config if needed.
-    if (KafkaSSLUtils.validateAndCopyKafkaSSLConfig(veniceProperties, this.consumerProperties)) {
+    if (KafkaSSLUtils.validateAndCopyKafkaSSLConfig(postVeniceProperties, this.consumerProperties)) {
       LOGGER.info("Will initialize an SSL Kafka consumer client");
     } else {
       LOGGER.info("Will initialize a non-SSL Kafka consumer client");

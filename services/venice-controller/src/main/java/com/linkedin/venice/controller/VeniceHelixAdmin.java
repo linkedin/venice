@@ -489,7 +489,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         .setTopicDeletionStatusPollIntervalMs(DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS)
         .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
-        .setPubSubProperties(this::getPubSubSSLPropertiesFromControllerConfig)
+        .setPubSubProperties(this::getPubSubPropertiesFromControllerConfig)
         .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
         .setPubSubConsumerAdapterFactory(veniceConsumerFactory)
         .build();
@@ -667,8 +667,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Properties clonedProperties = originalPros.toProperties();
     if (originalPros.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false)) {
       clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
+      LOGGER.info("Using SSL brokers: " + pubSubBootstrapServers);
     } else {
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
+      LOGGER.info("Using non-SSL brokers: " + pubSubBootstrapServers);
     }
     controllerConfig = new VeniceControllerConfig(new VeniceProperties(clonedProperties));
     Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
@@ -681,9 +683,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       properties.putAll(sslConfig.get().getKafkaSSLConfig());
       properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, controllerConfig.getKafkaSecurityProtocol());
       properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, controllerConfig.getSslKafkaBootstrapServers());
+      LOGGER.info("Going with SSL brokers: " + controllerConfig.getSslKafkaBootstrapServers());
     } else {
       properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, controllerConfig.getKafkaBootstrapServers());
+      LOGGER.info("Going with non-SSL brokers: " + controllerConfig.getKafkaBootstrapServers());
     }
+    return new VeniceProperties(properties);
+  }
+
+  private VeniceProperties getPubSubPropertiesFromControllerConfig(String pubSubBootstrapServers) {
+    Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
+    properties.put(ConfigKeys.PUB_SUB_COMPONENTS_USAGE, "controller");
+    properties.put(ConfigKeys.PUB_SUB_ADMIN_OR_PERFORMANT_USAGE, "admin");
+    LOGGER.info("Setting {} \n for pub sub: {}", properties, pubSubBootstrapServers);
+    properties.put(ConfigKeys.PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE, pubSubBootstrapServers);
     return new VeniceProperties(properties);
   }
 
@@ -6502,7 +6515,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   @Override
   public VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress) {
-    return this.getPubSubSSLPropertiesFromControllerConfig(pubSubBrokerAddress);
+    return this.getPubSubPropertiesFromControllerConfig(pubSubBrokerAddress);
   }
 
   private void startMonitorOfflinePush(

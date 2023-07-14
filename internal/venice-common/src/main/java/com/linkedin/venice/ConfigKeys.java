@@ -1375,9 +1375,9 @@ public class ConfigKeys {
   public static final String ROUTER_STATEFUL_HEALTHCHECK_ENABLED = "router.stateful.healthcheck.enabled";
 
   /**
-  * Maximum number of pending router request per storage node after which router concludes that host to be unhealthy
-  * and stops sending further request to it..
-  */
+   * Maximum number of pending router request per storage node after which router concludes that host to be unhealthy
+   * and stops sending further request to it..
+   */
   public static final String ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE =
       "router.unhealthy.pending.connection.threshold.per.host";
 
@@ -1971,4 +1971,11 @@ public class ConfigKeys {
   public static final String PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS = "pub.sub.producer.adapter.factory.class";
 
   public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
+
+  public static final String PUB_SUB_ADMIN_OR_PERFORMANT_USAGE = "pub.sub.admin.or.performant.usage";
+
+  public static final String PUB_SUB_COMPONENTS_USAGE = "pub.sub.components.usage";
+
+  public static final String PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE = "pub.sub.bootstrap.servers.to.resolve";
+
 }
