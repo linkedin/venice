@@ -1,5 +1,6 @@
 package com.linkedin.venice.grpc;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import io.grpc.Grpc;
 import io.grpc.Server;
 import io.grpc.ServerInterceptors;
@@ -21,13 +22,13 @@ public class VeniceGrpcServer {
   public void start() {
     try {
       server.start();
-    } catch (IllegalStateException | IOException illegalStateException) {
+    } catch (IOException exception) {
       LOGGER.error(
           "Failed to start gRPC Server for service {} on port {}",
           server.getServices(),
           server.getPort(),
-          illegalStateException);
-      throw new RuntimeException(illegalStateException);
+          exception);
+      throw new VeniceException("Unable to start gRPC server", exception);
     }
   }
 

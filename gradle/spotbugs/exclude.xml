@@ -437,4 +437,8 @@
       <Class name="com.linkedin.venice.utils.DataProviderUtils"/>
     </Or>
   </Match>
+  <Match>
+    <Package name="com.linkedin.venice.protocols"/>
+    <Bug pattern="MS_EXPOSE_REP"/>
+  </Match>
 </FindBugsFilter>

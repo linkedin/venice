@@ -2,6 +2,7 @@ package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.VeniceClientBatchRequest;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -25,6 +26,14 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
       Iterable<MultiGetRouterRequestKeyV1> keys,
       HttpRequest request) {
     super(resourceName, keys, request);
+  }
+
+  private MultiGetRouterRequestWrapper(
+      String resourceName,
+      Iterable<MultiGetRouterRequestKeyV1> keys,
+      boolean isRetryRequest,
+      boolean isStreamingRequest) {
+    super(resourceName, keys, isRetryRequest, isStreamingRequest);
   }
 
   public static MultiGetRouterRequestWrapper parseMultiGetHttpRequest(FullHttpRequest httpRequest) {
@@ -53,6 +62,14 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
     keys = parseKeys(content);
 
     return new MultiGetRouterRequestWrapper(resourceName, keys, httpRequest);
+  }
+
+  public static MultiGetRouterRequestWrapper parseMultiGetGrpcRequest(VeniceClientBatchRequest grpcRequest) {
+    String resourceName = grpcRequest.getResourceName();
+    Iterable<MultiGetRouterRequestKeyV1> keys = parseKeys(grpcRequest.getKeyString().toByteArray());
+
+    // isRetryRequest set to false for now, retry functionality is a later milestone
+    return new MultiGetRouterRequestWrapper(resourceName, keys, false, grpcRequest.getIsStreamingRequest());
   }
 
   private static Iterable<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {

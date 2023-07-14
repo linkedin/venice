@@ -20,18 +20,18 @@ public class GetRouterRequest extends RouterRequest {
   private final int partition;
   private final byte[] keyBytes;
 
-  private GetRouterRequest(String resourceName, String storeName, int partition, String keyString) {
-    super(resourceName, storeName, false, false);
-
-    this.partition = partition;
-    this.keyBytes = getKeyBytesFromUrlKeyString(keyString);
-  }
-
   private GetRouterRequest(String resourceName, int partition, byte[] keyBytes, HttpRequest request) {
     super(resourceName, request);
 
     this.partition = partition;
     this.keyBytes = keyBytes;
+  }
+
+  private GetRouterRequest(String resourceName, int partition, String keyString) {
+    super(resourceName, false, false);
+
+    this.partition = partition;
+    this.keyBytes = getKeyBytesFromUrlKeyString(keyString);
   }
 
   public int getPartition() {
@@ -68,11 +68,10 @@ public class GetRouterRequest extends RouterRequest {
 
   public static GetRouterRequest grpcGetRouterRequest(VeniceClientRequest request) {
     String resourceName = request.getResourceName();
-    String storeName = request.getStoreName();
     int partition = request.getPartition();
     String keyString = request.getKeyString();
 
-    return new GetRouterRequest(resourceName, storeName, partition, keyString);
+    return new GetRouterRequest(resourceName, partition, keyString);
   }
 
   public static byte[] getKeyBytesFromUrlKeyString(String keyString) {

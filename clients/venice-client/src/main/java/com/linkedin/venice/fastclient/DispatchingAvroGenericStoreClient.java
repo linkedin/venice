@@ -68,11 +68,18 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private RecordSerializer<MultiGetRouterRequestKeyV1> multiGetSerializer;
 
   public DispatchingAvroGenericStoreClient(StoreMetadata metadata, ClientConfig config) {
+    /**
+     * If the client is configured to use gRPC, we create a {@link GrpcTransportClient} where we also pass
+     * a standard {@link R2TransportClient} to handle the metadata related requests as we haven't yet
+     * implemented the metadata related requests in gRPC.
+     */
     this(
         metadata,
         config,
         config.useGrpc()
-            ? new GrpcTransportClient(config.getNettyServerToGrpc(), new R2TransportClient(config.getR2Client()))
+            ? new GrpcTransportClient(
+                config.getNettyServerToGrpcAddressMap(),
+                new R2TransportClient(config.getR2Client()))
             : new R2TransportClient(config.getR2Client()));
   }
 
