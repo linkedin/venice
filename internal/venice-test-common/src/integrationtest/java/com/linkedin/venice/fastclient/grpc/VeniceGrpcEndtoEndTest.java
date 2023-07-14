@@ -1,6 +1,10 @@
 package com.linkedin.venice.fastclient.grpc;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
+import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -16,6 +20,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.listener.grpc.VeniceReadServiceClient;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -29,17 +34,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificRecord;
+import org.apache.avro.util.Utf8;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class VeniceGrpcEndtoEndTest extends AbstractClientEndToEndSetup {
+public class VeniceGrpcEndToEndTest extends AbstractClientEndToEndSetup {
   private VeniceClusterWrapper cluster;
 
   @BeforeClass
@@ -51,6 +56,7 @@ public class VeniceGrpcEndtoEndTest extends AbstractClientEndToEndSetup {
     props.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
     props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
+    props.put(ENABLE_GRPC_READ_SERVER, "true");
 
     cluster = ServiceFactory.getVeniceCluster(
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
@@ -67,7 +73,7 @@ public class VeniceGrpcEndtoEndTest extends AbstractClientEndToEndSetup {
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
-  public String writeSyntheticData(String storeName) throws IOException {
+  public String writeData(String storeName) throws IOException {
     // 1. Create a new store in Venice
     String uniqueStoreName = Utils.getUniqueString(storeName);
     NewStoreResponse response = cluster.getNewStore(uniqueStoreName);
@@ -98,34 +104,21 @@ public class VeniceGrpcEndtoEndTest extends AbstractClientEndToEndSetup {
   }
 
   @Test
-  public void testThinClient() throws Exception {
-    String storeName = writeSyntheticData("thin-client-store");
+  public void testReadData() throws Exception {
+    String storeName = writeData("new-store");
 
-    // 4. Create thin client and read data from cluster/store
-    try (AvroGenericStoreClient<Object, Object> avroClient = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+    // 4. Create thin client
+    AvroGenericStoreClient<Object, Object> avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()));
 
-      for (int i = 1; i <= 100; i++) {
-        Object ret = avroClient.get(Integer.toString(i)).get();
-        Assert.assertEquals(ret.toString(), "test_name_" + i);
-      }
-    } catch (ExecutionException | InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
-  @Test
-  public void testFastClient() throws Exception {
-    String storeName = writeSyntheticData("fast-client-store");
-
-    // 4. Create fast client and read data from cluster/store
+    // 4. Create fastClient
     r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT);
     d2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
 
     com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setMaxAllowedKeyCntInBatchGetReq(150)
+            .setMaxAllowedKeyCntInBatchGetReq(2)
             .setSpeculativeQueryEnabled(false);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = getGenericFastClient(
@@ -133,23 +126,32 @@ public class VeniceGrpcEndtoEndTest extends AbstractClientEndToEndSetup {
         new MetricsRepository(),
         StoreMetadataFetchMode.SERVER_BASED_METADATA);
 
-    List<Set<String>> keys = new ArrayList<>();
-    for (int i = 1; i < 100; i++) {
-      Set<String> keySet = new HashSet<>();
-      keySet.add(Integer.toString(i));
-      keySet.add(Integer.toString(i + 1));
-      keys.add(keySet);
+    VeniceReadServiceClient grpcReadClient = new VeniceReadServiceClient("localhost:8080");
+    String respA = grpcReadClient.get("this is a test key");
+    String respB = grpcReadClient.get("this is another test key");
+
+    Assert.assertEquals(respA, "this is a test keythis is a test key");
+    Assert.assertEquals(respB, "this is another test keythis is another test key");
+
+    // generate list of keys
+    List<Set<String>> keySets = new ArrayList<>();
+    for (int i = 1; i <= 100; i++) {
+      Set<String> key = new HashSet<>();
+      key.add(Integer.toString(i));
+      keySets.add(key);
     }
 
-    try {
-      for (Set<String> key: keys) {
-        Map<String, GenericRecord> ret = genericFastClient.batchGet(key).get();
-        for (Map.Entry<String, GenericRecord> entry: ret.entrySet()) {
-          Assert.assertEquals(entry.toString(), entry.getKey() + "=test_name_" + entry.getKey());
-        }
+    // iterate through list and obtain records through both clients
+    for (Set<String> key: keySets) {
+      Map<String, GenericRecord> fastClientRet = genericFastClient.batchGet(key).get();
+      for (String k: key) {
+        String fastClientRetRecord = ((Utf8) fastClientRet.get(k)).toString();
+        String thinClientRecord = avroClient.get(k).get().toString();
+        String grpcClientRecord = grpcReadClient.get(fastClientRetRecord);
+
+        Assert.assertEquals(grpcClientRecord, fastClientRetRecord + thinClientRecord);
+        Assert.assertEquals(fastClientRetRecord, thinClientRecord);
       }
-    } catch (ExecutionException | InterruptedException e) {
-      throw new RuntimeException(e);
     }
   }
 }

@@ -12,12 +12,14 @@ public class VeniceGrpcServerConfig {
   private final int port;
   private final ServerCredentials credentials;
   private final BindableService service;
+  private final boolean hasInterceptors;
   private final List<? extends ServerInterceptor> interceptors;
 
   private VeniceGrpcServerConfig(Builder builder) {
     port = builder.port;
     credentials = builder.credentials;
     service = builder.service;
+    hasInterceptors = builder.interceptors != null && !builder.interceptors.isEmpty();
     interceptors = builder.interceptors;
   }
 
@@ -31,6 +33,10 @@ public class VeniceGrpcServerConfig {
 
   public BindableService getService() {
     return service;
+  }
+
+  public boolean getHasInteceptors() {
+    return hasInterceptors;
   }
 
   public List<? extends ServerInterceptor> getInterceptors() {
@@ -87,6 +93,9 @@ public class VeniceGrpcServerConfig {
       }
       if (service == null) {
         throw new IllegalArgumentException("Service must be set");
+      }
+      if (interceptors == null) {
+        interceptors = Collections.emptyList();
       }
     }
   }

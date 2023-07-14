@@ -8,7 +8,10 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
+import com.linkedin.venice.grpc.VeniceGrpcServer;
+import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
@@ -44,6 +47,9 @@ public class ListenerService extends AbstractVeniceService {
   private EventLoopGroup workerGroup;
   private ChannelFuture serverFuture;
   private final int port;
+  private final int grpcPort;
+  private VeniceGrpcServer grpcServer;
+  private final boolean isGrpcEnabled;
   private final VeniceServerConfig serverConfig;
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
@@ -70,6 +76,8 @@ public class ListenerService extends AbstractVeniceService {
 
     this.serverConfig = serverConfig;
     this.port = serverConfig.getListenerPort();
+    this.isGrpcEnabled = serverConfig.getIsGrpcEnabled();
+    this.grpcPort = serverConfig.getGrpcPort();
 
     executor = createThreadPool(
         serverConfig.getRestServiceStorageThreadNum(),
@@ -150,6 +158,18 @@ public class ListenerService extends AbstractVeniceService {
     serverFuture = bootstrap.bind(port).sync();
     LOGGER.info("Listener service started on port: {}", port);
 
+    grpcServer = new VeniceGrpcServer(
+        new VeniceGrpcServerConfig.Builder().setPort(8080) // temporarily set to this, will use grpcPort once I figure
+                                                           // out how to allow the client to connect to an allocated
+                                                           // port
+            .setService(new VeniceReadServiceImpl())
+            .build());
+
+    if (isGrpcEnabled) {
+      grpcServer.start();
+      LOGGER.info("gRPC service started on port: {}", grpcPort);
+    }
+
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;
   }
@@ -169,6 +189,11 @@ public class ListenerService extends AbstractVeniceService {
     workerGroup.shutdownGracefully();
     bossGroup.shutdownGracefully();
     shutdown.sync();
+
+    if (grpcServer != null) {
+      System.out.println("Stopping gRPC service on port: " + grpcPort);
+      grpcServer.stop();
+    }
   }
 
   protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix, int capacity) {

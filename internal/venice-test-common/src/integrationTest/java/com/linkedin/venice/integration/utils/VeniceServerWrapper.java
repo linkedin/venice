@@ -5,7 +5,9 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
+import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
@@ -207,6 +209,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       // Generate server.properties in config directory
       int listenPort = TestUtils.getFreePort();
+      boolean isGrpcEnabled = Boolean.parseBoolean(configProperties.getProperty(ENABLE_GRPC_READ_SERVER, "false"));
+
       int ingestionIsolationApplicationPort = TestUtils.getFreePort();
       int ingestionIsolationServicePort = TestUtils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
@@ -245,6 +249,11 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
+      }
+
+      if (isGrpcEnabled) {
+        serverPropsBuilder.put(ENABLE_GRPC_READ_SERVER, true);
+        serverPropsBuilder.put(GRPC_READ_SERVER_PORT, TestUtils.getFreePort());
       }
 
       // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
