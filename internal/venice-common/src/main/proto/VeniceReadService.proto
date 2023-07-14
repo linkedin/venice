@@ -5,7 +5,7 @@ option java_multiple_files = true;
 
 service VeniceReadService {
   rpc get (VeniceClientRequest) returns (VeniceServerResponse) {}
-  rpc getStreaming(stream VeniceClientRequest) returns (stream VeniceServerResponse) {}
+  rpc batchGet(VeniceClientBatchRequest) returns (stream VeniceServerResponse) {}
 }
 
 message VeniceClientRequest {
@@ -15,6 +15,18 @@ message VeniceClientRequest {
   string resourceName = 4; // if we add batch get --> repeated string resourceName
   string storeName = 5;
   bool   isStreamingRequest = 6;
+  bool   isRetryRequest = 7;
+}
+
+message VeniceClientBatchRequest {
+  uint32 partition = 1;
+  bytes  keyString = 2;
+  sint32 requestTimeoutInNS = 3;
+  string resourceName = 4;
+  string storeName = 5;
+  bool   isStreamingRequest = 6;
+  bool   isRetryRequest = 7;
+
 }
 
 message VeniceServerResponse {

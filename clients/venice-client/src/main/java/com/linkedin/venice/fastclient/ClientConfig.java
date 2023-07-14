@@ -79,7 +79,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    */
   private final boolean useStreamingBatchGetAsDefault;
   private final boolean useGrpc;
-  private final Map<String, String> nettyServerToGrpc;
+  /**
+   * This is a temporary solution to support gRPC with Venice, we will replace this with retrieving information about
+   * gRPC servers when we make a request to receive Metadata from a server to obtain information in order to successfully
+   * route requests to the correct server/partition
+   */
+  private final Map<String, String> nettyServerToGrpcAddressMap;
 
   private ClientConfig(
       String storeName,
@@ -112,14 +117,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       String clusterDiscoveryD2Service,
       boolean useStreamingBatchGetAsDefault,
       boolean useGrpc,
-      Map<String, String> nettyServerToGrpc) {
+      Map<String, String> nettyServerToGrpcAddressMap) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
     if (r2Client == null) {
       throw new VeniceClientException("r2Client param shouldn't be null");
     }
-    if (useGrpc && nettyServerToGrpc == null) {
+    if (useGrpc && nettyServerToGrpcAddressMap == null) {
       // can maybe simplify to only pass nettyServerToGrpc, if it is null then we know useGrpc is false
       throw new VeniceClientException("nettyServerToGrpc param shouldn't be null when useGrpc is true");
     }
@@ -238,7 +243,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       LOGGER.info("Using gRPC for Venice Fast Client");
     }
 
-    this.nettyServerToGrpc = this.useGrpc ? nettyServerToGrpc : null;
+    this.nettyServerToGrpcAddressMap = this.useGrpc ? nettyServerToGrpcAddressMap : null;
   }
 
   public String getStoreName() {
@@ -362,8 +367,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return useGrpc;
   }
 
-  public Map<String, String> getNettyServerToGrpc() {
-    return nettyServerToGrpc;
+  public Map<String, String> getNettyServerToGrpcAddressMap() {
+    return nettyServerToGrpcAddressMap;
   }
 
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {

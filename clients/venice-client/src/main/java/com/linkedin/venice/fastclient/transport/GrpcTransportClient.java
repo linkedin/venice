@@ -1,9 +1,11 @@
 package com.linkedin.venice.fastclient.transport;
 
+import com.google.protobuf.ByteString;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.protocols.VeniceClientBatchRequest;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
@@ -22,32 +24,40 @@ import org.apache.logging.log4j.Logger;
 public class GrpcTransportClient extends TransportClient {
   private static final Logger LOGGER = LogManager.getLogger(GrpcTransportClient.class);
   private final TransportClient r2TransportClient; // used for metadata requests
-  private final Map<String, ManagedChannel> nettyServerToGrpcServerChannelMap;
+  private final Map<String, ManagedChannel> serverGrpcChannels;
+  private final Map<String, String> veniceAddressToGrpcAddress;
 
   public GrpcTransportClient(Map<String, String> nettyServerToGrpc, TransportClient r2TransportClient) {
-    nettyServerToGrpcServerChannelMap = new HashMap<>();
+    serverGrpcChannels = new HashMap<>();
+    veniceAddressToGrpcAddress = new HashMap<>();
     this.r2TransportClient = r2TransportClient;
 
     for (Map.Entry<String, String> entry: nettyServerToGrpc.entrySet()) {
       String nettyServer = entry.getKey().split(":")[0];
       String grpcServer = nettyServer + ":" + entry.getValue();
 
-      ManagedChannel channel = ManagedChannelBuilder.forTarget(grpcServer).usePlaintext().build();
-      nettyServerToGrpcServerChannelMap.put(entry.getKey(), channel);
+      veniceAddressToGrpcAddress.put(entry.getKey(), grpcServer);
     }
+  }
+
+  private ManagedChannel getChannel(String requestPath) {
+    String portKey = requestPath.split("/")[2];
+    return serverGrpcChannels.computeIfAbsent(
+        portKey,
+        k -> ManagedChannelBuilder.forTarget(veniceAddressToGrpcAddress.get(k)).usePlaintext().build());
   }
 
   @Override
   public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
-    // TODO: refactor request parsing to use existing request parsing code
     String[] requestParts = RequestHelper.getRequestParts(requestPath);
-    String requestPartForNetty = requestPath.split("/")[2]; // hacky way to get port for mapping to grpc server
+
     if (!requestParts[1].equals("storage")) {
+      LOGGER.debug("Requesting metadata from R2 client");
       return r2TransportClient.get(requestPath, headers);
     }
 
-    String nettyAddr = requestPartForNetty;
-    ManagedChannel requestChannel = nettyServerToGrpcServerChannelMap.get(nettyAddr);
+    // Lazily create channel for each venice server
+    ManagedChannel channel = getChannel(requestPath);
 
     VeniceClientRequest request = VeniceClientRequest.newBuilder()
         .setStoreName(requestParts[2])
@@ -56,7 +66,7 @@ public class GrpcTransportClient extends TransportClient {
         .setKeyString(requestParts[4])
         .build();
 
-    VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = VeniceReadServiceGrpc.newStub(requestChannel);
+    VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = VeniceReadServiceGrpc.newStub(channel);
     GrpcTransportClientCallback callback = new GrpcTransportClientCallback(clientStub, request);
 
     return callback.get();
@@ -67,8 +77,20 @@ public class GrpcTransportClient extends TransportClient {
       String requestPath,
       Map<String, String> headers,
       byte[] requestBody) {
-    // TODO:
-    return null;
+    String[] requestParts = RequestHelper.getRequestParts(requestPath);
+
+    ManagedChannel channel = getChannel(requestPath);
+    VeniceClientBatchRequest request = VeniceClientBatchRequest.newBuilder()
+        .setStoreName(requestParts[2])
+        .setResourceName(requestParts[2])
+        .setPartition(-1)
+        .setKeyString(ByteString.copyFrom(requestBody))
+        .build();
+
+    VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = VeniceReadServiceGrpc.newStub(channel);
+    GrpcTransportClientBatchCallback callback = new GrpcTransportClientBatchCallback(clientStub, request);
+
+    return callback.post();
   }
 
   @Override
@@ -83,12 +105,12 @@ public class GrpcTransportClient extends TransportClient {
 
   @Override
   public void close() throws IOException {
-    for (Map.Entry<String, ManagedChannel> entry: nettyServerToGrpcServerChannelMap.entrySet()) {
+    for (Map.Entry<String, ManagedChannel> entry: serverGrpcChannels.entrySet()) {
       entry.getValue().shutdown();
     }
   }
 
-  public class GrpcTransportClientCallback {
+  public static class GrpcTransportClientCallback {
     // start exception handling
     private final CompletableFuture<TransportClientResponse> valueFuture;
     private final VeniceReadServiceGrpc.VeniceReadServiceStub clientStub;
@@ -122,6 +144,48 @@ public class GrpcTransportClient extends TransportClient {
         @Override
         public void onCompleted() {
           LOGGER.info("Completed gRPC request");
+        }
+      });
+
+      return valueFuture;
+    }
+  }
+
+  public static class GrpcTransportClientBatchCallback {
+    private final CompletableFuture<TransportClientResponse> valueFuture;
+    private final VeniceReadServiceGrpc.VeniceReadServiceStub clientStub;
+    private final VeniceClientBatchRequest request;
+    private int counter;
+
+    public GrpcTransportClientBatchCallback(
+        VeniceReadServiceGrpc.VeniceReadServiceStub clientStub,
+        VeniceClientBatchRequest request) {
+      this.clientStub = clientStub;
+      this.request = request;
+      this.valueFuture = new CompletableFuture<>();
+    }
+
+    public CompletableFuture<TransportClientResponse> post() {
+      clientStub.batchGet(request, new StreamObserver<VeniceServerResponse>() {
+        @Override
+        public void onNext(VeniceServerResponse value) {
+          valueFuture.complete(
+              new TransportClientResponse(
+                  value.getSchemaId(),
+                  CompressionStrategy.NO_OP,
+                  value.getData().toByteArray()));
+          LOGGER.info("Performing BatchGet in gRPC");
+        }
+
+        @Override
+        public void onError(Throwable t) {
+          LOGGER.error("Error in gRPC request", t);
+          valueFuture.completeExceptionally(t);
+        }
+
+        @Override
+        public void onCompleted() {
+          LOGGER.info("Completed batch get gRPC request");
         }
       });
 

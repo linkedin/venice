@@ -156,7 +156,7 @@ public class ListenerService extends AbstractVeniceService {
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
 
-    if (isGrpcEnabled) {
+    if (isGrpcEnabled && grpcServer == null) {
       grpcServer = new VeniceGrpcServer(
           new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
               .setService(new VeniceReadServiceImpl(storageReadRequestsHandler))

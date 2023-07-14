@@ -78,7 +78,7 @@ public class VeniceGrpcServerConfig {
       return new VeniceGrpcServerConfig(this);
     }
 
-    public void verifyAndAddDefaults() {
+    private void verifyAndAddDefaults() {
       if (port == null) {
         throw new IllegalArgumentException("Port must be set");
       }
