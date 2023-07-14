@@ -26,7 +26,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -41,12 +40,6 @@ public class ControllerClientBackedSystemSchemaInitializer {
    * sent to the new leader controller, who can handle schema requests successfully.
    */
   private static final int DEFAULT_RETRY_TIMES = 20;
-  public static final UpdateStoreQueryParams DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS =
-      new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-          .setHybridOffsetLagThreshold(1)
-          .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
-          .setWriteComputationEnabled(true)
-          .setPartitionCount(1);
 
   private final AvroProtocolDefinition protocolDefinition;
   private final String clusterName;
@@ -123,14 +116,11 @@ public class ControllerClientBackedSystemSchemaInitializer {
     } else {
       String currSystemStoreCluster = discoveryResponse.getCluster();
       if (!currSystemStoreCluster.equals(clusterName)) {
-        LOGGER.warn(
-            "The system store for {} already exists in cluster {}, which is inconsistent with the config {} which "
-                + "specifies that it should be in cluster {}. Will abort the initialization routine.",
-            protocolDefinition.name(),
-            currSystemStoreCluster,
-            CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME,
-            clusterName);
-        return;
+        throw new VeniceException(
+            "The system store for " + protocolDefinition.name() + " already exists in cluster " + currSystemStoreCluster
+                + ", which is inconsistent with the config " + CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME
+                + " which specifies that it should be in cluster " + clusterName
+                + ". Cannot continue the initialization.");
       }
     }
 

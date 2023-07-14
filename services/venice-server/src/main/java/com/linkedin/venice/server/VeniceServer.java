@@ -1,7 +1,5 @@
 package com.linkedin.venice.server;
 
-import static com.linkedin.venice.common.VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS;
-
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
@@ -29,6 +27,7 @@ import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -218,7 +217,7 @@ public class VeniceServer {
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
               serverConfig.getSystemSchemaClusterName(),
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
-              DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
+              VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
               true,
               sslFactory,
               serverConfig.getLocalControllerUrl(),
