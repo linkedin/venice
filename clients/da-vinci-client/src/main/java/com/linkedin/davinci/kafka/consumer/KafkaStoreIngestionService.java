@@ -55,6 +55,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.VeniceClusterConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
@@ -417,10 +418,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      * creates a dedicated consumer or a new consumer service for a remote Kafka URL, we will passthrough the configs
      * for remote consumption inside the ingestion task.
      */
+    /*
     Properties commonKafkaConsumerConfigs = getCommonKafkaConsumerProperties(serverConfig);
     if (!serverConfig.getKafkaConsumerConfigsForLocalConsumption().isEmpty()) {
       commonKafkaConsumerConfigs.putAll(serverConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
     }
+     */
+    Properties commonKafkaConsumerConfigs = getCommonKafkaConsumerPropertiesForLocalIngestion(serverConfig);
     aggKafkaConsumerService.createKafkaConsumerService(commonKafkaConsumerConfigs);
 
     /**
@@ -529,7 +533,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return ingestionTaskFactory.getNewIngestionTask(
         store,
         version,
-        getKafkaConsumerProperties(veniceStoreVersionConfig),
+        getCommonKafkaConsumerPropertiesForLocalIngestion(veniceStoreVersionConfig),
         isVersionCurrent,
         veniceStoreVersionConfig,
         partitionId,
@@ -1052,12 +1056,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return String.format(GROUP_ID_FORMAT, topic, Utils.getHostName());
   }
 
+  private Properties getCommonKafkaConsumerPropertiesForLocalIngestion(VeniceClusterConfig serverConfig) {
+    Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
+    kafkaConsumerProperties.setProperty(PUB_SUB_LOCAL_OR_REMOTE_CONSUMPTION, "local");
+    return kafkaConsumerProperties;
+  }
+
   /**
    * So far, this function is only targeted to be used by shared consumer.
    * @param serverConfig
    * @return
    */
-  private Properties getCommonKafkaConsumerProperties(VeniceServerConfig serverConfig) {
+  private Properties getCommonKafkaConsumerProperties(VeniceClusterConfig serverConfig) {
     Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
     ApacheKafkaProducerConfig
         .copyKafkaSASLProperties(serverConfig.getClusterProperties(), kafkaConsumerProperties, false);
@@ -1135,7 +1145,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @return Properties Kafka properties corresponding to the venice store.
    */
   private Properties getKafkaConsumerProperties(VeniceStoreVersionConfig storeConfig) {
-    Properties kafkaConsumerProperties = getCommonKafkaConsumerProperties(storeConfig);
+    Properties kafkaConsumerProperties = new Properties();
     String groupId = getGroupId(storeConfig.getStoreVersionName());
     kafkaConsumerProperties.setProperty(KAFKA_GROUP_ID_CONFIG, groupId);
     /**

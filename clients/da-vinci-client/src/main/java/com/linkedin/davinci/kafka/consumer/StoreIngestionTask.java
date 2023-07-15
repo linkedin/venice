@@ -3,7 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -2876,7 +2876,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
-        .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
+        .createKafkaConsumerService(createKafkaConsumerPropertiesChanged(kafkaProps, kafkaURL, consumeRemotely));
     aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, topicPartition, startOffset);
   }
 
@@ -3251,6 +3251,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         : serverConfig.getKafkaConsumerConfigsForLocalConsumption();
     if (!customizedConsumerConfigs.isEmpty()) {
       newConsumerProps.putAll(customizedConsumerConfigs.toProperties());
+    }
+    return newConsumerProps;
+  }
+
+  protected Properties createKafkaConsumerPropertiesChanged(
+      Properties localConsumerProps,
+      String remoteKafkaSourceAddress,
+      boolean consumeRemotely) {
+
+    Properties newConsumerProps = new Properties();
+    newConsumerProps.putAll(localConsumerProps);
+    newConsumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
+    if (consumeRemotely) {
+      newConsumerProps.setProperty(PUB_SUB_LOCAL_OR_REMOTE_CONSUMPTION, "remote");
     }
     return newConsumerProps;
   }

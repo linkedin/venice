@@ -1,27 +1,6 @@
 package com.linkedin.venice.pubsub.adapter;
 
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_OTHER_URLS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_EMPTY_POLL_SLEEP_MS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_SIZE_PER_SEC;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_WAIT_TIME_MS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MIN_SIZE_PER_SEC;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_BYTES_PER_SECOND;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_TIME_WINDOW_MS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND;
-import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
-import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.SSLConfig;
@@ -94,6 +73,12 @@ public class VeniceClusterConfig {
   private final SecurityProtocol kafkaSecurityProtocol;
   private final Map<String, SecurityProtocol> kafkaBootstrapUrlToSecurityProtocol;
   private final Optional<SSLConfig> sslConfig;
+  private final int kafkaMaxPollRecords;
+  private final int kafkaPollRetryTimes;
+  private final int kafkaPollRetryBackoffMs;
+
+  private final VeniceProperties kafkaConsumerConfigsForLocalConsumption;
+  private final VeniceProperties kafkaConsumerConfigsForRemoteConsumption;
 
   public VeniceClusterConfig(VeniceProperties clusterProps, Map<String, Map<String, String>> kafkaClusterMap)
       throws ConfigurationException {
@@ -132,6 +117,13 @@ public class VeniceClusterConfig {
     this.kafkaFetchMaxTimeMS = clusterProps.getLong(KAFKA_FETCH_MAX_WAIT_TIME_MS, 500);
     this.kafkaFetchPartitionMaxSizePerSecond = clusterProps
         .getSizeInBytes(KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_MAX_PARTITION_FETCH_BYTES);
+    this.kafkaMaxPollRecords = clusterProps.getInt(SERVER_KAFKA_MAX_POLL_RECORDS, 100);
+    this.kafkaPollRetryTimes = clusterProps.getInt(SERVER_KAFKA_POLL_RETRY_TIMES, 100);
+    this.kafkaPollRetryBackoffMs = clusterProps.getInt(SERVER_KAFKA_POLL_RETRY_BACKOFF_MS, 0);
+
+    kafkaConsumerConfigsForLocalConsumption = clusterProps.clipAndFilterNamespace(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
+    kafkaConsumerConfigsForRemoteConsumption =
+        clusterProps.clipAndFilterNamespace(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX);
 
     this.regionName = RegionUtils.getLocalRegionName(clusterProps, false);
     LOGGER.info("Final region name for this node: {}", this.regionName);
@@ -244,6 +236,7 @@ public class VeniceClusterConfig {
         tmpKafkaClusterAliasToIdMap);
     this.clusterProperties = clusterProps;
     this.kafkaClusterMap = kafkaClusterMap;
+
   }
 
   public static String flattenKafkaClusterMapToStr(Map<String, Map<String, String>> kafkaRegionClusterMap)
@@ -390,5 +383,25 @@ public class VeniceClusterConfig {
 
   public Map<String, Map<String, String>> getKafkaClusterMap() {
     return kafkaClusterMap;
+  }
+
+  public int getKafkaMaxPollRecords() {
+    return kafkaMaxPollRecords;
+  }
+
+  public int getKafkaPollRetryTimes() {
+    return kafkaPollRetryTimes;
+  }
+
+  public int getKafkaPollRetryBackoffMs() {
+    return kafkaPollRetryBackoffMs;
+  }
+
+  public VeniceProperties getKafkaConsumerConfigsForLocalConsumption() {
+    return kafkaConsumerConfigsForLocalConsumption;
+  }
+
+  public VeniceProperties getKafkaConsumerConfigsForRemoteConsumption() {
+    return kafkaConsumerConfigsForRemoteConsumption;
   }
 }

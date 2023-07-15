@@ -63,13 +63,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICAT
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_POLL_RETRY_BACKOFF_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_POLL_RETRY_TIMES;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES;
-import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_REQUEST_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_IDLE_TIME_SECONDS;
@@ -83,7 +79,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZ
 import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
@@ -278,12 +273,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long nodeCapacityInRcu;
 
-  private final int kafkaMaxPollRecords;
-
-  private final int kafkaPollRetryTimes;
-
-  private final int kafkaPollRetryBackoffMs;
-
   /**
    * The number of threads being used to serve compute request.
    */
@@ -348,9 +337,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int ingestionApplicationPort;
   private final boolean databaseChecksumVerificationEnabled;
   private final boolean rocksDbStorageEngineConfigCheckEnabled;
-
-  private final VeniceProperties kafkaConsumerConfigsForLocalConsumption;
-  private final VeniceProperties kafkaConsumerConfigsForRemoteConsumption;
 
   private final boolean freezeIngestionIfReadyToServeOrLocalDataExists;
 
@@ -489,9 +475,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED, true);
 
     nodeCapacityInRcu = serverProperties.getLong(SERVER_NODE_CAPACITY_RCU, 50000);
-    kafkaMaxPollRecords = serverProperties.getInt(SERVER_KAFKA_MAX_POLL_RECORDS, 100);
-    kafkaPollRetryTimes = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_TIMES, 100);
-    kafkaPollRetryBackoffMs = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_BACKOFF_MS, 0);
     diskHealthCheckIntervalInMS =
         TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 10));
     diskHealthCheckTimeoutInMs =
@@ -572,11 +555,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ingestionApplicationPort = serverProperties.getInt(SERVER_INGESTION_ISOLATION_APPLICATION_PORT, 27016);
     databaseChecksumVerificationEnabled =
         serverProperties.getBoolean(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, false);
-
-    kafkaConsumerConfigsForLocalConsumption =
-        serverProperties.clipAndFilterNamespace(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX);
-    kafkaConsumerConfigsForRemoteConsumption =
-        serverProperties.clipAndFilterNamespace(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX);
 
     rocksDbStorageEngineConfigCheckEnabled =
         serverProperties.getBoolean(SERVER_ROCKSDB_STORAGE_CONFIG_CHECK_ENABLED, true);
@@ -875,18 +853,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return nodeCapacityInRcu;
   }
 
-  public int getKafkaMaxPollRecords() {
-    return kafkaMaxPollRecords;
-  }
-
-  public int getKafkaPollRetryTimes() {
-    return kafkaPollRetryTimes;
-  }
-
-  public int getKafkaPollRetryBackoffMs() {
-    return kafkaPollRetryBackoffMs;
-  }
-
   public long getDiskHealthCheckIntervalInMS() {
     return diskHealthCheckIntervalInMS;
   }
@@ -1009,14 +975,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDatabaseChecksumVerificationEnabled() {
     return databaseChecksumVerificationEnabled;
-  }
-
-  public VeniceProperties getKafkaConsumerConfigsForLocalConsumption() {
-    return kafkaConsumerConfigsForLocalConsumption;
-  }
-
-  public VeniceProperties getKafkaConsumerConfigsForRemoteConsumption() {
-    return kafkaConsumerConfigsForRemoteConsumption;
   }
 
   public boolean isRocksDbStorageEngineConfigCheckEnabled() {

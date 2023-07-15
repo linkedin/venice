@@ -1978,4 +1978,6 @@ public class ConfigKeys {
 
   public static final String PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE = "pub.sub.bootstrap.servers.to.resolve";
 
+  public static final String PUB_SUB_LOCAL_OR_REMOTE_CONSUMPTION = "pub.sub.local.or.remote.consumption";
+
 }

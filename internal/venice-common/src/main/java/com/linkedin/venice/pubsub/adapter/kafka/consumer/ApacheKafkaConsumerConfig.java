@@ -55,8 +55,8 @@ public class ApacheKafkaConsumerConfig {
         properties = preparePubSubSSLPropertiesForServer(veniceProperties);
       }
     }
-    VeniceProperties postVeniceProperties = new VeniceProperties(properties);
 
+    VeniceProperties postVeniceProperties = new VeniceProperties(properties);
     this.consumerProperties = postVeniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties();
     if (consumerName != null) {
       consumerProperties.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerName);
@@ -92,6 +92,20 @@ public class ApacheKafkaConsumerConfig {
         clusterConfig =
             new VeniceClusterConfig(new VeniceProperties(clonedProperties), clusterConfig.getKafkaClusterMap());
       }
+
+      if (veniceProperties.containsKey(PUB_SUB_LOCAL_OR_REMOTE_CONSUMPTION)) {
+        properties.putAll(getCommonKafkaConsumerPropertiesForServer(clusterConfig));
+        if (veniceProperties.getString(PUB_SUB_LOCAL_OR_REMOTE_CONSUMPTION).equals("local")) {
+          if (!clusterConfig.getKafkaConsumerConfigsForLocalConsumption().isEmpty()) {
+            properties.putAll(clusterConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
+          }
+        } else if (veniceProperties.getString(PUB_SUB_LOCAL_OR_REMOTE_CONSUMPTION).equals("remote")) {
+          if (!clusterConfig.getKafkaConsumerConfigsForRemoteConsumption().isEmpty()) {
+            properties.putAll(clusterConfig.getKafkaConsumerConfigsForRemoteConsumption().toProperties());
+          }
+        }
+      }
+
       VeniceProperties clusterProperties = clusterConfig.getClusterProperties();
       properties = clusterConfig.getClusterProperties().getPropertiesCopy();
       ApacheKafkaProducerConfig.copyKafkaSASLProperties(clusterProperties, properties, false);
@@ -114,6 +128,37 @@ public class ApacheKafkaConsumerConfig {
       throw new RuntimeException("Failed to get Kafka cluster map from Venice properties", e);
     }
     return properties;
+  }
+
+  private static Properties getCommonKafkaConsumerPropertiesForServer(VeniceClusterConfig serverConfig) {
+    Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
+    ApacheKafkaProducerConfig
+        .copyKafkaSASLProperties(serverConfig.getClusterProperties(), kafkaConsumerProperties, false);
+    kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
+    kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
+    // Venice is persisting offset in local offset db.
+    kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
+    kafkaConsumerProperties
+        .setProperty(KAFKA_FETCH_MIN_BYTES_CONFIG, String.valueOf(serverConfig.getKafkaFetchMinSizePerSecond()));
+    kafkaConsumerProperties
+        .setProperty(KAFKA_FETCH_MAX_BYTES_CONFIG, String.valueOf(serverConfig.getKafkaFetchMaxSizePerSecond()));
+    /**
+     * The following setting is used to control the maximum number of records to returned in one poll request.
+     */
+    kafkaConsumerProperties
+        .setProperty(KAFKA_MAX_POLL_RECORDS_CONFIG, Integer.toString(serverConfig.getKafkaMaxPollRecords()));
+    kafkaConsumerProperties
+        .setProperty(KAFKA_FETCH_MAX_WAIT_MS_CONFIG, String.valueOf(serverConfig.getKafkaFetchMaxTimeMS()));
+    kafkaConsumerProperties.setProperty(
+        KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG,
+        String.valueOf(serverConfig.getKafkaFetchPartitionMaxSizePerSecond()));
+    kafkaConsumerProperties
+        .setProperty(KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG, String.valueOf(serverConfig.getKafkaPollRetryTimes()));
+    kafkaConsumerProperties.setProperty(
+        KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG,
+        String.valueOf(serverConfig.getKafkaPollRetryBackoffMs()));
+
+    return kafkaConsumerProperties;
   }
 
   public Properties getConsumerProperties() {
