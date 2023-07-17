@@ -1058,6 +1058,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private Properties getCommonKafkaConsumerPropertiesForLocalIngestion(VeniceClusterConfig serverConfig) {
     Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
+    kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
     kafkaConsumerProperties.setProperty(PUB_SUB_LOCAL_OR_REMOTE_CONSUMPTION, "local");
     return kafkaConsumerProperties;
   }

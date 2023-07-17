@@ -61,6 +61,10 @@ public class ApacheKafkaConsumerConfig {
     if (consumerName != null) {
       consumerProperties.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerName);
     }
+    LOGGER.info(
+        "Components: {}\n, postVeniceProperties: {}",
+        veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE, "unset"),
+        postVeniceProperties);
     // Setup ssl config if needed.
     if (KafkaSSLUtils.validateAndCopyKafkaSSLConfig(postVeniceProperties, this.consumerProperties)) {
       LOGGER.info("Will initialize an SSL Kafka consumer client");

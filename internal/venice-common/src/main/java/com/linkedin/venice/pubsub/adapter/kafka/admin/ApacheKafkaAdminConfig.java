@@ -71,10 +71,10 @@ public class ApacheKafkaAdminConfig {
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
     }
     Properties properties = new Properties();
-
     VeniceProperties clonedVeniceProperties = new VeniceProperties(clonedProperties);
     String kafkaSecurityProtocol =
         clonedVeniceProperties.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
+    ApacheKafkaProducerConfig.copyKafkaSASLProperties(clonedVeniceProperties, properties, false);
     if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
     }
