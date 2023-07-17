@@ -239,29 +239,35 @@ public class VeniceClusterConfig {
 
   }
 
-  public static String flattenKafkaClusterMapToStr(Map<String, Map<String, String>> kafkaRegionClusterMap)
-      throws Exception {
-    ObjectMapper mapper = ObjectMapperFactory.getInstance();
-    Map<String, String> flatMap = new HashMap<>();
-    for (Map.Entry<String, Map<String, String>> entry: kafkaRegionClusterMap.entrySet()) {
-      flatMap.put(entry.getKey(), mapper.writeValueAsString(entry.getValue()));
+  public static String flattenKafkaClusterMapToStr(Map<String, Map<String, String>> kafkaRegionClusterMap) {
+    try {
+      ObjectMapper mapper = ObjectMapperFactory.getInstance();
+      Map<String, String> flatMap = new HashMap<>();
+      for (Map.Entry<String, Map<String, String>> entry: kafkaRegionClusterMap.entrySet()) {
+        flatMap.put(entry.getKey(), mapper.writeValueAsString(entry.getValue()));
+      }
+      return mapper.writeValueAsString(flatMap);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to get Kafka cluster map from Venice properties", e);
     }
-    return mapper.writeValueAsString(flatMap);
   }
 
-  public static Map<String, Map<String, String>> getKafkaClusterMapFromStr(VeniceProperties properties)
-      throws Exception {
-    if (properties.containsKey("flatten.kafka.cluster.map")) {
-      String flatMapString = properties.getString("flatten.kafka.cluster.map");
-      ObjectMapper mapper = ObjectMapperFactory.getInstance();
-      Map<String, String> flatMap = mapper.readValue(flatMapString, Map.class);
-      Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
-      for (Map.Entry<String, String> entry: flatMap.entrySet()) {
-        kafkaClusterMap.put(entry.getKey(), mapper.readValue(entry.getValue(), Map.class));
+  public static Map<String, Map<String, String>> getKafkaClusterMapFromStr(VeniceProperties properties) {
+    try {
+      if (properties.containsKey(PUB_SUB_KAFKA_CLUSTER_MAP_STRING)) {
+        String flatMapString = properties.getString(PUB_SUB_KAFKA_CLUSTER_MAP_STRING);
+        ObjectMapper mapper = ObjectMapperFactory.getInstance();
+        Map<String, String> flatMap = mapper.readValue(flatMapString, Map.class);
+        Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
+        for (Map.Entry<String, String> entry: flatMap.entrySet()) {
+          kafkaClusterMap.put(entry.getKey(), mapper.readValue(entry.getValue(), Map.class));
+        }
+        return kafkaClusterMap;
       }
-      return kafkaClusterMap;
+      return Collections.emptyMap();
+    } catch (Exception e) {
+      throw new RuntimeException(String.format("Failed to obtain flatten.kafka.cluster.map from: %s", properties), e);
     }
-    return Collections.emptyMap();
   }
 
   public String getClusterName() {

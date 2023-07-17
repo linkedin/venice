@@ -3264,7 +3264,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     newConsumerProps.putAll(localConsumerProps);
     newConsumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
     if (consumeRemotely) {
-      newConsumerProps.setProperty(PUB_SUB_LOCAL_OR_REMOTE_CONSUMPTION, "remote");
+      newConsumerProps.setProperty(PUB_SUB_CONSUMER_LOCAL_CONSUMPTION, "false");
     }
     return newConsumerProps;
   }

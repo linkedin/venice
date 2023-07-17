@@ -1972,12 +1972,12 @@ public class ConfigKeys {
 
   public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
 
-  public static final String PUB_SUB_ADMIN_OR_PERFORMANT_USAGE = "pub.sub.admin.or.performant.usage";
-
   public static final String PUB_SUB_COMPONENTS_USAGE = "pub.sub.components.usage";
 
   public static final String PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE = "pub.sub.bootstrap.servers.to.resolve";
 
-  public static final String PUB_SUB_LOCAL_OR_REMOTE_CONSUMPTION = "pub.sub.local.or.remote.consumption";
+  public static final String PUB_SUB_CONSUMER_LOCAL_CONSUMPTION = "pub.sub.local.or.remote.consumption";
+
+  public static final String PUB_SUB_KAFKA_CLUSTER_MAP_STRING = "pub.sub.kafka.cluster.map.string";
 
 }

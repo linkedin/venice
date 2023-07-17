@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -138,6 +138,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     VeniceClusterConfig mockVeniceClusterConfig = mock(VeniceClusterConfig.class);
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, dummyKafkaUrl);
+    properties.setProperty(CLUSTER_NAME, "testCluster");
+    properties.setProperty(ZOOKEEPER_ADDRESS, "localhost:1234");
     VeniceProperties mockVeniceProperties = new VeniceProperties(properties);
     doReturn(mockVeniceProperties).when(mockVeniceClusterConfig).getClusterProperties();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getClusterProperties();

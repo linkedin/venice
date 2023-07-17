@@ -28,7 +28,6 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
-import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -57,7 +56,6 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.VeniceClusterConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
@@ -75,7 +73,6 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -110,8 +107,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -125,8 +120,6 @@ import org.apache.logging.log4j.Logger;
  * Uses the "new" Kafka Consumer.
  */
 public class KafkaStoreIngestionService extends AbstractVeniceService implements StoreIngestionService {
-  private static final String GROUP_ID_FORMAT = "%s_%s";
-
   private static final Logger LOGGER = LogManager.getLogger(KafkaStoreIngestionService.class);
 
   private final VeniceConfigLoader veniceConfigLoader;
@@ -417,12 +410,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      * Here, we only pass through the customized Kafka consumer configs for local consumption, if an ingestion task
      * creates a dedicated consumer or a new consumer service for a remote Kafka URL, we will passthrough the configs
      * for remote consumption inside the ingestion task.
-     */
-    /*
-    Properties commonKafkaConsumerConfigs = getCommonKafkaConsumerProperties(serverConfig);
-    if (!serverConfig.getKafkaConsumerConfigsForLocalConsumption().isEmpty()) {
-      commonKafkaConsumerConfigs.putAll(serverConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
-    }
      */
     Properties commonKafkaConsumerConfigs = getCommonKafkaConsumerPropertiesForLocalIngestion(serverConfig);
     aggKafkaConsumerService.createKafkaConsumerService(commonKafkaConsumerConfigs);
@@ -1049,113 +1036,22 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return versionedIngestionStats;
   }
 
-  /**
-   * @return Group Id for kafka consumer.
-   */
-  private static String getGroupId(String topic) {
-    return String.format(GROUP_ID_FORMAT, topic, Utils.getHostName());
-  }
-
   private Properties getCommonKafkaConsumerPropertiesForLocalIngestion(VeniceClusterConfig serverConfig) {
     Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
     kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
-    kafkaConsumerProperties.setProperty(PUB_SUB_LOCAL_OR_REMOTE_CONSUMPTION, "local");
-    return kafkaConsumerProperties;
-  }
-
-  /**
-   * So far, this function is only targeted to be used by shared consumer.
-   * @param serverConfig
-   * @return
-   */
-  private Properties getCommonKafkaConsumerProperties(VeniceClusterConfig serverConfig) {
-    Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
-    ApacheKafkaProducerConfig
-        .copyKafkaSASLProperties(serverConfig.getClusterProperties(), kafkaConsumerProperties, false);
-    kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
-    kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
-    // Venice is persisting offset in local offset db.
-    kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
-    kafkaConsumerProperties
-        .setProperty(KAFKA_FETCH_MIN_BYTES_CONFIG, String.valueOf(serverConfig.getKafkaFetchMinSizePerSecond()));
-    kafkaConsumerProperties
-        .setProperty(KAFKA_FETCH_MAX_BYTES_CONFIG, String.valueOf(serverConfig.getKafkaFetchMaxSizePerSecond()));
-    /**
-     * The following setting is used to control the maximum number of records to returned in one poll request.
-     */
-    kafkaConsumerProperties
-        .setProperty(KAFKA_MAX_POLL_RECORDS_CONFIG, Integer.toString(serverConfig.getKafkaMaxPollRecords()));
-    kafkaConsumerProperties
-        .setProperty(KAFKA_FETCH_MAX_WAIT_MS_CONFIG, String.valueOf(serverConfig.getKafkaFetchMaxTimeMS()));
-    kafkaConsumerProperties.setProperty(
-        KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG,
-        String.valueOf(serverConfig.getKafkaFetchPartitionMaxSizePerSecond()));
-    kafkaConsumerProperties
-        .setProperty(KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG, String.valueOf(serverConfig.getKafkaPollRetryTimes()));
-    kafkaConsumerProperties.setProperty(
-        KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG,
-        String.valueOf(serverConfig.getKafkaPollRetryBackoffMs()));
-
+    kafkaConsumerProperties.setProperty(PUB_SUB_CONSUMER_LOCAL_CONSUMPTION, "true");
     return kafkaConsumerProperties;
   }
 
   private VeniceProperties getPubSubPropertiesFromServerConfig(String kafkaBootstrapUrls) {
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     Properties properties = serverConfig.getClusterProperties().toProperties();
-    try {
-      properties.setProperty(
-          "flatten.kafka.cluster.map",
-          serverConfig.flattenKafkaClusterMapToStr(serverConfig.getKafkaClusterMap()));
-    } catch (Exception e) {
-      LOGGER.error("Failed to obtain flatten.kafka.cluster.map from: {}", properties, e);
-    }
-    properties.setProperty(PUB_SUB_COMPONENTS_USAGE, "server");
+    properties.setProperty(
+        PUB_SUB_KAFKA_CLUSTER_MAP_STRING,
+        VeniceClusterConfig.flattenKafkaClusterMapToStr(serverConfig.getKafkaClusterMap()));
+    properties.setProperty(PUB_SUB_COMPONENTS_USAGE, PubSubClientsFactory.PUB_SUB_CLIENT_USAGE_FOR_SERVER);
     properties.setProperty(PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE, kafkaBootstrapUrls);
     return new VeniceProperties(properties);
-  }
-
-  private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
-    if (!kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
-      Properties clonedProperties = serverConfig.getClusterProperties().toProperties();
-      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-      serverConfig = new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
-    }
-    VeniceProperties clusterProperties = serverConfig.getClusterProperties();
-    Properties properties = serverConfig.getClusterProperties().getPropertiesCopy();
-    ApacheKafkaProducerConfig.copyKafkaSASLProperties(clusterProperties, properties, false);
-    kafkaBootstrapUrls = serverConfig.getKafkaBootstrapServers();
-    String resolvedKafkaUrl = serverConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
-    if (resolvedKafkaUrl != null) {
-      kafkaBootstrapUrls = resolvedKafkaUrl;
-    }
-    properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-    SecurityProtocol securityProtocol = serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
-    if (KafkaSSLUtils.isKafkaSSLProtocol(securityProtocol)) {
-      Optional<SSLConfig> sslConfig = serverConfig.getSslConfig();
-      if (!sslConfig.isPresent()) {
-        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
-      }
-      properties.putAll(sslConfig.get().getKafkaSSLConfig());
-    }
-    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
-    return new VeniceProperties(properties);
-  }
-
-  /**
-   * @return Properties Kafka properties corresponding to the venice store.
-   */
-  private Properties getKafkaConsumerProperties(VeniceStoreVersionConfig storeConfig) {
-    Properties kafkaConsumerProperties = new Properties();
-    String groupId = getGroupId(storeConfig.getStoreVersionName());
-    kafkaConsumerProperties.setProperty(KAFKA_GROUP_ID_CONFIG, groupId);
-    /**
-     * Temporarily we are going to use group_id as client_id as well since it is unique in cluster level.
-     * With unique client_id, it will be easier for us to check Kafka consumer related metrics through JMX.
-     * TODO: Kafka is throttling based on client_id, need to investigate whether we should use Kafka throttling or not.
-     */
-    kafkaConsumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, groupId);
-    return kafkaConsumerProperties;
   }
 
   @Override

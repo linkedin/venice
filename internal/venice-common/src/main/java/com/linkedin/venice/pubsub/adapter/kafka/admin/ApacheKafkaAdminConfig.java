@@ -1,20 +1,15 @@
 package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
 import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.*;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.SSLConfig;
-import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Optional;
 import java.util.Properties;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -28,10 +23,10 @@ public class ApacheKafkaAdminConfig {
     Properties properties = veniceProperties.toProperties();
 
     if (veniceProperties.containsKey(ConfigKeys.PUB_SUB_COMPONENTS_USAGE)) {
-      if (veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE).equals("controller")) {
-        LOGGER.info("Before preparePubSubSSLProperties: " + veniceProperties);
-        properties = preparePubSubSSLProperties(veniceProperties);
-      } else if (veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE).equals("server")) {
+      String pubSubComponentsUsage = veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE);
+      if (pubSubComponentsUsage.equals(PubSubClientsFactory.PUB_SUB_CLIENT_USAGE_FOR_CONTROLLER)) {
+        properties = ApacheKafkaConsumerConfig.preparePubSubSSLPropertiesForController(veniceProperties);
+      } else if (pubSubComponentsUsage.equals(PubSubClientsFactory.PUB_SUB_CLIENT_USAGE_FOR_SERVER)) {
         properties = ApacheKafkaConsumerConfig.preparePubSubSSLPropertiesForServer(veniceProperties);
       }
     }
@@ -39,7 +34,6 @@ public class ApacheKafkaAdminConfig {
     VeniceProperties postVeniceProperties = new VeniceProperties(properties);
     this.adminProperties =
         postVeniceProperties.clipAndFilterNamespace(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX).toProperties();
-    // this.adminProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
     // Setup ssl config if needed.
     if (KafkaSSLUtils.validateAndCopyKafkaSSLConfig(postVeniceProperties, this.adminProperties)) {
       LOGGER.info("Will initialize an SSL Kafka admin client");
@@ -52,40 +46,6 @@ public class ApacheKafkaAdminConfig {
           ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC,
           DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS);
     }
-  }
-
-  public static Properties preparePubSubSSLProperties(VeniceProperties veniceProperties) {
-    Properties clonedProperties = veniceProperties.toProperties();
-    String brokerAddress = ApacheKafkaProducerConfig.getPubsubBrokerAddress(veniceProperties);
-    if (veniceProperties.containsKey(ConfigKeys.PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE)) {
-      brokerAddress = veniceProperties.getString(ConfigKeys.PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE);
-    }
-
-    if (veniceProperties.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false)) {
-      clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
-    } else {
-      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
-    }
-
-    Properties properties = new Properties();
-    VeniceProperties clonedVeniceProperties = new VeniceProperties(clonedProperties);
-    String kafkaSecurityProtocol =
-        clonedVeniceProperties.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
-    ApacheKafkaProducerConfig.copyKafkaSASLProperties(clonedProperties, properties, false);
-    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
-      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
-    }
-
-    Optional<SSLConfig> sslConfig;
-    if (KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocol)) {
-      sslConfig = Optional.of(new SSLConfig(clonedVeniceProperties));
-      properties.putAll(sslConfig.get().getKafkaSSLConfig());
-      properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, kafkaSecurityProtocol);
-      properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, clonedVeniceProperties.getString(SSL_KAFKA_BOOTSTRAP_SERVERS));
-    } else {
-      properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, clonedProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS));
-    }
-    return properties;
   }
 
   public Properties getAdminProperties() {
