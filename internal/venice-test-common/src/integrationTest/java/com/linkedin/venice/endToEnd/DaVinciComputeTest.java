@@ -25,7 +25,7 @@ import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
-import com.linkedin.venice.compute.ComputeOperationUtils;
+import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
@@ -242,10 +242,10 @@ public class DaVinciComputeTest {
         // Results for key 1 should be non-null since the nullable field in the value of key 1 is non-null
         Assert.assertEquals(
             readComputeResult.get(key1).get("dot_product_result"),
-            ComputeOperationUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+            ComputeUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
         Assert.assertEquals(
             readComputeResult.get(key1).get("hadamard_product_result"),
-            ComputeOperationUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+            ComputeUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
         Assert.assertEquals(readComputeResult.get(key1).get("cosine_similarity_result"), 1.0f); // Cosine similarity
                                                                                                 // between a vector and
                                                                                                 // itself is 1.0

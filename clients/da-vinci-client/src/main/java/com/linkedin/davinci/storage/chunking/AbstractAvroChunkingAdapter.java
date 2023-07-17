@@ -165,7 +165,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       boolean isChunked,
       ReadResponse response,
       int readerSchemaId,
-      AvroStoreDeserializerCache<T> storeDeserializerCache,
+      StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor) {
     int subPartition = userPartition;
     int amplificationFactor = partitionerConfig == null ? 1 : partitionerConfig.getAmplificationFactor();
