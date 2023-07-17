@@ -62,7 +62,7 @@ public abstract class RecordStreamDecoder<ENVELOPE, K, V> implements TransportCl
 
   /**
    * Note that two callbacks are used to make callback composition possible: {@link #callback} is used for data and
-   * {@link #trackingCallback} is used only for event tracking.
+   * {@link #trackingCallback} is used for event tracking only.
    */
   public RecordStreamDecoder(
       List<K> keyList,

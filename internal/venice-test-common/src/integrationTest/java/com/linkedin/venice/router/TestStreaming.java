@@ -38,6 +38,7 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -45,7 +46,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -124,12 +125,7 @@ public class TestStreaming {
     VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, false);
 
     storeVersionName = creationResponse.getKafkaTopic();
-    // enable compute
-    veniceCluster.useControllerClient(
-        c -> c.updateStore(
-            storeName,
-            new UpdateStoreQueryParams().setReadComputationEnabled(true)
-                .setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA)));
+    veniceCluster.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(DEFAULT_PER_ROUTER_READ_QUOTA));
 
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
@@ -194,10 +190,11 @@ public class TestStreaming {
     return routerProperties;
   }
 
-  @Test(timeOut = 300 * 1000, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = 30 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testReadStreaming(boolean enableRouterHttp2) throws Exception {
     // Start a new router every time with the right config
     // With Apache HAC on Router with client compression enabled
+    veniceCluster.getVeniceRouters().forEach(router -> veniceCluster.removeVeniceRouter(router.getPort()));
     VeniceRouterWrapper veniceRouterWrapperWithHttpAsyncClient =
         veniceCluster.addVeniceRouter(getRouterProperties(false, true, enableRouterHttp2));
     MetricsRepository routerMetricsRepositoryWithHttpAsyncClient =
@@ -214,140 +211,170 @@ public class TestStreaming {
           true,
           enableRouterHttp2 ? HttpProtocolVersion.HTTP_2 : HttpProtocolVersion.HTTP_1_1);
       D2TestUtils.startD2Client(d2Client);
-      MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
+      MetricsRepository clientMetrics = new MetricsRepository();
       d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(d2Client)
-              .setMetricsRepository(d2ClientMetricsRepository)
+              .setMetricsRepository(clientMetrics)
               .setUseFastAvro(false));
 
       // Right now, all the streaming interfaces are still internal, and we will expose them once they are fully
       // verified.
       StatTrackingStoreClient trackingStoreClient = (StatTrackingStoreClient) d2StoreClient;
 
-      // Run multiple rounds
-      int rounds = 10;
-      int cur = 0;
-      Set<String> keySet = new TreeSet<>();
-      /**
-       * {@link NON_EXISTING_KEY1}: "a_unknown_key" will be with key index: 0 internally, and we want to verify
-       * whether the code could handle non-existing key with key index: 0
-       */
-      keySet.add(NON_EXISTING_KEY1);
-      for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
-        keySet.add(KEY_PREFIX + i);
-      }
-      keySet.add(NON_EXISTING_KEY2);
+      for (boolean readComputeEnabled: new boolean[] { true, false }) {
+        veniceCluster
+            .updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(readComputeEnabled));
+        // Run multiple rounds
+        int rounds = 10;
+        int cur = 0;
+        Set<String> keySet = new TreeSet<>();
+        /**
+         * {@link NON_EXISTING_KEY1}: "a_unknown_key" will be with key index: 0 internally, and we want to verify
+         * whether the code could handle non-existing key with key index: 0
+         */
+        keySet.add(NON_EXISTING_KEY1);
+        for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
+          keySet.add(KEY_PREFIX + i);
+        }
+        keySet.add(NON_EXISTING_KEY2);
 
-      while (++cur <= rounds) {
-        final Map<String, Object> finalMultiGetResultMap = new VeniceConcurrentHashMap<>();
-        final AtomicInteger totalMultiGetResultCnt = new AtomicInteger(0);
-        // Streaming batch-get
-        CountDownLatch latch = new CountDownLatch(1);
-        trackingStoreClient.streamingBatchGet(keySet, new StreamingCallback<String, Object>() {
-          @Override
-          public void onRecordReceived(String key, Object value) {
-            if (value != null) {
-              /**
-               * {@link java.util.concurrent.ConcurrentHashMap#put) could not take 'null' as the value.
-               */
-              finalMultiGetResultMap.put(key, value);
-            }
-            totalMultiGetResultCnt.getAndIncrement();
-          }
-
-          @Override
-          public void onCompletion(Optional<Exception> exception) {
-            latch.countDown();
-            if (exception.isPresent()) {
-              LOGGER.info("MultiGet onCompletion invoked with Venice Exception", exception.get());
-              fail("Exception: " + exception.get() + " is not expected");
-            }
-          }
-        });
-        latch.await();
-        Assert.assertEquals(totalMultiGetResultCnt.get(), MAX_KEY_LIMIT);
-        Assert.assertEquals(finalMultiGetResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
-        // Verify the result
-        verifyMultiGetResult(finalMultiGetResultMap);
-
-        // test batch-get with streaming as the internal implementation
-        CompletableFuture<Map<String, Object>> resultFuture = trackingStoreClient.streamingBatchGet(keySet);
-        Map<String, Object> multiGetResultMap = resultFuture.get();
-        // Regular batch-get API won't return non-existing keys
-        Assert.assertEquals(multiGetResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
-        verifyMultiGetResult(multiGetResultMap);
-        // Test compute streaming
-        AtomicInteger computeResultCnt = new AtomicInteger(0);
-        Map<String, ComputeGenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
-        CountDownLatch computeLatch = new CountDownLatch(1);
-        trackingStoreClient.compute()
-            .project("int_field", "nullable_string_field")
-            .streamingExecute(keySet, new StreamingCallback<String, ComputeGenericRecord>() {
-              @Override
-              public void onRecordReceived(String key, ComputeGenericRecord value) {
-                computeResultCnt.incrementAndGet();
-                if (value != null) {
-                  finalComputeResultMap.put(key, value);
-                }
+        while (++cur <= rounds) {
+          final Map<String, Object> finalMultiGetResultMap = new VeniceConcurrentHashMap<>();
+          final AtomicInteger totalMultiGetResultCnt = new AtomicInteger(0);
+          // Streaming batch-get
+          CountDownLatch latch = new CountDownLatch(1);
+          trackingStoreClient.streamingBatchGet(keySet, new StreamingCallback<String, Object>() {
+            @Override
+            public void onRecordReceived(String key, Object value) {
+              if (value != null) {
+                /**
+                 * {@link java.util.concurrent.ConcurrentHashMap#put) could not take 'null' as the value.
+                 */
+                finalMultiGetResultMap.put(key, value);
               }
+              totalMultiGetResultCnt.getAndIncrement();
+            }
 
-              @Override
-              public void onCompletion(Optional<Exception> exception) {
-                computeLatch.countDown();
-                if (exception.isPresent()) {
-                  LOGGER.info("Compute onCompletion invoked with Venice Exception", exception.get());
-                  fail("Exception: " + exception.get() + " is not expected");
-                }
+            @Override
+            public void onCompletion(Optional<Exception> exception) {
+              latch.countDown();
+              if (exception.isPresent()) {
+                LOGGER.info("MultiGet onCompletion invoked with Venice Exception", exception.get());
+                fail("Exception: " + exception.get() + " is not expected");
               }
-            });
-        computeLatch.await();
-        Assert.assertEquals(computeResultCnt.get(), MAX_KEY_LIMIT);
-        Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM); // Without non-existing
-                                                                                                 // key
-        verifyComputeResult(finalComputeResultMap);
-        // Test compute with streaming implementation
-        CompletableFuture<VeniceResponseMap<String, ComputeGenericRecord>> computeFuture =
-            trackingStoreClient.compute().project("int_field", "nullable_string_field").streamingExecute(keySet);
-        Map<String, ComputeGenericRecord> computeResultMap = computeFuture.get();
-        Assert.assertEquals(computeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
-        verifyComputeResult(computeResultMap);
-      }
-      // Verify some client-side metrics, and we could add verification for more metrics if necessary
-      String metricPrefix = "." + storeName;
-      Map<String, ? extends Metric> metrics = d2ClientMetricsRepository.metrics();
-      Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_healthy_request_latency.Avg").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_ttfr.50thPercentile").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt50pr.50thPercentile").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt90pr.50thPercentile").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt95pr.50thPercentile").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt99pr.50thPercentile").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_healthy_request_latency.Avg").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_ttfr.50thPercentile").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt50pr.50thPercentile").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt90pr.50thPercentile").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt95pr.50thPercentile").value() > 0);
-      Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt99pr.50thPercentile").value() > 0);
+            }
+          });
+          latch.await();
+          Assert.assertEquals(totalMultiGetResultCnt.get(), MAX_KEY_LIMIT);
+          Assert.assertEquals(finalMultiGetResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
+          // Verify the result
+          verifyMultiGetResult(finalMultiGetResultMap);
 
-      LOGGER.info("The following metrics are Router metrics:");
-      // Verify some router metrics
-      for (MetricsRepository routerMetricsRepository: Arrays.asList(routerMetricsRepositoryWithHttpAsyncClient)) { // ,
-                                                                                                                   // routerMetricsRepositoryWithNettyClient))
-                                                                                                                   // {
-        Map<String, ? extends Metric> routerMetrics = routerMetricsRepository.metrics();
-        // The following metrics are only available when Router is running in Streaming mode.
-        Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate").value() > 0);
-        Assert.assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_latency.99thPercentile").value() > 0);
+          // test batch-get with streaming as the internal implementation
+          CompletableFuture<Map<String, Object>> resultFuture = trackingStoreClient.streamingBatchGet(keySet);
+          Map<String, Object> multiGetResultMap = resultFuture.get();
+          // Regular batch-get API won't return non-existing keys
+          Assert.assertEquals(multiGetResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
+          verifyMultiGetResult(multiGetResultMap);
+          // Test compute streaming
+          AtomicInteger computeResultCnt = new AtomicInteger(0);
+          Map<String, ComputeGenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
+          CountDownLatch computeLatch = new CountDownLatch(1);
+          trackingStoreClient.compute()
+              .project("int_field", "nullable_string_field")
+              .streamingExecute(keySet, new StreamingCallback<String, ComputeGenericRecord>() {
+                @Override
+                public void onRecordReceived(String key, ComputeGenericRecord value) {
+                  computeResultCnt.incrementAndGet();
+                  if (value != null) {
+                    finalComputeResultMap.put(key, value);
+                  }
+                }
+
+                @Override
+                public void onCompletion(Optional<Exception> exception) {
+                  computeLatch.countDown();
+                  if (exception.isPresent()) {
+                    LOGGER.info("Compute onCompletion invoked with Venice Exception", exception.get());
+                    fail("Exception: " + exception.get() + " is not expected");
+                  }
+                }
+              });
+          computeLatch.await();
+          Assert.assertEquals(computeResultCnt.get(), MAX_KEY_LIMIT);
+          Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM); // Without
+                                                                                                   // non-existing
+                                                                                                   // key
+          verifyComputeResult(finalComputeResultMap);
+          // Test compute with streaming implementation
+          CompletableFuture<VeniceResponseMap<String, ComputeGenericRecord>> computeFuture =
+              trackingStoreClient.compute().project("int_field", "nullable_string_field").streamingExecute(keySet);
+          Map<String, ComputeGenericRecord> computeResultMap = computeFuture.get();
+          Assert.assertEquals(computeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
+          verifyComputeResult(computeResultMap);
+        }
+        // Verify some client-side metrics, and we could add verification for more metrics if necessary
+        String metricPrefix = "." + storeName;
+        Map<String, ? extends Metric> metrics = clientMetrics.metrics();
+        Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate").value() > 0);
+        Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_healthy_request_latency.Avg").value() > 0);
+        Assert.assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_ttfr.50thPercentile").value() > 0);
         Assert
-            .assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_fanout_request_count.Avg").value() > 0);
-        Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() > 0);
-        Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_latency.99thPercentile").value() > 0);
-        Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_fanout_request_count.Avg").value() > 0);
-        Assert.assertTrue(+getMaxServerMetricValue(".total--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
+            .assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt50pr.50thPercentile").value() > 0);
+        Assert
+            .assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt90pr.50thPercentile").value() > 0);
+        Assert
+            .assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt95pr.50thPercentile").value() > 0);
+        Assert
+            .assertTrue(metrics.get(metricPrefix + "--multiget_streaming_response_tt99pr.50thPercentile").value() > 0);
+        Assert
+            .assertTrue(metrics.get(metricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate").value() > 0);
+        Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() > 0);
+        Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_healthy_request_latency.Avg").value() > 0);
+        Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_ttfr.50thPercentile").value() > 0);
+        Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt50pr.50thPercentile").value() > 0);
+        Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt90pr.50thPercentile").value() > 0);
+        Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt95pr.50thPercentile").value() > 0);
+        Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt99pr.50thPercentile").value() > 0);
+
+        if (readComputeEnabled) {
+          Assert.assertEquals(metrics.get(metricPrefix + "--compute_streaming_multiget_fallback.Total").value(), 0.0);
+        } else {
+          Assert.assertEquals(
+              metrics.get(metricPrefix + "--compute_streaming_multiget_fallback.Total").value(),
+              2.0 * rounds * (MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM));
+        }
+
+        LOGGER.info("The following metrics are Router metrics:");
+        // Verify some router metrics
+        for (MetricsRepository routerMetricsRepository: Collections
+            .singletonList(routerMetricsRepositoryWithHttpAsyncClient)) {
+          Map<String, ? extends Metric> routerMetrics = routerMetricsRepository.metrics();
+          // The following metrics are only available when Router is running in Streaming mode.
+          Assert
+              .assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_request.OccurrenceRate").value() > 0);
+          Assert
+              .assertTrue(routerMetrics.get(metricPrefix + "--multiget_streaming_latency.99thPercentile").value() > 0);
+          Assert.assertTrue(
+              routerMetrics.get(metricPrefix + "--multiget_streaming_fanout_request_count.Avg").value() > 0);
+          if (readComputeEnabled) {
+            Assert
+                .assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() > 0);
+            Assert
+                .assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_latency.99thPercentile").value() > 0);
+            Assert.assertTrue(
+                routerMetrics.get(metricPrefix + "--compute_streaming_fanout_request_count.Avg").value() > 0);
+            Assert.assertTrue(
+                getMaxServerMetricValue(".total--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
+            Assert.assertEquals(getAggregateRouterMetricValue(".total--compute_multiget_fallback.Total"), 0.0);
+          } else {
+            Assert.assertEquals(
+                getAggregateRouterMetricValue(".total--compute_multiget_fallback.Total"),
+                (double) MAX_KEY_LIMIT);
+          }
+        }
       }
     } finally {
       Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithHttpAsyncClient);
@@ -357,6 +384,10 @@ public class TestStreaming {
         D2ClientUtils.shutdownClient(d2Client);
       }
     }
+  }
+
+  private double getAggregateRouterMetricValue(String metricName) {
+    return MetricsUtils.getSum(metricName, veniceCluster.getVeniceRouters());
   }
 
   private double getMaxServerMetricValue(String metricName) {
@@ -381,7 +412,7 @@ public class TestStreaming {
       Assert.assertEquals(record.get("int_field"), i);
       Assert.assertNull(record.get("float_field"));
       if (i <= LAST_KEY_INDEX_WITH_NON_NULL_VALUE) {
-        Assert.assertTrue((record.get("nullable_string_field").toString().equals("nullable_string_field" + i)));
+        Assert.assertEquals("nullable_string_field" + i, record.get("nullable_string_field").toString());
       } else {
         Assert.assertNull(
             record.get("nullable_string_field"),

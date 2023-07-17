@@ -53,6 +53,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private boolean useBlackHoleDeserializer = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
   private boolean projectionFieldValidation = true;
+  private boolean remoteComputationOnly = false;
   private Duration schemaRefreshPeriod = DEFAULT_SCHEMA_REFRESH_PERIOD;
   private Optional<Predicate<Schema>> preferredSchemaFilter = Optional.empty();
 
@@ -431,6 +432,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setProjectionFieldValidationEnabled(boolean projectionFieldValidation) {
     this.projectionFieldValidation = projectionFieldValidation;
+    return this;
+  }
+
+  public boolean isRemoteComputationOnly() {
+    return remoteComputationOnly;
+  }
+
+  public ClientConfig<T> setRemoteComputationOnly(boolean remoteComputationOnly) {
+    this.remoteComputationOnly = remoteComputationOnly;
     return this;
   }
 

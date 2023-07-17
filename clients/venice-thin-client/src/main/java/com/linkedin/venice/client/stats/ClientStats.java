@@ -11,6 +11,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
+import io.tehuti.metrics.stats.Total;
 import java.util.Map;
 
 
@@ -34,6 +35,7 @@ public class ClientStats extends BasicClientStats {
   private final Sensor retryRequestKeyCountSensor;
   private final Sensor retryRequestSuccessKeyCountSensor;
   private final Sensor retryKeySuccessRatioSensor;
+  private final Sensor multiGetFallbackSensor;
 
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -109,7 +111,7 @@ public class ClientStats extends BasicClientStats {
     retryKeySuccessRatioSensor = registerSensor(
         "retry_key_success_ratio",
         new TehutiUtils.SimpleRatioStat(retryRequestSuccessKeyCount, getSuccessRequestKeyCountRate()));
-
+    multiGetFallbackSensor = registerSensor("multiget_fallback", new Total(), new OccurrenceRate());
   }
 
   public void recordHttpRequest(int httpStatus) {
@@ -186,4 +188,7 @@ public class ClientStats extends BasicClientStats {
     retryRequestSuccessKeyCountSensor.record(numberOfKeysCompletedInRetryRequest);
   }
 
+  public void recordMultiGetFallback(int keyCount) {
+    multiGetFallbackSensor.record(keyCount);
+  }
 }

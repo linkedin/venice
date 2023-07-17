@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.HttpConstants.VENICE_CLIENT_COMPUTE;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.HttpConstants.VENICE_KEY_COUNT;
 import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V2;
@@ -12,7 +13,8 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.stats.Reporter;
-import com.linkedin.venice.client.store.streaming.ComputeRecordStreamDecoder;
+import com.linkedin.venice.client.store.streaming.ClientComputeRecordStreamDecoder;
+import com.linkedin.venice.client.store.streaming.ClientComputeStreamingCallback;
 import com.linkedin.venice.client.store.streaming.MultiGetRecordStreamDecoder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
@@ -23,6 +25,7 @@ import com.linkedin.venice.client.store.transport.TransportClientStreamingCallba
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
@@ -49,6 +52,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
@@ -132,6 +136,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final CompressorFactory compressorFactory;
   private final String storageRequestPath;
   private final String computeRequestPath;
+  private final AtomicBoolean remoteComputationAllowed = new AtomicBoolean(true);
 
   private volatile boolean isServiceDiscovered;
 
@@ -632,7 +637,23 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     List<K> keyList = new ArrayList<>(keys);
 
     Optional<ClientStats> stats = getClientStats(callback);
-    StreamingCallback computeCallback = new StreamingCallback<K, GenericRecord>() {
+    ClientComputeStreamingCallback clientComputeCallback = new ClientComputeStreamingCallback<K, GenericRecord>() {
+      Map<String, Object> sharedContext = new HashMap<>();
+
+      @Override
+      public void onRawRecordReceived(K key, GenericRecord value) {
+        if (value != null) {
+          value = ComputeUtils.computeResult(
+              computeRequest.getComputeRequestVersion(),
+              computeRequest.getOperations(),
+              sharedContext,
+              value,
+              resultSchema);
+          stats.ifPresent(s -> s.recordMultiGetFallback(1));
+        }
+        onRecordReceived(key, value);
+      }
+
       @Override
       public void onRecordReceived(K key, GenericRecord value) {
         callback.onRecordReceived(
@@ -641,19 +662,32 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
 
       @Override
+      public void onRemoteComputeStateChange(boolean enabled) {
+        remoteComputationAllowed.set(enabled);
+      }
+
+      @Override
       public void onCompletion(Optional<Exception> exception) {
         callback.onCompletion(exception);
       }
     };
 
-    TransportClientStreamingCallback decoder = new ComputeRecordStreamDecoder<>(
+    TransportClientStreamingCallback decoder = new ClientComputeRecordStreamDecoder<K, GenericRecord>(
         keyList,
-        computeCallback,
+        clientComputeCallback,
         callback,
         getDeserializationExecutor(),
         streamingFooterRecordDeserializer,
-        getComputeResultRecordDeserializer(resultSchema));
-    compute(computeRequest, keyList, decoder, stats);
+        () -> getComputeResultRecordDeserializer(resultSchema),
+        schemaId -> (RecordDeserializer<GenericRecord>) getDataRecordDeserializer(schemaId),
+        this::decompressRecord);
+
+    if (clientConfig.isRemoteComputationOnly() || remoteComputationAllowed.get()) {
+      compute(computeRequest, keyList, decoder, stats);
+    } else {
+      /** Multi-get fallback is on until the router tells otherwise via {@link HttpConstants.VENICE_CLIENT_COMPUTE} */
+      streamingBatchGet(keyList, decoder, stats);
+    }
   }
 
   private void compute(
@@ -668,6 +702,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     int schemaId = getSchemaReader().getValueSchemaId(computeRequest.getValueSchema());
     headers.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
     headers.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));
+    if (!clientConfig.isRemoteComputationOnly()) {
+      headers.put(VENICE_CLIENT_COMPUTE, "1");
+    }
 
     byte[] serializedRequest = serializeComputeRequest(computeRequest, keyList, stats);
     transportClient.streamPost(getComputeRequestPath(), headers, serializedRequest, callback, keyList.size());
