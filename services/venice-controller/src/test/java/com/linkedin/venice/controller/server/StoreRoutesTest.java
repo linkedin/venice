@@ -49,7 +49,7 @@ public class StoreRoutesTest {
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
 
     Route getFutureVersionRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getFutureVersion(mockAdmin);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, Optional.empty()).getFutureVersion(mockAdmin);
     MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
             getFutureVersionRoute.handle(request, mock(Response.class)).toString(),
@@ -74,7 +74,7 @@ public class StoreRoutesTest {
     doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
 
     Route getFutureVersionRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getFutureVersion(mockAdmin);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, Optional.empty()).getFutureVersion(mockAdmin);
     MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
             getFutureVersionRoute.handle(request, mock(Response.class)).toString(),
@@ -105,7 +105,7 @@ public class StoreRoutesTest {
     doReturn(queryParamsMap).when(request).queryMap();
 
     Route getFutureVersionRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getFutureVersion(mockAdmin);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, Optional.empty()).getFutureVersion(mockAdmin);
     MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
             getFutureVersionRoute.handle(request, mock(Response.class)).toString(),
@@ -135,7 +135,7 @@ public class StoreRoutesTest {
     doReturn(queryParamsMap).when(request).queryMap();
 
     Route getFutureVersionRoute =
-        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getFutureVersion(mockAdmin);
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository, Optional.empty()).getFutureVersion(mockAdmin);
     MultiStoreStatusResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
         .readValue(
             getFutureVersionRoute.handle(request, mock(Response.class)).toString(),

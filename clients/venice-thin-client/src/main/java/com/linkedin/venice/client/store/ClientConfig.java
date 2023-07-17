@@ -277,6 +277,7 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setAuthenticationProvider(ClientAuthenticationProvider authenticationProvider) {
     this.authenticationProvider = authenticationProvider;
+    return this;
   }
 
   public int getMaxConnectionsPerRoute() {

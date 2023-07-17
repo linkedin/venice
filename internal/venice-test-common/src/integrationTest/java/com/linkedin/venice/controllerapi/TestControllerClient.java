@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.authentication.ClientAuthenticationProvider;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
@@ -162,8 +163,12 @@ public class TestControllerClient {
           errorStoreDiscoHttpResponse);
 
       // When all controllers are missing, the ConnectException should be bubbled up
-      D2ServiceDiscoveryResponse discoResponseInvalidControllers = ControllerClient
-          .discoverCluster(nonExistentControllerUrl1 + "," + nonExistentControllerUrl2, storeName, Optional.empty(), 1);
+      D2ServiceDiscoveryResponse discoResponseInvalidControllers = ControllerClient.discoverCluster(
+          nonExistentControllerUrl1 + "," + nonExistentControllerUrl2,
+          storeName,
+          Optional.empty(),
+          1,
+          ClientAuthenticationProvider.DISABLED);
       Assert.assertTrue(discoResponseInvalidControllers.isError());
       Assert.assertTrue(
           discoResponseInvalidControllers.getError().contains(ConnectException.class.getCanonicalName()),
@@ -173,8 +178,12 @@ public class TestControllerClient {
       // triggered from Java libs, and we randomise the controller list to do some load balancing, the best way to
       // validate is to try multiple invocations
       for (int i = 0; i < 100; i++) {
-        D2ServiceDiscoveryResponse discoResponsePartialValidController = ControllerClient
-            .discoverCluster(nonExistentControllerUrl1 + "," + validControllerUrl, storeName, Optional.empty(), 1);
+        D2ServiceDiscoveryResponse discoResponsePartialValidController = ControllerClient.discoverCluster(
+            nonExistentControllerUrl1 + "," + validControllerUrl,
+            storeName,
+            Optional.empty(),
+            1,
+            ClientAuthenticationProvider.DISABLED);
         Assert.assertFalse(discoResponsePartialValidController.isError());
 
         D2ServiceDiscoveryResponse nonExistentStoreDiscoResponsePartialValidController =
@@ -182,7 +191,8 @@ public class TestControllerClient {
                 nonExistentControllerUrl1 + "," + validControllerUrl,
                 nonExistentStoreName,
                 Optional.empty(),
-                1);
+                1,
+                ClientAuthenticationProvider.DISABLED);
         Assert.assertTrue(nonExistentStoreDiscoResponsePartialValidController.isError());
         Assert.assertEquals(
             nonExistentStoreDiscoResponsePartialValidController.getErrorType(),
@@ -193,7 +203,8 @@ public class TestControllerClient {
                 nonExistentControllerUrl1 + "," + legacyControllerUrl + "," + validControllerUrl,
                 nonExistentStoreName,
                 Optional.empty(),
-                1);
+                1,
+                ClientAuthenticationProvider.DISABLED);
         Assert.assertTrue(nonExistentStoreDiscoResponseValidInvalidAndLegacy.isError());
         Assert
             .assertEquals(nonExistentStoreDiscoResponseValidInvalidAndLegacy.getErrorType(), ErrorType.STORE_NOT_FOUND);
@@ -204,7 +215,8 @@ public class TestControllerClient {
             nonExistentControllerUrl1 + "," + legacyControllerUrl,
             nonExistentStoreName,
             Optional.empty(),
-            1);
+            1,
+            ClientAuthenticationProvider.DISABLED);
         Assert.assertTrue(nonExistentStoreDiscoResponseInvalidAndLegacy.isError());
         Assert.assertEquals(nonExistentStoreDiscoResponseInvalidAndLegacy.getErrorType(), ErrorType.STORE_NOT_FOUND);
 
@@ -214,13 +226,17 @@ public class TestControllerClient {
             nonExistentControllerUrl1 + "," + validControllerUrl,
             errorResponseStoreName,
             Optional.empty(),
-            1);
+            1,
+            ClientAuthenticationProvider.DISABLED);
         Assert.assertTrue(errorDiscoResponseInvalidAndLegacy.isError());
         Assert.assertEquals(errorDiscoResponseInvalidAndLegacy.getErrorType(), ErrorType.BAD_REQUEST);
       }
 
-      try (ControllerClient controllerClient =
-          ControllerClientFactory.getControllerClient(clusterName, validControllerUrl, Optional.empty())) {
+      try (ControllerClient controllerClient = ControllerClientFactory.getControllerClient(
+          clusterName,
+          validControllerUrl,
+          Optional.empty(),
+          ClientAuthenticationProvider.DISABLED)) {
         String leaderControllerUrl = controllerClient.getLeaderControllerUrl();
         Assert.assertEquals(leaderControllerUrl, fakeLeaderControllerUrl);
       }
