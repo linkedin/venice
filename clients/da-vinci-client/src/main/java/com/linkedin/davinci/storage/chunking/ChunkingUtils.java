@@ -263,6 +263,7 @@ public class ChunkingUtils {
 
       if (response != null) {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+        response.addValueSize(valueLength);
       }
       return adapter.constructValue(
           value,
@@ -317,6 +318,7 @@ public class ChunkingUtils {
 
     if (response != null) {
       response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
+      response.addValueSize(actualSize);
       response.incrementMultiChunkLargeValueCount();
     }
 

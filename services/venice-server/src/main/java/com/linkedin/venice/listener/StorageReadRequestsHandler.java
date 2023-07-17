@@ -654,6 +654,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       record.keyIndex = key.getKeyIndex();
       record.value = ByteBuffer.wrap(resultSerializer.serialize(result));
       response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
+      response.addReadComputeOutputSize(record.value.remaining());
       response.addRecord(record);
     } else if (isStreaming) {
       // For streaming, we need to send back non-existing keys

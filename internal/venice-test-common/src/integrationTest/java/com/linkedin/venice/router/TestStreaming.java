@@ -35,6 +35,7 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -346,6 +347,7 @@ public class TestStreaming {
         Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_request.OccurrenceRate").value() > 0);
         Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_latency.99thPercentile").value() > 0);
         Assert.assertTrue(routerMetrics.get(metricPrefix + "--compute_streaming_fanout_request_count.Avg").value() > 0);
+        Assert.assertTrue(+getMaxServerMetricValue(".total--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
       }
     } finally {
       Utils.closeQuietlyWithErrorLogged(veniceRouterWrapperWithHttpAsyncClient);
@@ -355,6 +357,10 @@ public class TestStreaming {
         D2ClientUtils.shutdownClient(d2Client);
       }
     }
+  }
+
+  private double getMaxServerMetricValue(String metricName) {
+    return MetricsUtils.getMax(metricName, veniceCluster.getVeniceServers());
   }
 
   private void verifyMultiGetResult(Map<String, Object> resultMap) {

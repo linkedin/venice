@@ -391,6 +391,7 @@ public abstract class TestRead {
       if (!isRouterHttp2ClientEnabled()) {
         Assert.assertEquals(getMaxServerMetricValue(".total--multiget_request_part_count.Max"), 1.0);
         Assert.assertEquals(getMaxServerMetricValue(".total--compute_request_part_count.Max"), 1.0);
+        Assert.assertTrue(+getMaxServerMetricValue(".total--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
       }
       // Verify storage node metrics
       Assert.assertTrue(getMaxServerMetricValue(".total--records_consumed.Rate") > 0.0);
