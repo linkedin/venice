@@ -51,6 +51,7 @@ import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -2770,20 +2771,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   *  1. Currently we support chunking only for messages produced on VT topic during batch part of the ingestion
+   *  1. Currently, we support chunking only for messages produced on VT topic during batch part of the ingestion
    *     for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streaming ingestion.
    *
    *     So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
-   *     (non chunked). Decoding should succeed using the the simplified API
+   *     (non chunked). Decoding should succeed using the simplified API
    *     {@link ChunkingAdapter#constructValue}
    *
    *  2. We always use the latest value schema to deserialize stored value bytes.
-   *  3. We always use the write compute schema with an ID combination of latest value schema ID + update schema ID
+   *  3. We always use the partial update schema with an ID combination of the latest value schema ID + update schema ID
    *     to deserialize the incoming Update request payload bytes.
    *
    *  The reason for 2 and 3 is that we depend on the fact that the latest value schema must be a superset schema
    *  that contains all value fields that ever existed in a store value schema. So, always using a superset schema
-   *  as the reader schema avoids data loss where the serialized bytes contain data for a field , however, the
+   *  as the reader schema avoids data loss where the serialized bytes contain data for a field, however, the
    *  deserialized record does not contain that field because the reader schema does not contain that field.
    */
   private void handleUpdateRequest(
@@ -2816,7 +2817,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         readerValueSchemaId,
         consumerRecord.getTopicPartition());
 
-    // Apply Write Compute.
     final byte[] updatedValueBytes;
     try {
       long writeComputeStartTimeInNS = System.nanoTime();
@@ -2875,7 +2875,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
           .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
 
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produce =
+      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
           (callback, leaderMetadataWrapper) -> veniceWriter.get()
               .put(keyBytes, updatedValueBytes, readerValueSchemaId, callback, leaderMetadataWrapper);
 
@@ -2883,7 +2883,39 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           consumerRecord,
           partitionConsumptionState,
           leaderProducedRecordContext,
-          produce,
+          produceFunction,
+          subPartition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
+    }
+
+    /**
+     * Iterate all chunked keys in old manifest and send DELETE request to version topic.
+     */
+    if (isChunked) {
+      ByteBuffer keyBuffer =
+          ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(ByteBuffer.wrap(keyBytes));
+      ChunkedValueManifest oldValueManifest =
+          ChunkingUtils.getChunkValueManifestFromStorage(keyBuffer, subPartition, false, storageEngine);
+      if (oldValueManifest == null) {
+        return;
+      }
+      LeaderProducedRecordContext leaderProducedRecordContext =
+          LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, null);
+      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
+          (callback, leaderMetadataWrapper) -> veniceWriter.get()
+              .deleteDeprecatedChunksFromManifest(
+                  oldValueManifest,
+                  subPartition,
+                  callback,
+                  leaderMetadataWrapper,
+                  null);
+      produceToLocalKafka(
+          consumerRecord,
+          partitionConsumptionState,
+          leaderProducedRecordContext,
+          produceFunction,
           subPartition,
           kafkaUrl,
           kafkaClusterId,

@@ -42,6 +42,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
@@ -51,6 +53,7 @@ import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -483,6 +486,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       producePutOrDeleteToKafka(
           mergeConflictResult,
           partitionConsumptionState,
+          msgType,
           keyBytes,
           consumerRecord,
           subPartition,
@@ -599,6 +603,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private void producePutOrDeleteToKafka(
       MergeConflictResult mergeConflictResult,
       PartitionConsumptionState partitionConsumptionState,
+      MessageType msgType,
       byte[] key,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       int subPartition,
@@ -615,7 +620,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
     final ByteBuffer updatedRmdBytes =
         rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
-
+    byte[] updatedKeyBytes = key;
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {
       hostLevelIngestionStats.recordTombstoneCreatedDCR();
@@ -663,7 +668,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
       updatedPut.replicationMetadataPayload = updatedRmdBytes;
 
-      byte[] updatedKeyBytes = key;
       if (isChunked) {
         // Since data is not chunked in RT but chunked in VT, creating the key for the small record case or CVM to be
         // used to persist on disk after producing to Kafka.
@@ -681,6 +685,67 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           LeaderProducedRecordContext
               .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut),
           produceToTopicFunction,
+          subPartition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
+    }
+
+    if (msgType.equals(MessageType.UPDATE) && isChunked) {
+
+      /**
+       * Iterate all chunked keys in old manifest and send DELETE request to version topic.
+       */
+      ByteBuffer keyBuffer =
+          ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(ByteBuffer.wrap(updatedKeyBytes));
+      ChunkedValueManifest oldValueManifest =
+          ChunkingUtils.getChunkValueManifestFromStorage(keyBuffer, subPartition, false, storageEngine);
+      if (oldValueManifest == null) {
+        return;
+      }
+      Delete delete = new Delete();
+      delete.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+      delete.replicationMetadataVersionId = rmdProtocolVersionID;
+      delete.replicationMetadataPayload = WriterChunkingHelper.EMPTY_BYTE_BUFFER;
+      DeleteMetadata deleteMetadata = new DeleteMetadata(
+          AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
+          rmdProtocolVersionID,
+          WriterChunkingHelper.EMPTY_BYTE_BUFFER);
+
+      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
+          .newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, delete);
+      produceToLocalKafka(
+          consumerRecord,
+          partitionConsumptionState,
+          leaderProducedRecordContext,
+          (callback, leaderMetadataWrapper) -> veniceWriter.get()
+              .deleteDeprecatedChunksFromManifest(
+                  oldValueManifest,
+                  subPartition,
+                  callback,
+                  leaderMetadataWrapper,
+                  deleteMetadata),
+          subPartition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
+
+      ChunkedValueManifest oldRmdManifest =
+          ChunkingUtils.getChunkValueManifestFromStorage(keyBuffer, subPartition, true, storageEngine);
+      if (oldRmdManifest == null) {
+        return;
+      }
+      produceToLocalKafka(
+          consumerRecord,
+          partitionConsumptionState,
+          leaderProducedRecordContext,
+          (callback, leaderMetadataWrapper) -> veniceWriter.get()
+              .deleteDeprecatedChunksFromManifest(
+                  oldRmdManifest,
+                  subPartition,
+                  callback,
+                  leaderMetadataWrapper,
+                  deleteMetadata),
           subPartition,
           kafkaUrl,
           kafkaClusterId,

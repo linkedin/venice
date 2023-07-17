@@ -226,6 +226,22 @@ public class ChunkingUtils {
         isRmdValue);
   }
 
+  public static ChunkedValueManifest getChunkValueManifestFromStorage(
+      ByteBuffer key,
+      int partition,
+      boolean isRmd,
+      AbstractStorageEngine store) {
+    byte[] value = store.get(partition, key);
+    if (value == null) {
+      return null;
+    }
+    int writerSchemaId = ValueRecord.parseSchemaId(value);
+    if (writerSchemaId > 0) {
+      return null;
+    }
+    return CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, writerSchemaId);
+  }
+
   /**
    * Fetches the value associated with the given key, and potentially re-assembles it, if it is
    * a chunked value.

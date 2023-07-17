@@ -508,6 +508,48 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return delete(key, callback, DEFAULT_LEADER_METADATA_WRAPPER, APP_DEFAULT_LOGICAL_TS, deleteMetadata);
   }
 
+  public void deleteDeprecatedChunksFromManifest(
+      ChunkedValueManifest manifest,
+      int partition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      DeleteMetadata deleteMetadata) {
+    for (ByteBuffer chunkedKeyByteBuffer: manifest.keysWithChunkIdSuffix) {
+      deleteDeprecatedChunk(chunkedKeyByteBuffer.array(), partition, callback, leaderMetadataWrapper, deleteMetadata);
+    }
+  }
+
+  public void deleteDeprecatedChunk(
+      byte[] serializedKey,
+      int partition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      DeleteMetadata deleteMetadata) {
+
+    if (callback instanceof ChunkAwareCallback) {
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null);
+    }
+    KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
+    Delete delete = new Delete();
+    if (deleteMetadata == null) {
+      delete.schemaId = VENICE_DEFAULT_VALUE_SCHEMA_ID;
+      delete.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      delete.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+    } else {
+      delete.schemaId = deleteMetadata.getValueSchemaId();
+      delete.replicationMetadataVersionId = deleteMetadata.getRmdVersionId();
+      delete.replicationMetadataPayload = deleteMetadata.getRmdPayload();
+    }
+    sendMessage(
+        producerMetadata -> kafkaKey,
+        MessageType.DELETE,
+        delete,
+        partition,
+        callback,
+        leaderMetadataWrapper,
+        APP_DEFAULT_LOGICAL_TS);
+  }
+
   /**
    * Execute a standard "delete" on the key.
    *
@@ -516,11 +558,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param leaderMetadataWrapper - The leader Metadata of this message in the source topic:
    *                         -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
    *                              sending the message in VPJ plugin to the version topic;
-   *                         >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
+   *                         >=0: Leader replica consumes a DELETE message from real-time topic, VeniceWriter in leader
    *                              is sending this message to version topic with extra info: offset in the real-time topic.
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps point of view.
    * @param deleteMetadata - a DeleteMetadata containing replication metadata related fields (can be null).
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * @return a java.util.concurrent.Future. Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
