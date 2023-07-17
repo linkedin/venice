@@ -8,6 +8,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
+import com.linkedin.venice.utils.TestUtils;
 import io.grpc.InsecureServerCredentials;
 import java.util.Collections;
 import org.testng.annotations.AfterTest;
@@ -22,7 +23,6 @@ public class VeniceGrpcServerTest {
   @BeforeTest
   void setUp() {
     serverConfig = mock(VeniceGrpcServerConfig.class);
-    when(serverConfig.getPort()).thenReturn(1234);
     when(serverConfig.getCredentials()).thenReturn(InsecureServerCredentials.create());
     when(serverConfig.getService()).thenReturn(mock(VeniceReadServiceImpl.class));
     when(serverConfig.getInterceptors()).thenReturn(Collections.emptyList());
@@ -35,6 +35,8 @@ public class VeniceGrpcServerTest {
 
   @Test
   void startServerSuccessfully() {
+    when(serverConfig.getPort()).thenReturn(TestUtils.getFreePort());
+
     grpcServer = new VeniceGrpcServer(serverConfig);
 
     grpcServer.start();
@@ -43,7 +45,8 @@ public class VeniceGrpcServerTest {
 
   @Test
   void startServerThrowVeniceException() {
-    when(serverConfig.getPort()).thenReturn(1010);
+    int port = TestUtils.getFreePort();
+    when(serverConfig.getPort()).thenReturn(port);
     VeniceGrpcServer firstServer = new VeniceGrpcServer(serverConfig);
     firstServer.start();
     grpcServer = new VeniceGrpcServer(serverConfig);
@@ -59,6 +62,7 @@ public class VeniceGrpcServerTest {
 
   @Test
   void testServerShutdown() throws InterruptedException {
+    when(serverConfig.getPort()).thenReturn(TestUtils.getFreePort());
     grpcServer = new VeniceGrpcServer(serverConfig);
     grpcServer.start();
 
