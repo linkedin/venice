@@ -133,9 +133,11 @@ public class StoreRepushCommand extends Command {
 
         boolean isBatch = false;
         StoreResponse storeResponse = parentCtrlCli.getStore(s);
-        if (storeResponse.getStore().getHybridStoreConfig() != null) {
+        if (storeResponse.getStore().getHybridStoreConfig() == null) {
           isBatch = true;
         }
+
+        LOGGER.error(isBatch);
 
         MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, s);
         // No future version status for target region.

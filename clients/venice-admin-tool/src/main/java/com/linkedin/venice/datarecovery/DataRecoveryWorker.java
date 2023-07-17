@@ -63,7 +63,7 @@ public abstract class DataRecoveryWorker {
       firstTask.run();
       if (firstTask.getTaskResult().isError()) {
         displayTaskResult(firstTask);
-        return;
+        // return;
       }
       // Exclude the 1st item from the list as it has finished.
       concurrentTasks = tasks.subList(1, tasks.size());
