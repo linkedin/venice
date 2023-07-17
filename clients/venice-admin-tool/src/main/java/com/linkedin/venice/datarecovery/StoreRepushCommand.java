@@ -1,6 +1,7 @@
 package com.linkedin.venice.datarecovery;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -69,6 +70,11 @@ public class StoreRepushCommand extends Command {
   @Override
   public boolean needWaitForFirstTaskToComplete() {
     return true;
+  }
+
+  public void completeCoreWorkWithMessage(String message) {
+    result.setMessage(message);
+    result.setCoreWorkDone(true);
   }
 
   private List<String> generateRepushCommand() {
@@ -172,13 +178,16 @@ public class StoreRepushCommand extends Command {
         String clusterName = cli.discoverCluster(repushParams.getStore()).getCluster();
         try (ControllerClient parentCtrlCli =
             buildControllerClient(clusterName, repushParams.getUrl(), repushParams.getSSLFactory())) {
-          parentCtrlCli.prepareDataRecovery(
+          ControllerResponse prepareResponse = parentCtrlCli.prepareDataRecovery(
               repushParams.getSourceFabric(),
               repushParams.getDestFabric(),
               repushParams.getStore(),
               -1,
               Optional.empty());
-          parentCtrlCli.dataRecovery(
+          if (prepareResponse.isError()) {
+            completeCoreWorkWithMessage("failure: " + prepareResponse.getError());
+          }
+          ControllerResponse dataRecoveryResponse = parentCtrlCli.dataRecovery(
               repushParams.getSourceFabric(),
               repushParams.getDestFabric(),
               repushParams.getStore(),
@@ -186,10 +195,13 @@ public class StoreRepushCommand extends Command {
               false,
               true,
               Optional.empty());
-          processOutput("success: (batch store -- no url)", 0);
+          if (dataRecoveryResponse.isError()) {
+            completeCoreWorkWithMessage("failure: " + dataRecoveryResponse.getError());
+          }
+          completeCoreWorkWithMessage("success: (batch store -- no url)");
         }
       } catch (VeniceException e) {
-        processOutput(e.getMessage(), 1);
+        completeCoreWorkWithMessage("failure: VeniceException -- " + e.getMessage());
       }
       return;
     }
