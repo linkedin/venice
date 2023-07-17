@@ -198,15 +198,16 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
        */
       finalResponse = buildStreamingResponse(gatheredResponses, storeName, versionNumber);
     } else {
+      Optional<Map<CharSequence, String>> optionalHeaders = venicePath.getResponseHeaders();
       switch (requestType) {
         case SINGLE_GET:
           finalResponse = gatheredResponses.get(0);
           break;
         case MULTI_GET:
-          finalResponse = processMultiGetResponses(gatheredResponses, storeName, versionNumber);
+          finalResponse = processMultiGetResponses(gatheredResponses, storeName, versionNumber, optionalHeaders);
           break;
         case COMPUTE:
-          finalResponse = processComputeResponses(gatheredResponses, storeName);
+          finalResponse = processComputeResponses(gatheredResponses, storeName, optionalHeaders);
           break;
         default:
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
@@ -354,7 +355,10 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     return compressionStrategy;
   }
 
-  protected FullHttpResponse processComputeResponses(List<FullHttpResponse> responses, String storeName) {
+  protected FullHttpResponse processComputeResponses(
+      List<FullHttpResponse> responses,
+      String storeName,
+      Optional<Map<CharSequence, String>> optionalHeaders) {
     /**
      * Here we will check the consistency of the following headers among all the responses:
      * 1. {@link HttpHeaderNames.CONTENT_TYPE}
@@ -390,12 +394,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
 
     FullHttpResponse computeResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
-    COMPUTE_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
-      computeResponse.headers().add(headerName, headerValue);
-    });
-    computeResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
-    computeResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
-    computeResponse.headers().add(VENICE_REQUEST_RCU, totalRequestRcu);
+    COMPUTE_VALID_HEADER_MAP.forEach(computeResponse.headers()::set);
+    optionalHeaders.ifPresent(headers -> headers.forEach(computeResponse.headers()::set));
+    computeResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+    computeResponse.headers().set(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+    computeResponse.headers().set(VENICE_REQUEST_RCU, totalRequestRcu);
     return computeResponse;
   }
 
@@ -413,7 +416,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
    * @param responses Subset of responses from the SN to be concatenated to form the response to the client.
    * @return The concatenated response that should be sent to the client along with some content-related headers.
    */
-  protected FullHttpResponse processMultiGetResponses(List<FullHttpResponse> responses, String storeName, int version) {
+  protected FullHttpResponse processMultiGetResponses(
+      List<FullHttpResponse> responses,
+      String storeName,
+      int version,
+      Optional<Map<CharSequence, String>> optionalHeaders) {
     long decompressedSize = 0;
     long decompressionTimeInNs = 0;
     int totalRequestRcu = 0;
@@ -472,12 +479,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
 
     FullHttpResponse multiGetResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
-    MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
-      multiGetResponse.headers().add(headerName, headerValue);
-    });
-    multiGetResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
-    multiGetResponse.headers().add(VENICE_COMPRESSION_STRATEGY, responseCompression.getValue());
-    multiGetResponse.headers().add(VENICE_REQUEST_RCU, totalRequestRcu);
+    MULTI_GET_VALID_HEADER_MAP.forEach(multiGetResponse.headers()::set);
+    optionalHeaders.ifPresent(headers -> headers.forEach(multiGetResponse.headers()::set));
+    multiGetResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+    multiGetResponse.headers().set(VENICE_COMPRESSION_STRATEGY, responseCompression.getValue());
+    multiGetResponse.headers().set(VENICE_REQUEST_RCU, totalRequestRcu);
     return multiGetResponse;
   }
 }
