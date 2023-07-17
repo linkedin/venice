@@ -2,7 +2,7 @@ package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.protocols.VeniceClientBatchRequest;
+import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -64,9 +64,9 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
     return new MultiGetRouterRequestWrapper(resourceName, keys, httpRequest);
   }
 
-  public static MultiGetRouterRequestWrapper parseMultiGetGrpcRequest(VeniceClientBatchRequest grpcRequest) {
+  public static MultiGetRouterRequestWrapper parseMultiGetGrpcRequest(VeniceClientRequest grpcRequest) {
     String resourceName = grpcRequest.getResourceName();
-    Iterable<MultiGetRouterRequestKeyV1> keys = parseKeys(grpcRequest.getKeyString().toByteArray());
+    Iterable<MultiGetRouterRequestKeyV1> keys = parseKeys(grpcRequest.getKeyBytes().toByteArray());
 
     // isRetryRequest set to false for now, retry functionality is a later milestone
     return new MultiGetRouterRequestWrapper(resourceName, keys, false, grpcRequest.getIsStreamingRequest());

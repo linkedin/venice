@@ -25,7 +25,6 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -54,16 +53,10 @@ public class VeniceGrpcEndToEndTest {
   private static final int recordCnt = 3000;
   public static final int maxAllowedKeys = 150;
   private VeniceClusterWrapper cluster;
-  private int grpcPort;
   private Map<String, String> nettyToGrpcPortMap;
-  protected volatile RecordSerializer<String> serializer;
 
   public VeniceClusterWrapper getCluster() {
     return cluster;
-  }
-
-  public int getGrpcPort() {
-    return grpcPort;
   }
 
   @BeforeClass
@@ -90,7 +83,6 @@ public class VeniceGrpcEndToEndTest {
 
     nettyToGrpcPortMap = new HashMap<>();
 
-    grpcPort = cluster.getVeniceServers().get(0).getGrpcPort();
     for (VeniceServerWrapper veniceServer: cluster.getVeniceServers()) {
       nettyToGrpcPortMap.put(veniceServer.getAddress(), String.valueOf(veniceServer.getGrpcPort()));
     }
@@ -185,11 +177,14 @@ public class VeniceGrpcEndToEndTest {
       for (String k: keys) {
         String thinClientRecord = avroClient.get(k).get().toString();
         String fastClientRecord = ((Utf8) fastClientRet.get(k)).toString();
+        String fastClientSingleGet = ((Utf8) genericFastClient.get(k).get()).toString();
 
         LOGGER.info("thinClientRecord: " + thinClientRecord + " for key: " + k);
         LOGGER.info("fastClientRecord: " + fastClientRecord + " for key: " + k);
+        LOGGER.info("fastClientSingleGet: " + fastClientSingleGet + " for key: " + k);
 
         Assert.assertEquals(thinClientRecord, fastClientRecord);
+        Assert.assertEquals(thinClientRecord, fastClientSingleGet);
       }
     }
   }
@@ -260,7 +255,7 @@ public class VeniceGrpcEndToEndTest {
     }
   }
 
-  Set<Set<String>> getKeySets() {
+  private Set<Set<String>> getKeySets() {
     Set<Set<String>> keySets = new HashSet<>();
     int numSets = recordCnt / maxAllowedKeys;
     int remainder = recordCnt % maxAllowedKeys;

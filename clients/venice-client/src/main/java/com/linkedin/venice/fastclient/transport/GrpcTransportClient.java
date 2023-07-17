@@ -3,9 +3,8 @@ package com.linkedin.venice.fastclient.transport;
 import com.google.protobuf.ByteString;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
-import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.protocols.VeniceClientBatchRequest;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
@@ -21,11 +20,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class GrpcTransportClient extends TransportClient {
+public class GrpcTransportClient extends InternalTransportClient {
   private static final Logger LOGGER = LogManager.getLogger(GrpcTransportClient.class);
   private final TransportClient r2TransportClient; // used for metadata requests
-  private final Map<String, ManagedChannel> serverGrpcChannels;
-  private final Map<String, String> veniceAddressToGrpcAddress;
+
+  // field has public visibility for unit testing
+  public final Map<String, ManagedChannel> serverGrpcChannels;
+  final Map<String, String> veniceAddressToGrpcAddress;
 
   public GrpcTransportClient(Map<String, String> nettyServerToGrpc, TransportClient r2TransportClient) {
     serverGrpcChannels = new HashMap<>();
@@ -40,8 +41,13 @@ public class GrpcTransportClient extends TransportClient {
     }
   }
 
-  private ManagedChannel getChannel(String requestPath) {
+  public ManagedChannel getChannel(String requestPath) {
     String portKey = requestPath.split("/")[2];
+
+    if (!veniceAddressToGrpcAddress.containsKey(portKey)) {
+      throw new VeniceException("No grpc server found for port: " + portKey);
+    }
+
     return serverGrpcChannels.computeIfAbsent(
         portKey,
         k -> ManagedChannelBuilder.forTarget(veniceAddressToGrpcAddress.get(k)).usePlaintext().build());
@@ -80,27 +86,17 @@ public class GrpcTransportClient extends TransportClient {
     String[] requestParts = RequestHelper.getRequestParts(requestPath);
 
     ManagedChannel channel = getChannel(requestPath);
-    VeniceClientBatchRequest request = VeniceClientBatchRequest.newBuilder()
+    VeniceClientRequest request = VeniceClientRequest.newBuilder()
         .setStoreName(requestParts[2])
         .setResourceName(requestParts[2])
         .setPartition(-1)
-        .setKeyString(ByteString.copyFrom(requestBody))
+        .setKeyBytes(ByteString.copyFrom(requestBody))
         .build();
 
     VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = VeniceReadServiceGrpc.newStub(channel);
     GrpcTransportClientBatchCallback callback = new GrpcTransportClientBatchCallback(clientStub, request);
 
     return callback.post();
-  }
-
-  @Override
-  public void streamPost(
-      String requestPath,
-      Map<String, String> headers,
-      byte[] requestBody,
-      TransportClientStreamingCallback callback,
-      int keyCount) {
-    // TODO:
   }
 
   @Override
@@ -149,16 +145,17 @@ public class GrpcTransportClient extends TransportClient {
 
       return valueFuture;
     }
+
   }
 
   public static class GrpcTransportClientBatchCallback {
     private final CompletableFuture<TransportClientResponse> valueFuture;
     private final VeniceReadServiceGrpc.VeniceReadServiceStub clientStub;
-    private final VeniceClientBatchRequest request;
+    private final VeniceClientRequest request;
 
     public GrpcTransportClientBatchCallback(
         VeniceReadServiceGrpc.VeniceReadServiceStub clientStub,
-        VeniceClientBatchRequest request) {
+        VeniceClientRequest request) {
       this.clientStub = clientStub;
       this.request = request;
       this.valueFuture = new CompletableFuture<>();
