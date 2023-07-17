@@ -7,7 +7,6 @@ import com.linkedin.venice.listener.StorageReadRequestsHandler;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.response.StorageResponseObject;
-import com.linkedin.venice.protocols.VeniceClientBatchRequest;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
@@ -20,10 +19,6 @@ import org.apache.logging.log4j.Logger;
 public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(VeniceReadServiceImpl.class);
   StorageReadRequestsHandler storageReadRequestsHandler;
-
-  public VeniceReadServiceImpl() {
-
-  }
 
   public VeniceReadServiceImpl(StorageReadRequestsHandler storageReadRequestsHandler) {
     LOGGER.info("Created gRPC Server for VeniceReadService");
@@ -39,7 +34,7 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
   }
 
   @Override
-  public void batchGet(VeniceClientBatchRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
+  public void batchGet(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
     VeniceServerResponse grpcBatchGetResponse = handleMultiGetRequest(request);
 
     responseObserver.onNext(grpcBatchGetResponse);
@@ -52,10 +47,17 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     StorageResponseObject response =
         (StorageResponseObject) storageReadRequestsHandler.handleSingleGetGrpcRequest(getRouterRequest);
 
-    return createResponse(response);
+    ValueRecord valueRecord = response.getValueRecord();
+
+    return VeniceServerResponse.newBuilder()
+        .setSchemaId(valueRecord.getSchemaId())
+        .setDataSize(valueRecord.getDataSize())
+        .setData(ByteString.copyFrom(valueRecord.getData().array(), 4, valueRecord.getDataSize()))
+        .build();
+
   }
 
-  private VeniceServerResponse handleMultiGetRequest(VeniceClientBatchRequest request) {
+  private VeniceServerResponse handleMultiGetRequest(VeniceClientRequest request) {
     MultiGetRouterRequestWrapper multiGetRouterRequestWrapper =
         MultiGetRouterRequestWrapper.parseMultiGetGrpcRequest(request);
 
@@ -64,15 +66,5 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     ByteBuf data = readResponse.getResponseBody();
 
     return VeniceServerResponse.newBuilder().setData(ByteString.copyFrom(data.array())).setSchemaId(schemaId).build();
-  }
-
-  private VeniceServerResponse createResponse(StorageResponseObject response) {
-    ValueRecord valueRecord = response.getValueRecord();
-
-    return VeniceServerResponse.newBuilder()
-        .setSchemaId(valueRecord.getSchemaId())
-        .setDataSize(valueRecord.getDataSize())
-        .setData(ByteString.copyFrom(valueRecord.getData().array(), 4, valueRecord.getDataSize()))
-        .build();
   }
 }

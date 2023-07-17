@@ -5,32 +5,21 @@ option java_multiple_files = true;
 
 service VeniceReadService {
   rpc get (VeniceClientRequest) returns (VeniceServerResponse) {}
-  rpc batchGet(VeniceClientBatchRequest) returns (stream VeniceServerResponse) {}
+  rpc batchGet(VeniceClientRequest) returns (VeniceServerResponse) {}
 }
 
 message VeniceClientRequest {
   uint32 partition = 1;
-  string keyString = 2;
-  sint32 requestTimeoutInNS = 3;
-  string resourceName = 4; // if we add batch get --> repeated string resourceName
-  string storeName = 5;
-  bool   isStreamingRequest = 6;
-  bool   isRetryRequest = 7;
-}
-
-message VeniceClientBatchRequest {
-  uint32 partition = 1;
-  bytes  keyString = 2;
-  sint32 requestTimeoutInNS = 3;
-  string resourceName = 4;
-  string storeName = 5;
-  bool   isStreamingRequest = 6;
-  bool   isRetryRequest = 7;
-
+  string keyString = 2;           // used for single get
+  bytes  keyBytes = 3;            // used for batch get
+  sint32 requestTimeoutInNS = 4;
+  string resourceName = 5;
+  string storeName = 6;
+  bool   isStreamingRequest = 7;
+  bool   isRetryRequest = 8;
 }
 
 message VeniceServerResponse {
-  // Server response has a lot of data which I think isn't necessary for minimum viable demo, so I'm not including it
   sint32 schemaId = 1;
   bytes  data = 2;
   uint32 dataSize = 3;
