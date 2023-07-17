@@ -51,6 +51,12 @@ public class ApacheKafkaConsumerConfig {
     if (veniceProperties.containsKey(ConfigKeys.PUB_SUB_COMPONENTS_USAGE)) {
       if (veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE).equals("controller")) {
         properties = ApacheKafkaAdminConfig.preparePubSubSSLProperties(veniceProperties);
+        properties.setProperty(ApacheKafkaConsumerConfig.KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
+        /**
+         * Reason to disable auto_commit
+         * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
+         */
+        properties.setProperty(ApacheKafkaConsumerConfig.KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
       } else if (veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE).equals("server")) {
         properties = preparePubSubSSLPropertiesForServer(veniceProperties);
       }
@@ -61,10 +67,7 @@ public class ApacheKafkaConsumerConfig {
     if (consumerName != null) {
       consumerProperties.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerName);
     }
-    LOGGER.info(
-        "Components: {}\n, postVeniceProperties: {}",
-        veniceProperties.getString(ConfigKeys.PUB_SUB_COMPONENTS_USAGE, "unset"),
-        postVeniceProperties);
+
     // Setup ssl config if needed.
     if (KafkaSSLUtils.validateAndCopyKafkaSSLConfig(postVeniceProperties, this.consumerProperties)) {
       LOGGER.info("Will initialize an SSL Kafka consumer client");

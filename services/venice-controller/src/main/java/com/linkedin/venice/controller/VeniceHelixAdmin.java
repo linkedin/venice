@@ -694,9 +694,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private VeniceProperties getPubSubPropertiesFromControllerConfig(String pubSubBootstrapServers) {
     Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
     properties.put(ConfigKeys.PUB_SUB_COMPONENTS_USAGE, "controller");
-    properties.put(ConfigKeys.PUB_SUB_ADMIN_OR_PERFORMANT_USAGE, "admin");
-    LOGGER.info("Setting {} \n for pub sub: {}", properties, pubSubBootstrapServers);
     properties.put(ConfigKeys.PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE, pubSubBootstrapServers);
+    LOGGER.info("Setting {} \n for pub sub: {}", properties, pubSubBootstrapServers);
     return new VeniceProperties(properties);
   }
 

@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
@@ -118,13 +117,13 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       /**
        * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
        */
-      consumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
+      // consumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
           pubSubConsumerAdapterFactory.create(
               new VeniceProperties(consumerProperties),
               isKafkaConsumerOffsetCollectionEnabled,
               pubSubDeserializer,
-              null),
+              getUniqueClientId(kafkaUrl, i)),
           stats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
