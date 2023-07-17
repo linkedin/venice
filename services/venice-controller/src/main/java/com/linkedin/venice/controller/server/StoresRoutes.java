@@ -325,6 +325,10 @@ public class StoresRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         veniceResponse.setCluster(clusterName);
+        Store store = admin.getStore(clusterName, storeName);
+        if (store == null) {
+          throw new VeniceNoStoreException(storeName);
+        }
         Map<String, String> storeStatusMap = admin.getFutureVersionsForMultiColos(clusterName, storeName);
         if (storeStatusMap.isEmpty()) {
           // Non parent controllers will return an empty map, so we'll just return the childs version of this api

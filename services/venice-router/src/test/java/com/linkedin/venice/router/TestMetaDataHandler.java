@@ -21,10 +21,10 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
-import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.helix.SystemStoreJSONSerializer;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -36,7 +36,6 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.SerializableSystemStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
@@ -88,7 +87,7 @@ public class TestMetaDataHandler {
 
   public FullHttpResponse passRequestToMetadataHandler(
       String requestUri,
-      RoutingDataRepository routingDataRepository,
+      HelixCustomizedViewOfflinePushRepository routingDataRepository,
       ReadOnlySchemaRepository schemaRepo) throws IOException {
     return passRequestToMetadataHandler(
         requestUri,
@@ -102,7 +101,7 @@ public class TestMetaDataHandler {
 
   public FullHttpResponse passRequestToMetadataHandler(
       String requestUri,
-      RoutingDataRepository routingDataRepository,
+      HelixCustomizedViewOfflinePushRepository routingDataRepository,
       ReadOnlySchemaRepository schemaRepo,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       Map<String, String> clusterToD2ServiceMap,
@@ -123,7 +122,7 @@ public class TestMetaDataHandler {
 
   public FullHttpResponse passRequestToMetadataHandler(
       String requestUri,
-      RoutingDataRepository routing,
+      HelixCustomizedViewOfflinePushRepository routing,
       ReadOnlySchemaRepository schemaRepo,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       Map<String, String> clusterToD2ServiceMap,
@@ -167,7 +166,7 @@ public class TestMetaDataHandler {
   @Test
   public void testControllerLookup() throws IOException {
     // Mock RoutingDataRepository
-    RoutingDataRepository routingRepo = Mockito.mock(RoutingDataRepository.class);
+    HelixCustomizedViewOfflinePushRepository routingRepo = Mockito.mock(HelixCustomizedViewOfflinePushRepository.class);
     String leaderControllerHost = "myControllerHost";
     int leaderControllerPort = 1234;
     Instance leaderControllerInstance = new Instance("1", leaderControllerHost, leaderControllerPort);
@@ -193,7 +192,7 @@ public class TestMetaDataHandler {
   @Test(dataProvider = "controllerUrlProvider")
   public void testControllerLookupLegacy(String controllerUrl) throws IOException {
     // Mock RoutingDataRepository
-    RoutingDataRepository routingRepo = Mockito.mock(RoutingDataRepository.class);
+    HelixCustomizedViewOfflinePushRepository routingRepo = Mockito.mock(HelixCustomizedViewOfflinePushRepository.class);
     String leaderControllerHost = "myControllerHost";
     int leaderControllerPort = 1234;
     Instance leaderControllerInstance = new Instance("1", leaderControllerHost, leaderControllerPort);
@@ -594,15 +593,14 @@ public class TestMetaDataHandler {
   @Test
   public void testResourceStateLookup() throws IOException {
     String resourceName = "test-store_v1";
-    RoutingDataRepository routingDataRepository = Mockito.mock(RoutingDataRepository.class);
+    HelixCustomizedViewOfflinePushRepository routingDataRepository =
+        Mockito.mock(HelixCustomizedViewOfflinePushRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Mockito.doReturn(2).when(routingDataRepository).getNumberOfPartitions(resourceName);
     List<ReplicaState> replicaStates0 = new ArrayList<>();
-    replicaStates0
-        .add(new ReplicaState(0, "test-host_0", HelixState.LEADER_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates0.add(new ReplicaState(0, "test-host_0", ExecutionStatus.COMPLETED));
     List<ReplicaState> replicaStates1 = new ArrayList<>();
-    replicaStates1
-        .add(new ReplicaState(1, "test-host_1", HelixState.LEADER_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates1.add(new ReplicaState(1, "test-host_1", ExecutionStatus.COMPLETED));
     Mockito.doReturn(replicaStates0).when(routingDataRepository).getReplicaStates(resourceName, 0);
     Mockito.doReturn(replicaStates1).when(routingDataRepository).getReplicaStates(resourceName, 1);
 
@@ -618,10 +616,8 @@ public class TestMetaDataHandler {
         OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertTrue(resourceStateResponse.isReadyToServe());
     // Add a not ready to serve replica in partition 0 which should put the version to not ready to serve.
-    replicaStates0
-        .add(new ReplicaState(0, "test-host_2", HelixState.STANDBY_STATE, ExecutionStatus.STARTED.toString(), false));
-    replicaStates1
-        .add(new ReplicaState(1, "test-host_3", HelixState.STANDBY_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates0.add(new ReplicaState(0, "test-host_2", ExecutionStatus.STARTED));
+    replicaStates1.add(new ReplicaState(1, "test-host_3", ExecutionStatus.COMPLETED));
     response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/resource_state/" + resourceName,
         routingDataRepository,
@@ -633,10 +629,8 @@ public class TestMetaDataHandler {
     resourceStateResponse = OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertFalse(resourceStateResponse.isReadyToServe());
     // Add one more ready to serve replica in each partition which should put the version to ready to serve.
-    replicaStates0
-        .add(new ReplicaState(0, "test-host_4", HelixState.STANDBY_STATE, ExecutionStatus.COMPLETED.toString(), true));
-    replicaStates1
-        .add(new ReplicaState(1, "test-host_5", HelixState.STANDBY_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates0.add(new ReplicaState(0, "test-host_4", ExecutionStatus.COMPLETED));
+    replicaStates1.add(new ReplicaState(1, "test-host_5", ExecutionStatus.COMPLETED));
     response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/resource_state/" + resourceName,
         routingDataRepository,
@@ -653,11 +647,11 @@ public class TestMetaDataHandler {
   public void testResourceStateLookupOfSystemStores() throws IOException {
     String storeName = "regular-test-store";
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
-    RoutingDataRepository routingDataRepository = Mockito.mock(RoutingDataRepository.class);
+    HelixCustomizedViewOfflinePushRepository routingDataRepository =
+        Mockito.mock(HelixCustomizedViewOfflinePushRepository.class);
     List<String> systemStoreResources = new ArrayList<>();
     List<ReplicaState> replicaStates = new ArrayList<>();
-    replicaStates
-        .add(new ReplicaState(0, "test-host_0", HelixState.ONLINE_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates.add(new ReplicaState(0, "test-host_0", ExecutionStatus.COMPLETED));
     for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.values()) {
       String resourceName = Version.composeKafkaTopic(systemStoreType.getSystemStoreName(storeName), 1);
       systemStoreResources.add(resourceName);
@@ -687,7 +681,8 @@ public class TestMetaDataHandler {
   public void testResourceStateLookupWithErrors() throws IOException {
     String resourceName = "test-store_v1";
     HelixReadOnlyStoreRepository helixReadOnlyStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
-    RoutingDataRepository routingDataRepository = Mockito.mock(RoutingDataRepository.class);
+    HelixCustomizedViewOfflinePushRepository routingDataRepository =
+        Mockito.mock(HelixCustomizedViewOfflinePushRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Mockito.doReturn(Optional.empty())
         .when(storeConfigRepository)
@@ -706,8 +701,7 @@ public class TestMetaDataHandler {
         .when(storeConfigRepository)
         .getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName));
     List<ReplicaState> replicaStates0 = new ArrayList<>();
-    replicaStates0
-        .add(new ReplicaState(0, "test-host_0", HelixState.LEADER_STATE, ExecutionStatus.COMPLETED.toString(), true));
+    replicaStates0.add(new ReplicaState(0, "test-host_0", ExecutionStatus.COMPLETED));
     Mockito.doReturn(replicaStates0).when(routingDataRepository).getReplicaStates(resourceName, 0);
     Mockito.doReturn(Collections.emptyList()).when(routingDataRepository).getReplicaStates(resourceName, 1);
     response = passRequestToMetadataHandler(
@@ -728,7 +722,8 @@ public class TestMetaDataHandler {
   public void testHybridQuotaInRouter() throws IOException {
     String resourceName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-    RoutingDataRepository routingDataRepository = Mockito.mock(RoutingDataRepository.class);
+    HelixCustomizedViewOfflinePushRepository routingDataRepository =
+        Mockito.mock(HelixCustomizedViewOfflinePushRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Mockito.doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     Mockito.doReturn(2).when(routingDataRepository).getNumberOfPartitions(resourceName);
@@ -769,7 +764,8 @@ public class TestMetaDataHandler {
   public void testStreamReprocessingHybridQuotaInRouter() throws IOException {
     String resourceName = "test-store_v3";
     String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-    RoutingDataRepository routingDataRepository = Mockito.mock(RoutingDataRepository.class);
+    HelixCustomizedViewOfflinePushRepository routingDataRepository =
+        Mockito.mock(HelixCustomizedViewOfflinePushRepository.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Mockito.doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     Mockito.doReturn(2).when(routingDataRepository).getNumberOfPartitions(resourceName);

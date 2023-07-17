@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Instance;
@@ -26,7 +27,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -317,7 +317,9 @@ public class Utils {
   public static Map<String, String> parseCommaSeparatedStringMapFromString(String value, String fieldName) {
     try {
       Map<String, String> map = new HashMap<>();
-      Arrays.stream(value.split(",")).map(s -> s.split("=")).forEach(strings -> map.put(strings[0], strings[1]));
+      if (!value.isEmpty()) {
+        Arrays.stream(value.split(",")).map(s -> s.split("=")).forEach(strings -> map.put(strings[0], strings[1]));
+      }
       return map;
     } catch (Exception e) {
       throw new VeniceException(fieldName + " must be key value pairs separated by comma, but value: " + value);
@@ -499,23 +501,6 @@ public class Utils {
     double divider = Math.pow(1000, suffixIndex);
     int prettyNumber = (int) Math.round(doubleNumber / divider);
     return prettyNumber + LARGE_NUMBER_SUFFIXES[suffixIndex];
-  }
-
-  /**
-   * WARNING: The code which generates the free port and uses it must always be called within
-   * a try/catch and a loop. There is no guarantee that the port returned will still be
-   * available at the time it is used. This is best-effort only.
-   *
-   * N.B.: Visibility is package-private on purpose.
-   *
-   * @return a free port to be used by tests.
-   */
-  public static int getFreePort() {
-    try (ServerSocket socket = new ServerSocket(0)) {
-      return socket.getLocalPort();
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   public static String getUniqueString() {
@@ -786,10 +771,16 @@ public class Utils {
       for (String resourceName: resourceNames) {
         PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
         for (Partition partition: partitionAssignment.getAllPartitions()) {
-          String status = partition.getInstanceStatusById(instanceId);
-          if (status != null) {
+          HelixState helixState = partition.getHelixStateByInstanceId(instanceId);
+          ExecutionStatus executionStatus = partition.getExecutionStatusByInstanceId(instanceId);
+          if (helixState != null || executionStatus != null) {
+            /**
+             * N.B.: We only add the {@link Replica} to the returned list if the partition is hosted on the provided
+             * {@param instanceId}, which we consider to be the case if the {@link Partition} object carries either
+             * an {@link ExecutionStatus} and/or a {@link HelixState} for it.
+             */
             Replica replica = new Replica(Instance.fromNodeId(instanceId), partition.getId(), resourceName);
-            replica.setStatus(status);
+            replica.setStatus(helixState);
             replicas.add(replica);
           }
         }

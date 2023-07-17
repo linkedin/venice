@@ -375,7 +375,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
           SystemTime.INSTANCE);
       p.setRouterUrl(routerUrl);
       p.applyAdditionalWriterConfigs(config);
-      p.setAuthenticationProvider(ClientAuthenticationProviderFactory.build(config));
+      p.setAuthenticationProvider(ClientAuthenticationProviderFactory.build(toProperties(config)));
       return p;
     }
 
@@ -447,9 +447,15 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         sslFactory,
         partitioners);
     systemProducer.applyAdditionalWriterConfigs(config);
-    systemProducer.setAuthenticationProvider(ClientAuthenticationProviderFactory.build(config));
+    systemProducer.setAuthenticationProvider(ClientAuthenticationProviderFactory.build(toProperties(config)));
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
+  }
+
+  private static Properties toProperties(Config config) {
+    Properties properties = new Properties();
+    config.forEach((k, v) -> properties.put(k, v));
+    return properties;
   }
 
   /**

@@ -89,6 +89,7 @@ import static com.linkedin.venice.Arg.SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
 import static com.linkedin.venice.Arg.START_DATE;
 import static com.linkedin.venice.Arg.STORAGE_NODE;
+import static com.linkedin.venice.Arg.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.Arg.STORAGE_PERSONA;
 import static com.linkedin.venice.Arg.STORAGE_QUOTA;
 import static com.linkedin.venice.Arg.STORE;
@@ -210,13 +211,14 @@ public enum Command {
   UPDATE_STORE(
       "update-store", "update store metadata", new Arg[] { URL, CLUSTER, STORE },
       new Arg[] { OWNER, VERSION, LARGEST_USED_VERSION_NUMBER, PARTITION_COUNT, PARTITIONER_CLASS, PARTITIONER_PARAMS,
-          AMPLIFICATION_FACTOR, READABILITY, WRITEABILITY, STORAGE_QUOTA, HYBRID_STORE_OVERHEAD_BYPASS, READ_QUOTA,
-          HYBRID_REWIND_SECONDS, HYBRID_OFFSET_LAG, HYBRID_TIME_LAG, HYBRID_DATA_REPLICATION_POLICY,
-          HYBRID_BUFFER_REPLAY_POLICY, ACCESS_CONTROL, COMPRESSION_STRATEGY, CLIENT_DECOMPRESSION_ENABLED,
-          CHUNKING_ENABLED, RMD_CHUNKING_ENABLED, BATCH_GET_LIMIT, NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED,
-          READ_COMPUTATION_ENABLED, BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED,
-          BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
-          FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
+          AMPLIFICATION_FACTOR, READABILITY, WRITEABILITY, STORAGE_QUOTA, STORAGE_NODE_READ_QUOTA_ENABLED,
+          HYBRID_STORE_OVERHEAD_BYPASS, READ_QUOTA, HYBRID_REWIND_SECONDS, HYBRID_OFFSET_LAG, HYBRID_TIME_LAG,
+          HYBRID_DATA_REPLICATION_POLICY, HYBRID_BUFFER_REPLAY_POLICY, ACCESS_CONTROL, COMPRESSION_STRATEGY,
+          CLIENT_DECOMPRESSION_ENABLED, CHUNKING_ENABLED, RMD_CHUNKING_ENABLED, BATCH_GET_LIMIT,
+          NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED, READ_COMPUTATION_ENABLED, BACKUP_STRATEGY,
+          AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
+          HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED,
+          ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID }
@@ -447,17 +449,19 @@ public enum Command {
       new Arg[] { URL, CLUSTER }
   ),
   EXECUTE_DATA_RECOVERY(
-      "execute-data-recovery", "Execute data recovery for a group of stores",
-      new Arg[] { URL, RECOVERY_COMMAND, STORES, SOURCE_FABRIC, DEST_FABRIC, DATETIME },
-      new Arg[] { EXTRA_COMMAND_ARGS, DEBUG, NON_INTERACTIVE }
+      "execute-data-recovery", "Execute data recovery for a group of stores. ('--stores' overwrites '--cluster' value)",
+      new Arg[] { URL, RECOVERY_COMMAND, SOURCE_FABRIC, DEST_FABRIC, DATETIME },
+      new Arg[] { STORES, CLUSTER, EXTRA_COMMAND_ARGS, DEBUG, NON_INTERACTIVE }
   ),
   ESTIMATE_DATA_RECOVERY_TIME(
-      "estimate-data-recovery-time", "Estimates the time it would take to execute data recovery for a group of stores.",
-      new Arg[] { URL, STORES, DEST_FABRIC }
+      "estimate-data-recovery-time",
+      "Estimates the time it would take to execute data recovery for a group of stores. ('--stores' overwrites '--cluster' value)",
+      new Arg[] { URL, DEST_FABRIC }, new Arg[] { STORES, CLUSTER }
   ),
   MONITOR_DATA_RECOVERY(
-      "monitor-data-recovery", "Monitor data recovery progress for a group of stores",
-      new Arg[] { URL, STORES, DEST_FABRIC, DATETIME }, new Arg[] { INTERVAL }
+      "monitor-data-recovery",
+      "Monitor data recovery progress for a group of stores. ('--stores' overwrites '--cluster' value)",
+      new Arg[] { URL, DEST_FABRIC, DATETIME }, new Arg[] { STORES, CLUSTER, INTERVAL }
   );
 
   private final String commandName;

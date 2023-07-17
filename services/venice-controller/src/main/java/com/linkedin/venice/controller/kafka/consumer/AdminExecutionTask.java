@@ -521,6 +521,8 @@ public class AdminExecutionTask implements Callable<Void> {
       params.setStoragePersona(message.storagePersona.toString());
     }
 
+    params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
+
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {
       finalParams = params;

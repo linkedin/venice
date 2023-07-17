@@ -75,7 +75,8 @@ public class VeniceClusterInitializer implements Closeable {
   public VeniceClusterInitializer(String storeName, int routerPort) {
     Properties clusterConfig = new Properties();
     clusterConfig.put(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 100, false, false, clusterConfig);
+    clusterConfig.put(ConfigKeys.ROUTER_ENABLE_SSL, false);
+    this.veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, false, false, clusterConfig);
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
     this.veniceCluster.addVeniceServer(new Properties(), serverProperties);

@@ -9,7 +9,7 @@ import org.testng.annotations.Test;
 public class TestCheckSum {
   @Test
   public void testCheckSum() {
-    CheckSum checkSum = CheckSum.getInstance(CheckSumType.MD5).get();
+    CheckSum checkSum = CheckSum.getInstance(CheckSumType.MD5);
 
     checkSum.update(1);
 

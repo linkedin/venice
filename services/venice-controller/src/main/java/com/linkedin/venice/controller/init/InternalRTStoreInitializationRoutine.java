@@ -64,7 +64,7 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
     }
 
     if (store.getCurrentVersion() <= 0) {
-      int partitionCount = multiClusterConfigs.getControllerConfig(clusterName).getNumberOfPartition();
+      int partitionCount = multiClusterConfigs.getControllerConfig(clusterName).getMinNumberOfPartitions();
       int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
       Version version = admin.incrementVersionIdempotent(
           clusterName,
@@ -72,7 +72,8 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
           Version.guidBasedDummyPushId(),
           partitionCount,
           replicationFactor);
-      admin.writeEndOfPush(clusterName, storeName, version.getNumber(), true);
+      // SOP is already sent by incrementVersionIdempotent. No need to write again.
+      admin.writeEndOfPush(clusterName, storeName, version.getNumber(), false);
       store = admin.getStore(clusterName, storeName);
       if (store.getVersions().isEmpty()) {
         throw new VeniceException("Unable to initialize a version for store " + storeName);

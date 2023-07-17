@@ -61,6 +61,13 @@ public class ClientConfig<T extends SpecificRecord> {
   private boolean isHttps = false;
   private SSLFactory sslFactory = null;
 
+  // HttpTransport settings
+  private int maxConnectionsPerRoute; // only for HTTP1
+
+  private int maxConnectionsTotal; // only for HTTP1
+
+  private boolean httpClient5Http2Enabled;
+
   // Test settings
   private Time time = new SystemTime();
 
@@ -111,11 +118,15 @@ public class ClientConfig<T extends SpecificRecord> {
         .setHttps(config.isHttps())
         .setSslFactory(config.getSslFactory())
         .setAuthenticationProvider(config.getAuthenticationProvider())
-
         .setForceClusterDiscoveryAtStartTime(config.isForceClusterDiscoveryAtStartTime())
         .setProjectionFieldValidationEnabled(config.isProjectionFieldValidationEnabled())
         .setPreferredSchemaFilter(config.getPreferredSchemaFilter().orElse(null))
         .setSchemaRefreshPeriod(config.getSchemaRefreshPeriod())
+
+        // HttpTransport settings
+        .setMaxConnectionsPerRoute(config.getMaxConnectionsPerRoute())
+        .setMaxConnectionsTotal(config.getMaxConnectionsTotal())
+        .setHttpClient5Http2Enabled(config.isHttpClient5Http2Enabled())
 
         // Test settings
         .setTime(config.getTime());
@@ -266,6 +277,32 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setAuthenticationProvider(ClientAuthenticationProvider authenticationProvider) {
     this.authenticationProvider = authenticationProvider;
+  }
+
+  public int getMaxConnectionsPerRoute() {
+    return maxConnectionsPerRoute;
+  }
+
+  public ClientConfig<T> setMaxConnectionsPerRoute(int maxConnectionsPerRoute) {
+    this.maxConnectionsPerRoute = maxConnectionsPerRoute;
+    return this;
+  }
+
+  public int getMaxConnectionsTotal() {
+    return maxConnectionsTotal;
+  }
+
+  public ClientConfig<T> setMaxConnectionsTotal(int maxConnectionsTotal) {
+    this.maxConnectionsTotal = maxConnectionsTotal;
+    return this;
+  }
+
+  public boolean isHttpClient5Http2Enabled() {
+    return httpClient5Http2Enabled;
+  }
+
+  public ClientConfig<T> setHttpClient5Http2Enabled(boolean httpClient5Http2Enabled) {
+    this.httpClient5Http2Enabled = httpClient5Http2Enabled;
     return this;
   }
 

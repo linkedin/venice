@@ -1,5 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
+import static org.testng.Assert.assertThrows;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -25,15 +27,14 @@ public class PartitionStatusTest {
     PartitionStatus partitionStatus = new PartitionStatus(partitionId);
     partitionStatus.updateReplicaStatus(instanceId, ExecutionStatus.PROGRESS);
     PartitionStatus readonlyPartitionStatus = ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus);
-    try {
-      readonlyPartitionStatus.updateProgress(instanceId, 1);
-      Assert.fail("Can no update a readonly partition status.");
-    } catch (VeniceException e) {
-    }
-    try {
-      readonlyPartitionStatus.updateReplicaStatus(instanceId, ExecutionStatus.COMPLETED);
-      Assert.fail("Can no update a readonly partition status.");
-    } catch (VeniceException e) {
-    }
+    assertThrows(
+        VeniceException.class,
+        () -> readonlyPartitionStatus.updateReplicaStatus(instanceId, ExecutionStatus.COMPLETED));
+    assertThrows(
+        VeniceException.class,
+        () -> readonlyPartitionStatus.updateReplicaStatus(instanceId, ExecutionStatus.COMPLETED, false));
+    assertThrows(
+        VeniceException.class,
+        () -> readonlyPartitionStatus.updateReplicaStatus(instanceId, ExecutionStatus.COMPLETED, "inc push", 1));
   }
 }

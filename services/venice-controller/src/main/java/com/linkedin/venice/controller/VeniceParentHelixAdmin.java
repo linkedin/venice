@@ -42,6 +42,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
@@ -245,6 +246,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
@@ -541,7 +543,7 @@ public class VeniceParentHelixAdmin implements Admin {
           PUSH_JOB_DETAILS_STORE_DESCRIPTOR + VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           PushJobStatusRecordKey.getClassSchema().toString(),
           PushJobDetails.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(clusterName).getNumberOfPartition(),
+          getMultiClusterConfigs().getControllerConfig(clusterName).getMinNumberOfPartitions(),
           updateStoreQueryParams);
     }
 
@@ -562,7 +564,7 @@ public class VeniceParentHelixAdmin implements Admin {
           BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR + batchJobHeartbeatStoreName,
           BatchJobHeartbeatKey.getClassSchema().toString(),
           BatchJobHeartbeatValue.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(currClusterName).getNumberOfPartition(),
+          getMultiClusterConfigs().getControllerConfig(currClusterName).getMinNumberOfPartitions(),
           updateStoreQueryParams);
     } else {
       LOGGER.info(
@@ -671,6 +673,9 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         if (!updateStoreQueryParams.getHybridRewindSeconds().isPresent()) {
           updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
+        }
+        if (!updateStoreQueryParams.getPartitionCount().isPresent()) {
+          updateStoreQueryParams.setPartitionCount(partitionCount);
         }
         updateStore(clusterName, storeName, updateStoreQueryParams);
         store = getStore(clusterName, storeName);
@@ -1648,6 +1653,9 @@ public class VeniceParentHelixAdmin implements Admin {
    * @param clusterName
    */
   private void validateTargetedRegions(String targetedRegions, String clusterName) throws VeniceException {
+    if (StringUtils.isEmpty(targetedRegions)) {
+      return;
+    }
     Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
     Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     for (String region: targetedRegionSet) {
@@ -2130,7 +2138,7 @@ public class VeniceParentHelixAdmin implements Admin {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
       int maxPartitionNum =
-          getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
+          getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartitions();
       if (partitionCount > maxPartitionNum) {
         throw new ConfigurationException(
             "Partition count: " + partitionCount + " should be less than max: " + maxPartitionNum);
@@ -2290,6 +2298,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * configs should be replicated to children too.
        */
       Optional<Boolean> replicateAll = params.getReplicateAllConfigs();
+      Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
       List<CharSequence> updatedConfigsList = new LinkedList<>();
       String errorMessagePrefix = "Store update error for " + storeName + " in cluster: " + clusterName + ": ";
@@ -2556,6 +2565,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.latestSuperSetValueSchemaId =
           latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigsList, LATEST_SUPERSET_SCHEMA_ID))
               .orElseGet(currStore::getLatestSuperSetValueSchemaId);
+      setStore.storageNodeReadQuotaEnabled =
+          storageNodeReadQuotaEnabled.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_NODE_READ_QUOTA_ENABLED))
+              .orElseGet(currStore::isStorageNodeReadQuotaEnabled);
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
@@ -2622,14 +2634,23 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (!veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
-          && veniceHelixAdmin.isHybrid(setStore.hybridStoreConfig) && setStore.partitionNum == 0) {
-        // This is a new hybrid store and partition count is not specified. Use default hybrid store partition count.
-        setStore.partitionNum = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
-            .getConfig()
-            .getNumberOfPartitionForHybrid();
+          && veniceHelixAdmin.isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
+        // This is a new hybrid store and partition count is not specified.
+        VeniceControllerClusterConfig config =
+            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
+        setStore.setPartitionNum(
+            PartitionUtils.calculatePartitionCount(
+                storeName,
+                setStore.getStorageQuotaInByte(),
+                0,
+                config.getPartitionSize(),
+                config.getMinNumberOfPartitionsForHybrid(),
+                config.getMaxNumberOfPartitions(),
+                config.isPartitionCountRoundUpEnabled(),
+                config.getPartitionCountRoundUpSize()));
         LOGGER.info(
             "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
-            setStore.partitionNum,
+            setStore.getPartitionNum(),
             storeName);
         updatedConfigsList.add(PARTITION_COUNT);
       }
@@ -3589,6 +3610,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getKafkaBootstrapServers(isSSL);
   }
 
+  @Override
+  public String getRegionName() {
+    return getVeniceHelixAdmin().getRegionName();
+  }
+
   /**
    * @see VeniceHelixAdmin#getNativeReplicationKafkaBootstrapServerAddress(String)
    */
@@ -3711,6 +3737,28 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceUnsupportedOperationException("nodeReplicaReadiness is not supported");
   }
 
+  private StoreInfo getStoreInChildRegion(String regionName, String clusterName, String storeName) {
+    ControllerClient childControllerClient = getFabricBuildoutControllerClient(clusterName, regionName);
+    StoreResponse storeResponse = childControllerClient.getStore(storeName);
+    if (storeResponse.isError()) {
+      throw new VeniceException(
+          "Error when getting store " + storeName + " from region " + regionName + ": " + storeResponse.getError());
+    }
+    return storeResponse.getStore();
+  }
+
+  private boolean whetherToCreateNewDataRecoveryVersion(
+      String destFabric,
+      String clusterName,
+      StoreInfo destStore,
+      int versionNumber) {
+    // Currently new version data recovery is only supported for batch-only store.
+    // For existing data centers, current store version might be serving read requests. Need to create a new version.
+    // For new data centers or non-current version, it's ok to delete and recreate it. No need to create a new version.
+    return destStore.getHybridStoreConfig() == null && versionNumber == destStore.getCurrentVersion()
+        && multiClusterConfigs.getControllerConfig(clusterName).getChildDataCenterAllowlist().contains(destFabric);
+  }
+
   /**
    * @see Admin#initiateDataRecovery(String, String, int, String, String, boolean, Optional)
    */
@@ -3723,16 +3771,38 @@ public class VeniceParentHelixAdmin implements Admin {
       String destinationFabric,
       boolean copyAllVersionConfigs,
       Optional<Version> ignored) {
-    ControllerClient srcFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, sourceFabric);
+    StoreInfo srcStore = getStoreInChildRegion(sourceFabric, clusterName, storeName);
+    if (version == VERSION_ID_UNSET) {
+      version = srcStore.getCurrentVersion();
+    }
+    Optional<Version> srcVersion = srcStore.getVersion(version);
+    if (!srcVersion.isPresent()) {
+      throw new VeniceException(
+          "Version " + version + " does not exist in source fabric " + sourceFabric + " store " + storeName);
+    }
+    StoreInfo destStore = getStoreInChildRegion(destinationFabric, clusterName, storeName);
+    if (whetherToCreateNewDataRecoveryVersion(destinationFabric, clusterName, destStore, version)) {
+      getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store parentStore = repository.getStore(storeName);
+        int newVersion = parentStore.peekNextVersion().getNumber();
+        parentStore.setLargestUsedVersionNumber(newVersion);
+        repository.updateStore(parentStore);
+        LOGGER.info(
+            "Current version {}_v{} in {} might be serving read requests. Copying data to a new version {}.",
+            storeName,
+            version,
+            destinationFabric,
+            newVersion);
+        version = newVersion;
+      }
+    }
     ControllerClient destFabricChildControllerClient =
         getFabricBuildoutControllerClient(clusterName, destinationFabric);
-    StoreInfo storeInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
-    Optional<Version> sourceVersion = storeInfo.getVersion(version);
-    if (!sourceVersion.isPresent()) {
-      throw new VeniceException("Version: " + version + " does not exist in the given source fabric: " + sourceFabric);
-    }
     ControllerResponse destinationFabricResponse = destFabricChildControllerClient
-        .dataRecovery(sourceFabric, destinationFabric, storeName, version, true, copyAllVersionConfigs, sourceVersion);
+        .dataRecovery(sourceFabric, destinationFabric, storeName, version, true, copyAllVersionConfigs, srcVersion);
     if (destinationFabricResponse.isError()) {
       throw new VeniceException(
           "Failed to initiate data recovery in destination fabric, error: " + destinationFabricResponse.getError());
@@ -3750,16 +3820,28 @@ public class VeniceParentHelixAdmin implements Admin {
       String sourceFabric,
       String destinationFabric,
       Optional<Integer> ignored) {
-    ControllerClient srcFabricChildControllerClient = getFabricBuildoutControllerClient(clusterName, sourceFabric);
+    StoreInfo srcStore = getStoreInChildRegion(sourceFabric, clusterName, storeName);
+    if (version == VERSION_ID_UNSET) {
+      version = srcStore.getCurrentVersion();
+    }
+    StoreInfo destStore = getStoreInChildRegion(destinationFabric, clusterName, storeName);
+    if (whetherToCreateNewDataRecoveryVersion(destinationFabric, clusterName, destStore, version)) {
+      LOGGER.info(
+          "Skip current version {}_v{} cleanup in {} as it might be serving read requests.",
+          storeName,
+          version,
+          destinationFabric);
+      return;
+    }
+    int amplificationFactor = srcStore.getPartitionerConfig().getAmplificationFactor();
     ControllerClient destFabricChildControllerClient =
         getFabricBuildoutControllerClient(clusterName, destinationFabric);
-    StoreInfo sourceStoreInfo = srcFabricChildControllerClient.getStore(storeName).getStore();
-    int amplificationFactor = sourceStoreInfo.getPartitionerConfig().getAmplificationFactor();
-    ControllerResponse destinationFabricResponse = destFabricChildControllerClient
+    ControllerResponse destFabricResponse = destFabricChildControllerClient
         .prepareDataRecovery(sourceFabric, destinationFabric, storeName, version, Optional.of(amplificationFactor));
-    if (destinationFabricResponse.isError()) {
+    if (destFabricResponse.isError()) {
       throw new VeniceException(
-          "Failed to prepare for data recovery in destination fabric, error: " + destinationFabricResponse.getError());
+          "Error when preparing data recovery for store " + storeName + " in destination fabric " + destinationFabric
+              + ": " + destFabricResponse.getError());
     }
   }
 
@@ -4742,13 +4824,16 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#getEmergencySourceRegion()
+   * @see Admin#getEmergencySourceRegion(String)
    */
   @Override
-  public Optional<String> getEmergencySourceRegion() {
-    return getMultiClusterConfigs().getEmergencySourceRegion().equals("")
-        ? Optional.empty()
-        : Optional.of(getMultiClusterConfigs().getEmergencySourceRegion());
+  public Optional<String> getEmergencySourceRegion(@Nonnull String clusterName) {
+    String emergencySourceRegion = multiClusterConfigs.getEmergencySourceRegion(clusterName);
+    if (StringUtils.isNotEmpty(emergencySourceRegion)) {
+      return Optional.of(emergencySourceRegion);
+    } else {
+      return Optional.empty();
+    }
   }
 
   /**

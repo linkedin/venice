@@ -31,14 +31,8 @@ public class RedundantExceptionFilter {
   }
 
   public synchronized static RedundantExceptionFilter getRedundantExceptionFilter() {
-    return getRedundantExceptionFilter(DEFAULT_BITSET_SIZE, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
-  }
-
-  public synchronized static RedundantExceptionFilter getRedundantExceptionFilter(
-      int bitSetSize,
-      long noRedundantExceptionDurationMs) {
     if (singleton == null) {
-      singleton = new RedundantExceptionFilter(bitSetSize, noRedundantExceptionDurationMs);
+      singleton = new RedundantExceptionFilter(DEFAULT_BITSET_SIZE, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
     }
     return singleton;
   }

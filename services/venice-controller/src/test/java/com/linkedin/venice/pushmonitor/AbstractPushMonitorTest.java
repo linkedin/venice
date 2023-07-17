@@ -45,6 +45,7 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -98,10 +99,10 @@ public abstract class AbstractPushMonitorTest {
     clusterLockManager = new ClusterLockManager(clusterName);
     mockControllerConfig = mock(VeniceControllerConfig.class);
     when(mockControllerConfig.isErrorLeaderReplicaFailOverEnabled()).thenReturn(true);
-    when(mockControllerConfig.isOfflinePushMonitorDaVinciPushStatusEnabled()).thenReturn(true);
-    when(mockControllerConfig.getOfflinePushMonitorDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
+    when(mockControllerConfig.isDaVinciPushStatusEnabled()).thenReturn(true);
+    when(mockControllerConfig.getDaVinciPushStatusScanIntervalInSeconds()).thenReturn(5);
     when(mockControllerConfig.getOffLineJobWaitTimeInMilliseconds()).thenReturn(120000L);
-    when(mockControllerConfig.getOfflinePushMonitorDaVinciPushStatusScanThreadNumber()).thenReturn(4);
+    when(mockControllerConfig.getDaVinciPushStatusScanThreadNumber()).thenReturn(4);
     monitor = getPushMonitor();
   }
 
@@ -383,7 +384,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.NOT_CREATED);
   }
 
@@ -402,7 +403,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -426,7 +427,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -451,7 +452,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -473,7 +474,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -498,7 +499,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -526,7 +527,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -553,7 +554,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -576,7 +577,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, END_OF_INCREMENTAL_PUSH_RECEIVED);
   }
 
@@ -598,7 +599,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.ERROR);
   }
 
@@ -616,7 +617,7 @@ public abstract class AbstractPushMonitorTest {
                 statusStoreReaderMock,
                 partitionCountForIncPushTests,
                 replicationFactorForIncPushTests)
-            .getFirst();
+            .getStatus();
     Assert.assertEquals(actualStatus, ExecutionStatus.NOT_CREATED);
   }
 
@@ -832,11 +833,12 @@ public abstract class AbstractPushMonitorTest {
       final String topic = "test-lock_v1";
       final String instanceId = "test_instance";
       prepareMockStore(topic);
-      Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
-      onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
+      EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+      helixStateToInstancesMap.put(HelixState.LEADER, Collections.singletonList(new Instance(instanceId, "a", 1)));
       // Craft a PartitionAssignment that will trigger the StoreCleaner methods as part of handleCompletedPush.
       PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
-      completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+      completedPartitionAssignment
+          .addPartition(new Partition(0, helixStateToInstancesMap, new EnumMap<>(ExecutionStatus.class)));
       ReplicaStatus status = new ReplicaStatus(instanceId);
       status.updateStatus(ExecutionStatus.COMPLETED);
       ReadOnlyPartitionStatus completedPartitionStatus =
@@ -879,10 +881,11 @@ public abstract class AbstractPushMonitorTest {
       final String instanceId = "test_instance";
 
       prepareMockStore(topic);
-      Map<String, List<Instance>> onlineInstanceMap = new HashMap<>();
-      onlineInstanceMap.put(HelixState.ONLINE_STATE, Collections.singletonList(new Instance(instanceId, "a", 1)));
+      EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+      helixStateToInstancesMap.put(HelixState.LEADER, Collections.singletonList(new Instance(instanceId, "a", 1)));
       PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
-      completedPartitionAssignment.addPartition(new Partition(0, onlineInstanceMap));
+      completedPartitionAssignment
+          .addPartition(new Partition(0, helixStateToInstancesMap, new EnumMap<>(ExecutionStatus.class)));
       doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
       doReturn(completedPartitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
 
@@ -912,6 +915,38 @@ public abstract class AbstractPushMonitorTest {
     }
   }
 
+  @Test(timeOut = 30 * Time.MS_PER_SECOND)
+  public void testKilledVersionStatus() {
+    final String topic = "test-killed-version_v1";
+    final String instanceId = "test_instance";
+
+    Store store = prepareMockStore(topic, VersionStatus.KILLED);
+    EnumMap<HelixState, List<Instance>> helixStateToInstancesMap = new EnumMap<>(HelixState.class);
+    helixStateToInstancesMap.put(HelixState.LEADER, Collections.singletonList(new Instance(instanceId, "a", 1)));
+    PartitionAssignment completedPartitionAssignment = new PartitionAssignment(topic, 1);
+    completedPartitionAssignment
+        .addPartition(new Partition(0, helixStateToInstancesMap, new EnumMap<>(ExecutionStatus.class)));
+    doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(topic);
+    doReturn(completedPartitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
+
+    ReplicaStatus status = new ReplicaStatus(instanceId);
+    status.updateStatus(ExecutionStatus.COMPLETED);
+    ReadOnlyPartitionStatus completedPartitionStatus =
+        new ReadOnlyPartitionStatus(0, Collections.singletonList(status));
+    monitor.startMonitorOfflinePush(topic, 1, 1, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+
+    try {
+      monitor.onPartitionStatusChange(topic, completedPartitionStatus);
+    } catch (VeniceException e) {
+      Assert.assertTrue(e.getMessage().contains("Abort version status update and current version swapping"));
+    }
+    OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
+    Assert.assertEquals(pushStatus.getCurrentStatus(), ExecutionStatus.STARTED);
+
+    int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
+    Assert.assertEquals(store.getVersionStatus(versionNumber), VersionStatus.KILLED);
+  }
+
   @Test
   public void testGetUncompletedPartitions() {
     monitor.startMonitorOfflinePush(
@@ -925,15 +960,19 @@ public abstract class AbstractPushMonitorTest {
     Assert.assertTrue(monitor.getUncompletedPartitions(topic).isEmpty());
   }
 
-  protected Store prepareMockStore(String topic) {
+  protected Store prepareMockStore(String topic, VersionStatus status) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     Version version = new VersionImpl(storeName, versionNumber);
-    version.setStatus(VersionStatus.STARTED);
+    version.setStatus(status);
     store.addVersion(version);
     doReturn(store).when(mockStoreRepo).getStore(storeName);
     return store;
+  }
+
+  protected Store prepareMockStore(String topic) {
+    return prepareMockStore(topic, VersionStatus.STARTED);
   }
 
   protected OfflinePushAccessor getMockAccessor() {

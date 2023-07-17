@@ -255,16 +255,6 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     return getSomethingForSomeTopics(pubSubTopics, config -> marshallProperties(config), "configs");
   }
 
-  // TODO: This method should be removed from the interface once we migrate to use Java kafka admin since we no longer
-  // need to know if a topic deletion is underway or not. Duplicate calls in the Java kafka admin will not result
-  // errors.
-  @Override
-  public boolean isTopicDeletionUnderway() {
-    // Always return false to bypass the checks since concurrent topic delete request for Java kafka admin client is
-    // harmless.
-    return false;
-  }
-
   @Override
   public String getClassName() {
     return ApacheKafkaAdminAdapter.class.getName();

@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceClusterInitializer.ID_FIELD_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.KEY_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.ZK_ADDRESS_FIELD;
@@ -7,6 +8,7 @@ import static com.linkedin.venice.VeniceClusterInitializer.ZK_ADDRESS_FIELD;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -17,6 +19,7 @@ import com.linkedin.venice.utils.ClassPathSupplierForVeniceCluster;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -24,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -55,6 +59,7 @@ public class VeniceClientCompatibilityTest {
 
   @BeforeClass
   public void setUp() throws Exception {
+    Utils.thisIsLocalhost();
     LOGGER.info("Avro version in unit test: {}", AvroCompatibilityHelperCommon.getRuntimeAvroVersion());
     Assert.assertEquals(
         AvroCompatibilityHelperCommon.getRuntimeAvroVersion(),
@@ -65,7 +70,7 @@ public class VeniceClientCompatibilityTest {
      *
      * If it is flaky, maybe we could add some retry logic to make it more resilient in the future.
      */
-    String routerPort = Integer.toString(Utils.getFreePort());
+    String routerPort = Integer.toString(TestUtils.getFreePort());
     String routerAddress = "http://localhost:" + routerPort;
     LOGGER.info("Router address in unit test: {}", routerAddress);
 
@@ -114,10 +119,14 @@ public class VeniceClientCompatibilityTest {
     Assert.assertNotNull(zkAddress[0]);
     LOGGER.info("Zookeeper address in unit test: {}", zkAddress[0]);
 
-    daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithoutMetaSystemStoreRepo(
+    Properties extraBackendConfig = new Properties();
+    extraBackendConfig.setProperty(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath());
+    daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
         storeName,
         zkAddress[0],
-        Utils.getTempDataDirectory().getAbsolutePath());
+        new DaVinciConfig(),
+        new VeniceProperties(new Properties()));
+
     daVinciClient.subscribeAll().get(60, TimeUnit.SECONDS);
   }
 

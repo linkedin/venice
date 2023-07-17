@@ -99,13 +99,29 @@ public class SslUtils {
     return sslProperties;
   }
 
+  public static VeniceTlsConfiguration getTlsConfiguration() {
+    String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
+    return SslUtils.VeniceTlsConfiguration.builder()
+        .setKeyStorePath(keyStorePath)
+        .setKeyStorePassword(LOCAL_PASSWORD)
+        .setKeyStoreType("JKS")
+        .setTrustStorePath(keyStorePath)
+        .setTrustStorePassword(LOCAL_PASSWORD)
+        .setTrustStoreType("JKS")
+        .setKeyPassphrase(LOCAL_PASSWORD)
+        .setKeyManagerAlgorithm("SunX509")
+        .setTrustStoreManagerAlgorithm("SunX509")
+        .setSecureRandomAlgorithm("SHA1PRNG")
+        .build();
+  }
+
   /**
    * This function should be used in test cases only.
    *
    * @param resource -- System resource name
    * @return the path to the local key store location
    */
-  protected static String getPathForResource(String resource) {
+  public static String getPathForResource(String resource) {
     String systemTempDir = System.getProperty("java.io.tmpdir");
     String subDir = "venice-keys-" + UUID.randomUUID();
     File tempDir = new File(systemTempDir, subDir);
@@ -251,5 +267,206 @@ public class SslUtils {
     }
 
     return (X509Certificate) certificate;
+  }
+
+  /**
+   * This class is used to configure TLS for Venice components in integration tests.
+   */
+  public static class VeniceTlsConfiguration {
+    private final String hostname;
+    private final String sslProtocol;
+    private final String trustStorePath;
+    private final String keyStorePath;
+    private final String keyStoreType;
+    private final String trustStoreType;
+    private final String keyStorePassword;
+    private final String trustStorePassword;
+    private final String keyPassphrase;
+    private final String keyManagerAlgorithm;
+    private final String trustManagerAlgorithm;
+    private final String secureRandomAlgorithm;
+    private final boolean useOpenSsl;
+    private final boolean validateCertificates;
+    private final boolean allowGeneratingSelfSignedCertificate;
+
+    public String getHostname() {
+      return hostname;
+    }
+
+    public String getKeyPassphrase() {
+      return keyPassphrase;
+    }
+
+    public String getSslProtocol() {
+      return sslProtocol;
+    }
+
+    public String getTrustStorePath() {
+      return trustStorePath;
+    }
+
+    public String getKeyStorePath() {
+      return keyStorePath;
+    }
+
+    public String getKeyStoreType() {
+      return keyStoreType;
+    }
+
+    public String getTrustStoreType() {
+      return trustStoreType;
+    }
+
+    public String getKeyStorePassword() {
+      return keyStorePassword;
+    }
+
+    public String getTrustStorePassword() {
+      return trustStorePassword;
+    }
+
+    public String getKeyManagerAlgorithm() {
+      return keyManagerAlgorithm;
+    }
+
+    public String getTrustManagerAlgorithm() {
+      return trustManagerAlgorithm;
+    }
+
+    public boolean isUseOpenSsl() {
+      return useOpenSsl;
+    }
+
+    public boolean isValidateCertificates() {
+      return validateCertificates;
+    }
+
+    public boolean isAllowGeneratingSelfSignedCertificate() {
+      return allowGeneratingSelfSignedCertificate;
+    }
+
+    public String getSecureRandomAlgorithm() {
+      return secureRandomAlgorithm;
+    }
+
+    public static Builder builder() {
+      return new Builder();
+    }
+
+    private VeniceTlsConfiguration(Builder builder) {
+      this.hostname = builder.hostname;
+      this.sslProtocol = builder.sslProtocol;
+      this.trustStorePath = builder.trustStorePath;
+      this.keyStorePath = builder.keyStorePath;
+      this.keyStoreType = builder.keyStoreType;
+      this.trustStoreType = builder.trustStoreType;
+      this.keyStorePassword = builder.keyStorePassword;
+      this.trustStorePassword = builder.trustStorePassword;
+      this.keyPassphrase = builder.keyPassphrase;
+      this.keyManagerAlgorithm = builder.keyManagerAlgorithm;
+      this.trustManagerAlgorithm = builder.trustStoreManagerAlgorithm;
+      this.useOpenSsl = builder.useOpenSsl;
+      this.validateCertificates = builder.validateCertificates;
+      this.allowGeneratingSelfSignedCertificate = builder.allowGeneratingSelfSignedCertificate;
+      this.secureRandomAlgorithm = builder.secureRandomAlgorithm;
+    }
+
+    // builder pattern
+    public static class Builder {
+      private String hostname;
+      private String sslProtocol;
+      private String trustStorePath;
+      private String keyStorePath;
+      private String keyStoreType;
+      private String trustStoreType;
+      private String keyStorePassword;
+      private String trustStorePassword;
+      private String keyPassphrase;
+      private String keyManagerAlgorithm;
+      private String trustStoreManagerAlgorithm;
+      private String secureRandomAlgorithm;
+      private boolean useOpenSsl;
+      private boolean validateCertificates;
+      private boolean allowGeneratingSelfSignedCertificate;
+
+      public Builder setHostname(String hostname) {
+        this.hostname = hostname;
+        return this;
+      }
+
+      public Builder setSslProtocol(String sslProtocol) {
+        this.sslProtocol = sslProtocol;
+        return this;
+      }
+
+      public Builder setTrustStorePath(String trustStorePath) {
+        this.trustStorePath = trustStorePath;
+        return this;
+      }
+
+      public Builder setKeyStorePath(String keyStorePath) {
+        this.keyStorePath = keyStorePath;
+        return this;
+      }
+
+      public Builder setKeyStoreType(String keyStoreType) {
+        this.keyStoreType = keyStoreType;
+        return this;
+      }
+
+      public Builder setTrustStoreType(String trustStoreType) {
+        this.trustStoreType = trustStoreType;
+        return this;
+      }
+
+      public Builder setKeyStorePassword(String keyStorePassword) {
+        this.keyStorePassword = keyStorePassword;
+        return this;
+      }
+
+      public Builder setKeyPassphrase(String keyPassphrase) {
+        this.keyPassphrase = keyPassphrase;
+        return this;
+      }
+
+      public Builder setTrustStorePassword(String trustStorePassword) {
+        this.trustStorePassword = trustStorePassword;
+        return this;
+      }
+
+      public Builder setKeyManagerAlgorithm(String keyManagerAlgorithm) {
+        this.keyManagerAlgorithm = keyManagerAlgorithm;
+        return this;
+      }
+
+      public Builder setUseOpenSsl(boolean useOpenSsl) {
+        this.useOpenSsl = useOpenSsl;
+        return this;
+      }
+
+      public Builder setValidateCertificates(boolean validateCertificates) {
+        this.validateCertificates = validateCertificates;
+        return this;
+      }
+
+      public Builder setAllowGeneratingSelfSignedCertificate(boolean allowGeneratingSelfSignedCertificate) {
+        this.allowGeneratingSelfSignedCertificate = allowGeneratingSelfSignedCertificate;
+        return this;
+      }
+
+      public Builder setSecureRandomAlgorithm(String secureRandomAlgorithm) {
+        this.secureRandomAlgorithm = secureRandomAlgorithm;
+        return this;
+      }
+
+      public Builder setTrustStoreManagerAlgorithm(String trustStoreManagerAlgorithm) {
+        this.trustStoreManagerAlgorithm = trustStoreManagerAlgorithm;
+        return this;
+      }
+
+      public VeniceTlsConfiguration build() {
+        return new VeniceTlsConfiguration(this);
+      }
+    }
   }
 }

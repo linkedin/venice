@@ -37,7 +37,6 @@ public class ConfigKeys {
   public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
   public static final String KAFKA_LINGER_MS = ApacheKafkaProducerConfig.KAFKA_LINGER_MS;
-  public static final String KAFKA_BATCH_SIZE = ApacheKafkaProducerConfig.KAFKA_BATCH_SIZE;
   public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
       ApacheKafkaProducerConfig.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = ApacheKafkaProducerConfig.KAFKA_PRODUCER_RETRIES_CONFIG;
@@ -406,7 +405,7 @@ public class ConfigKeys {
 
   /**
    * This config key is a misspelling. It is now considered deprecated.
-   * @deprecated Use {@link KAFKA_OVER_SSL}
+   * @deprecated Use {@link #KAFKA_OVER_SSL}
    */
   @Deprecated
   public static final String SSL_TO_KAFKA_LEGACY = ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
@@ -1206,7 +1205,7 @@ public class ConfigKeys {
    * A list of fabrics that are source(s) of the active active real time replication. When active-active replication
    * is enabled on the controller {@link #ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER} is true, this list should contain fabrics
    * where the Venice server should consume from when it accepts the TS (TopicSwitch) message.
-   * Example value of this config: "dc-0,dc-1,dc-2".
+   * Example value of this config: "dc-0, dc-1, dc-2".
    */
   public static final String ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST = "active.active.real.time.source.fabric.list";
 
@@ -1657,24 +1656,25 @@ public class ConfigKeys {
   public static final String PUSH_STATUS_STORE_ENABLED = "push.status.store.enabled";
 
   // Config to check whether the offline push will also monitor Da Vinci push status.
-  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_ENABLED =
-      "offline.push.monitor.davinci.push.status.enabled";
+  public static final String DAVINCI_PUSH_STATUS_SCAN_ENABLED = "davinci.push.status.scan.enabled";
 
   // Config to determine the Da Vinci push status scanning interval in seconds.
-  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS =
-      "offline.push.monitor.davinci.push.status.scan.interval.in.seconds";
+  public static final String DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS =
+      "davinci.push.status.scan.interval.in.seconds";
 
   // Config to determine the Da Vinci push status scanning worker thread number.
-  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER =
-      "offline.push.monitor.davinci.push.status.scan.thread.number";
+  public static final String DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER = "davinci.push.status.scan.thread.number";
 
   /**
    * Max retry when not receiving any DaVinci status report.
    * This is mainly for testing purpose since in local integration test, the push job runs too fast in the backend,
    * and no DaVinci status report will mark the push job succeed right away.
    */
-  public static final String OFFLINE_PUSH_MONITOR_DAVINCI_PUSH_STATUS_SCAN_NO_DAVINCI_STATUS_REPORT_RETRY_MAX_ATTEMPTS =
-      "offline.push.monitor.davinci.push.status.scan.no.davinci.status.report.retry.max.attempts";
+  public static final String DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS =
+      "davinci.push.status.scan.no.report.retry.max.attempts";
+
+  public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE =
+      "davinci.push.status.scan.max.offline.instance";
 
   public static final String CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED =
       "controller.zk.shared.davinci.push.status.system.schema.store.auto.creation.enabled";
@@ -1945,4 +1945,19 @@ public class ConfigKeys {
    * we want to do more optimization for non-mlock usage, we will ask the mlock user to enable this flag.
    */
   public static final String INGESTION_MLOCK_ENABLED = "ingestion.mlock.enabled";
+
+  /**
+   * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
+   * can prevent OOMing in cases where there is a lot of historical churn in RT producers. The age of a given
+   * producer's state is defined as:
+   *
+   * most_recent_timestamp_of_all_producers - most_recent_timestamp_of_given_producer
+   *
+   * This math is computed within a single partition, not across partitions. If enabled, the clearing of old
+   * state will happen when subscribing to a partition (e.g. on server start up), and prior to syncing progress
+   * to disk (e.g. when {@link #SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE} is reached).
+   *
+   * Old state clearing is disabled if this config is set to -1.
+   */
+  public static final String DIV_PRODUCER_STATE_MAX_AGE_MS = "div.producer.state.max.age.ms";
 }

@@ -136,7 +136,7 @@ public class TopicManagerTest {
    * @throws ExecutionException
    * @throws InterruptedException
    */
-  protected void produceToKafka(PubSubTopic topic, boolean isDataRecord, long producerTimestamp)
+  protected void produceRandomPubSubMessage(PubSubTopic topic, boolean isDataRecord, long producerTimestamp)
       throws ExecutionException, InterruptedException {
     PubSubProducerAdapter producer = createPubSubProducerAdapter();
 
@@ -186,8 +186,8 @@ public class TopicManagerTest {
     final PubSubTopic topic = getTopic();
     final PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
     final long timestamp = System.currentTimeMillis();
-    produceToKafka(topic, true, timestamp - 1000);
-    produceToKafka(topic, true, timestamp); // This timestamp is expected to be retrieved
+    produceRandomPubSubMessage(topic, true, timestamp - 1000);
+    produceRandomPubSubMessage(topic, true, timestamp); // This timestamp is expected to be retrieved
 
     long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, 1);
     Assert.assertEquals(retrievedTimestamp, timestamp);
@@ -200,8 +200,8 @@ public class TopicManagerTest {
     final PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
 
     long timestamp = System.currentTimeMillis();
-    produceToKafka(topic, true, timestamp); // This timestamp is expected to be retrieved
-    produceToKafka(topic, false, timestamp + 1000); // produce a control message
+    produceRandomPubSubMessage(topic, true, timestamp); // This timestamp is expected to be retrieved
+    produceRandomPubSubMessage(topic, false, timestamp + 1000); // produce a control message
 
     long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, 1);
     Assert.assertEquals(retrievedTimestamp, timestamp);
@@ -209,11 +209,11 @@ public class TopicManagerTest {
     // Produce more data records to this topic partition
     for (int i = 0; i < 10; i++) {
       timestamp += 1000;
-      produceToKafka(topic, true, timestamp);
+      produceRandomPubSubMessage(topic, true, timestamp);
     }
     // Produce several control messages at the end
     for (int i = 1; i <= 3; i++) {
-      produceToKafka(topic, false, timestamp + i * 1000L);
+      produceRandomPubSubMessage(topic, false, timestamp + i * 1000L);
     }
     retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, 1);
     Assert.assertEquals(retrievedTimestamp, timestamp);
@@ -234,7 +234,7 @@ public class TopicManagerTest {
 
     // Produce only control messages
     for (int i = 0; i < 10; i++) {
-      produceToKafka(topic, false, timestamp);
+      produceRandomPubSubMessage(topic, false, timestamp);
       timestamp += 10;
     }
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
@@ -258,7 +258,6 @@ public class TopicManagerTest {
     Assert.assertEquals(
         topicManager.getTopicRetention(topicNameWithDefaultRetentionPolicy),
         TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
-    Assert.assertEquals(1, topicManager.getReplicationFactor(topicNameWithDefaultRetentionPolicy));
   }
 
   @Test

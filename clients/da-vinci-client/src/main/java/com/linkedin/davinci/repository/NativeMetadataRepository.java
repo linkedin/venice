@@ -197,7 +197,7 @@ public abstract class NativeMetadataRepository
       // isDeleting check to detect deleted store is only supported by meta system store based implementation.
       if (newStore != null && !storeConfig.isDeleting()) {
         putStore(newStore);
-        putStoreSchema(storeName);
+        getAndCacheSchemaDataFromSystemStore(storeName);
       } else {
         removeStore(storeName);
       }
@@ -249,11 +249,7 @@ public abstract class NativeMetadataRepository
    */
   @Override
   public SchemaEntry getKeySchema(String storeName) {
-    fetchStoreSchemaIfNotInCache(storeName);
-    SchemaData schemaData = schemaMap.get(storeName);
-    if (schemaData == null) {
-      throw new VeniceNoStoreException(storeName);
-    }
+    SchemaData schemaData = getSchemaDataFromReadThroughCache(storeName);
     return schemaData.getKeySchema();
   }
 
@@ -294,11 +290,7 @@ public abstract class NativeMetadataRepository
    */
   @Override
   public int getValueSchemaId(String storeName, String valueSchemaStr) {
-    fetchStoreSchemaIfNotInCache(storeName);
-    SchemaData schemaData = schemaMap.get(storeName);
-    if (schemaData == null) {
-      throw new VeniceNoStoreException(storeName);
-    }
+    SchemaData schemaData = getSchemaDataFromReadThroughCache(storeName);
     // Could throw SchemaParseException
     SchemaEntry valueSchema = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
     return schemaData.getSchemaID(valueSchema);
@@ -310,21 +302,13 @@ public abstract class NativeMetadataRepository
    */
   @Override
   public Collection<SchemaEntry> getValueSchemas(String storeName) {
-    fetchStoreSchemaIfNotInCache(storeName);
-    SchemaData schemaData = schemaMap.get(storeName);
-    if (schemaData == null) {
-      throw new VeniceNoStoreException(storeName);
-    }
+    SchemaData schemaData = getSchemaDataFromReadThroughCache(storeName);
     return schemaData.getValueSchemas();
   }
 
   @Override
   public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
-    fetchStoreSchemaIfNotInCache(storeName);
-    SchemaData schemaData = schemaMap.get(storeName);
-    if (schemaData == null) {
-      throw new VeniceNoStoreException(storeName);
-    }
+    SchemaData schemaData = getSchemaDataFromReadThroughCache(storeName);
     int latestValueSchemaId = getSupersetSchemaID(storeName);
 
     if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
@@ -339,11 +323,7 @@ public abstract class NativeMetadataRepository
 
   @Override
   public SchemaEntry getSupersetSchema(String storeName) {
-    fetchStoreSchemaIfNotInCache(storeName);
-    SchemaData schemaData = schemaMap.get(storeName);
-    if (schemaData == null) {
-      throw new VeniceNoStoreException(storeName);
-    }
+    SchemaData schemaData = getSchemaDataFromReadThroughCache(storeName);
 
     int supersetSchemaID = getSupersetSchemaID(storeName);
     return schemaData.getValueSchema(supersetSchemaID);
@@ -450,7 +430,6 @@ public abstract class NativeMetadataRepository
 
   // Helper function with common code for retrieving SchemaData from meta system store.
   protected SchemaData getSchemaDataFromMetaSystemStore(String storeName) {
-    SchemaData schemaData = new SchemaData(storeName);
     StoreMetaKey keySchemaKey =
         MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
     StoreMetaKey valueSchemaKey = MetaStoreDataType.STORE_VALUE_SCHEMAS
@@ -461,8 +440,9 @@ public abstract class NativeMetadataRepository
       throw new VeniceException("No key schema found for store: " + storeName);
     }
     Map.Entry<CharSequence, CharSequence> keySchemaEntry = keySchemaMap.entrySet().iterator().next();
-    schemaData.setKeySchema(
-        new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
+    SchemaEntry keySchema =
+        new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString());
+    SchemaData schemaData = new SchemaData(storeName, keySchema);
     Map<CharSequence, CharSequence> valueSchemaMap =
         getStoreMetaValue(storeName, valueSchemaKey).storeValueSchemas.valueSchemaMap;
     // Check the value schema string, if it's empty then try to query the other key space for individual value schema.
@@ -542,22 +522,29 @@ public abstract class NativeMetadataRepository
     }
   }
 
-  protected void fetchStoreSchemaIfNotInCache(String storeName) {
-    if (!schemaMap.containsKey(storeName)) {
-      putStoreSchema(storeName);
-    }
-  }
-
-  protected void putStoreSchema(String storeName) {
+  protected SchemaData getAndCacheSchemaDataFromSystemStore(String storeName) {
     if (!hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
-    schemaMap.put(storeName, getSchemaDataFromSystemStore(storeName));
+    SchemaData schemaData = getSchemaDataFromSystemStore(storeName);
+    schemaMap.put(storeName, schemaData);
+    return schemaData;
+  }
+
+  /**
+   * @return the {@link SchemaData} associated with this store. Guaranteed to be not null or to throw.
+   * @throws VeniceNoStoreException is the store is not found
+   */
+  private SchemaData getSchemaDataFromReadThroughCache(String storeName) throws VeniceNoStoreException {
+    SchemaData schemaData = schemaMap.get(storeName);
+    if (schemaData == null) {
+      schemaData = getAndCacheSchemaDataFromSystemStore(storeName);
+    }
+    return schemaData;
   }
 
   protected SchemaEntry getValueSchemaInternally(String storeName, int id) {
-    fetchStoreSchemaIfNotInCache(storeName);
-    SchemaData schemaData = schemaMap.get(storeName);
+    SchemaData schemaData = getSchemaDataFromReadThroughCache(storeName);
     if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }

@@ -59,4 +59,14 @@ public class RegionUtils {
     }
     return Stream.of(regionsFilterList.trim().split(REGION_FILTER_LIST_SEPARATOR)).collect(Collectors.toSet());
   }
+
+  /**
+   * A helper function to compose a region list with {@link #REGION_FILTER_LIST_SEPARATOR}.
+   * This is the reverse of {@link #parseRegionsFilterList(String)}.
+   * @param regions, a set of regions
+   * @return a string of regions separated by {@link #REGION_FILTER_LIST_SEPARATOR}
+   */
+  public static String composeRegionList(Set<String> regions) {
+    return String.join(",", regions);
+  }
 }

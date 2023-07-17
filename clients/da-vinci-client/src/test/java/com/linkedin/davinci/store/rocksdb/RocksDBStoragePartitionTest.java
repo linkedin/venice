@@ -14,8 +14,10 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOT
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static org.mockito.ArgumentMatchers.anyLong;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
@@ -23,6 +25,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -37,6 +40,7 @@ import java.util.function.Supplier;
 import org.apache.commons.lang.RandomStringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.mockito.Mockito;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDBException;
@@ -111,7 +115,7 @@ public class RocksDBStoragePartitionTest {
       boolean interrupted,
       boolean reopenDatabaseDuringInterruption,
       boolean verifyChecksum) {
-    Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
+    CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -138,8 +142,8 @@ public class RocksDBStoragePartitionTest {
     Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
     if (verifyChecksum) {
       checksumSupplier = Optional.of(() -> {
-        byte[] checksum = runningChecksum.get().getCheckSum();
-        runningChecksum.get().reset();
+        byte[] checksum = runningChecksum.getCheckSum();
+        runningChecksum.reset();
         return checksum;
       });
     }
@@ -153,8 +157,8 @@ public class RocksDBStoragePartitionTest {
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
       if (verifyChecksum) {
-        runningChecksum.get().update(entry.getKey().getBytes());
-        runningChecksum.get().update(entry.getValue().getBytes());
+        runningChecksum.update(entry.getKey().getBytes());
+        runningChecksum.update(entry.getValue().getBytes());
       }
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
@@ -193,14 +197,14 @@ public class RocksDBStoragePartitionTest {
           int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
           int replayEnd = interruptedRecord;
           int replayCnt = 0;
-          runningChecksum.get().reset();
+          runningChecksum.reset();
           for (Map.Entry<String, String> innerEntry: inputRecords.entrySet()) {
             ++replayCnt;
             if (replayCnt >= replayStart && replayCnt <= replayEnd) {
               storagePartition.put(innerEntry.getKey().getBytes(), innerEntry.getValue().getBytes());
               if (verifyChecksum) {
-                runningChecksum.get().update(innerEntry.getKey().getBytes());
-                runningChecksum.get().update(innerEntry.getValue().getBytes());
+                runningChecksum.update(innerEntry.getKey().getBytes());
+                runningChecksum.update(innerEntry.getValue().getBytes());
               }
             }
             if (replayCnt > replayEnd) {
@@ -252,7 +256,7 @@ public class RocksDBStoragePartitionTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testIngestionFormatVersionChange(boolean sorted) throws RocksDBException {
-    Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
+    CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -288,8 +292,8 @@ public class RocksDBStoragePartitionTest {
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
       if (false) {
-        runningChecksum.get().update(entry.getKey().getBytes());
-        runningChecksum.get().update(entry.getValue().getBytes());
+        runningChecksum.update(entry.getKey().getBytes());
+        runningChecksum.update(entry.getValue().getBytes());
       }
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
@@ -327,7 +331,7 @@ public class RocksDBStoragePartitionTest {
         int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
         int replayEnd = interruptedRecord;
         int replayCnt = 0;
-        runningChecksum.get().reset();
+        runningChecksum.reset();
         for (Map.Entry<String, String> innerEntry: inputRecords.entrySet()) {
           ++replayCnt;
           if (replayCnt >= replayStart && replayCnt <= replayEnd) {
@@ -395,7 +399,7 @@ public class RocksDBStoragePartitionTest {
       boolean interrupted,
       boolean reopenDatabaseDuringInterruption,
       boolean verifyChecksum) {
-    Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
+    CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -425,8 +429,8 @@ public class RocksDBStoragePartitionTest {
     Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
     if (verifyChecksum) {
       checksumSupplier = Optional.of(() -> {
-        byte[] checksum = runningChecksum.get().getCheckSum();
-        runningChecksum.get().reset();
+        byte[] checksum = runningChecksum.getCheckSum();
+        runningChecksum.reset();
         return checksum;
       });
     }
@@ -440,8 +444,8 @@ public class RocksDBStoragePartitionTest {
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
       if (verifyChecksum) {
-        runningChecksum.get().update(entry.getKey().getBytes());
-        runningChecksum.get().update(entry.getValue().getBytes());
+        runningChecksum.update(entry.getKey().getBytes());
+        runningChecksum.update(entry.getValue().getBytes());
       }
       if (++currentRecordNum % syncPerRecords == 0) {
         checkpointingInfo = storagePartition.sync();
@@ -479,14 +483,14 @@ public class RocksDBStoragePartitionTest {
           int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
           int replayEnd = interruptedRecord;
           int replayCnt = 0;
-          runningChecksum.get().reset();
+          runningChecksum.reset();
           for (Map.Entry<String, String> innerEntry: inputRecords.entrySet()) {
             ++replayCnt;
             if (replayCnt >= replayStart && replayCnt <= replayEnd) {
               storagePartition.put(innerEntry.getKey().getBytes(), innerEntry.getValue().getBytes());
               if (verifyChecksum) {
-                runningChecksum.get().update(innerEntry.getKey().getBytes());
-                runningChecksum.get().update(innerEntry.getValue().getBytes());
+                runningChecksum.update(innerEntry.getKey().getBytes());
+                runningChecksum.update(innerEntry.getValue().getBytes());
               }
             }
             if (replayCnt > replayEnd) {
@@ -680,8 +684,15 @@ public class RocksDBStoragePartitionTest {
       int partitionId = 0;
       StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
 
+      RocksDBMemoryStats mockMemoryStats = Mockito.mock(RocksDBMemoryStats.class);
       VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-      RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+      RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(
+          serverConfig,
+          mockMemoryStats,
+          AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
+          AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+      Mockito.verify(mockMemoryStats).setMemoryLimit(anyLong());
+      Mockito.verify(mockMemoryStats).setSstFileManager(factory.getSstFileManager());
       storagePartition = new RocksDBStoragePartition(
           partitionConfig,
           factory,
@@ -716,7 +727,11 @@ public class RocksDBStoragePartitionTest {
       RocksDBServerConfig finalRocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
       serverConfig = new VeniceServerConfig(veniceServerProperties);
-      RocksDBStorageEngineFactory finalFactory = new RocksDBStorageEngineFactory(serverConfig);
+      RocksDBStorageEngineFactory finalFactory = new RocksDBStorageEngineFactory(
+          serverConfig,
+          mockMemoryStats,
+          AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
+          AvroProtocolDefinition.PARTITION_STATE.getSerializer());
       Assert.expectThrows(
           MemoryLimitExhaustedException.class,
           () -> new RocksDBStoragePartition(

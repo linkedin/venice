@@ -71,7 +71,6 @@ import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
-import com.linkedin.venice.router.throttle.NoopRouterThrottler;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
@@ -166,7 +165,6 @@ public class RouterServer extends AbstractVeniceService {
   private Router secureRouter;
   private DictionaryRetrievalService dictionaryRetrievalService;
   private RouterThrottler readRequestThrottler;
-  private RouterThrottler noopRequestThrottler;
 
   private MultithreadEventLoopGroup workerEventLoopGroup;
   private MultithreadEventLoopGroup serverEventLoopGroup;
@@ -331,7 +329,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metaStoreShadowReader = config.isMetaStoreShadowReadEnabled()
         ? Optional.of(new MetaStoreShadowReader(this.schemaRepository))
         : Optional.empty();
-    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager, metadataRepository);
+    this.routingDataRepository = new HelixCustomizedViewOfflinePushRepository(manager, metadataRepository, false);
     this.hybridStoreQuotaRepository = config.isHelixHybridStoreQuotaEnabled()
         ? Optional.of(new HelixHybridStoreQuotaRepository(manager))
         : Optional.empty();
@@ -958,12 +956,8 @@ public class RouterServer extends AbstractVeniceService {
           routerStats.getStatsByType(RequestType.SINGLE_GET),
           config);
 
-      noopRequestThrottler = new NoopRouterThrottler(
-          routersClusterManager,
-          metadataRepository,
-          routerStats.getStatsByType(RequestType.SINGLE_GET));
-
       // Setup read requests throttler.
+      scatterGatherMode.initReadRequestThrottler(readRequestThrottler);
       setReadRequestThrottling(config.isReadThrottlingEnabled());
 
       if (config.getMultiKeyRoutingStrategy().equals(VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING)) {
@@ -1043,8 +1037,8 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   public void setReadRequestThrottling(boolean throttle) {
-    RouterThrottler throttler = throttle ? readRequestThrottler : noopRequestThrottler;
-    scatterGatherMode.initReadRequestThrottler(throttler);
+    boolean isNoopThrottlerEnabled = !throttle;
+    readRequestThrottler.setIsNoopThrottlerEnabled(isNoopThrottlerEnabled);
   }
 
   /* test-only */

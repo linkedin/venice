@@ -1,5 +1,6 @@
 package com.linkedin.davinci.config;
 
+import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.*;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
@@ -102,7 +103,8 @@ public class VeniceServerConfigTest {
     props3.put(SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST, "-Xms32MB;-Xmx32MB");
     props3.setProperty(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, "32MB");
     props3.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "true");
+    props3.setProperty(INGESTION_ISOLATION_CONFIG_PREFIX + "." + ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, "16MB");
     VeniceServerConfig config1 = new VeniceServerConfig(new VeniceProperties(props3));
-    assertEquals(config1.getIngestionMemoryLimit(), 4 * 1024 * 1024l);
+    assertEquals(config1.getIngestionMemoryLimit(), 20 * 1024 * 1024l);
   }
 }

@@ -100,4 +100,16 @@ public class CollectionUtils {
     charSequenceMap.forEach((k, v) -> res.put(k.toString(), v.toString()));
     return res;
   }
+
+  /**
+   * This function can be useful when we want:
+   * - To ensure a map is not null.
+   * - To avoid hanging on to many references of empty maps (as opposed to the singleton {@link Collections#EMPTY_MAP}).
+   *
+   * @param map to be returned if populated, or substituted if null or empty
+   * @return a non-null map with the same content (though not necessarily the same identity) as the input map
+   */
+  public static <K, V> Map<K, V> substituteEmptyMap(Map<K, V> map) {
+    return map == null || map.isEmpty() ? Collections.emptyMap() : map;
+  }
 }

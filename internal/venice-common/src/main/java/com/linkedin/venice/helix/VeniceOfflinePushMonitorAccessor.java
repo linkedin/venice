@@ -8,6 +8,7 @@ import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusListener;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
+import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.ArrayList;
@@ -16,7 +17,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.lang.StringUtils;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -247,7 +247,13 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       String instanceId,
       ExecutionStatus status,
       String incrementalPushVersion) {
-    compareAndUpdateReplicaStatus(topic, partitionId, instanceId, status, Integer.MIN_VALUE, incrementalPushVersion);
+    compareAndUpdateReplicaStatus(
+        topic,
+        partitionId,
+        instanceId,
+        status,
+        ReplicaStatus.NO_PROGRESS,
+        incrementalPushVersion);
   }
 
   /**
@@ -291,14 +297,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
         currentData = new PartitionStatus(partitionId);
       }
 
-      currentData.updateReplicaStatus(instanceId, status, incrementalPushVersion);
-      if (progress != Integer.MIN_VALUE) {
-        currentData.updateProgress(instanceId, progress);
-      }
-      if (!StringUtils.isEmpty(incrementalPushVersion)) {
-        currentData.updateIncrementalPushVersion(instanceId, incrementalPushVersion);
-      }
-
+      currentData.updateReplicaStatus(instanceId, status, incrementalPushVersion, progress);
       return currentData;
     });
     LOGGER.info(

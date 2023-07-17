@@ -4,6 +4,7 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGEST
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.FAST_AVRO_FIELD_LIMIT_PER_METHOD;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
@@ -108,6 +109,7 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
@@ -397,6 +399,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean ingestionMlockEnabled;
   private final List<String> forkedProcessJvmArgList;
 
+  private final long divProducerStateMaxAgeMs;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -632,6 +636,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ingestionMemoryLimit = extractIngestionMemoryLimit(serverProperties, ingestionMode, forkedProcessJvmArgList);
     LOGGER.info("Ingestion memory limit: {} after subtracting other usages", ingestionMemoryLimit);
     ingestionMlockEnabled = serverProperties.getBoolean(INGESTION_MLOCK_ENABLED, false);
+
+    this.divProducerStateMaxAgeMs =
+        serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, KafkaDataIntegrityValidator.DISABLED);
   }
 
   long extractIngestionMemoryLimit(
@@ -685,7 +692,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
           "Extracted total memtable table usage capacity in forked process: {}",
           totalMemtableUsageInForkedProcess);
 
-      extractedMemoryLimit = configuredIngestionMemoryLimit - totalMemtableUsageInForkedProcess - forkedProcessHeapSize
+      extractedMemoryLimit = configuredIngestionMemoryLimit - totalMemtableUsage - forkedProcessHeapSize
           - totalMemtableUsageInForkedProcess;
       if (extractedMemoryLimit <= 0) {
         throw new VeniceException(
@@ -1116,5 +1123,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isIngestionMlockEnabled() {
     return ingestionMlockEnabled;
+  }
+
+  public long getDivProducerStateMaxAgeMs() {
+    return this.divProducerStateMaxAgeMs;
   }
 }

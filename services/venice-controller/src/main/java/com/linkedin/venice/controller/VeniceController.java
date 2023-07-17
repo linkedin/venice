@@ -5,8 +5,6 @@ import static com.linkedin.venice.authentication.AuthenticationServiceUtils.buil
 import static com.linkedin.venice.authorization.AuthorizerServiceUtils.buildAuthorizerService;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
-import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authentication.AuthenticationService;
@@ -17,6 +15,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
@@ -260,6 +259,8 @@ public class VeniceController {
           Optional.of(new StoreBackupVersionCleanupService((VeniceHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreBackupVersionCleanupService is enabled");
     }
+    // Run before enabling controller in helix so leadership won't hand back to this controller during schema requests.
+    initializeSystemSchema(controllerService.getVeniceHelixAdmin());
   }
 
   /**
@@ -276,7 +277,6 @@ public class VeniceController {
     if (sslEnabled) {
       secureAdminServer.start();
     }
-    initializeSystemSchema(controllerService.getVeniceHelixAdmin());
     topicCleanupService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
@@ -290,9 +290,9 @@ public class VeniceController {
 
   private void initializeSystemSchema(Admin admin) {
     String systemStoreCluster = multiClusterConfigs.getSystemSchemaClusterName();
+    VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemStoreCluster);
     if (!multiClusterConfigs.isParent() && multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
-        && multiClusterConfigs.getControllerConfig(systemStoreCluster)
-            .isSystemSchemaInitializationAtStartTimeEnabled()) {
+        && systemStoreClusterConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
       ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
           new ControllerClientBackedSystemSchemaInitializer(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
@@ -301,7 +301,7 @@ public class VeniceController {
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
               VeniceHelixAdmin.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
               true,
-              multiClusterConfigs.isControllerEnforceSSLOnly());
+              systemStoreClusterConfig);
       metaSystemStoreSchemaInitializer.execute();
     }
   }
@@ -355,12 +355,12 @@ public class VeniceController {
       Utils.exit(errorMessage + e.getMessage());
     }
 
-    D2Client d2Client =
-        new D2ClientBuilder().setZkHosts(controllerProps.getString(ZOOKEEPER_ADDRESS)).setIsSSLEnabled(false).build();
-
     Optional<AuthenticationService> authenticationService = buildAuthenticationService(controllerProps);
     Optional<AuthorizerService> authorizerService = buildAuthorizerService(controllerProps);
-    D2ClientUtils.startClient(d2Client);
+
+    String zkAddress = controllerProps.getString(ZOOKEEPER_ADDRESS);
+    D2Client d2Client = D2ClientFactory.getD2Client(zkAddress, Optional.empty());
+
     PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
         new ApacheKafkaProducerAdapterFactory(),
         new ApacheKafkaConsumerAdapterFactory(),
@@ -376,7 +376,7 @@ public class VeniceController {
             .build());
 
     controller.start();
-    addShutdownHook(controller, d2Client);
+    addShutdownHook(controller, zkAddress);
     if (joinThread) {
       try {
         Thread.currentThread().join();
@@ -386,12 +386,12 @@ public class VeniceController {
     }
   }
 
-  private static void addShutdownHook(VeniceController controller, D2Client d2Client) {
+  private static void addShutdownHook(VeniceController controller, String zkAddress) {
     Runtime.getRuntime().addShutdownHook(new Thread() {
       @Override
       public void run() {
         controller.stop();
-        D2ClientUtils.shutdownClient(d2Client);
+        D2ClientFactory.release(zkAddress);
       }
     });
   }

@@ -79,6 +79,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.nio.file.Paths;
 import java.security.Permission;
@@ -823,5 +824,31 @@ public class TestUtils {
     } else {
       throw new VeniceException("Unsupported topic type for: " + pubSubTopicType);
     }
+  }
+
+  /**
+   * WARNING: The code which generates the free port and uses it must always be called within
+   * a try/catch and a loop. There is no guarantee that the port returned will still be
+   * available at the time it is used. This is best-effort only.
+   *
+   * @return a free port to be used by tests.
+   */
+  public static int getFreePort() {
+    try (ServerSocket socket = new ServerSocket(0)) {
+      return socket.getLocalPort();
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  public static Map<String, String> combineConfigs(List<Map<String, String>> configMaps) {
+    Map<String, String> aggregateConfigMap = new HashMap<>(2);
+
+    for (Map<String, String> configMap: configMaps) {
+      for (Map.Entry<String, String> entry: configMap.entrySet()) {
+        aggregateConfigMap.compute(entry.getKey(), (k, v) -> v == null ? entry.getValue() : v + "," + entry.getValue());
+      }
+    }
+    return aggregateConfigMap;
   }
 }

@@ -99,6 +99,8 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.DataRecoveryVersionConfig;
+import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -121,11 +123,11 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
@@ -235,7 +237,7 @@ public abstract class StoreIngestionTaskTest {
   private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   // TODO: Test other permutations of these params
-  private static final KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
+  private static final PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
       new OptimizedKafkaValueSerializer(),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new));
@@ -1948,7 +1950,7 @@ public abstract class StoreIngestionTaskTest {
     return ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(number).array();
   }
 
-  @Test(dataProvider = "Two-True-and-False", invocationCount = 3, skipFailedInvocations = true, dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testDataValidationCheckPointing(boolean sortedInput, boolean isActiveActiveReplicationEnabled)
       throws Exception {
     final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
@@ -2184,10 +2186,10 @@ public abstract class StoreIngestionTaskTest {
     // intentionally not sending the EOP so that expectedSSTFileChecksum calculation does not get reset.
     // veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    Optional<CheckSum> checksum = CheckSum.getInstance(CheckSumType.MD5);
-    checksum.get().update(putKeyFoo);
-    checksum.get().update(SCHEMA_ID);
-    checksum.get().update(putValue);
+    CheckSum checksum = CheckSum.getInstance(CheckSumType.MD5);
+    checksum.update(putKeyFoo);
+    checksum.update(SCHEMA_ID);
+    checksum.update(putValue);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the Offset Manager
@@ -2206,7 +2208,7 @@ public abstract class StoreIngestionTaskTest {
           .beginBatchWrite(eq(deferredWritePartitionConfig), any(), checksumCaptor.capture());
       Optional<Supplier<byte[]>> checksumSupplier = checksumCaptor.getValue();
       Assert.assertTrue(checksumSupplier.isPresent());
-      Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.get().getCheckSum()));
+      Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.getCheckSum()));
     }, isActiveActiveReplicationEnabled);
   }
 
@@ -3413,6 +3415,48 @@ public abstract class StoreIngestionTaskTest {
       when(partitionConsumptionState.consumeRemotely()).thenReturn(true);
       assertTrue(lfsit.shouldProduceToVersionTopic(partitionConsumptionState));
     }, false);
+  }
+
+  @Test
+  public void testBatchOnlyStoreDataRecovery() {
+    Version version = mock(Version.class);
+    doReturn(1).when(version).getPartitionCount();
+    doReturn(VersionStatus.STARTED).when(version).getStatus();
+    doReturn(true).when(version).isNativeReplicationEnabled();
+    DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
+    doReturn(dataRecoveryVersionConfig).when(version).getDataRecoveryVersionConfig();
+
+    Store store = mock(Store.class);
+    doReturn(Optional.of(version)).when(store).getVersion(eq(1));
+
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(topic).when(storeConfig).getStoreVersionName();
+
+    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        1,
+        Collections.emptyMap(),
+        true).build();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
+        store,
+        version,
+        new Properties(),
+        isCurrentVersion,
+        storeConfig,
+        1,
+        false,
+        Optional.empty());
+
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
+    PartitionConsumptionState partitionConsumptionState = new PartitionConsumptionState(0, 1, offsetRecord, false);
+
+    storeIngestionTaskUnderTest.updateLeaderTopicOnFollower(partitionConsumptionState);
+    storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);
+    String dataRecoverySourceTopic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
+    verify(offsetRecord, times(1)).setLeaderTopic(pubSubTopicRepository.getTopic(dataRecoverySourceTopic));
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

@@ -7,8 +7,8 @@ import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.RegionPushDetails;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
 import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -73,26 +74,37 @@ public class DataRecoveryClient {
           ret.put(s, Pair.of(false, "unable to discover cluster for store (likely invalid store name)"));
           continue;
         }
-        ControllerClient parentCtrlCli = buildControllerClient(clusterName, url, params.getSSLFactory());
-        StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(s, false);
-        Map<String, RegionPushDetails> regionPushDetails = storeHealthInfo.getRegionPushDetails();
-        if (!regionPushDetails.containsKey(destFabric)) {
-          ret.put(s, Pair.of(false, "nothing to repush, store version 0"));
-          continue;
-        }
-        String latestTimestamp = regionPushDetails.get(destFabric).getPushStartTimestamp();
-        LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        try (ControllerClient parentCtrlCli = buildControllerClient(clusterName, url, params.getSSLFactory())) {
+          StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(s, false);
+          Map<String, RegionPushDetails> regionPushDetails = storeHealthInfo.getRegionPushDetails();
+          if (!regionPushDetails.containsKey(destFabric)) {
+            ret.put(s, Pair.of(false, "nothing to repush, store version 0"));
+            continue;
+          }
+          String latestTimestamp = regionPushDetails.get(destFabric).getPushStartTimestamp();
+          LocalDateTime latestPushStartTime =
+              LocalDateTime.parse(latestTimestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
-        if (latestPushStartTime.isAfter(timestamp)) {
-          ret.put(s, Pair.of(false, "input timestamp earlier than latest push"));
-          continue;
-        }
+          if (latestPushStartTime.isAfter(timestamp)) {
+            ret.put(s, Pair.of(false, "input timestamp earlier than latest push"));
+            continue;
+          }
 
-        MultiStoreStatusResponse storeStatusResponse = parentCtrlCli.getFutureVersions(clusterName, s);
-        if (storeStatusResponse.getStoreStatusMap().containsKey(destFabric)) {
-          ret.put(s, Pair.of(false, "ongoing repush"));
-        } else {
-          ret.put(s, Pair.of(true, ""));
+          MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, s);
+          // No future version status for target region.
+          if (!response.getStoreStatusMap().containsKey(destFabric)) {
+            ret.put(s, Pair.of(true, StringUtils.EMPTY));
+            continue;
+          }
+
+          int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(destFabric));
+          // No ongoing offline pushes detected for target region.
+          if (futureVersion == Store.NON_EXISTING_VERSION) {
+            ret.put(s, Pair.of(true, StringUtils.EMPTY));
+            continue;
+          }
+          // Find ongoing pushes for this store, skip.
+          ret.put(s, Pair.of(false, String.format("find ongoing push, version: %d", futureVersion)));
         }
       } catch (VeniceException e) {
         ret.put(s, Pair.of(false, "VeniceHttpException " + e.getErrorType().toString()));
@@ -107,6 +119,11 @@ public class DataRecoveryClient {
 
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
+    if (storeNames == null || storeNames.isEmpty()) {
+      LOGGER.warn("store list is empty, exit.");
+      return;
+    }
+
     Map<String, Pair<Boolean, String>> pushMap = getRepushViability(storeNames, cmdParams);
     Set<String> filteredStoreNames = new HashSet<>();
 
@@ -177,26 +194,16 @@ public class DataRecoveryClient {
   }
 
   public static class DataRecoveryParams {
-    private final String multiStores;
     private final Set<String> recoveryStores;
     private boolean isNonInteractive = false;
     private int interval = INTERVAL_UNSET;
 
-    public DataRecoveryParams(String multiStores) {
-      this.multiStores = multiStores;
-      this.recoveryStores = calculateRecoveryStoreNames(this.multiStores);
+    public DataRecoveryParams(Set<String> stores) {
+      this.recoveryStores = stores;
     }
 
     public Set<String> getRecoveryStores() {
       return recoveryStores;
-    }
-
-    private Set<String> calculateRecoveryStoreNames(String multiStores) {
-      Set<String> storeNames = null;
-      if (multiStores != null && !multiStores.isEmpty()) {
-        storeNames = Utils.parseCommaSeparatedStringToSet(multiStores);
-      }
-      return storeNames;
     }
 
     public void setInterval(int interval) {

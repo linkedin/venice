@@ -124,10 +124,17 @@ public class ClientFactory {
 
       return new HttpsTransportClient(
           bootstrapUrl,
+          clientConfig.getMaxConnectionsTotal(),
+          clientConfig.getMaxConnectionsPerRoute(),
+          clientConfig.isHttpClient5Http2Enabled(),
           clientConfig.getSslFactory(),
           clientConfig.getAuthenticationProvider());
     } else {
-      return new HttpTransportClient(bootstrapUrl, clientConfig.getAuthenticationProvider());
+      return new HttpTransportClient(
+          bootstrapUrl,
+          clientConfig.getMaxConnectionsTotal(),
+          clientConfig.getMaxConnectionsPerRoute(),
+          clientConfig.getAuthenticationProvider());
     }
   }
 }

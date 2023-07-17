@@ -18,5 +18,9 @@ public interface DataRecoveryVersionConfig extends DataModelBackedStructure<Data
 
   void setDataRecoveryComplete(boolean dataRecoveryComplete);
 
+  int getDataRecoverySourceVersionNumber();
+
+  void setDataRecoverySourceVersionNumber(int dataRecoverySourceVersionNumber);
+
   DataRecoveryVersionConfig clone();
 }

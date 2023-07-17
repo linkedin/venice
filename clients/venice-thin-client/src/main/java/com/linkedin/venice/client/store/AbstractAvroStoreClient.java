@@ -21,7 +21,6 @@ import com.linkedin.venice.client.store.streaming.ReadEnvelopeChunkedDeserialize
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
-import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
@@ -582,7 +581,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    *
    * @param stats The {@link ClientStats} object to record into. Should be the one passed by the {@link StatTrackingStoreClient}.
    * @param preRequestTimeInNS The request start time. Should be the one passed by the {@link StatTrackingStoreClient}.
-   * @param handleResponseOnDeserializationExecutor if true, will execute the {@param responseHandler} on the {@link #deserializationExecutor}
+   * @param handleResponseOnDeserializationExecutor if true, will execute the {@param responseHandler} on the {@link deserializationExecutor}
    *                                                if false, will execute the {@param responseHandler} on the same thread.
    * @param requestSubmitter A closure which ONLY submits the request to the backend. Should not include any pre-submission work (i.e.: serialization).
    * @param responseHandler A closure which interprets the response from the backend (i.e.: deserialization).
@@ -717,7 +716,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public void start() throws VeniceClientException {
     if (needSchemaReader) {
       this.schemaReader = new RouterBackedSchemaReader(
-          this::getStoreClientForSchemaReader,
+          this,
           getReaderSchema(),
           clientConfig.getPreferredSchemaFilter(),
           clientConfig.getSchemaRefreshPeriod(),
@@ -731,12 +730,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    */
   @Override
   public void close() {
-    boolean isHttp = transportClient instanceof HttpTransportClient;
     IOUtils.closeQuietly(transportClient, LOGGER::error);
-    if (isHttp) { // TODO make d2client close method idempotent. d2client re-uses the transport client for the schema
-                  // reader
-      IOUtils.closeQuietly(schemaReader, LOGGER::error);
-    }
+    IOUtils.closeQuietly(schemaReader, LOGGER::error);
     IOUtils.closeQuietly(compressorFactory, LOGGER::error);
     if (asyncStoreInitThread != null) {
       asyncStoreInitThread.interrupt();
@@ -746,8 +741,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   protected Optional<Schema> getReaderSchema() {
     return Optional.empty();
   }
-
-  protected abstract AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader();
 
   public abstract RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException;
 

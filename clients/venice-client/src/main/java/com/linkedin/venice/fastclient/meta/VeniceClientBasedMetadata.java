@@ -298,8 +298,8 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
         getStoreMetaValue(storeMetaKeyMap.get(STORE_KEY_SCHEMAS_KEY)).storeKeySchemas.keySchemaMap.entrySet()
             .iterator()
             .next();
-    SchemaData schemaData = new SchemaData(storeName);
-    schemaData.setKeySchema(
+    SchemaData schemaData = new SchemaData(
+        storeName,
         new SchemaEntry(Integer.parseInt(keySchemaEntry.getKey().toString()), keySchemaEntry.getValue().toString()));
     Map<CharSequence, CharSequence> valueSchemaMap =
         getStoreMetaValue(storeMetaKeyMap.get(STORE_VALUE_SCHEMAS_KEY)).storeValueSchemas.valueSchemaMap;

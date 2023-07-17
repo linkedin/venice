@@ -23,7 +23,7 @@ public class AvroSpecificDaVinciClient<K, V extends SpecificRecord> extends Avro
         backendConfig,
         managedClients,
         icProvider,
-        new SpecificRecordChunkingAdapter<>(clientConfig.getSpecificValueClass()),
+        new SpecificRecordChunkingAdapter<>(),
         () -> {
           Class<V> valueClass = clientConfig.getSpecificValueClass();
           FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);

@@ -454,9 +454,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       }
 
       if (sslFactory.isPresent()) {
-        transportClient = new HttpsTransportClient(discoveryUrl.get(), sslFactory.get(), authenticationProvider);
+        transportClient =
+            new HttpsTransportClient(discoveryUrl.get(), 0, 0, false, sslFactory.get(), authenticationProvider);
       } else {
-        transportClient = new HttpTransportClient(discoveryUrl.get(), authenticationProvider);
+        transportClient = new HttpTransportClient(discoveryUrl.get(), 0, 0, authenticationProvider);
       }
     } else {
       this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);

@@ -173,6 +173,7 @@ public class CreateVersion extends AbstractRoute {
 
         boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
         responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers(isSSL));
+        responseObject.setKafkaSourceRegion(admin.getRegionName());
         responseObject.setEnableSSL(isSSL);
 
         String pushJobId = request.queryParams(PUSH_JOB_ID);
@@ -220,7 +221,7 @@ public class CreateVersion extends AbstractRoute {
               storeName);
           sourceGridFabric = Optional.empty();
         }
-        Optional<String> emergencySourceRegion = admin.getEmergencySourceRegion();
+        Optional<String> emergencySourceRegion = admin.getEmergencySourceRegion(clusterName);
         if (emergencySourceRegion.isPresent() && !isActiveActiveReplicationEnabledInAllRegion.get()) {
           LOGGER.info(
               "Ignoring config {} : {}, as store {} is not set up for Active/Active replication in all regions",
@@ -294,6 +295,9 @@ public class CreateVersion extends AbstractRoute {
               responseObject.setPartitions(version.getPartitionCount());
             }
             String responseTopic;
+            /**
+             * Override the source fabric to respect the native replication source fabric selection.
+             */
             boolean overrideSourceFabric = true;
             boolean isTopicRT = false;
             if (pushType.isStreamReprocessing()) {
@@ -328,6 +332,7 @@ public class CreateVersion extends AbstractRoute {
               if (childDataCenterKafkaBootstrapServer != null) {
                 responseObject.setKafkaBootstrapServers(childDataCenterKafkaBootstrapServer);
               }
+              responseObject.setKafkaSourceRegion(version.getNativeReplicationSourceFabric());
             }
 
             if (pushType.isIncremental() && admin.isParent()) {

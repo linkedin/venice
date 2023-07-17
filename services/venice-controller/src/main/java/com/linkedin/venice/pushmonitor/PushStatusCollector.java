@@ -27,10 +27,9 @@ import org.apache.logging.log4j.Logger;
 /**
  * This class serves as a collector of offline push status for both Venice Server and Da Vinci clients.
  * It will try to aggregate push status from Server and Da Vinci and produce the final aggregated result.
- * For Venice Server, it will receive status update and may report directly if push status store is not enabled, othewise
- * it will wait for Da Vinci push status and compute final state.
- * For Da Vinci push status, it will be
- *
+ * If push status store is not enabled for the store, it will report directly upon receiving terminal server status,
+ * otherwise it will record the server status and keep polling Da Vinci status to determine the aggregate status and will
+ * only report if the aggregate status is terminal status.
  */
 public class PushStatusCollector {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusCollector.class);
@@ -40,10 +39,10 @@ public class PushStatusCollector {
   private final PushStatusStoreReader pushStatusStoreReader;
   private final ReadWriteStoreRepository storeRepository;
   private final int daVinciPushStatusScanPeriodInSeconds;
-
   private final int daVinciPushStatusScanThreadNumber;
   private final boolean daVinciPushStatusScanEnabled;
   private final int daVinciPushStatusNoReportRetryMaxAttempts;
+  private final int daVinciPushStatusScanMaxOfflineInstance;
   private ScheduledExecutorService offlinePushCheckScheduler;
   private ExecutorService pushStatusStoreScanExecutor;
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
@@ -58,7 +57,8 @@ public class PushStatusCollector {
       boolean daVinciPushStatusScanEnabled,
       int daVinciPushStatusScanIntervalInSeconds,
       int daVinciPushStatusScanThreadNumber,
-      int daVinciPushStatusNoReportRetryMaxAttempts) {
+      int daVinciPushStatusNoReportRetryMaxAttempts,
+      int daVinciPushStatusScanMaxOfflineInstance) {
     this.storeRepository = storeRepository;
     this.pushStatusStoreReader = pushStatusStoreReader;
     this.pushCompletedHandler = pushCompletedHandler;
@@ -67,6 +67,7 @@ public class PushStatusCollector {
     this.daVinciPushStatusScanPeriodInSeconds = daVinciPushStatusScanIntervalInSeconds;
     this.daVinciPushStatusScanThreadNumber = daVinciPushStatusScanThreadNumber;
     this.daVinciPushStatusNoReportRetryMaxAttempts = daVinciPushStatusNoReportRetryMaxAttempts;
+    this.daVinciPushStatusScanMaxOfflineInstance = daVinciPushStatusScanMaxOfflineInstance;
   }
 
   public void start() {
@@ -120,7 +121,8 @@ public class PushStatusCollector {
       if (!pushStatus.isMonitoring()) {
         continue;
       }
-      if (pushStatus.getDaVinciStatus() != null && pushStatus.getDaVinciStatus().getStatus().isTerminal()) {
+      if (pushStatus.getDaVinciStatus() != null && pushStatus.getDaVinciStatus().getStatus().isTerminal()
+          && !pushStatus.getDaVinciStatus().isNoDaVinciStatusReport()) {
         resultList.add(CompletableFuture.completedFuture(pushStatus));
       } else {
         resultList.add(CompletableFuture.supplyAsync(() -> {
@@ -128,7 +130,8 @@ public class PushStatusCollector {
               pushStatusStoreReader,
               topicName,
               pushStatus.getPartitionCount(),
-              Optional.empty());
+              Optional.empty(),
+              daVinciPushStatusScanMaxOfflineInstance);
           pushStatus.setDaVinciStatus(statusWithDetails);
           return pushStatus;
         }, pushStatusStoreScanExecutor));
@@ -145,6 +148,7 @@ public class PushStatusCollector {
       }
       ExecutionStatusWithDetails daVinciStatus = pushStatus.getDaVinciStatus();
       if (daVinciStatus.isNoDaVinciStatusReport()) {
+        LOGGER.info("Received empty DaVinci status report for topic: {}", pushStatus.topicName);
         // poll DaVinci status more
         int noDaVinciStatusRetryAttempts = topicToNoDaVinciStatusRetryCountMap.compute(pushStatus.topicName, (k, v) -> {
           if (v == null) {
@@ -153,7 +157,7 @@ public class PushStatusCollector {
           return v + 1;
         });
         if (noDaVinciStatusRetryAttempts <= daVinciPushStatusNoReportRetryMaxAttempts) {
-          daVinciStatus = new ExecutionStatusWithDetails(ExecutionStatus.NOT_STARTED, daVinciStatus.getDetails(), true);
+          daVinciStatus = new ExecutionStatusWithDetails(ExecutionStatus.NOT_STARTED, daVinciStatus.getDetails());
           pushStatus.setDaVinciStatus(daVinciStatus);
         } else {
           topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
@@ -161,6 +165,11 @@ public class PushStatusCollector {
       } else {
         topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
       }
+      LOGGER.info(
+          "Received DaVinci status: {} with details: {} for topic: {}",
+          daVinciStatus.getStatus(),
+          daVinciStatus.getDetails(),
+          pushStatus.topicName);
       ExecutionStatusWithDetails serverStatus = pushStatus.getServerStatus();
       if (serverStatus == null) {
         continue;
@@ -170,21 +179,30 @@ public class PushStatusCollector {
           pushStatus.getTopicName(),
           serverStatus.getStatus(),
           daVinciStatus.getStatus());
-      if (serverStatus.getStatus().equals(ExecutionStatus.COMPLETED)
-          && daVinciStatus.getStatus().equals(ExecutionStatus.COMPLETED)) {
-        pushStatus.setMonitoring(false);
-        pushCompletedHandler.accept(pushStatus.getTopicName());
-      } else if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)
-          || daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
-        pushStatus.setMonitoring(false);
-        StringBuilder pushErrorDetailStringBuilder = new StringBuilder();
-        if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)) {
-          pushErrorDetailStringBuilder.append("Server push error: ").append(serverStatus.getDetails()).append("\n");
+      try {
+        if (serverStatus.getStatus().equals(ExecutionStatus.COMPLETED)
+            && daVinciStatus.getStatus().equals(ExecutionStatus.COMPLETED)) {
+          pushStatus.setMonitoring(false);
+          pushCompletedHandler.accept(pushStatus.getTopicName());
+        } else if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)
+            || daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
+          pushStatus.setMonitoring(false);
+          StringBuilder pushErrorDetailStringBuilder = new StringBuilder();
+          if (serverStatus.getStatus().equals(ExecutionStatus.ERROR)) {
+            pushErrorDetailStringBuilder.append("Server push error: ").append(serverStatus.getDetails()).append("\n");
+          }
+          if (daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
+            pushErrorDetailStringBuilder.append("Da Vinci push error: ")
+                .append(daVinciStatus.getDetails())
+                .append("\n");
+          }
+          pushErrorHandler.accept(pushStatus.getTopicName(), pushErrorDetailStringBuilder.toString());
         }
-        if (daVinciStatus.getStatus().equals(ExecutionStatus.ERROR)) {
-          pushErrorDetailStringBuilder.append("Da Vinci push error: ").append(daVinciStatus.getDetails()).append("\n");
-        }
-        pushErrorHandler.accept(pushStatus.getTopicName(), pushErrorDetailStringBuilder.toString());
+      } catch (Exception e) {
+        LOGGER.error(
+            "Caught exception when calling handler for terminal push status for topic: {}",
+            pushStatus.getTopicName(),
+            e);
       }
     }
   }
@@ -192,7 +210,7 @@ public class PushStatusCollector {
   public void handleServerPushStatusUpdate(String topicName, ExecutionStatus executionStatus, String detailsString) {
     // Update the server topic status in the data structure and wait for async DVC status scan thread to pick up.
     TopicPushStatus topicPushStatus = topicToPushStatusMap.computeIfPresent(topicName, (topic, pushStatus) -> {
-      pushStatus.setServerStatus(new ExecutionStatusWithDetails(executionStatus, detailsString, true));
+      pushStatus.setServerStatus(new ExecutionStatusWithDetails(executionStatus, detailsString));
       return pushStatus;
     });
     // If scanning is not enabled or the topic is not subscribed for DVC push status scanning we will directly handle

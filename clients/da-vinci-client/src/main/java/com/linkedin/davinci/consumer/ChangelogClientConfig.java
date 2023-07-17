@@ -15,7 +15,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private ClientConfig<T> innerClientConfig;
   private D2ControllerClient d2ControllerClient;
 
-  private D2Client d2Client;
   private String controllerD2ServiceName;
   private int controllerRequestRetryCount;
 
@@ -91,12 +90,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   }
 
   public ChangelogClientConfig<T> setD2Client(D2Client d2Client) {
-    this.d2Client = d2Client;
+    this.innerClientConfig.setD2Client(d2Client);
     return this;
   }
 
   public D2Client getD2Client() {
-    return this.d2Client;
+    return this.innerClientConfig.getD2Client();
   }
 
   public ChangelogClientConfig<T> setLocalD2ZkHosts(String localD2ZkHosts) {

@@ -6,7 +6,6 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.utils.Pair;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -72,14 +71,14 @@ public interface PushMonitor {
   /**
    * @return return the current status. If it's in error, some debugging info is also presented.
    */
-  Pair<ExecutionStatus, String> getPushStatusAndDetails(String topic);
+  ExecutionStatusWithDetails getPushStatusAndDetails(String topic);
 
   List<UncompletedPartition> getUncompletedPartitions(String topic);
 
   /**
    * Returns incremental push's status read from (ZooKeeper backed) OfflinePushStatus
    */
-  Pair<ExecutionStatus, String> getIncrementalPushStatusAndDetails(
+  ExecutionStatusWithDetails getIncrementalPushStatusAndDetails(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository);
@@ -87,7 +86,7 @@ public interface PushMonitor {
   /**
    * Returns incremental push's status read from push status store
    */
-  Pair<ExecutionStatus, String> getIncrementalPushStatusFromPushStatusStore(
+  ExecutionStatusWithDetails getIncrementalPushStatusFromPushStatusStore(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
@@ -111,12 +110,6 @@ public interface PushMonitor {
    * Mark a push to be as error. This is usually called when push is killed.
    */
   void markOfflinePushAsError(String topic, String statusDetails);
-
-  /**
-   * Given a certain partition assignment, identify if a push would fail after that. This is usually called
-   * when we'd like to change the number of storage nodes in the cluster
-   */
-  boolean wouldJobFail(String topic, PartitionAssignment partitionAssignmentAfterRemoving);
 
   /**
    * Here, we refresh the push status, in order to avoid a race condition where a small job could

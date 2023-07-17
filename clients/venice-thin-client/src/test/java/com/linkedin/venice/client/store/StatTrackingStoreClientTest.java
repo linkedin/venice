@@ -67,11 +67,6 @@ public class StatTrackingStoreClientTest {
     }
 
     @Override
-    protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
-      return null;
-    }
-
-    @Override
     public RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
       return null;
     }

@@ -4,7 +4,7 @@ import static com.linkedin.venice.CommonConfigKeys.AUTHENTICATION_TOKEN;
 
 import com.linkedin.venice.authentication.jwt.ClientAuthenticationProviderToken;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Map;
+import java.util.Properties;
 
 
 public final class ClientAuthenticationProviderFactory {
@@ -16,7 +16,7 @@ public final class ClientAuthenticationProviderFactory {
     return build(properties.toProperties());
   }
 
-  public static ClientAuthenticationProvider build(Map properties) {
+  public static ClientAuthenticationProvider build(Properties properties) {
     String token = properties.getOrDefault(AUTHENTICATION_TOKEN, "").toString();
     if (token.isEmpty()) {
       return ClientAuthenticationProvider.DISABLED;

@@ -190,7 +190,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put(regionName, "localhost");
     doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();
-    doReturn(MAX_PARTITION_NUM).when(config).getMaxNumberOfPartition();
+    doReturn(MAX_PARTITION_NUM).when(config).getMaxNumberOfPartitions();
     doReturn(DefaultIdentityParser.class.getName()).when(config).getIdentityParserClassName();
     return config;
   }
