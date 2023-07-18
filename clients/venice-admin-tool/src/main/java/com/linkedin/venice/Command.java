@@ -98,7 +98,6 @@ import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
-import static com.linkedin.venice.Arg.TOKEN;
 import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
@@ -470,17 +469,14 @@ public enum Command {
   private final Arg[] optionalArgs;
 
   Command(String argName, String description, Arg[] requiredArgs) {
-    this(argName, description, requiredArgs, new Arg[] { TOKEN });
+    this(argName, description, requiredArgs, new Arg[] {});
   }
 
   Command(String argName, String description, Arg[] requiredArgs, Arg[] optionalArgs) {
     this.commandName = argName;
     this.description = description;
     this.requiredArgs = requiredArgs;
-    Arg[] withToken = new Arg[optionalArgs.length + 1];
-    System.arraycopy(optionalArgs, 0, withToken, 0, optionalArgs.length);
-    withToken[withToken.length - 1] = TOKEN;
-    this.optionalArgs = withToken;
+    this.optionalArgs = optionalArgs;
   }
 
   @Override

@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.venice.authentication.ClientAuthenticationProvider;
-import com.linkedin.venice.authentication.jwt.ClientAuthenticationProviderToken;
+import com.linkedin.venice.authentication.ClientAuthenticationProviderFactory;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -537,13 +537,13 @@ public class AdminTool {
     }
   }
 
-  private static ClientAuthenticationProvider buildAuthenticationProvider(CommandLine cmd) {
-    ClientAuthenticationProvider authenticationProvider = ClientAuthenticationProvider.DISABLED;
-    String token = getOptionalArgument(cmd, Arg.TOKEN, "");
-    if (!token.isEmpty()) {
-      authenticationProvider = ClientAuthenticationProviderToken.TOKEN(token);
+  private static ClientAuthenticationProvider buildAuthenticationProvider(CommandLine cmd) throws IOException {
+    Properties properties = new Properties();
+    if (cmd.hasOption(Arg.SSL_CONFIG_PATH.first())) {
+      String sslConfigPath = getOptionalArgument(cmd, Arg.SSL_CONFIG_PATH);
+      properties = SslUtils.loadSSLConfig(sslConfigPath);
     }
-    return authenticationProvider;
+    return ClientAuthenticationProviderFactory.build(properties);
   }
 
   static CommandLine getCommandLine(String[] args) throws ParseException, IOException {
@@ -588,7 +588,7 @@ public class AdminTool {
        * Don't throw exception yet until all controllers are deployed with SSL support and the script
        * that automatically generates SSL config file is provided.
        */
-      System.out.println("[WARN] Running admin tool without SSL.");
+      System.out.println("[WARN] Running admin tool without any SSL or authentication configuration.");
     }
     return cmd;
   }
@@ -2479,7 +2479,7 @@ public class AdminTool {
     printObject(response);
   }
 
-  private static void getKafkaTopicConfigs(CommandLine cmd) {
+  private static void getKafkaTopicConfigs(CommandLine cmd) throws IOException {
     String veniceControllerUrls = getRequiredArgument(cmd, Arg.URL);
     String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     String clusterName = null;
@@ -2501,7 +2501,7 @@ public class AdminTool {
     }
   }
 
-  private static void updateKafkaTopicLogCompaction(CommandLine cmd) {
+  private static void updateKafkaTopicLogCompaction(CommandLine cmd) throws IOException {
     updateKafkaTopicConfig(cmd, client -> {
       String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
       boolean enableKafkaLogCompaction =
@@ -2510,7 +2510,7 @@ public class AdminTool {
     });
   }
 
-  private static void updateKafkaTopicRetention(CommandLine cmd) {
+  private static void updateKafkaTopicRetention(CommandLine cmd) throws IOException {
     updateKafkaTopicConfig(cmd, client -> {
       String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
       long kafkaTopicRetentionTimeInMs = Long.parseLong(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_RETENTION_IN_MS));
@@ -2518,7 +2518,7 @@ public class AdminTool {
     });
   }
 
-  private static void updateKafkaTopicMinInSyncReplica(CommandLine cmd) {
+  private static void updateKafkaTopicMinInSyncReplica(CommandLine cmd) throws IOException {
     updateKafkaTopicConfig(cmd, client -> {
       String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
       int kafkaTopicMinISR = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA));
@@ -2526,7 +2526,8 @@ public class AdminTool {
     });
   }
 
-  private static void updateKafkaTopicConfig(CommandLine cmd, UpdateTopicConfigFunction updateTopicConfigFunction) {
+  private static void updateKafkaTopicConfig(CommandLine cmd, UpdateTopicConfigFunction updateTopicConfigFunction)
+      throws IOException {
     String veniceControllerUrls = getRequiredArgument(cmd, Arg.URL);
     String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     ClientAuthenticationProvider authenticationProvider = buildAuthenticationProvider(cmd);

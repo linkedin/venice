@@ -19,13 +19,13 @@ public class TokenAuthenticationService implements AuthenticationService {
   @Override
   public void initialise(VeniceProperties veniceProperties) throws Exception {
     TokenProperties tokenProperties = new TokenProperties(
-        veniceProperties.getString("authentication.jwt.secretKey", ""),
-        veniceProperties.getString("authentication.jwt.publicKey", ""),
-        veniceProperties.getString("authentication.jwt.authClaim", ""),
-        veniceProperties.getString("authentication.jwt.publicAlg", ""),
-        veniceProperties.getString("authentication.jwt.audienceClaim", ""),
-        veniceProperties.getString("authentication.jwt.audience", ""),
-        veniceProperties.getString("authentication.jwt.jwksHostsAllowlist", ""));
+        veniceProperties.getString(ConfigKeys.SECRET_KEY, ""),
+        veniceProperties.getString(ConfigKeys.PUBLIC_KEY, ""),
+        veniceProperties.getString(ConfigKeys.AUDIENCE_CLAIM, ""),
+        veniceProperties.getString(ConfigKeys.AUTH_CLAIM, ""),
+        veniceProperties.getString(ConfigKeys.AUDIENCE_CLAIM, ""),
+        veniceProperties.getString(ConfigKeys.AUDIENCE, ""),
+        veniceProperties.getString(ConfigKeys.JWKS_HOSTS_ALLOWLIST, ""));
     authenticationProvider = new AuthenticationProviderToken(tokenProperties);
   }
 
