@@ -27,6 +27,7 @@ import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -60,6 +61,7 @@ import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.BackupVersionOptimizationServiceStats;
 import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.VeniceJVMStats;
+import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
@@ -209,6 +211,22 @@ public class VeniceServer {
     // Create jvm metrics object
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
+    if (serverConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+      ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+              serverConfig.getSystemSchemaClusterName(),
+              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
+              VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
+              true,
+              sslFactory,
+              serverConfig.getLocalControllerUrl(),
+              serverConfig.getLocalControllerD2ServiceName(),
+              serverConfig.getLocalD2ZkHost(),
+              false);
+      metaSystemStoreSchemaInitializer.execute();
+    }
+
     Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(
         cc -> ClientFactory
             .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()), icProvider));
@@ -216,24 +234,40 @@ public class VeniceServer {
         cc -> ClientFactory.getSchemaReader(
             cc.setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()),
             icProvider));
+    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(
+        cc -> ClientFactory.getSchemaReader(
+            cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
+            icProvider));
+
+    // Verify the current version of the system schemas are registered in ZK before moving ahead
+    if (serverConfig.isSchemaPresenceCheckEnabled()) {
+      partitionStateSchemaReader.ifPresent(
+          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.PARTITION_STATE)
+              .verifySchemaVersionPresentOrExit());
+      storeVersionStateSchemaReader.ifPresent(
+          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.STORE_VERSION_STATE)
+              .verifySchemaVersionPresentOrExit());
+      kafkaMessageEnvelopeSchemaReader.ifPresent(
+          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
+              .verifySchemaVersionPresentOrExit());
+      // For system schemas initialized via controller client, no need to verify again because they should already exist
+      if (!serverConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+        Optional<SchemaReader> metaSystemStoreSchemaReader = clientConfigForConsumer.map(
+            cc -> ClientFactory.getSchemaReader(
+                cc.setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName()),
+                icProvider));
+        metaSystemStoreSchemaReader.ifPresent(
+            schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE)
+                .verifySchemaVersionPresentOrExit());
+      }
+    }
+
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSchemaReader.ifPresent(partitionStateSerializer::setSchemaReader);
     final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
     storeVersionStateSchemaReader.ifPresent(storeVersionStateSerializer::setSchemaReader);
-
-    // Verify the current version of PARTITION_STATE and STORE_VERSION_STATE schema is registered in ZK before moving
-    // ahead.
-    if (serverConfig.isSchemaPresenceCheckEnabled()) {
-      partitionStateSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.PARTITION_STATE)
-              .verifySchemaVersionPresentOrExit());
-
-      storeVersionStateSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.STORE_VERSION_STATE)
-              .verifySchemaVersionPresentOrExit());
-    }
 
     // Create and add Offset Service.
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
@@ -304,26 +338,6 @@ public class VeniceServer {
 
     // Create stats for RocksDB
     storageService.getRocksDBAggregatedStatistics().ifPresent(stat -> new AggRocksDBStats(metricsRepository, stat));
-
-    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(
-        cc -> ClientFactory.getSchemaReader(
-            cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
-            icProvider));
-    Optional<SchemaReader> metaSystemStoreSchemaReader = clientConfigForConsumer.map(
-        cc -> ClientFactory.getSchemaReader(
-            cc.setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName()),
-            icProvider));
-
-    // verify the current version of the system schemas are registered in ZK before moving ahead
-    if (serverConfig.isSchemaPresenceCheckEnabled()) {
-      kafkaMessageEnvelopeSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
-              .verifySchemaVersionPresentOrExit());
-
-      metaSystemStoreSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE)
-              .verifySchemaVersionPresentOrExit());
-    }
 
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 

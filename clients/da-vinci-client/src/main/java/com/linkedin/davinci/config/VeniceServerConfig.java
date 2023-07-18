@@ -21,6 +21,9 @@ import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.LISTENER_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
+import static com.linkedin.venice.ConfigKeys.LOCAL_CONTROLLER_D2_SERVICE_NAME;
+import static com.linkedin.venice.ConfigKeys.LOCAL_CONTROLLER_URL;
+import static com.linkedin.venice.ConfigKeys.LOCAL_D2_ZK_HOST;
 import static com.linkedin.venice.ConfigKeys.MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
@@ -102,6 +105,7 @@ import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_MEMORY_CAPACITY
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_NOTIFY_DELTA;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_NUMBER;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 
@@ -370,6 +374,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long fastClassSchemaWarmupTimeout;
 
   private final boolean schemaPresenceCheckEnabled;
+  private final boolean systemSchemaInitializationAtStartTimeEnabled;
+  private final String localControllerUrl;
+  private final String localControllerD2ServiceName;
+  private final String localD2ZkHost;
 
   private final boolean enableLiveConfigBasedKafkaThrottling;
 
@@ -603,6 +611,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     fastClassSchemaWarmupTimeout =
         serverProperties.getLong(SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT, 2 * Time.MS_PER_MINUTE);
     schemaPresenceCheckEnabled = serverProperties.getBoolean(SERVER_SCHEMA_PRESENCE_CHECK_ENABLED, true);
+    systemSchemaInitializationAtStartTimeEnabled =
+        serverProperties.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
+    localControllerUrl = serverProperties.getString(LOCAL_CONTROLLER_URL, "");
+    localControllerD2ServiceName = serverProperties.getString(LOCAL_CONTROLLER_D2_SERVICE_NAME, "");
+    localD2ZkHost = serverProperties.getString(LOCAL_D2_ZK_HOST, "");
     enableLiveConfigBasedKafkaThrottling =
         serverProperties.getBoolean(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, false);
     /**
@@ -1067,6 +1080,22 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isSchemaPresenceCheckEnabled() {
     return schemaPresenceCheckEnabled;
+  }
+
+  public boolean isSystemSchemaInitializationAtStartTimeEnabled() {
+    return systemSchemaInitializationAtStartTimeEnabled;
+  }
+
+  public String getLocalControllerUrl() {
+    return localControllerUrl;
+  }
+
+  public String getLocalControllerD2ServiceName() {
+    return localControllerD2ServiceName;
+  }
+
+  public String getLocalD2ZkHost() {
+    return localD2ZkHost;
   }
 
   public boolean isLiveConfigBasedKafkaThrottlingEnabled() {

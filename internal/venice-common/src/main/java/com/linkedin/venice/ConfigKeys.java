@@ -772,6 +772,14 @@ public class ConfigKeys {
    */
   public static final String SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT = "server.schema.fast.class.warmup.timeout";
 
+  /**
+   * The following 3 configs define controller url, d2 service name and d2 zk host in the region that server is located.
+   * Either url or d2 configs must be specified if {@link #SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED} is true.
+   */
+  public static final String LOCAL_CONTROLLER_URL = "local.controller.url";
+  public static final String LOCAL_CONTROLLER_D2_SERVICE_NAME = "local.controller.d2.service.name";
+  public static final String LOCAL_D2_ZK_HOST = "local.d2.zk.host";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
