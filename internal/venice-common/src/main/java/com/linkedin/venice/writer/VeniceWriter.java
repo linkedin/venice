@@ -520,12 +520,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
     Delete delete = new Delete();
+    delete.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
     if (deleteMetadata == null) {
-      delete.schemaId = VENICE_DEFAULT_VALUE_SCHEMA_ID;
       delete.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
       delete.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
     } else {
-      delete.schemaId = deleteMetadata.getValueSchemaId();
       delete.replicationMetadataVersionId = deleteMetadata.getRmdVersionId();
       delete.replicationMetadataPayload = deleteMetadata.getRmdPayload();
     }
