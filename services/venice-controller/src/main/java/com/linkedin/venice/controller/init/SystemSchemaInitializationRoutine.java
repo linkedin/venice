@@ -168,8 +168,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
                 systemStoreName,
                 schemaInLocalResources.toString(),
                 valueSchemaVersion,
-                DirectionalSchemaCompatibilityType.NONE,
-                false);
+                DirectionalSchemaCompatibilityType.NONE);
           } catch (Exception e) {
             LOGGER.error(
                 "Caught Exception when attempting to register '{}' schema version '{}'. Will bubble up.",

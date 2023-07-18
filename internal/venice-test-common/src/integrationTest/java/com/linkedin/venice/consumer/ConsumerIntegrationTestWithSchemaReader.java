@@ -37,8 +37,7 @@ public class ConsumerIntegrationTestWithSchemaReader extends ConsumerIntegration
         systemStoreName,
         NEW_PROTOCOL_SCHEMA.toString(),
         NEW_PROTOCOL_VERSION,
-        DirectionalSchemaCompatibilityType.NONE,
-        false);
+        DirectionalSchemaCompatibilityType.NONE);
   }
 
   @Override

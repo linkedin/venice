@@ -4843,7 +4843,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType, boolean)
+   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType)
    */
   @Override
   public SchemaEntry addValueSchema(
@@ -4858,22 +4858,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType, boolean)
+   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType)
    */
   @Override
-  public SchemaEntry addValueSchema(
-      String clusterName,
-      String storeName,
-      String valueSchemaStr,
-      int schemaId,
-      boolean doUpdateSupersetSchemaID) {
+  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
     return addValueSchema(
         clusterName,
         storeName,
         valueSchemaStr,
         schemaId,
-        SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE,
-        doUpdateSupersetSchemaID);
+        SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE);
   }
 
   /**
@@ -4886,8 +4880,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       String valueSchemaStr,
       int schemaId,
-      DirectionalSchemaCompatibilityType compatibilityType,
-      final boolean doUpdateSupersetSchemaID) {
+      DirectionalSchemaCompatibilityType compatibilityType) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     int newValueSchemaId =
@@ -4898,15 +4891,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + " Expected new schema id of " + schemaId + " but the next available id from the local repository is "
               + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: "
               + valueSchemaStr);
-    }
-
-    if (doUpdateSupersetSchemaID) {
-      LOGGER.info(
-          "For store: {} in cluster: {}, value schema is the same as superset schema. Update superset schema ID to {}.",
-          storeName,
-          clusterName,
-          schemaId);
-      updateSupersetSchemaForStore(storeName, clusterName, schemaId);
     }
     return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
   }
@@ -5012,11 +4996,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    // Update the store config
-    storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setLatestSuperSetValueSchemaId(supersetSchemaId);
-      return store;
-    });
     // add the value schema
     return schemaRepository.addValueSchema(storeName, valueSchema, valueSchemaId);
   }
