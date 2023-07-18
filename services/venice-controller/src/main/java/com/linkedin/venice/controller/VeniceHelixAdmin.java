@@ -4688,7 +4688,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     pushMonitor.recordPushPreparationDuration(topic, TimeUnit.MILLISECONDS.toSeconds(maxWaitTimeMs));
     throw new VeniceException(
         "After waiting for " + maxWaitTimeMs + "ms, resource assignment for: " + topic + " timed out, strategy="
-            + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
+            + strategy + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
   }
 
   @Override
@@ -4701,17 +4701,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void deleteHelixResource(String clusterName, String kafkaTopic) {
     checkControllerLeadershipFor(clusterName);
     List<String> instances = getStorageNodes(clusterName);
-    int partitionCount = getHelixVeniceClusterResources(clusterName).getRoutingDataRepository()
-        .getPartitionAssignments(kafkaTopic)
-        .getExpectedNumberOfPartitions();
+
     for (String instance: instances) {
-      List<String> partitions = new ArrayList<>(partitionCount);
-      for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
-        partitions.add(HelixUtils.getPartitionName(kafkaTopic, partitionId));
+      Map<String, List<String>> disabledPartitions =
+          getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
+      for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
+        if (entry.getKey().equals(kafkaTopic)) {
+          // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
+          getHelixAdminClient().enablePartition(true, clusterName, instance, kafkaTopic, entry.getValue());
+          LOGGER.info("Cleaning up disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
+        }
       }
-      // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
-      getHelixAdminClient().enablePartition(true, clusterName, instance, kafkaTopic, partitions);
     }
+
     getHelixAdminClient().dropResource(clusterName, kafkaTopic);
     LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
   }
