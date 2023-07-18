@@ -330,7 +330,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return result.serialize();
   }
 
-  // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
+  // This function may modify the original record in KME, it is unsafe to use the payload from KME directly after
   // this function.
   protected void processMessageAndMaybeProduceToKafka(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
