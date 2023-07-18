@@ -2818,6 +2818,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         consumerRecord.getTopicPartition());
 
     final byte[] updatedValueBytes;
+    // Samza VeniceWriter doesn't handle chunking config properly. It reads chunking config
+    // from user's input instead of getting it from store's metadata repo. This causes SN
+    // to der-se of keys a couple of times.
+    final byte[] updatedKeyBytes =
+        isChunked ? ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes) : keyBytes;
+    final ChunkedValueManifest oldValueManifest = isChunked
+        ? ChunkingUtils.getChunkValueManifestFromStorage(updatedKeyBytes, subPartition, false, storageEngine)
+        : null;
+
     try {
       long writeComputeStartTimeInNS = System.nanoTime();
       // Leader nodes are the only ones which process UPDATES, so it's valid to always compress and not call
@@ -2865,13 +2874,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       updatedPut.putValue = updateValueWithSchemaId;
       updatedPut.schemaId = readerValueSchemaId;
 
-      byte[] updatedKeyBytes = keyBytes;
-      if (isChunked) {
-        // Samza VeniceWriter doesn't handle chunking config properly. It reads chunking config
-        // from user's input instead of getting it from store's metadata repo. This causes SN
-        // to der-se of keys a couple of times.
-        updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
-      }
       LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
           .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
 
@@ -2894,32 +2896,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * Iterate all chunked keys in old manifest and send DELETE request to version topic.
      */
     if (isChunked) {
-      ByteBuffer keyBuffer =
-          ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(ByteBuffer.wrap(keyBytes));
-      ChunkedValueManifest oldValueManifest =
-          ChunkingUtils.getChunkValueManifestFromStorage(keyBuffer, subPartition, false, storageEngine);
-      if (oldValueManifest == null) {
-        return;
+      if (oldValueManifest != null) {
+        for (int i = 0; i < oldValueManifest.keysWithChunkIdSuffix.size(); i++) {
+          LeaderProducedRecordContext valueChunkDeleteRecordContext =
+              LeaderProducedRecordContext.newChunkDeleteRecord(updatedKeyBytes, null);
+          byte[] chunkKeyBytes = oldValueManifest.keysWithChunkIdSuffix.get(i).array();
+          produceToLocalKafka(
+              consumerRecord,
+              partitionConsumptionState,
+              valueChunkDeleteRecordContext,
+              (callback, leaderMetadataWrapper) -> veniceWriter.get()
+                  .deleteDeprecatedChunk(chunkKeyBytes, subPartition, callback, leaderMetadataWrapper, null),
+              subPartition,
+              kafkaUrl,
+              kafkaClusterId,
+              beforeProcessingRecordTimestampNs);
+        }
       }
-      LeaderProducedRecordContext leaderProducedRecordContext =
-          LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, null);
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
-          (callback, leaderMetadataWrapper) -> veniceWriter.get()
-              .deleteDeprecatedChunksFromManifest(
-                  oldValueManifest,
-                  subPartition,
-                  callback,
-                  leaderMetadataWrapper,
-                  null);
-      produceToLocalKafka(
-          consumerRecord,
-          partitionConsumptionState,
-          leaderProducedRecordContext,
-          produceFunction,
-          subPartition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
     }
   }
 
@@ -3153,7 +3146,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   // test method
-  protected void addPartititionConsumptionState(Integer partition, PartitionConsumptionState pcs) {
+  protected void addPartitionConsumptionState(Integer partition, PartitionConsumptionState pcs) {
     partitionConsumptionStateMap.put(partition, pcs);
   }
 }

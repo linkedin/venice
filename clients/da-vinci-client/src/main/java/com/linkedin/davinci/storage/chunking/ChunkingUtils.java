@@ -227,11 +227,11 @@ public class ChunkingUtils {
   }
 
   public static ChunkedValueManifest getChunkValueManifestFromStorage(
-      ByteBuffer key,
+      byte[] key,
       int partition,
       boolean isRmd,
       AbstractStorageEngine store) {
-    byte[] value = store.get(partition, key);
+    byte[] value = isRmd ? store.getReplicationMetadata(partition, key) : store.get(partition, key);
     if (value == null) {
       return null;
     }

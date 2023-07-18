@@ -165,7 +165,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(badPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
     // short circuit isReadyToServe
     when(badPartitionConsumptionState.isEndOfPushReceived()).thenReturn(false);
-    ingestionTask.addPartititionConsumptionState(1, badPartitionConsumptionState);
+    ingestionTask.addPartitionConsumptionState(1, badPartitionConsumptionState);
 
     Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
 
@@ -173,11 +173,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(goodPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
     when(goodPartitionConsumptionState.isEndOfPushReceived()).thenReturn(true);
     when(goodPartitionConsumptionState.isWaitingForReplicationLag()).thenReturn(false);
-    ingestionTask.addPartititionConsumptionState(1, goodPartitionConsumptionState);
+    ingestionTask.addPartitionConsumptionState(1, goodPartitionConsumptionState);
 
     Assert.assertFalse(ingestionTask.isReadyToServeAnnouncedWithRTLag());
 
-    ingestionTask.addPartititionConsumptionState(2, badPartitionConsumptionState);
+    ingestionTask.addPartitionConsumptionState(2, badPartitionConsumptionState);
 
     Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
   }

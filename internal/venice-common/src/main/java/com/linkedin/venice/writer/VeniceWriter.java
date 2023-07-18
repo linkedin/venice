@@ -508,17 +508,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return delete(key, callback, DEFAULT_LEADER_METADATA_WRAPPER, APP_DEFAULT_LOGICAL_TS, deleteMetadata);
   }
 
-  public void deleteDeprecatedChunksFromManifest(
-      ChunkedValueManifest manifest,
-      int partition,
-      PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper,
-      DeleteMetadata deleteMetadata) {
-    for (ByteBuffer chunkedKeyByteBuffer: manifest.keysWithChunkIdSuffix) {
-      deleteDeprecatedChunk(chunkedKeyByteBuffer.array(), partition, callback, leaderMetadataWrapper, deleteMetadata);
-    }
-  }
-
   public void deleteDeprecatedChunk(
       byte[] serializedKey,
       int partition,

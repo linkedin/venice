@@ -143,7 +143,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       try {
         /**
          * queue the leaderProducedRecordContext to drainer service as is in case the value was not chunked.
-         * Otherwise queue the chunks and manifest individually to drainer service.
+         * Otherwise, queue the chunks and manifest individually to drainer service.
          */
         if (chunkedValueManifest == null) {
           // update the keyBytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in

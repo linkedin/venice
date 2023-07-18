@@ -2924,7 +2924,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     MessageType messageType = (leaderProducedRecordContext == null
         ? MessageType.valueOf(kafkaValue)
         : leaderProducedRecordContext.getMessageType());
-
     switch (messageType) {
       case PUT:
         // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
