@@ -7,7 +7,7 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.controller.init.ControllerClientBackedSystemSchemaInitializer;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
@@ -23,6 +23,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -236,15 +237,19 @@ public class VeniceController {
     VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemStoreCluster);
     if (!multiClusterConfigs.isParent() && multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
         && systemStoreClusterConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+      String regionName = systemStoreClusterConfig.getRegionName();
       ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
           new ControllerClientBackedSystemSchemaInitializer(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
               systemStoreCluster,
-              (VeniceHelixAdmin) admin,
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
-              VeniceHelixAdmin.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
+              VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
               true,
-              systemStoreClusterConfig);
+              ((VeniceHelixAdmin) admin).getSslFactory(),
+              systemStoreClusterConfig.getChildControllerUrl(regionName),
+              systemStoreClusterConfig.getChildControllerD2ServiceName(),
+              systemStoreClusterConfig.getChildControllerD2ZkHost(regionName),
+              systemStoreClusterConfig.isControllerEnforceSSLOnly());
       metaSystemStoreSchemaInitializer.execute();
     }
   }
