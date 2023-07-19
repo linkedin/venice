@@ -92,13 +92,13 @@ import org.apache.logging.log4j.Logger;
 
 
 /***
- * {@link StorageReadRequestsHandler} will take the incoming read requests from router{@link RouterRequest}, and delegate
+ * {@link StorageReadRequestHandler} will take the incoming read requests from router{@link RouterRequest}, and delegate
  * the lookup request to a thread pool {@link #executor}, which is being shared by all the requests. Especially, this
  * handler will execute parallel lookups for {@link MultiGetRouterRequestWrapper}.
  */
 @ChannelHandler.Sharable
-public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
-  private static final Logger LOGGER = LogManager.getLogger(StorageReadRequestsHandler.class);
+public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
+  private static final Logger LOGGER = LogManager.getLogger(StorageReadRequestHandler.class);
 
   private final DiskHealthCheckService diskHealthCheckService;
   private final ThreadPoolExecutor executor;
@@ -175,7 +175,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
 
   private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
 
-  public StorageReadRequestsHandler(
+  public StorageReadRequestHandler(
       ThreadPoolExecutor executor,
       ThreadPoolExecutor computeExecutor,
       StorageEngineRepository storageEngineRepository,
@@ -218,7 +218,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
      *
      * The reason for this is two-fold:
      *
-     * 1. We want to make the {@link StorageReadRequestsHandler} fully non-blocking as far as Netty (which
+     * 1. We want to make the {@link StorageReadRequestHandler} fully non-blocking as far as Netty (which
      *    is the one calling this function) is concerned. Therefore, it is beneficial to fork off the
      *    work into the executor from the very beginning.
      * 2. By making the execution asynchronous from the beginning, we can simplify the rest of the class
@@ -718,7 +718,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         compressor);
   }
 
-  private void incrementOperatorCounters(ComputeResponseWrapper response, Iterable<ComputeOperation> operations) {
+  private static void incrementOperatorCounters(
+      ComputeResponseWrapper response,
+      Iterable<ComputeOperation> operations) {
     for (ComputeOperation operation: operations) {
       switch (ComputeOperationType.valueOf(operation)) {
         case DOT_PRODUCT:

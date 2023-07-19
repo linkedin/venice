@@ -44,7 +44,7 @@ public class TestVeniceComputePath {
       + "         { \"name\": \"id\", \"type\": \"string\" },       "
       + "         { \"name\": \"member_score\", \"type\": \"double\" }        " + "  ]       " + " }       ";
 
-  private static ComputeRequestV1 getComputeRequest() {
+  public static ComputeRequestV1 getComputeRequest() {
     DotProduct dotProduct = new DotProduct();
     dotProduct.field = "member_feature";
     List<Float> featureVector = new ArrayList<>(3);
@@ -75,7 +75,7 @@ public class TestVeniceComputePath {
     return request;
   }
 
-  static BasicFullHttpRequest getComputeHttpRequest(
+  public static BasicFullHttpRequest getComputeHttpRequest(
       String resourceName,
       ComputeRequestV1 request,
       List<ByteBuffer> keys,

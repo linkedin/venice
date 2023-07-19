@@ -91,7 +91,7 @@ public class ListenerService extends AbstractVeniceService {
       new ThreadPoolStats(metricsRepository, this.sslHandshakeExecutor, "ssl_handshake_thread_pool");
     }
 
-    StorageReadRequestsHandler requestHandler = createRequestHandler(
+    StorageReadRequestHandler requestHandler = createRequestHandler(
         executor,
         computeExecutor,
         storageEngineRepository,
@@ -176,7 +176,7 @@ public class ListenerService extends AbstractVeniceService {
         .createThreadPool(threadCount, threadNamePrefix, capacity, serverConfig.getBlockingQueueType());
   }
 
-  protected StorageReadRequestsHandler createRequestHandler(
+  protected StorageReadRequestHandler createRequestHandler(
       ThreadPoolExecutor executor,
       ThreadPoolExecutor computeExecutor,
       StorageEngineRepository storageEngineRepository,
@@ -189,7 +189,7 @@ public class ListenerService extends AbstractVeniceService {
       int parallelBatchGetChunkSize,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
-    return new StorageReadRequestsHandler(
+    return new StorageReadRequestHandler(
         executor,
         computeExecutor,
         storageEngineRepository,

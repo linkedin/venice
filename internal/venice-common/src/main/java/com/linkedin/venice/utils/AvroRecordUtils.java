@@ -87,6 +87,9 @@ public class AvroRecordUtils {
   }
 
   public static void clearRecord(GenericRecord record) {
+    if (record instanceof SpecificRecord) {
+      throw new UnsupportedOperationException("SpecificRecord clearing is not supported");
+    }
     int fieldCount = record.getSchema().getFields().size();
     for (int i = 0; i < fieldCount; ++i) {
       record.put(i, null);

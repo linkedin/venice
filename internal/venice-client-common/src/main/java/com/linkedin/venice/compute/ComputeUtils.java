@@ -286,7 +286,7 @@ public class ComputeUtils {
     }
     return Optional.of(
         "Failed to execute compute request as the field " + operatorFieldName + " is not allowed to be null for "
-            + operator + " in value record. ");
+            + operator + " in value record.");
   }
 
   private static String getStringOfSchemaFieldNames(GenericRecord valueRecord) {
