@@ -841,7 +841,7 @@ public class TestUtils {
     }
   }
 
-  public static Map<String, String> combineConfigs(List<Map<String, String>> configMaps) {
+  public static Map<String, String> mergeConfigs(List<Map<String, String>> configMaps) {
     Map<String, String> aggregateConfigMap = new HashMap<>(2);
 
     for (Map<String, String> configMap: configMaps) {
