@@ -4895,24 +4895,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
   }
 
-  private void updateSupersetSchemaForStore(String storeName, String clusterName, int newSupersetSchemaID) {
-    final HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-      Store store = repository.getStore(storeName);
-      final int existingSupersetSchemaID = store.getLatestSuperSetValueSchemaId();
-      if (existingSupersetSchemaID > newSupersetSchemaID) {
-        throw new VeniceException(
-            "New superset schema ID should not be smaller than existing superset schema ID. "
-                + "Got existing superset schema ID: " + existingSupersetSchemaID + " and new superset schema ID: "
-                + newSupersetSchemaID + " for store " + storeName + " in cluster " + clusterName);
-      }
-      // Update source-of-truth store state.
-      store.setLatestSuperSetValueSchemaId(newSupersetSchemaID);
-      repository.updateStore(store);
-    }
-  }
-
   /**
    * Add a new derived schema for the given store with all specified properties and return a new
    * <code>DerivedSchemaEntry</code> object containing the schema and its id.
