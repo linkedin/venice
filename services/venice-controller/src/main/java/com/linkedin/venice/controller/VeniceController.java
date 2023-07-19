@@ -119,10 +119,7 @@ public class VeniceController {
     this.routerClientConfig = Optional.ofNullable(ctx.getRouterClientConfig());
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
-    this.pubSubClientsFactory = new PubSubClientsFactory(
-        multiClusterConfigs.getPubSubProducerAdapterFactory(),
-        multiClusterConfigs.getPubSubConsumerAdapterFactory(),
-        multiClusterConfigs.getPubSubAdminAdapterFactory());
+    this.pubSubClientsFactory = multiClusterConfigs.getPubSubClientsFactory();
     createServices();
   }
 

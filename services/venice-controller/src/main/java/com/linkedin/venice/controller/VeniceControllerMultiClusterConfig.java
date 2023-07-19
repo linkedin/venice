@@ -3,9 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Collection;
@@ -261,15 +259,7 @@ public class VeniceControllerMultiClusterConfig {
   }
 
   // TODO: Remove this method once we fully support cluster-level pub sub adapter configuration.
-  public PubSubProducerAdapterFactory getPubSubProducerAdapterFactory() {
-    return getCommonConfig().getPubSubProducerAdapterFactory();
-  }
-
-  public PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory() {
-    return getCommonConfig().getPubSubConsumerAdapterFactory();
-  }
-
-  public PubSubAdminAdapterFactory getPubSubAdminAdapterFactory() {
-    return getCommonConfig().getPubSubAdminAdapterFactory();
+  public PubSubClientsFactory getPubSubClientsFactory() {
+    return getCommonConfig().getPubSubClientsFactory();
   }
 }

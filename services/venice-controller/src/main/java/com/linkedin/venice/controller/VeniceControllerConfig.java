@@ -99,6 +99,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFac
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
@@ -280,11 +281,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean systemSchemaInitializationAtStartTimeEnabled;
 
-  private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
-
-  private final PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory;
-
-  private final PubSubAdminAdapterFactory pubSubAdminAdapterFactory;
+  private final PubSubClientsFactory pubSubClientsFactory;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -496,15 +493,21 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     try {
       String producerFactoryClassName =
           props.getString(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
-      pubSubProducerAdapterFactory =
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
       String consumerFactoryClassName =
           props.getString(PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS, ApacheKafkaConsumerAdapterFactory.class.getName());
-      pubSubConsumerAdapterFactory =
+      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
           (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
       String adminFactoryClassName =
           props.getString(PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
-      pubSubAdminAdapterFactory = (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
+      PubSubAdminAdapterFactory pubSubAdminAdapterFactory =
+          (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
+
+      pubSubClientsFactory = new PubSubClientsFactory(
+          pubSubProducerAdapterFactory,
+          pubSubConsumerAdapterFactory,
+          pubSubAdminAdapterFactory);
     } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
       LOGGER.error("Failed to create an instance of pub sub clients factory", e);
       throw new VeniceException(e);
@@ -918,16 +921,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return systemSchemaInitializationAtStartTimeEnabled;
   }
 
-  public PubSubProducerAdapterFactory getPubSubProducerAdapterFactory() {
-    return pubSubProducerAdapterFactory;
-  }
-
-  public PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory() {
-    return pubSubConsumerAdapterFactory;
-  }
-
-  public PubSubAdminAdapterFactory getPubSubAdminAdapterFactory() {
-    return pubSubAdminAdapterFactory;
+  public PubSubClientsFactory getPubSubClientsFactory() {
+    return pubSubClientsFactory;
   }
 
   /**

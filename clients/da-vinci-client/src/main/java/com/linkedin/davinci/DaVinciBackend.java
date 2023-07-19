@@ -219,10 +219,7 @@ public class DaVinciBackend implements Closeable {
       cacheBackend = cacheConfig
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
-      PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
-          configLoader.getVeniceServerConfig().getPubSubProducerAdapterFactory(),
-          configLoader.getVeniceServerConfig().getPubSubConsumerAdapterFactory(),
-          configLoader.getVeniceServerConfig().getPubSubAdminAdapterFactory());
+      PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
       ingestionService = new KafkaStoreIngestionService(
           storageService.getStorageEngineRepository(),
           configLoader,

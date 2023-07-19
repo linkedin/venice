@@ -125,6 +125,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFac
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.Time;
@@ -159,7 +160,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public static final int MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER = 3;
 
   private final int listenerPort;
-  private final String listernerHostname;
+  private final String listenerHostname;
   private final String dataBasePath;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final boolean enableServerAllowList;
@@ -417,10 +418,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final List<String> forkedProcessJvmArgList;
 
   private final long divProducerStateMaxAgeMs;
-  private final PubSubAdminAdapterFactory pubSubAdminAdapterFactory;
-
-  private final PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory;
-  private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
+  private final PubSubClientsFactory pubSubClientsFactory;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -430,7 +428,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       throws ConfigurationException {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
-    listernerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
+    listenerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
     dataBasePath = serverProperties.getString(
         DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
@@ -668,15 +666,20 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     try {
       String producerFactoryClassName = serverProperties
           .getString(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
-      pubSubProducerAdapterFactory =
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
       String consumerFactoryClassName = serverProperties
           .getString(PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS, ApacheKafkaConsumerAdapterFactory.class.getName());
-      pubSubConsumerAdapterFactory =
+      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
           (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
       String adminFactoryClassName = serverProperties
           .getString(PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
-      pubSubAdminAdapterFactory = (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
+      PubSubAdminAdapterFactory pubSubAdminAdapterFactory =
+          (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
+      pubSubClientsFactory = new PubSubClientsFactory(
+          pubSubProducerAdapterFactory,
+          pubSubConsumerAdapterFactory,
+          pubSubAdminAdapterFactory);
     } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
       LOGGER.error("Failed to create an instance of pub sub clients factory", e);
       throw new VeniceException(e);
@@ -759,7 +762,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   }
 
   public String getListenerHostname() {
-    return listernerHostname;
+    return listenerHostname;
   }
 
   /**
@@ -1187,15 +1190,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return this.divProducerStateMaxAgeMs;
   }
 
-  public PubSubProducerAdapterFactory getPubSubProducerAdapterFactory() {
-    return pubSubProducerAdapterFactory;
-  }
-
-  public PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory() {
-    return pubSubConsumerAdapterFactory;
-  }
-
-  public PubSubAdminAdapterFactory getPubSubAdminAdapterFactory() {
-    return pubSubAdminAdapterFactory;
+  public PubSubClientsFactory getPubSubClientsFactory() {
+    return pubSubClientsFactory;
   }
 }

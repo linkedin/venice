@@ -734,10 +734,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     boolean isDaVinciClient = veniceMetadataRepositoryBuilder.isDaVinciClient();
-    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
-        configLoader.getVeniceServerConfig().getPubSubProducerAdapterFactory(),
-        configLoader.getVeniceServerConfig().getPubSubConsumerAdapterFactory(),
-        configLoader.getVeniceServerConfig().getPubSubAdminAdapterFactory());
+    PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
 
     // Create KafkaStoreIngestionService
     storeIngestionService = new KafkaStoreIngestionService(

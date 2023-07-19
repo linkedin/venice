@@ -174,10 +174,7 @@ public class VeniceServer {
     this.icProvider = ctx.getIcProvider();
     this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
     VeniceServerConfig veniceServerConfig = ctx.getVeniceConfigLoader().getVeniceServerConfig();
-    this.pubSubClientsFactory = new PubSubClientsFactory(
-        veniceServerConfig.getPubSubProducerAdapterFactory(),
-        veniceServerConfig.getPubSubConsumerAdapterFactory(),
-        veniceServerConfig.getPubSubAdminAdapterFactory());
+    this.pubSubClientsFactory = veniceServerConfig.getPubSubClientsFactory();
     this.sslFactory = Optional.ofNullable(ctx.getSslFactory());
     this.routerAccessController = Optional.ofNullable(ctx.getRouterAccessController());
     this.storeAccessController = Optional.ofNullable(ctx.getStoreAccessController());
