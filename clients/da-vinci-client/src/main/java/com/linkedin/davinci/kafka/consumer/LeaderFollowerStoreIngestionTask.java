@@ -13,6 +13,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -2810,12 +2811,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       readerValueSchemaId = supersetSchemaEntry.getId();
       readerUpdateProtocolVersion = update.updateSchemaId;
     }
-
+    ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
     final GenericRecord currValue = readStoredValueRecord(
         partitionConsumptionState,
         keyBytes,
         readerValueSchemaId,
-        consumerRecord.getTopicPartition());
+        consumerRecord.getTopicPartition(),
+        valueManifestContainer);
 
     final byte[] updatedValueBytes;
     // Samza VeniceWriter doesn't handle chunking config properly. It reads chunking config
@@ -2823,9 +2825,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // to der-se of keys a couple of times.
     final byte[] updatedKeyBytes =
         isChunked ? ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes) : keyBytes;
-    final ChunkedValueManifest oldValueManifest = isChunked
-        ? ChunkingUtils.getChunkValueManifestFromStorage(updatedKeyBytes, subPartition, false, storageEngine)
-        : null;
+    final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
 
     try {
       long writeComputeStartTimeInNS = System.nanoTime();
@@ -2925,7 +2925,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       byte[] keyBytes,
       int readerValueSchemaID,
-      PubSubTopicPartition topicPartition) {
+      PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer manifestContainer) {
     final GenericRecord currValue;
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
     if (transientRecord == null) {
@@ -2942,7 +2943,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             readerValueSchemaID,
             storeDeserializerCache,
             compressor.get(),
-            null);
+            manifestContainer);
         hostLevelIngestionStats.recordWriteComputeLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
       } catch (Exception e) {
         writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
@@ -2963,6 +2964,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
           throw e;
         }
+        // TODO: Change to cached manifest.
+        if (manifestContainer != null) {
+          manifestContainer.setManifest(
+              ChunkingUtils.getChunkValueManifestFromStorage(
+                  ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes),
+                  getSubPartitionId(keyBytes, topicPartition),
+                  false,
+                  storageEngine));
+        }
+
       } else {
         currValue = null;
       }
