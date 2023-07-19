@@ -42,6 +42,10 @@ public class DataRecoveryExecutor extends DataRecoveryWorker {
 
   @Override
   public void displayTaskResult(DataRecoveryTask task) {
+    while (task.getTaskResult().isCoreWorkDone() == false) {
+      // wait...
+    }
+    LOGGER.info(task.getTaskParams().getStore() + "IN EXECUTOR");
     LOGGER.info(
         "[store: {}, status: {}, message: {}]",
         task.getTaskParams().getStore(),

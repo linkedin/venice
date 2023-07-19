@@ -44,6 +44,8 @@ public class StoreRepushCommand extends Command {
   private Result result = new Result();
   private List<String> shellCmd;
 
+  private boolean isShellCmdExecuted = false;
+
   // For unit test only.
   public StoreRepushCommand() {
   }
@@ -72,9 +74,14 @@ public class StoreRepushCommand extends Command {
     return true;
   }
 
+  public boolean isShellCmdExecuted() {
+    return isShellCmdExecuted;
+  }
+
   public void completeCoreWorkWithMessage(String message) {
-    result.setMessage(message);
-    result.setCoreWorkDone(true);
+    LOGGER.error("CORE WORK COMPLETE" + getParams().getStore());
+    getResult().setMessage(message);
+    getResult().setCoreWorkDone(true);
   }
 
   private List<String> generateRepushCommand() {
@@ -170,7 +177,7 @@ public class StoreRepushCommand extends Command {
     StoreRepushCommand.Params repushParams = getParams();
     ControllerClient cli = repushParams.getPCtrlCliWithoutCluster();
     if (repushViability.getLeft() == false) {
-      processOutput(repushViability.getRight(), 1);
+      completeCoreWorkWithMessage("failure: " + repushViability.getRight());
       return;
     }
     if (repushViability.getRight() == "BATCH") {
@@ -231,6 +238,7 @@ public class StoreRepushCommand extends Command {
     } catch (InterruptedException e) {
       LOGGER.warn("Interrupted when waiting for executing command: {}", this, e);
     } finally {
+      isShellCmdExecuted = true;
       try {
         if (reader != null) {
           reader.close();

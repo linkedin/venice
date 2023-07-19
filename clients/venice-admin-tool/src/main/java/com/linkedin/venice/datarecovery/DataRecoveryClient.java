@@ -62,6 +62,7 @@ public class DataRecoveryClient {
       getExecutor().perform(storeNames, cmdParams);
     } else {
       LOGGER.warn("store list is empty, exit.");
+      return;
     }
 
     // check if we filtered stores based on push info, report them

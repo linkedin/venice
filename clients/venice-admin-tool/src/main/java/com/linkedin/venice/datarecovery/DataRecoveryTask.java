@@ -31,12 +31,12 @@ public class DataRecoveryTask implements Runnable {
     return taskResult;
   }
 
-  public TaskParams getTaskParams() {
-    return taskParams;
-  }
-
   public Command getCommand() {
     return command;
+  }
+
+  public TaskParams getTaskParams() {
+    return taskParams;
   }
 
   public static class TaskResult {

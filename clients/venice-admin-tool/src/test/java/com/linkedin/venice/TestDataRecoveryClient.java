@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -23,6 +24,7 @@ import com.linkedin.venice.datarecovery.DataRecoveryTask;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.MonitorCommand;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
@@ -160,6 +162,13 @@ public class TestDataRecoveryClient {
         .setDestFabric("ei-ltx1")
         .setSourceFabric("ei-ltx1");
 
+    ControllerResponse mockRecoveryResponse = spy(ControllerResponse.class);
+    doReturn(false).when(mockRecoveryResponse).isError();
+    doReturn(mockRecoveryResponse).when(controllerClient)
+        .prepareDataRecovery(anyString(), anyString(), anyString(), anyInt(), any());
+    doReturn(mockRecoveryResponse).when(controllerClient)
+        .dataRecovery(anyString(), anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean(), any());
+
     StoreRepushCommand.Params cmdParams = builder.build();
 
     D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
@@ -205,7 +214,7 @@ public class TestDataRecoveryClient {
 
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = new StoreInfo();
-    storeInfo.setHybridStoreConfig(null);
+    storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0L, 0L, 0L, null, null));
     doReturn(storeInfo).when(storeResponse).getStore();
     doReturn(storeResponse).when(controllerClient).getStore(any());
 
@@ -221,6 +230,14 @@ public class TestDataRecoveryClient {
     dataRecoveryClient.execute(drParams, cmdParams);
 
     verifyExecuteRecoveryResults(isSuccess);
+
+    dataRecoveryClient.getExecutor().getTasks().clear();
+
+    // test batch store
+    storeInfo.setHybridStoreConfig(null);
+    for (DataRecoveryTask t: dataRecoveryClient.getExecutor().getTasks()) {
+      Assert.assertFalse(t.getTaskResult().getCmdResult().isError());
+    }
 
     // testing repush with invalid timestamps
 
