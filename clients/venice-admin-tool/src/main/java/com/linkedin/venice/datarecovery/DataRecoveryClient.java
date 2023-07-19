@@ -4,7 +4,6 @@ import static com.linkedin.venice.datarecovery.DataRecoveryWorker.INTERVAL_UNSET
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.Scanner;
 import java.util.Set;
