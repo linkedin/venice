@@ -28,6 +28,12 @@ public class RmdWithValueSchemaId {
     this.rmdManifest = rmdManifest;
   }
 
+  public RmdWithValueSchemaId(int valueSchemaID, int rmdProtocolVersionID, GenericRecord rmdRecord) {
+    this.valueSchemaID = valueSchemaID;
+    this.rmdRecord = rmdRecord;
+    this.rmdProtocolVersionID = rmdProtocolVersionID;
+  }
+
   public RmdWithValueSchemaId() {
   }
 
