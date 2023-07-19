@@ -5903,52 +5903,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * @see Admin#getLeaderController(String)
+   *
+   * Get the Venice controller leader for a storage cluster. We look at the external view of the controller cluster to
+   * find the Venice controller leader for a storage cluster. Because in both Helix as a library or Helix as a service
+   * (HaaS), the leader in the controller cluster external view is the Venice controller leader. During HaaS transition,
+   * controller leader property will become a HaaS controller, which is not the Venice controller that we want.
+   * Therefore, we don't refer to controller leader property to get leader controller.
    */
   @Override
   public Instance getLeaderController(String clusterName) {
-    if (multiClusterConfigs.getControllerConfig(clusterName).isVeniceClusterLeaderHAAS()) {
-      return getVeniceControllerLeader(clusterName);
-    } else {
-      if (!multiClusterConfigs.getClusters().contains(clusterName)) {
-        throw new VeniceNoClusterException(clusterName);
-      }
-
-      final int maxAttempts = 10;
-      PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
-
-      for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
-        LiveInstance instance = helixManager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
-        if (instance != null) {
-          String id = instance.getId();
-          return new Instance(
-              id,
-              Utils.parseHostFromHelixNodeIdentifier(id),
-              Utils.parsePortFromHelixNodeIdentifier(id),
-              multiClusterConfigs.getAdminSecurePort());
-        }
-
-        if (attempt < maxAttempts) {
-          LOGGER
-              .warn("Leader controller does not exist, cluster: {}, attempt: {}/{}", clusterName, attempt, maxAttempts);
-          Utils.sleep(5 * Time.MS_PER_SECOND);
-        }
-      }
-
-      String message = "Leader controller does not exist, cluster=" + clusterName;
-      LOGGER.error(message);
-      throw new VeniceException(message);
-    }
-  }
-
-  /**
-   * Get the Venice controller leader for a given Venice cluster when running Helix as a Service. We need to look at
-   * the external view of the controller cluster to find the Venice logic leader for a Venice cluster. In HaaS the
-   * controller leader property will be a HaaS controller and is not the Venice controller that we want.
-   * TODO replace the implementation of Admin#getLeaderController with this method once we are fully on HaaS
-   * @param clusterName of the Venice cluster
-   * @return
-   */
-  private Instance getVeniceControllerLeader(String clusterName) {
     if (!multiClusterConfigs.getClusters().contains(clusterName)) {
       throw new VeniceNoClusterException(clusterName);
     }
