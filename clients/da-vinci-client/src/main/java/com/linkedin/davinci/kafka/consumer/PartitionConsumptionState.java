@@ -464,7 +464,9 @@ public class PartitionConsumptionState {
       long kafkaConsumedOffset,
       byte[] key,
       int valueSchemaId,
-      GenericRecord replicationMetadataRecord) {
+      GenericRecord replicationMetadataRecord,
+      ChunkedValueManifest valueManifest,
+      ChunkedValueManifest rmdManifest) {
     setTransientRecord(
         kafkaClusterId,
         kafkaConsumedOffset,
@@ -473,7 +475,9 @@ public class PartitionConsumptionState {
         -1,
         -1,
         valueSchemaId,
-        replicationMetadataRecord);
+        replicationMetadataRecord,
+        valueManifest,
+        rmdManifest);
   }
 
   public void setTransientRecord(
@@ -484,9 +488,18 @@ public class PartitionConsumptionState {
       int valueOffset,
       int valueLen,
       int valueSchemaId,
-      GenericRecord replicationMetadataRecord) {
-    TransientRecord transientRecord =
-        new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaClusterId, kafkaConsumedOffset);
+      GenericRecord replicationMetadataRecord,
+      ChunkedValueManifest valueManifest,
+      ChunkedValueManifest rmdManifest) {
+    TransientRecord transientRecord = new TransientRecord(
+        value,
+        valueOffset,
+        valueLen,
+        valueSchemaId,
+        kafkaClusterId,
+        kafkaConsumedOffset,
+        valueManifest,
+        rmdManifest);
     if (replicationMetadataRecord != null) {
       transientRecord.setReplicationMetadataRecord(replicationMetadataRecord);
     }
@@ -565,7 +578,7 @@ public class PartitionConsumptionState {
     private GenericRecord replicationMetadataRecord;
 
     private ChunkedValueManifest valueManifest;
-    private ChunkedValueManifest replicationMetadataManifest;
+    private ChunkedValueManifest rmdManifest;
 
     TransientRecord(
         byte[] value,
@@ -573,13 +586,25 @@ public class PartitionConsumptionState {
         int valueLen,
         int valueSchemaId,
         int kafkaClusterId,
-        long kafkaConsumedOffset) {
+        long kafkaConsumedOffset,
+        ChunkedValueManifest valueManifest,
+        ChunkedValueManifest rmdManifest) {
       this.value = value;
       this.valueOffset = valueOffset;
       this.valueLen = valueLen;
       this.valueSchemaId = valueSchemaId;
       this.kafkaClusterId = kafkaClusterId;
       this.kafkaConsumedOffset = kafkaConsumedOffset;
+      this.valueManifest = valueManifest;
+      this.rmdManifest = rmdManifest;
+    }
+
+    public ChunkedValueManifest getRmdManifest() {
+      return rmdManifest;
+    }
+
+    public ChunkedValueManifest getValueManifest() {
+      return valueManifest;
     }
 
     public void setReplicationMetadataRecord(GenericRecord replicationMetadataRecord) {

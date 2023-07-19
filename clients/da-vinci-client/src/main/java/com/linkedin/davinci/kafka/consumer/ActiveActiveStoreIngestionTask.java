@@ -303,22 +303,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       long currentTimeForMetricsMs) {
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
-    // TODO: Change it into cache based.
-    ChunkedValueManifest oldRmdManifest = null;
     if (cachedRecord != null) {
       getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
-      if (isChunked) {
-        oldRmdManifest = ChunkingUtils.getChunkValueManifestFromStorage(
-            ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key),
-            subPartition,
-            true,
-            getStorageEngine());
-      }
       return new RmdWithValueSchemaId(
           cachedRecord.getValueSchemaId(),
           getRmdProtocolVersionID(),
           cachedRecord.getReplicationMetadataRecord(),
-          oldRmdManifest);
+          cachedRecord.getRmdManifest());
     }
     ChunkedValueManifestContainer rmdManifestContainer = new ChunkedValueManifestContainer();
     byte[] replicationMetadataWithValueSchemaBytes =
@@ -604,17 +595,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
       // construct originalValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
+        if (valueManifestContainer != null) {
+          valueManifestContainer.setManifest(transientRecord.getValueManifest());
+        }
         originalValue = ByteBuffer
             .wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
-        // TODO: Change to cached based.
-        if (valueManifestContainer != null) {
-          valueManifestContainer.setManifest(
-              ChunkingUtils.getChunkValueManifestFromStorage(
-                  ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key),
-                  getSubPartitionId(key, topicPartition),
-                  false,
-                  getStorageEngine()));
-        }
       }
     }
     return originalValue;
@@ -663,8 +648,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (updatedValueBytes == null) {
       hostLevelIngestionStats.recordTombstoneCreatedDCR();
       aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-      partitionConsumptionState
-          .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), key, valueSchemaId, rmdRecord);
+      partitionConsumptionState.setTransientRecord(
+          kafkaClusterId,
+          consumerRecord.getOffset(),
+          key,
+          valueSchemaId,
+          rmdRecord,
+          oldValueManifest,
+          oldRmdManifest);
       Delete deletePayload = new Delete();
       deletePayload.schemaId = valueSchemaId;
       deletePayload.replicationMetadataVersionId = rmdProtocolVersionID;
@@ -697,7 +688,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           updatedValueBytes.position(),
           valueLen,
           valueSchemaId,
-          rmdRecord);
+          rmdRecord,
+          oldValueManifest,
+          oldRmdManifest);
 
       Put updatedPut = new Put();
       updatedPut.putValue = ByteUtils
