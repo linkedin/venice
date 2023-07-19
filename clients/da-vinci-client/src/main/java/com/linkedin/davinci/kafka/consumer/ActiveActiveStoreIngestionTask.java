@@ -89,6 +89,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final AggVersionedIngestionStats aggVersionedIngestionStats;
   private final RemoteIngestionRepairService remoteIngestionRepairService;
 
+  private final Delete deprecatedChunkDeletePayload = new Delete();
+  private final DeleteMetadata deprecatedChunkDeleteMetadata;
+
   private static class ReusableObjects {
     // reuse buffer for rocksDB value object
     final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
@@ -120,6 +123,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         cacheBackend);
 
     this.rmdProtocolVersionID = version.getRmdVersionId();
+    deprecatedChunkDeletePayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+    deprecatedChunkDeletePayload.replicationMetadataVersionId = rmdProtocolVersionID;
+    deprecatedChunkDeletePayload.replicationMetadataPayload = WriterChunkingHelper.EMPTY_BYTE_BUFFER;
+    deprecatedChunkDeleteMetadata = new DeleteMetadata(
+        AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
+        rmdProtocolVersionID,
+        WriterChunkingHelper.EMPTY_BYTE_BUFFER);
+
     this.aggVersionedIngestionStats = versionedIngestionStats;
     int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
     int consumerPoolSizePerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
@@ -674,6 +685,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           partitionConsumptionState,
           leaderProducedRecordContext,
           produceToTopicFunction,
+          oldValueManifest,
+          oldRmdManifest,
+          deprecatedChunkDeletePayload,
+          deprecatedChunkDeleteMetadata,
           subPartition,
           kafkaUrl,
           kafkaClusterId,
@@ -711,60 +726,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           LeaderProducedRecordContext
               .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut),
           produceToTopicFunction,
+          oldValueManifest,
+          oldRmdManifest,
+          deprecatedChunkDeletePayload,
+          deprecatedChunkDeleteMetadata,
           subPartition,
           kafkaUrl,
           kafkaClusterId,
           beforeProcessingRecordTimestampNs);
-    }
-
-    /**
-     * Here we will only delete deprecated chunks if the processed message is UPDATE message and chunking is enabled,
-     * as we do not want to do it for every PUT/DELETE message. It might still leave some lingering chunks though when
-     * old chunked value got replaced either through PUT or DELETE operation.
-     */
-    if (msgType.equals(MessageType.UPDATE) && isChunked) {
-      Delete delete = new Delete();
-      delete.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-      delete.replicationMetadataVersionId = rmdProtocolVersionID;
-      delete.replicationMetadataPayload = WriterChunkingHelper.EMPTY_BYTE_BUFFER;
-      DeleteMetadata deleteMetadata = new DeleteMetadata(
-          AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
-          rmdProtocolVersionID,
-          WriterChunkingHelper.EMPTY_BYTE_BUFFER);
-      if (oldValueManifest != null) {
-        for (int i = 0; i < oldValueManifest.keysWithChunkIdSuffix.size(); i++) {
-          LeaderProducedRecordContext valueChunkDeleteRecordContext =
-              LeaderProducedRecordContext.newChunkDeleteRecord(updatedKeyBytes, delete);
-          byte[] chunkKeyBytes = oldValueManifest.keysWithChunkIdSuffix.get(i).array();
-          produceToLocalKafka(
-              consumerRecord,
-              partitionConsumptionState,
-              valueChunkDeleteRecordContext,
-              (callback, leaderMetadataWrapper) -> veniceWriter.get()
-                  .deleteDeprecatedChunk(chunkKeyBytes, subPartition, callback, leaderMetadataWrapper, deleteMetadata),
-              subPartition,
-              kafkaUrl,
-              kafkaClusterId,
-              beforeProcessingRecordTimestampNs);
-        }
-      }
-      if (oldRmdManifest != null) {
-        for (int i = 0; i < oldRmdManifest.keysWithChunkIdSuffix.size(); i++) {
-          LeaderProducedRecordContext rmdChunkDeleteRecordContext =
-              LeaderProducedRecordContext.newChunkDeleteRecord(updatedKeyBytes, delete);
-          byte[] chunkKeyBytes = oldRmdManifest.keysWithChunkIdSuffix.get(i).array();
-          produceToLocalKafka(
-              consumerRecord,
-              partitionConsumptionState,
-              rmdChunkDeleteRecordContext,
-              (callback, leaderMetadataWrapper) -> veniceWriter.get()
-                  .deleteDeprecatedChunk(chunkKeyBytes, subPartition, callback, leaderMetadataWrapper, deleteMetadata),
-              subPartition,
-              kafkaUrl,
-              kafkaClusterId,
-              beforeProcessingRecordTimestampNs);
-        }
-      }
     }
   }
 
@@ -774,6 +743,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      Delete deprecatedChunkDeletePayload,
+      DeleteMetadata deprecatedChunkDeleteMetadata,
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
@@ -783,6 +756,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         partitionConsumptionState,
         leaderProducedRecordContext,
         produceFunction,
+        oldValueManifest,
+        oldRmdManifest,
+        deprecatedChunkDeletePayload,
+        deprecatedChunkDeleteMetadata,
         subPartition,
         kafkaUrl,
         kafkaClusterId,
