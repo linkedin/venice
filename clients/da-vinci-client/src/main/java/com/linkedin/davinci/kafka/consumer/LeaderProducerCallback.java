@@ -308,9 +308,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     return totalChunkSize;
   }
 
-  private void produceDeprecatedChunkDeletionToStoreBufferService(
-      ChunkedValueManifest manifest,
-      long currentTimeForMetricsMs) throws InterruptedException {
+  void produceDeprecatedChunkDeletionToStoreBufferService(ChunkedValueManifest manifest, long currentTimeForMetricsMs)
+      throws InterruptedException {
     if (manifest == null) {
       return;
     }
