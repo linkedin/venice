@@ -79,7 +79,6 @@ public class StoreRepushCommand extends Command {
   }
 
   public void completeCoreWorkWithMessage(String message) {
-    LOGGER.error("CORE WORK COMPLETE" + getParams().getStore());
     getResult().setMessage(message);
     getResult().setCoreWorkDone(true);
   }
@@ -150,8 +149,6 @@ public class StoreRepushCommand extends Command {
           isBatch = true;
         }
 
-        LOGGER.error(isBatch);
-
         MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, s);
         // No future version status for target region.
         if (!response.getStoreStatusMap().containsKey(destFabric)) {
@@ -166,8 +163,8 @@ public class StoreRepushCommand extends Command {
         // Find ongoing pushes for this store, skip.
         return Pair.of(false, String.format("find ongoing push, version: %d", futureVersion));
       }
-    } catch (VeniceException e) {
-      return Pair.of(false, "VeniceHttpException " + e.getErrorType().toString());
+    } catch (Exception e) {
+      return Pair.of(false, "Exception Thrown: " + e.toString());
     }
   }
 

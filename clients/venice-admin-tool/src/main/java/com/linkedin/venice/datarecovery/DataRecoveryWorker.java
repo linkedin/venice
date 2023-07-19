@@ -77,18 +77,17 @@ public abstract class DataRecoveryWorker {
         StoreRepushCommand repushCommand = (StoreRepushCommand) taskToRun.getCommand();
         if (!repushCommand.isShellCmdExecuted()) {
           remainingTasks.remove(0);
-          taskToRun = remainingTasks.get(0);
+          taskToRun = remainingTasks.isEmpty() ? null : remainingTasks.get(0);
         } else if (taskToRun.getTaskResult().isError()) {
           // ShellCommand has been executed, but there is an error, stop executing the following commands.
           isFirstTaskCommandExecuted = true;
           return;
+        } else {
+          remainingTasks.remove(0);
+          // ShellCommand is executed successfully.
+          isFirstTaskCommandExecuted = true;
         }
-        // ShellCommand is executed successfully.
-        isFirstTaskCommandExecuted = true;
       }
-
-      // Exclude the 1st item from the list as it has finished.
-      remainingTasks.remove(0);
     }
 
     /*
