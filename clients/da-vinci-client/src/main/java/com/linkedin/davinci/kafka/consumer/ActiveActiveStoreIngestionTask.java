@@ -13,6 +13,7 @@ import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
@@ -302,25 +303,46 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       long currentTimeForMetricsMs) {
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
+    // TODO: Change it into cache based.
+    ChunkedValueManifest oldRmdManifest = null;
+    // isChunked ?
+    // ChunkingUtils.getChunkValueManifestFromStorage(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key),
+    // subPartition, true, getStorageEngine()) : null;
     if (cachedRecord != null) {
       getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
+      if (isChunked) {
+        oldRmdManifest = ChunkingUtils.getChunkValueManifestFromStorage(
+            ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key),
+            subPartition,
+            true,
+            getStorageEngine());
+      }
       return new RmdWithValueSchemaId(
           cachedRecord.getValueSchemaId(),
           getRmdProtocolVersionID(),
-          cachedRecord.getReplicationMetadataRecord());
+          cachedRecord.getReplicationMetadataRecord(),
+          oldRmdManifest);
     }
+    ChunkedValueManifestContainer rmdManifestContainer = new ChunkedValueManifestContainer();
     byte[] replicationMetadataWithValueSchemaBytes =
-        getRmdWithValueSchemaByteBufferFromStorage(subPartition, key, currentTimeForMetricsMs);
+        getRmdWithValueSchemaByteBufferFromStorage(subPartition, key, rmdManifestContainer, currentTimeForMetricsMs);
     if (replicationMetadataWithValueSchemaBytes == null) {
       return null; // No RMD for this key
     }
-    return rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes);
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
+    rmdWithValueSchemaId.setRmdManifest(rmdManifestContainer.getManifest());
+    rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes, rmdWithValueSchemaId);
+    return rmdWithValueSchemaId;
   }
 
-  byte[] getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key, long currentTimeForMetricsMs) {
+  byte[] getRmdWithValueSchemaByteBufferFromStorage(
+      int subPartition,
+      byte[] key,
+      ChunkedValueManifestContainer rmdManifestContainer,
+      long currentTimeForMetricsMs) {
     final long lookupStartTimeInNS = System.nanoTime();
-    ValueRecord result =
-        SingleGetChunkingAdapter.getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null);
+    ValueRecord result = SingleGetChunkingAdapter
+        .getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null, rmdManifestContainer);
     getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
         LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
         currentTimeForMetricsMs);
@@ -492,7 +514,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
+          beforeProcessingRecordTimestampNs,
+          rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
     }
   }
 
@@ -609,7 +632,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
+      long beforeProcessingRecordTimestampNs,
+      ChunkedValueManifest oldRmdManifest) {
 
     final ByteBuffer updatedValueBytes = maybeCompressData(
         consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -627,9 +651,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final ChunkedValueManifest oldValueManifest = isChunked && msgType.equals(MessageType.UPDATE)
         ? ChunkingUtils.getChunkValueManifestFromStorage(updatedKeyBytes, subPartition, false, storageEngine)
         : null;
+    /*
     final ChunkedValueManifest oldRmdManifest = isChunked && msgType.equals(MessageType.UPDATE)
         ? ChunkingUtils.getChunkValueManifestFromStorage(updatedKeyBytes, subPartition, true, storageEngine)
         : null;
+     */
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {
       hostLevelIngestionStats.recordTombstoneCreatedDCR();
@@ -726,6 +752,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               beforeProcessingRecordTimestampNs);
         }
       }
+      LOGGER.info("DEBUGGING CHECK OLD RMD MANIFEST: {} ", oldRmdManifest);
       if (oldRmdManifest != null) {
         for (int i = 0; i < oldRmdManifest.keysWithChunkIdSuffix.size(); i++) {
           LeaderProducedRecordContext rmdChunkDeleteRecordContext =

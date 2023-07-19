@@ -1,5 +1,6 @@
 package com.linkedin.davinci.replication;
 
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -10,14 +11,40 @@ import org.apache.avro.generic.GenericRecord;
  *    3. Value schema ID used to generate the RMD schema.
  */
 public class RmdWithValueSchemaId {
-  private final int valueSchemaID;
-  private final int rmdProtocolVersionID;
-  private final GenericRecord rmdRecord;
+  private int valueSchemaID;
+  private int rmdProtocolVersionID;
+  private GenericRecord rmdRecord;
 
-  public RmdWithValueSchemaId(int valueSchemaID, int rmdProtocolVersionID, GenericRecord rmdRecord) {
+  private ChunkedValueManifest rmdManifest;
+
+  public RmdWithValueSchemaId(
+      int valueSchemaID,
+      int rmdProtocolVersionID,
+      GenericRecord rmdRecord,
+      ChunkedValueManifest rmdManifest) {
     this.valueSchemaID = valueSchemaID;
     this.rmdRecord = rmdRecord;
     this.rmdProtocolVersionID = rmdProtocolVersionID;
+    this.rmdManifest = rmdManifest;
+  }
+
+  public RmdWithValueSchemaId() {
+  }
+
+  public void setValueSchemaID(int valueSchemaID) {
+    this.valueSchemaID = valueSchemaID;
+  }
+
+  public void setRmdProtocolVersionID(int rmdProtocolVersionID) {
+    this.rmdProtocolVersionID = rmdProtocolVersionID;
+  }
+
+  public void setRmdRecord(GenericRecord rmdRecord) {
+    this.rmdRecord = rmdRecord;
+  }
+
+  public void setRmdManifest(ChunkedValueManifest rmdManifest) {
+    this.rmdManifest = rmdManifest;
   }
 
   public GenericRecord getRmdRecord() {
@@ -30,5 +57,9 @@ public class RmdWithValueSchemaId {
 
   public int getRmdProtocolVersionID() {
     return rmdProtocolVersionID;
+  }
+
+  public ChunkedValueManifest getRmdManifest() {
+    return rmdManifest;
   }
 }

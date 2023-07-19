@@ -48,7 +48,9 @@ public class RmdSerDe {
    * @return A {@link RmdWithValueSchemaId} object composed by extracting the value schema ID from the
    *    * header of the replication metadata.
    */
-  public RmdWithValueSchemaId deserializeValueSchemaIdPrependedRmdBytes(byte[] valueSchemaIdPrependedBytes) {
+  public void deserializeValueSchemaIdPrependedRmdBytes(
+      byte[] valueSchemaIdPrependedBytes,
+      RmdWithValueSchemaId rmdWithValueSchemaId) {
     Validate.notNull(valueSchemaIdPrependedBytes);
     ByteBuffer rmdWithValueSchemaID = ByteBuffer.wrap(valueSchemaIdPrependedBytes);
     final int valueSchemaId = rmdWithValueSchemaID.getInt();
@@ -58,7 +60,10 @@ public class RmdSerDe {
             rmdWithValueSchemaID.position(),
             rmdWithValueSchemaID.remaining());
     GenericRecord rmdRecord = getRmdDeserializer(valueSchemaId, valueSchemaId).deserialize(binaryDecoder);
-    return new RmdWithValueSchemaId(valueSchemaId, rmdVersionId, rmdRecord);
+    rmdWithValueSchemaId.setValueSchemaID(valueSchemaId);
+    rmdWithValueSchemaId.setRmdProtocolVersionID(rmdVersionId);
+    rmdWithValueSchemaId.setRmdRecord(rmdRecord);
+    // return new RmdWithValueSchemaId(valueSchemaId, rmdVersionId, rmdRecord);
   }
 
   /**

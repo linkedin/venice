@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -562,6 +563,9 @@ public class PartitionConsumptionState {
     private final int kafkaClusterId;
     private final long kafkaConsumedOffset;
     private GenericRecord replicationMetadataRecord;
+
+    private ChunkedValueManifest valueManifest;
+    private ChunkedValueManifest replicationMetadataManifest;
 
     TransientRecord(
         byte[] value,

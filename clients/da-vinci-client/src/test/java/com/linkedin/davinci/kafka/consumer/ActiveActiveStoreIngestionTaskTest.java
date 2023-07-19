@@ -376,12 +376,13 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getStorageEngine()).thenReturn(storageEngine);
     when(ingestionTask.getSchemaRepo()).thenReturn(schemaRepository);
     when(ingestionTask.getServerConfig()).thenReturn(serverConfig);
-    when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(anyInt(), any(), anyLong())).thenCallRealMethod();
+    when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(anyInt(), any(), any(), anyLong()))
+        .thenCallRealMethod();
     when(ingestionTask.isChunked()).thenReturn(true);
     when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
 
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey1)).thenReturn(expectedNonChunkedValue);
-    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1, 0L);
+    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1, null, 0L);
     Assert.assertNotNull(result);
     Assert.assertEquals(result, expectedNonChunkedValue);
 
@@ -414,7 +415,7 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey2)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
-    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2, 0L);
+    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2, null, 0L);
     Assert.assertNotNull(result2);
     Assert.assertEquals(result2, expectedChunkedValue1);
 
@@ -453,7 +454,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey3)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey3)).thenReturn(chunkedValue1);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey2InKey3)).thenReturn(chunkedValue2);
-    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3, 0L);
+    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3, null, 0L);
     Assert.assertNotNull(result3);
     Assert.assertEquals(result3, expectedChunkedValue2);
   }

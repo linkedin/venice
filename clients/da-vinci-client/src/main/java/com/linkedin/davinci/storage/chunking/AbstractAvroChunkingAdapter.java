@@ -121,7 +121,8 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         readerSchemaId,
         storeDeserializerCache,
         compressor,
-        false);
+        false,
+        null);
   }
 
   public T get(
