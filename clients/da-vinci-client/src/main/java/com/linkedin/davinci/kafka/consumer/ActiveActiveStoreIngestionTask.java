@@ -43,7 +43,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -54,7 +53,6 @@ import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.WriterChunkingHelper;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -89,9 +87,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final AggVersionedIngestionStats aggVersionedIngestionStats;
   private final RemoteIngestionRepairService remoteIngestionRepairService;
 
-  private final Delete deprecatedChunkDeletePayload = new Delete();
-  private final DeleteMetadata deprecatedChunkDeleteMetadata;
-
   private static class ReusableObjects {
     // reuse buffer for rocksDB value object
     final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
@@ -123,13 +118,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         cacheBackend);
 
     this.rmdProtocolVersionID = version.getRmdVersionId();
-    deprecatedChunkDeletePayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-    deprecatedChunkDeletePayload.replicationMetadataVersionId = rmdProtocolVersionID;
-    deprecatedChunkDeletePayload.replicationMetadataPayload = WriterChunkingHelper.EMPTY_BYTE_BUFFER;
-    deprecatedChunkDeleteMetadata = new DeleteMetadata(
-        AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
-        rmdProtocolVersionID,
-        WriterChunkingHelper.EMPTY_BYTE_BUFFER);
 
     this.aggVersionedIngestionStats = versionedIngestionStats;
     int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
@@ -685,10 +673,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           partitionConsumptionState,
           leaderProducedRecordContext,
           produceToTopicFunction,
-          oldValueManifest,
-          oldRmdManifest,
-          deprecatedChunkDeletePayload,
-          deprecatedChunkDeleteMetadata,
           subPartition,
           kafkaUrl,
           kafkaClusterId,
@@ -728,10 +712,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           LeaderProducedRecordContext
               .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut),
           produceToTopicFunction,
-          oldValueManifest,
-          oldRmdManifest,
-          deprecatedChunkDeletePayload,
-          deprecatedChunkDeleteMetadata,
           subPartition,
           kafkaUrl,
           kafkaClusterId,
@@ -745,10 +725,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
-      ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest,
-      Delete deprecatedChunkDeletePayload,
-      DeleteMetadata deprecatedChunkDeleteMetadata,
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
@@ -758,10 +734,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         partitionConsumptionState,
         leaderProducedRecordContext,
         produceFunction,
-        oldValueManifest,
-        oldRmdManifest,
-        deprecatedChunkDeletePayload,
-        deprecatedChunkDeleteMetadata,
         subPartition,
         kafkaUrl,
         kafkaClusterId,

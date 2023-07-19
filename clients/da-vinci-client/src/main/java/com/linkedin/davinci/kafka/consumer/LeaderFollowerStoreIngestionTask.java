@@ -32,7 +32,6 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
@@ -60,7 +59,6 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.ChunkAwareCallback;
-import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -1501,34 +1499,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs) {
-    produceToLocalKafka(
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        produceFunction,
-        null,
-        null,
-        null,
-        null,
-        subPartition,
-        kafkaUrl,
-        kafkaClusterId,
-        beforeProcessingRecordTimestampNs);
-  }
-
-  protected void produceToLocalKafka(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
-      ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest,
-      Delete chunkDeletePayload,
-      DeleteMetadata chunkDeleteMetadata,
-      int subPartition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
     LeaderProducerCallback callback = createProducerCallback(
         consumerRecord,
         partitionConsumptionState,
@@ -1540,58 +1510,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     produceFunction.accept(callback, leaderMetadataWrapper);
-    /*
-    produceChunkDeletionRequestToLocalKafka(
-        consumerRecord,
-        partitionConsumptionState,
-        oldValueManifest,
-        chunkDeletePayload,
-        chunkDeleteMetadata,
-        subPartition,
-        kafkaUrl,
-        leaderMetadataWrapper,
-        beforeProcessingRecordTimestampNs);
-    produceChunkDeletionRequestToLocalKafka(
-        consumerRecord,
-        partitionConsumptionState,
-        oldRmdManifest,
-        chunkDeletePayload,
-        chunkDeleteMetadata,
-        subPartition,
-        kafkaUrl,
-        leaderMetadataWrapper,
-        beforeProcessingRecordTimestampNs);
-    
-     */
-  }
-
-  protected void produceChunkDeletionRequestToLocalKafka(
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      ChunkedValueManifest manifest,
-      Delete chunkDeletePayload,
-      DeleteMetadata chunkDeleteMetadata,
-      int subPartition,
-      String kafkaUrl,
-      LeaderMetadataWrapper leaderMetadataWrapper,
-      long beforeProcessingRecordTimestampNs) {
-    if (manifest == null) {
-      return;
-    }
-    for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
-      byte[] chunkKeyBytes = manifest.keysWithChunkIdSuffix.get(i).array();
-      LeaderProducedRecordContext rmdChunkDeleteRecordContext =
-          LeaderProducedRecordContext.newChunkDeleteRecord(chunkKeyBytes, chunkDeletePayload);
-      LeaderProducerCallback callback = createProducerCallback(
-          consumerRecord,
-          partitionConsumptionState,
-          rmdChunkDeleteRecordContext,
-          subPartition,
-          kafkaUrl,
-          beforeProcessingRecordTimestampNs);
-      veniceWriter.get()
-          .deleteDeprecatedChunk(chunkKeyBytes, subPartition, callback, leaderMetadataWrapper, chunkDeleteMetadata);
-    }
   }
 
   @Override
@@ -2973,10 +2891,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           partitionConsumptionState,
           leaderProducedRecordContext,
           produceFunction,
-          oldValueManifest,
-          null,
-          null,
-          null,
           subPartition,
           kafkaUrl,
           kafkaClusterId,
