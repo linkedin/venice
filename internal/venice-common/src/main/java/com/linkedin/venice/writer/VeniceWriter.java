@@ -251,6 +251,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private final boolean isRmdChunkingEnabled;
 
+  private final int rmdProtocolVersionId;
+
   public VeniceWriter(VeniceWriterOptions params, VeniceProperties props, PubSubProducerAdapter producerAdapter) {
     this(params, props, producerAdapter, KafkaMessageEnvelope.SCHEMA$);
   }
@@ -278,6 +280,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.isChunkingEnabled = params.isChunkingEnabled();
     this.isChunkingSet = true;
     this.isRmdChunkingEnabled = params.isRmdChunkingEnabled();
+    // TODO: Add VWOption support to change it.
+    this.rmdProtocolVersionId = 1;
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
@@ -515,9 +519,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       LeaderMetadataWrapper leaderMetadataWrapper,
       DeleteMetadata deleteMetadata) {
 
-    if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null);
-    }
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
     Delete delete = new Delete();
     delete.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
@@ -576,7 +577,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null);
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
     }
 
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
@@ -674,6 +675,37 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return put(key, value, valueSchemaId, callback, leaderMetadataWrapper, APP_DEFAULT_LOGICAL_TS, null);
   }
 
+  public Future<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest) {
+    return put(
+        key,
+        value,
+        valueSchemaId,
+        callback,
+        leaderMetadataWrapper,
+        APP_DEFAULT_LOGICAL_TS,
+        null,
+        oldValueManifest,
+        oldRmdManifest);
+  }
+
+  public Future<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      PutMetadata putMetadata) {
+    return put(key, value, valueSchemaId, callback, leaderMetadataWrapper, logicalTs, putMetadata, null, null);
+  }
+
   /**
    * Execute a standard "put" on the key.
    *
@@ -701,7 +733,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
       long logicalTs,
-      PutMetadata putMetadata) {
+      PutMetadata putMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
@@ -719,7 +753,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             partition,
             leaderMetadataWrapper,
             logicalTs,
-            putMetadata);
+            putMetadata,
+            oldValueManifest,
+            oldRmdManifest);
       } else {
         throw new RecordTooLargeException(
             "This record exceeds the maximum size. "
@@ -732,7 +768,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null);
+      // TODO: in this case, also produce chunk deletion.
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
     }
 
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
@@ -782,7 +819,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         getKafkaMessageEnvelopeProvider(kafkaMessageEnvelope, leaderMetadataWrapper);
 
     if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null);
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
     }
 
     return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
@@ -817,7 +854,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     if (callback instanceof ChunkAwareCallback) {
       byte[] serializedKey = kafkaKey.getKey();
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null);
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
     }
 
     return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
@@ -1208,7 +1245,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       int partition,
       LeaderMetadataWrapper leaderMetadataWrapper,
       long logicalTs,
-      PutMetadata putMetadata) {
+      PutMetadata putMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
@@ -1279,12 +1318,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           valueChunksAndManifest.getPayloadChunks(),
           valueChunksAndManifest.getChunkedValueManifest(),
           rmdChunksAndManifest.getPayloadChunks(),
-          rmdChunksAndManifest.getChunkedValueManifest());
+          rmdChunksAndManifest.getChunkedValueManifest(),
+          oldValueManifest,
+          oldRmdManifest);
     }
 
     // We only return the last future (the one for the manifest) and assume that once this one is finished,
     // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
-    return sendMessage(
+    Future<PubSubProduceResult> manifestProduceFuture = sendMessage(
         manifestKeyProvider,
         MessageType.PUT,
         putManifestsPayload,
@@ -1292,6 +1333,35 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         callback,
         leaderMetadataWrapper,
         logicalTs);
+
+    DeleteMetadata deleteMetadata = new DeleteMetadata(
+        valueSchemaId,
+        putManifestsPayload.replicationMetadataVersionId,
+        VeniceWriter.EMPTY_BYTE_BUFFER);
+    deleteDeprecatedChunksFromManifest(
+        oldValueManifest,
+        partition,
+        chunkCallback,
+        leaderMetadataWrapper,
+        deleteMetadata);
+    deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
+
+    return manifestProduceFuture;
+  }
+
+  private void deleteDeprecatedChunksFromManifest(
+      ChunkedValueManifest manifest,
+      int partition,
+      PubSubProducerCallback chunkCallback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      DeleteMetadata deleteMetadata) {
+    if (manifest == null) {
+      return;
+    }
+    for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
+      byte[] chunkKeyBytes = manifest.keysWithChunkIdSuffix.get(i).array();
+      deleteDeprecatedChunk(chunkKeyBytes, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
+    }
   }
 
   private String getSizeReport(int serializedKeySize, int serializedValueSize, int replicationMetadataPayloadSize) {

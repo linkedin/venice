@@ -1540,6 +1540,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     produceFunction.accept(callback, leaderMetadataWrapper);
+    /*
     produceChunkDeletionRequestToLocalKafka(
         consumerRecord,
         partitionConsumptionState,
@@ -1560,6 +1561,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         kafkaUrl,
         leaderMetadataWrapper,
         beforeProcessingRecordTimestampNs);
+    
+     */
   }
 
   protected void produceChunkDeletionRequestToLocalKafka(

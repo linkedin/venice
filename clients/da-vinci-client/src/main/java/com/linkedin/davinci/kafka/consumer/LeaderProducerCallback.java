@@ -4,6 +4,7 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER
 
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
@@ -16,6 +17,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.writer.ChunkAwareCallback;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -42,13 +44,16 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   /**
    * The mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
    * which populates them via:
-   * {@link ChunkAwareCallback#setChunkingInfo(byte[], ByteBuffer[], ChunkedValueManifest, ByteBuffer[], ChunkedValueManifest)}
+   * {@link ChunkAwareCallback#setChunkingInfo(byte[], ByteBuffer[], ChunkedValueManifest, ByteBuffer[], ChunkedValueManifest, ChunkedValueManifest, ChunkedValueManifest)}
    */
   private byte[] key = null;
   private ChunkedValueManifest chunkedValueManifest = null;
   private ByteBuffer[] valueChunks = null;
   protected ChunkedValueManifest chunkedRmdManifest = null;
   private ByteBuffer[] rmdChunks = null;
+
+  protected ChunkedValueManifest oldValueManifest = null;
+  protected ChunkedValueManifest oldRmdManifest = null;
 
   public LeaderProducerCallback(
       LeaderFollowerStoreIngestionTask ingestionTask,
@@ -199,6 +204,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               currentTimeForMetricsMs);
           producedRecordNum++;
           producedRecordSize += key.length + manifest.remaining();
+          produceDeprecatedChunkDeletionToStoreBufferService(oldValueManifest, currentTimeForMetricsMs);
+          produceDeprecatedChunkDeletionToStoreBufferService(oldRmdManifest, currentTimeForMetricsMs);
         }
         recordProducerStats(producedRecordSize, producedRecordNum);
 
@@ -233,12 +240,16 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       ByteBuffer[] valueChunks,
       ChunkedValueManifest chunkedValueManifest,
       ByteBuffer[] rmdChunks,
-      ChunkedValueManifest chunkedRmdManifest) {
+      ChunkedValueManifest chunkedRmdManifest,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest) {
     this.key = key;
     this.chunkedValueManifest = chunkedValueManifest;
     this.valueChunks = valueChunks;
     this.chunkedRmdManifest = chunkedRmdManifest;
     this.rmdChunks = rmdChunks;
+    this.oldValueManifest = oldValueManifest;
+    this.oldRmdManifest = oldRmdManifest;
   }
 
   private void recordProducerStats(int producedRecordSize, int producedRecordNum) {
@@ -295,5 +306,30 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       totalChunkSize += chunkKey.remaining() + chunkValue.remaining();
     }
     return totalChunkSize;
+  }
+
+  private void produceDeprecatedChunkDeletionToStoreBufferService(
+      ChunkedValueManifest manifest,
+      long currentTimeForMetricsMs) throws InterruptedException {
+    if (manifest == null) {
+      return;
+    }
+    for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
+      ByteBuffer chunkKey = manifest.keysWithChunkIdSuffix.get(i);
+      Delete chunkDelete = new Delete();
+      chunkDelete.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+      chunkDelete.replicationMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      chunkDelete.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+      LeaderProducedRecordContext producedRecordForChunk =
+          LeaderProducedRecordContext.newChunkDeleteRecord(ByteUtils.extractByteArray(chunkKey), chunkDelete);
+      producedRecordForChunk.setProducedOffset(-1);
+      ingestionTask.produceToStoreBufferService(
+          sourceConsumerRecord,
+          producedRecordForChunk,
+          subPartition,
+          kafkaUrl,
+          beforeProcessingRecordTimestampNs,
+          currentTimeForMetricsMs);
+    }
   }
 }

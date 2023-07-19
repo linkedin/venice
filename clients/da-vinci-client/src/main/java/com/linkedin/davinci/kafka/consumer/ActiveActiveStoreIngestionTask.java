@@ -718,6 +718,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           key,
           updatedValueBytes,
           updatedRmdBytes,
+          oldValueManifest,
+          oldRmdManifest,
           valueSchemaId,
           mergeConflictResult.doesResultReuseInput());
       produceToLocalKafka(
@@ -1402,6 +1404,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       byte[] key,
       ByteBuffer updatedValueBytes,
       ByteBuffer updatedRmdBytes,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
       int valueSchemaId,
       boolean resultReuseInput) {
     return (callback, leaderMetadataWrapper) -> {
@@ -1422,7 +1426,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               callback,
               leaderMetadataWrapper,
               VeniceWriter.APP_DEFAULT_LOGICAL_TS,
-              new PutMetadata(getRmdProtocolVersionID(), updatedRmdBytes));
+              new PutMetadata(getRmdProtocolVersionID(), updatedRmdBytes),
+              oldValueManifest,
+              oldRmdManifest);
     };
   }
 
