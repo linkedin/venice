@@ -17,7 +17,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
@@ -82,7 +81,7 @@ public class PartitionConsumptionState {
    */
   private boolean consumeRemotely;
 
-  private Optional<CheckSum> expectedSSTFileChecksum;
+  private CheckSum expectedSSTFileChecksum;
 
   private long latestMessageConsumptionTimestampInMs;
 
@@ -199,7 +198,7 @@ public class PartitionConsumptionState {
     this.isSubscribed = true;
     this.processedRecordSizeSinceLastSync = 0;
     this.leaderFollowerState = LeaderFollowerStateType.STANDBY;
-    this.expectedSSTFileChecksum = Optional.empty();
+    this.expectedSSTFileChecksum = null;
     /**
      * Initialize the latest consumption time with current time; otherwise, it's 0 by default
      * and leader will be promoted immediately.
@@ -417,7 +416,7 @@ public class PartitionConsumptionState {
   }
 
   public void finalizeExpectedChecksum() {
-    this.expectedSSTFileChecksum = Optional.empty();
+    this.expectedSSTFileChecksum = null;
   }
 
   /**
@@ -428,21 +427,23 @@ public class PartitionConsumptionState {
    * @param put
    */
   public void maybeUpdateExpectedChecksum(byte[] key, Put put) {
-    if (!expectedSSTFileChecksum.isPresent()) {
+    if (this.expectedSSTFileChecksum == null) {
       return;
     }
-    expectedSSTFileChecksum.get().update(key);
+    this.expectedSSTFileChecksum.update(key);
     ByteBuffer putValue = put.putValue;
-    expectedSSTFileChecksum.get().update(put.schemaId);
-    expectedSSTFileChecksum.get().update(putValue.array(), putValue.position(), putValue.remaining());
+    this.expectedSSTFileChecksum.update(put.schemaId);
+    this.expectedSSTFileChecksum.update(putValue.array(), putValue.position(), putValue.remaining());
   }
 
   public void resetExpectedChecksum() {
-    expectedSSTFileChecksum.get().reset();
+    if (this.expectedSSTFileChecksum != null) {
+      this.expectedSSTFileChecksum.reset();
+    }
   }
 
   public byte[] getExpectedChecksum() {
-    return expectedSSTFileChecksum.get().getCheckSum();
+    return this.expectedSSTFileChecksum == null ? null : this.expectedSSTFileChecksum.getCheckSum();
   }
 
   public long getLatestMessageConsumptionTimestampInMs() {

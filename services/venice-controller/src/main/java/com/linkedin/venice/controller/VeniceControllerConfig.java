@@ -438,7 +438,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.daVinciPushStatusScanIntervalInSeconds = props.getInt(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 30);
     this.daVinciPushStatusScanThreadNumber = props.getInt(DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER, 4);
     this.daVinciPushStatusScanNoReportRetryMaxAttempt =
-        props.getInt(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 0);
+        props.getInt(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 6);
     this.daVinciPushStatusScanMaxOfflineInstance = props.getInt(DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE, 10);
 
     this.zkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled =
@@ -476,7 +476,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.parentExternalSupersetSchemaGenerationEnabled =
         props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
     this.systemSchemaInitializationAtStartTimeEnabled =
-        props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true);
+        props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
   }
 
   private void validateActiveActiveConfigs() {
@@ -827,6 +827,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getChildControllerUrl(String fabric) {
     return getProps().getString(CHILD_CLUSTER_URL_PREFIX + fabric, "");
+  }
+
+  public String getChildControllerD2ServiceName() {
+    return getProps().getString(CHILD_CLUSTER_D2_SERVICE_NAME, "");
   }
 
   public String getChildControllerD2ZkHost(String fabric) {

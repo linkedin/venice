@@ -4,6 +4,8 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_SECURE_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
+import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_SERVICE_NAME;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
@@ -30,6 +32,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -40,6 +43,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
@@ -203,9 +207,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, true)
             .put(PUSH_STATUS_STORE_ENABLED, true)
-            .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 5)
             .put(CONCURRENT_INIT_ROUTINES_ENABLED, true)
             .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
+            .put(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true)
             .put(extraProps.toProperties());
 
         if (sslEnabled) {
@@ -252,6 +257,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
                   childController.getKafkaBootstrapServers(options.isSslToKafka()));
             }
           }
+        } else {
+          builder.put(CHILD_CLUSTER_D2_SERVICE_NAME, D2_SERVICE_NAME);
+          String regionName = options.getExtraProperties().getProperty(LOCAL_REGION_NAME, options.getRegionName());
+          builder.put(LOCAL_REGION_NAME, regionName);
+          builder.put(CHILD_CLUSTER_D2_PREFIX + regionName, options.getZkAddress());
         }
         builder.put(CHILD_CLUSTER_ALLOWLIST, fabricAllowList);
 
@@ -292,6 +302,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           if (!extraProps.containsKey(NATIVE_REPLICATION_SOURCE_FABRIC)) {
             builder.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
           }
+        }
+
+        // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
+        Map<String, String> brokerDetails = options.getKafkaBroker().getAdditionalConfig();
+        for (Map.Entry<String, String> entry: brokerDetails.entrySet()) {
+          builder.putIfAbsent(entry.getKey(), entry.getValue());
         }
 
         VeniceProperties props = builder.build();

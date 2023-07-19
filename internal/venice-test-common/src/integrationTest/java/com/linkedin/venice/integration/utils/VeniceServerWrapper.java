@@ -9,6 +9,8 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
+import static com.linkedin.venice.ConfigKeys.LOCAL_CONTROLLER_D2_SERVICE_NAME;
+import static com.linkedin.venice.ConfigKeys.LOCAL_D2_ZK_HOST;
 import static com.linkedin.venice.ConfigKeys.MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -22,6 +24,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -222,10 +225,23 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L))
           .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
           .put(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 10)
+          .put(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true)
+          .put(LOCAL_CONTROLLER_D2_SERVICE_NAME, VeniceControllerWrapper.D2_SERVICE_NAME)
+          .put(LOCAL_D2_ZK_HOST, zkAddress)
           .put(configProperties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
+      }
+
+      // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
+      Map<String, String> brokerDetails = pubSubBrokerWrapper.getAdditionalConfig();
+      for (Map.Entry<String, String> entry: brokerDetails.entrySet()) {
+        if (clusterProps.containsKey(entry.getKey())) {
+          // skip if the key is already present in cluster.properties
+          continue;
+        }
+        serverPropsBuilder.putIfAbsent(entry.getKey(), entry.getValue());
       }
 
       VeniceProperties serverProps = serverPropsBuilder.build();

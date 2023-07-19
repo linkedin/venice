@@ -113,26 +113,16 @@ public class DataRecoveryClient {
   }
 
   public static class DataRecoveryParams {
-    private final String multiStores;
     private final Set<String> recoveryStores;
     private boolean isNonInteractive = false;
     private int interval = INTERVAL_UNSET;
 
-    public DataRecoveryParams(String multiStores) {
-      this.multiStores = multiStores;
-      this.recoveryStores = calculateRecoveryStoreNames(this.multiStores);
+    public DataRecoveryParams(Set<String> stores) {
+      this.recoveryStores = stores;
     }
 
     public Set<String> getRecoveryStores() {
       return recoveryStores;
-    }
-
-    private Set<String> calculateRecoveryStoreNames(String multiStores) {
-      Set<String> storeNames = null;
-      if (multiStores != null && !multiStores.isEmpty()) {
-        storeNames = Utils.parseCommaSeparatedStringToSet(multiStores);
-      }
-      return storeNames;
     }
 
     public void setInterval(int interval) {

@@ -1,0 +1,32 @@
+{
+  "type": "record",
+  "name": "TestRecord",
+  "namespace": "com.linkedin.avro",
+  "fields": [
+    {
+      "name": "nullableMapField",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": {
+            "type": "record",
+            "name": "TestMapRecord",
+            "doc": "",
+            "fields": [
+              {
+                "name": "longField",
+                "type": [
+                  "null",
+                  "long"
+                ],
+                "default": null
+              }
+            ]
+          }
+        }
+      ],
+      "default": null
+    }
+  ]
+}

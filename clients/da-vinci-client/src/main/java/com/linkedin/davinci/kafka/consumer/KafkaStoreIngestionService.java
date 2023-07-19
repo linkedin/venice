@@ -744,7 +744,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         }
         sleep(retryIntervalInMs);
       }
-      LOGGER.error(
+      LOGGER.warn(
           "Topic: {}, partition: {} is still having pending ingestion action for it to stop for {} ms.",
           topicName,
           partition,
@@ -874,7 +874,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       VeniceStoreVersionConfig veniceStore,
       int partitionId,
       int sleepSeconds,
-      int numRetries) {
+      int numRetries,
+      boolean whetherToResetOffset) {
     String topicName = veniceStore.getStoreVersionName();
     if (isPartitionConsuming(topicName, partitionId)) {
       stopConsumption(veniceStore, partitionId);
@@ -887,11 +888,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                 partitionId,
                 topicName,
                 LatencyUtils.getElapsedTimeInMs(startTimeInMs));
-            break;
+            return;
           }
           sleep((long) sleepSeconds * Time.MS_PER_SECOND);
         }
-        LOGGER.error(
+        LOGGER.warn(
             "Partition: {} of store: {} is still consuming after waiting for it to stop for {} seconds.",
             partitionId,
             topicName,
@@ -903,7 +904,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     } else {
       LOGGER.warn("Partition: {} of topic: {} is not consuming, skipped the stop consumption.", partitionId, topicName);
     }
-    resetConsumptionOffset(veniceStore, partitionId);
+    if (whetherToResetOffset) {
+      resetConsumptionOffset(veniceStore, partitionId);
+      LOGGER.info("Reset consumption offset for topic: {}, partition: {}", topicName, partitionId);
+    }
     if (!ingestionTaskHasAnySubscription(topicName)) {
       if (isIsolatedIngestion) {
         LOGGER.info("Ingestion task for topic {} will be kept open for the access from main process.", topicName);

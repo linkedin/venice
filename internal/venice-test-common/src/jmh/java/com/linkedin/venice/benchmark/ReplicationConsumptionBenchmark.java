@@ -68,7 +68,7 @@ public class ReplicationConsumptionBenchmark {
   private static final RocksDBThrottler ROCKSDB_THROTTLER = new RocksDBThrottler(3);
   private String storeDir;
   private Map<String, Pair<String, String>> inputRecords;
-  private Optional<CheckSum> runningChecksum;
+  private CheckSum runningChecksum;
   private ReplicationMetadataRocksDBStoragePartition storagePartition;
   private StoragePartitionConfig partitionConfig;
   private RocksDBServerConfig rocksDBServerConfig;
@@ -128,8 +128,8 @@ public class ReplicationConsumptionBenchmark {
     Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
     if (verifyChecksum) {
       checksumSupplier = Optional.of(() -> {
-        byte[] checksum = runningChecksum.get().getCheckSum();
-        runningChecksum.get().reset();
+        byte[] checksum = runningChecksum.getCheckSum();
+        runningChecksum.reset();
         return checksum;
       });
     }

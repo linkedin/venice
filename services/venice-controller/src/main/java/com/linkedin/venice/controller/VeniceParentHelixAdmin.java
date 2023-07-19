@@ -245,6 +245,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
@@ -1645,6 +1646,9 @@ public class VeniceParentHelixAdmin implements Admin {
    * @param clusterName
    */
   private void validateTargetedRegions(String targetedRegions, String clusterName) throws VeniceException {
+    if (StringUtils.isEmpty(targetedRegions)) {
+      return;
+    }
     Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
     Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     for (String region: targetedRegionSet) {
@@ -3599,6 +3603,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getKafkaBootstrapServers(isSSL);
   }
 
+  @Override
+  public String getRegionName() {
+    return getVeniceHelixAdmin().getRegionName();
+  }
+
   /**
    * @see VeniceHelixAdmin#getNativeReplicationKafkaBootstrapServerAddress(String)
    */
@@ -4808,13 +4817,16 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see Admin#getEmergencySourceRegion()
+   * @see Admin#getEmergencySourceRegion(String)
    */
   @Override
-  public Optional<String> getEmergencySourceRegion() {
-    return getMultiClusterConfigs().getEmergencySourceRegion().equals("")
-        ? Optional.empty()
-        : Optional.of(getMultiClusterConfigs().getEmergencySourceRegion());
+  public Optional<String> getEmergencySourceRegion(@Nonnull String clusterName) {
+    String emergencySourceRegion = multiClusterConfigs.getEmergencySourceRegion(clusterName);
+    if (StringUtils.isNotEmpty(emergencySourceRegion)) {
+      return Optional.of(emergencySourceRegion);
+    } else {
+      return Optional.empty();
+    }
   }
 
   /**

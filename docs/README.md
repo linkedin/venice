@@ -6,14 +6,29 @@
       Derived Data Platform for Planet-Scale Workloads<br/>
     </h3>
     <div align="center">
-        <a href="https://venicedb.org/"><img src="https://img.shields.io/badge/docs-latest-blue.svg" alt="Docs Latest"></a>
-        <a href="https://github.com/linkedin/venice/actions/workflows/gh-ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/linkedin/venice/gh-ci.yml" alt="CI"></a>
-        <a href="https://github.com/linkedin/venice"><img src="https://img.shields.io/badge/github-%23121011.svg?logo=github&logoColor=white" alt="GitHub"></a>
+        <a href="https://blog.venicedb.org/stable-releases">
+          <img src="https://img.shields.io/docker/v/venicedb/venice-router?label=stable&color=green&logo=docker" alt="Stable Release">
+        </a>
+        <a href="https://github.com/linkedin/venice/actions/workflows/gh-ci.yml">
+          <img src="https://img.shields.io/github/actions/workflow/status/linkedin/venice/gh-ci.yml" alt="CI">
+        </a>
+        <a href="https://venicedb.org/">
+          <img src="https://img.shields.io/badge/docs-grey" alt="Docs">
+        </a>
     </div>
     <div align="center">
-        <a href="https://www.linkedin.com/company/venicedb/"><img src="https://img.shields.io/badge/linkedin-%230077B5.svg?logo=linkedin&logoColor=white" alt="LinkedIn"></a>
-        <a href="https://twitter.com/VeniceDataBase"><img src="https://img.shields.io/badge/Twitter-%231DA1F2.svg?logo=Twitter&logoColor=white" alt="Twitter"></a>
-        <a href="http://slack.venicedb.org"><img src="https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white" alt="Slack"></a>
+        <a href="https://github.com/linkedin/venice">
+          <img src="https://img.shields.io/badge/github-%23121011.svg?logo=github&logoColor=white" alt="GitHub">
+        </a>
+        <a href="https://www.linkedin.com/company/venicedb/">
+          <img src="https://img.shields.io/badge/linkedin-%230077B5.svg?logo=linkedin&logoColor=white" alt="LinkedIn">
+        </a>
+        <a href="https://twitter.com/VeniceDataBase">
+          <img src="https://img.shields.io/badge/Twitter-%231DA1F2.svg?logo=Twitter&logoColor=white" alt="Twitter">
+        </a>
+        <a href="http://slack.venicedb.org">
+          <img src="https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white" alt="Slack">
+        </a>
     </div>
 </html>
 
@@ -25,12 +40,16 @@ Venice is a derived data storage platform, providing the following characteristi
 4. Multi-cluster support within each region with operator-driven cluster assignment.
 5. Multi-tenancy, horizontal scalability and elasticity within each cluster.
 
-The above makes Venice particularly suitable as the stateful component backing a Feature Store, such as [Feathr](https://github.com/feathr-ai/feathr). AI applications feed the output of their ML training jobs into Venice and then query the data for use during online inference workloads.
+The above makes Venice particularly suitable as the stateful component backing a Feature Store, such as [Feathr](https://github.com/feathr-ai/feathr). 
+AI applications feed the output of their ML training jobs into Venice and then query the data for use during online 
+inference workloads.
 
 Write Path
 ----------
 
-The Venice write path can be broken down into three granularities: full dataset swap, insertion of many rows into an existing dataset, and updates of some columns of some rows. All three granularities are supported by Hadoop and Samza, thus leading to the below full matrix of supported operations:
+The Venice write path can be broken down into three granularities: full dataset swap, insertion of many rows into an 
+existing dataset, and updates of some columns of some rows. All three granularities are supported by Hadoop and Samza, 
+thus leading to the below full matrix of supported operations:
 
 |                                                 | Hadoop                                   | Samza                             |
 | ----------------------------------------------- | ---------------------------------------- | --------------------------------- |
@@ -39,11 +58,15 @@ The Venice write path can be broken down into three granularities: full dataset 
 | Updates to some columns of some rows            | Incremental Push Job doing Write Compute | Real-Time Job doing Write Compute |
 
 ### Hybrid Stores
-Moreover, the three granularities of write operations can all be mixed within a single dataset. A dataset which gets full dataset swaps in addition to row insertion or row updates is called _hybrid_.
+Moreover, the three granularities of write operations can all be mixed within a single dataset. A dataset which gets 
+full dataset swaps in addition to row insertion or row updates is called _hybrid_.
 
-As part of configuring a store to be _hybrid_, an important concept is the _rewind time_, which defines how far back should recent real-time writes be rewound and applied on top of the new generation of the dataset getting swapped in.
+As part of configuring a store to be _hybrid_, an important concept is the _rewind time_, which defines how far back 
+should recent real-time writes be rewound and applied on top of the new generation of the dataset getting swapped in.
 
-Leveraging this mechanism, it is possible to overlay the output of a stream processing job on top of that of a batch job. If using partial updates, then it is possible to have some of the columns be updated in real-time and some in batch, and these two sets of columns can either overlap or be disjoint, as desired.
+Leveraging this mechanism, it is possible to overlay the output of a stream processing job on top of that of a batch 
+job. If using partial updates, then it is possible to have some of the columns be updated in real-time and some in 
+batch, and these two sets of columns can either overlap or be disjoint, as desired.
 
 ### Write Compute
 Write Compute includes two kinds of operations, which can be performed on the value associated with a given key:
@@ -51,7 +74,8 @@ Write Compute includes two kinds of operations, which can be performed on the va
 - **Partial update**: set the content of a field within the value.
 - **Collection merging**: add or remove entries in a set or map.  
 
-N.B.: Currently, write compute is only supported in conjunction with active-passive replication. Support for active-actice replication is under development. 
+N.B.: Currently, write compute is only supported in conjunction with active-passive replication. Support for 
+active-active replication is under development. 
 
 Read Path
 ---------
@@ -60,25 +84,33 @@ Venice supports the following read APIs:
 
 - **Single get**: get the value associated with a single key
 - **Batch get**: get the values associated with a set of keys
-- **Read compute**: project some fields and/or compute some function on the fields of values associated with a set of keys.
+- **Read compute**: project some fields and/or compute some function on the fields of values associated with a set of 
+  keys.
 
 ### Read Compute
 When using the read compute DSL, the following functions are currently supported:
 
-- **Dot product**: perform a dot product on the float vector stored in a given field, against another float vector provided as query param, and return the resulting scalar.
-- **Cosine similarity**: perform a cosine similarity on the float vector stored in a given field, against another float vector provided as query param, and return the resulting scalar.
-- **Hadamard product**: perform a Hadamard product on the float vector stored in a given field, against another float vector provided as query param, and return the resulting vector.
+- **Dot product**: perform a dot product on the float vector stored in a given field, against another float vector 
+  provided as query param, and return the resulting scalar.
+- **Cosine similarity**: perform a cosine similarity on the float vector stored in a given field, against another float 
+  vector provided as query param, and return the resulting scalar.
+- **Hadamard product**: perform a Hadamard product on the float vector stored in a given field, against another float 
+  vector provided as query param, and return the resulting vector.
 - **Collection count**: return the number of items in the collection stored in a given field.
 
 ### Client Modes
 
 There are two main client modes for accessing Venice data:
 
-- **Classical Venice**: perform remote queries against Venice's distributed backend service. In this mode, read compute queries are pushed down to the backend and only the computation results are returned to the client. 
-- **Da Vinci**: eagerly load some or all partitions of the dataset and perform queries against the resulting local cache. Future updates to the data continue to be streamed in and applied to the local cache.
+- **Classical Venice**: perform remote queries against Venice's distributed backend service. In this mode, read compute 
+  queries are pushed down to the backend and only the computation results are returned to the client. 
+- **Da Vinci**: eagerly load some or all partitions of the dataset and perform queries against the resulting local
+  cache. Future updates to the data continue to be streamed in and applied to the local cache.
 
 # Getting Started
-Refer to the [Venice quickstart](./quickstart/quickstart.md) to create your own Venice cluster and play around with some features like creating a data store, batch push, incremental push, and single get.
+Refer to the [Venice quickstart](./quickstart/quickstart.md) to create your own Venice cluster and play around with some 
+features like creating a data store, batch push, incremental push, and single get. We recommend sticking to our latest 
+[stable release](https://blog.venicedb.org/stable-releases).
 
 # Previously Published Content
 
@@ -106,7 +138,8 @@ Keep in mind that older content reflects an earlier phase of the project and may
 # Community Resources
 
 Feel free to engage with the community using our:
-- [Slack workspace](http://slack.venicedb.org) (archived and publicly searchable on [Linen](http://linen.venicedb.org))
+- [Slack workspace](http://slack.venicedb.org)
+  - Archived and publicly searchable on [Linen](http://linen.venicedb.org)
 - [LinkedIn group](https://www.linkedin.com/groups/14129519/)
 - [GitHub issues](https://github.com/linkedin/venice/issues)
 - [Contributor's guide](CONTRIBUTING.md)

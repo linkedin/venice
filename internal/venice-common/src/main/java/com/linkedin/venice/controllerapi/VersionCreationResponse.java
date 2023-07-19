@@ -27,6 +27,8 @@ public class VersionCreationResponse extends VersionResponse {
 
   private boolean daVinciPushStatusStoreEnabled = false;
 
+  private String kafkaSourceRegion = null;
+
   public void setPartitions(int partitions) {
     this.partitions = partitions;
   }
@@ -43,6 +45,10 @@ public class VersionCreationResponse extends VersionResponse {
     this.kafkaBootstrapServers = kafkaBootstrapServers;
   }
 
+  public void setKafkaSourceRegion(String kafkaSourceRegion) {
+    this.kafkaSourceRegion = kafkaSourceRegion;
+  }
+
   public int getPartitions() {
     return partitions;
   }
@@ -57,6 +63,10 @@ public class VersionCreationResponse extends VersionResponse {
 
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
+  }
+
+  public String getKafkaSourceRegion() {
+    return kafkaSourceRegion;
   }
 
   public boolean isEnableSSL() {
@@ -110,10 +120,10 @@ public class VersionCreationResponse extends VersionResponse {
   @JsonIgnore
   public String toString() {
     return VersionCreationResponse.class.getSimpleName() + "(partitions: " + partitions + ", replicas: " + replicas
-        + ", kafkaTopic: " + kafkaTopic + ", kafkaBootstrapServers: " + kafkaBootstrapServers + ", enableSSL: "
-        + enableSSL + ", compressionStrategy: " + compressionStrategy.toString() + ", partitionerClass: "
-        + partitionerClass + ", partitionerParams: " + partitionerParams + ", amplificationFactor: "
-        + amplificationFactor + ", daVinciPushStatusStoreEnabled: " + daVinciPushStatusStoreEnabled + ", super: "
-        + super.toString() + ")";
+        + ", kafkaTopic: " + kafkaTopic + ", kafkaBootstrapServers: " + kafkaBootstrapServers + ", kafkaSourceRegion: "
+        + kafkaSourceRegion + ", enableSSL: " + enableSSL + ", compressionStrategy: " + compressionStrategy.toString()
+        + ", partitionerClass: " + partitionerClass + ", partitionerParams: " + partitionerParams
+        + ", amplificationFactor: " + amplificationFactor + ", daVinciPushStatusStoreEnabled: "
+        + daVinciPushStatusStoreEnabled + ", super: " + super.toString() + ")";
   }
 }

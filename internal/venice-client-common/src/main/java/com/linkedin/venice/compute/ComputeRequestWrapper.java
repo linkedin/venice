@@ -1,21 +1,19 @@
 package com.linkedin.venice.compute;
 
+import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer;
+import static com.linkedin.venice.serializer.SerializerDeserializerFactory.getAvroGenericSerializer;
+
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV3;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV4;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.specific.SpecificRecord;
 
 
 /**
@@ -29,40 +27,15 @@ import org.apache.avro.specific.SpecificRecord;
 public class ComputeRequestWrapper {
   public static final int LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST = 3;
 
-  private static final Map<Integer, Schema> SCHEMA_MAP = new HashMap<Integer, Schema>() {
-    {
-      put(1, ComputeRequestV1.SCHEMA$);
-      put(2, ComputeRequestV2.SCHEMA$);
-      put(3, ComputeRequestV3.SCHEMA$);
-      put(4, ComputeRequestV4.SCHEMA$);
-    }
-  };
-  private static final Map<Integer, Class<? extends SpecificRecord>> CLASS_MAP =
-      new HashMap<Integer, Class<? extends SpecificRecord>>() {
-        {
-          put(1, ComputeRequestV1.class);
-          put(2, ComputeRequestV2.class);
-          put(3, ComputeRequestV3.class);
-          put(4, ComputeRequestV4.class);
-        }
-      };
-  private static final Map<Integer, RecordSerializer> SERIALIZER_MAP = new HashMap<Integer, RecordSerializer>() {
-    {
-      put(1, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV1.SCHEMA$));
-      put(2, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV2.SCHEMA$));
-      put(3, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV3.SCHEMA$));
-      put(4, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV4.SCHEMA$));
-    }
-  };
+  private static final RecordDeserializer[] DESERIALIZER_ARRAY = new RecordDeserializer[] { null,
+      getFastAvroSpecificDeserializer(ComputeRequestV1.SCHEMA$, ComputeRequestV1.class),
+      getFastAvroSpecificDeserializer(ComputeRequestV2.SCHEMA$, ComputeRequestV2.class),
+      getFastAvroSpecificDeserializer(ComputeRequestV3.SCHEMA$, ComputeRequestV3.class),
+      getFastAvroSpecificDeserializer(ComputeRequestV4.SCHEMA$, ComputeRequestV4.class) };
 
-  private RecordDeserializer getDeserializer(boolean useFastAvro) {
-    if (useFastAvro) {
-      return FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(SCHEMA_MAP.get(version), CLASS_MAP.get(version));
-    } else {
-      return SerializerDeserializerFactory.getAvroSpecificDeserializer(SCHEMA_MAP.get(version), CLASS_MAP.get(version));
-    }
-  }
+  private static final RecordSerializer[] SERIALIZER_ARRAY = new RecordSerializer[] { null,
+      getAvroGenericSerializer(ComputeRequestV1.SCHEMA$), getAvroGenericSerializer(ComputeRequestV2.SCHEMA$),
+      getAvroGenericSerializer(ComputeRequestV3.SCHEMA$), getAvroGenericSerializer(ComputeRequestV4.SCHEMA$) };
 
   private int version;
   private Object computeRequest;
@@ -89,12 +62,11 @@ public class ComputeRequestWrapper {
   }
 
   public byte[] serialize() {
-    return SERIALIZER_MAP.get(version).serialize(computeRequest);
+    return SERIALIZER_ARRAY[version].serialize(computeRequest);
   }
 
-  public void deserialize(BinaryDecoder decoder, boolean useFastAvro) {
-    RecordDeserializer deserializer = getDeserializer(useFastAvro);
-    this.computeRequest = deserializer.deserialize(computeRequest, decoder);
+  public void deserialize(BinaryDecoder decoder) {
+    this.computeRequest = DESERIALIZER_ARRAY[version].deserialize(computeRequest, decoder);
   }
 
   public int getComputeRequestVersion() {

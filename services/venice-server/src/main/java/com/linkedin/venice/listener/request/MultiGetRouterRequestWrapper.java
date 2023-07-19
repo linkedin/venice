@@ -17,6 +17,9 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
  * {@code MultiGetRouterRequestWrapper} encapsulates a POST request to storage/resourcename on the storage node for a multi-get operation.
  */
 public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<MultiGetRouterRequestKeyV1> {
+  private static final RecordDeserializer<MultiGetRouterRequestKeyV1> DESERIALIZER =
+      FastSerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.class);
+
   private MultiGetRouterRequestWrapper(
       String resourceName,
       Iterable<MultiGetRouterRequestKeyV1> keys,
@@ -53,10 +56,7 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
   }
 
   private static Iterable<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {
-    RecordDeserializer<MultiGetRouterRequestKeyV1> deserializer =
-        FastSerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.class);
-
-    return deserializer.deserializeObjects(
+    return DESERIALIZER.deserializeObjects(
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
   }
 

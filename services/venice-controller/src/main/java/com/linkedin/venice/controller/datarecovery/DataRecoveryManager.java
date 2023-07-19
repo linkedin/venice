@@ -192,7 +192,7 @@ public class DataRecoveryManager implements Closeable {
         throw new VeniceException("Previous kill record for " + versionTopic + " still exists");
       }
     } catch (Exception e) {
-      throw new VeniceException("Unable to check if the store version kill record is null", e);
+      throw new VeniceException(e);
     }
   }
 

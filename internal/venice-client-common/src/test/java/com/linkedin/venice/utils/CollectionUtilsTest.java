@@ -3,9 +3,12 @@ package com.linkedin.venice.utils;
 import static org.apache.avro.Schema.Type;
 import static org.apache.avro.Schema.create;
 import static org.apache.avro.Schema.createArray;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -91,6 +94,17 @@ public class CollectionUtilsTest {
     Assert.assertEquals(stringMap.size(), stringCharSequenceMap.size());
     Assert.assertEquals(stringMap.get("key1"), stringCharSequenceMap.get("key1").toString());
     Assert.assertEquals(stringMap.get("key2"), stringCharSequenceMap.get("key2").toString());
+  }
+
+  @Test
+  public void testSubstituteEmptyMap() {
+    assertEquals(CollectionUtils.substituteEmptyMap(null), Collections.emptyMap());
+    assertEquals(CollectionUtils.substituteEmptyMap(Collections.emptyMap()), Collections.emptyMap());
+    assertEquals(CollectionUtils.substituteEmptyMap(new HashMap<>()), Collections.emptyMap());
+
+    Map populatedMap = new HashMap();
+    populatedMap.put("foo", "bar");
+    assertNotEquals(CollectionUtils.substituteEmptyMap(populatedMap), Collections.emptyMap());
   }
 
   private void populateIntegerList(List<Integer> list) {

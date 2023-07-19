@@ -289,7 +289,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       boolean interrupted,
       boolean reopenDatabaseDuringInterruption,
       boolean verifyChecksum) {
-    Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
+    CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -317,8 +317,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
     if (verifyChecksum) {
       checksumSupplier = Optional.of(() -> {
-        byte[] checksum = runningChecksum.get().getCheckSum();
-        runningChecksum.get().reset();
+        byte[] checksum = runningChecksum.getCheckSum();
+        runningChecksum.reset();
         return checksum;
       });
     }
@@ -341,8 +341,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
       }
       if (verifyChecksum) {
         if (entry.getValue().getFirst() != null) {
-          runningChecksum.get().update(entry.getKey().getBytes());
-          runningChecksum.get().update(entry.getValue().getFirst().getBytes());
+          runningChecksum.update(entry.getKey().getBytes());
+          runningChecksum.update(entry.getValue().getFirst().getBytes());
         }
       }
       if (++currentRecordNum % syncPerRecords == 0) {
@@ -380,7 +380,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
           // inclusive [replayStart, replayEnd]
           int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
           int replayCnt = 0;
-          runningChecksum.get().reset();
+          runningChecksum.reset();
           for (Map.Entry<String, Pair<String, String>> innerEntry: inputRecords.entrySet()) {
             ++replayCnt;
             if (replayCnt >= replayStart && replayCnt <= interruptedRecord) {
@@ -396,8 +396,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
               }
               if (verifyChecksum) {
                 if (innerEntry.getValue().getFirst() != null) {
-                  runningChecksum.get().update(innerEntry.getKey().getBytes());
-                  runningChecksum.get().update(innerEntry.getValue().getFirst().getBytes());
+                  runningChecksum.update(innerEntry.getKey().getBytes());
+                  runningChecksum.update(innerEntry.getValue().getFirst().getBytes());
                 }
               }
             }

@@ -4,8 +4,7 @@ import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.linkedin.venice.utils.collections.BiIntKeyCache;
 import org.apache.avro.Schema;
 import org.apache.commons.lang3.Validate;
 
@@ -14,7 +13,7 @@ import org.apache.commons.lang3.Validate;
 public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchemaResolver {
   private final StringAnnotatedStoreSchemaCache storeSchemaCache;
   private final String storeName;
-  private final Map<String, SchemaEntry> resolvedSchemaCache;
+  private final BiIntKeyCache<SchemaEntry> resolvedSchemaCache;
 
   public MergeResultValueSchemaResolverImpl(StringAnnotatedStoreSchemaCache storeSchemaCache, String storeName) {
     this.storeSchemaCache = Validate.notNull(storeSchemaCache);
@@ -23,7 +22,27 @@ public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchem
       throw new IllegalArgumentException("Store name should not be an empty String.");
     }
     this.storeName = storeName;
-    this.resolvedSchemaCache = new ConcurrentHashMap<>();
+    this.resolvedSchemaCache = new BiIntKeyCache<>((int firstValueSchemaID, int secondValueSchemaID) -> {
+      final SchemaEntry firstValueSchemaEntry = this.storeSchemaCache.getValueSchema(firstValueSchemaID);
+      final SchemaEntry secondValueSchemaEntry = this.storeSchemaCache.getValueSchema(secondValueSchemaID);
+      final Schema firstValueSchema = firstValueSchemaEntry.getSchema();
+      final Schema secondValueSchema = secondValueSchemaEntry.getSchema();
+
+      if (AvroSupersetSchemaUtils.isSupersetSchema(secondValueSchema, firstValueSchema)) {
+        return secondValueSchemaEntry;
+      }
+      if (AvroSupersetSchemaUtils.isSupersetSchema(firstValueSchema, secondValueSchema)) {
+        return firstValueSchemaEntry;
+      }
+      // Neither old value schema nor new value schema is the superset schema. So there must be superset schema
+      // registered.
+      final SchemaEntry registeredSupersetSchema = this.storeSchemaCache.getSupersetSchema();
+      if (registeredSupersetSchema == null) {
+        throw new VeniceException("Got null superset schema for store " + this.storeName);
+      }
+      validateRegisteredSupersetSchema(registeredSupersetSchema, firstValueSchemaEntry, secondValueSchemaEntry);
+      return registeredSupersetSchema;
+    });
   }
 
   /**
@@ -43,31 +62,12 @@ public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchem
   @Override
   public SchemaEntry getMergeResultValueSchema(final int firstValueSchemaID, final int secondValueSchemaID) {
     if (firstValueSchemaID == secondValueSchemaID) {
-      return storeSchemaCache.getValueSchema(secondValueSchemaID);
+      return this.storeSchemaCache.getValueSchema(secondValueSchemaID);
+    } else if (firstValueSchemaID < secondValueSchemaID) {
+      return this.resolvedSchemaCache.get(firstValueSchemaID, secondValueSchemaID);
+    } else {
+      return this.resolvedSchemaCache.get(secondValueSchemaID, firstValueSchemaID);
     }
-    final String schemaPairString = createSchemaPairString(firstValueSchemaID, secondValueSchemaID);
-
-    return resolvedSchemaCache.computeIfAbsent(schemaPairString, s -> {
-      final SchemaEntry firstValueSchemaEntry = storeSchemaCache.getValueSchema(firstValueSchemaID);
-      final SchemaEntry secondValueSchemaEntry = storeSchemaCache.getValueSchema(secondValueSchemaID);
-      final Schema firstValueSchema = firstValueSchemaEntry.getSchema();
-      final Schema secondValueSchema = secondValueSchemaEntry.getSchema();
-
-      if (AvroSupersetSchemaUtils.isSupersetSchema(secondValueSchema, firstValueSchema)) {
-        return secondValueSchemaEntry;
-      }
-      if (AvroSupersetSchemaUtils.isSupersetSchema(firstValueSchema, secondValueSchema)) {
-        return firstValueSchemaEntry;
-      }
-      // Neither old value schema nor new value schema is the superset schema. So there must be superset schema
-      // registered.
-      final SchemaEntry registeredSupersetSchema = storeSchemaCache.getSupersetSchema();
-      if (registeredSupersetSchema == null) {
-        throw new VeniceException("Got null superset schema for store " + storeName);
-      }
-      validateRegisteredSupersetSchema(registeredSupersetSchema, firstValueSchemaEntry, secondValueSchemaEntry);
-      return registeredSupersetSchema;
-    });
   }
 
   private void validateRegisteredSupersetSchema(
@@ -94,11 +94,5 @@ public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchem
               registeredSupersetSchema.getId(),
               secondValueSchemaEntry.getId()));
     }
-  }
-
-  private String createSchemaPairString(final int firstValueSchemaID, final int secondValueSchemaID) {
-    return firstValueSchemaID <= secondValueSchemaID
-        ? firstValueSchemaID + "-" + secondValueSchemaID
-        : secondValueSchemaID + "-" + firstValueSchemaID;
   }
 }

@@ -148,7 +148,7 @@ public class TestDataRecoveryClient {
     doReturn("test").when(controllerClient).getClusterName();
     doReturn(cmdParams).when(mockCmd).getParams();
 
-    dataRecoveryClient.estimateRecoveryTime(new DataRecoveryClient.DataRecoveryParams("store1,store2"), cmdParams);
+    dataRecoveryClient.estimateRecoveryTime(new DataRecoveryClient.DataRecoveryParams(storeNames), cmdParams);
   }
 
   private void executeRecovery(boolean isSuccess) {
@@ -225,7 +225,7 @@ public class TestDataRecoveryClient {
     doReturn(true).when(dataRecoveryClient).confirmStores(any());
     doReturn(controllerClient).when(dataRecoveryClient).buildControllerClient(anyString(), anyString(), any());
     // client executes three store recovery.
-    DataRecoveryClient.DataRecoveryParams drParams = new DataRecoveryClient.DataRecoveryParams("store1,store2,store3");
+    DataRecoveryClient.DataRecoveryParams drParams = new DataRecoveryClient.DataRecoveryParams(storeName);
     drParams.setNonInteractive(true);
     dataRecoveryClient.execute(drParams, cmdParams);
 
@@ -256,6 +256,9 @@ public class TestDataRecoveryClient {
     for (DataRecoveryTask t: dataRecoveryClient.getExecutor().getTasks()) {
       Assert.assertTrue(t.getTaskResult().getCmdResult().isError());
     }
+
+    drParams = new DataRecoveryClient.DataRecoveryParams(null);
+    dataRecoveryClient.execute(drParams, cmdParams);
   }
 
   private List<DataRecoveryTask> buildExecuteDataRecoveryTasks(
@@ -389,7 +392,7 @@ public class TestDataRecoveryClient {
     doReturn(tasks).when(monitor).buildTasks(any(), any());
 
     // client monitors three store recovery progress.
-    DataRecoveryClient.DataRecoveryParams drParams = new DataRecoveryClient.DataRecoveryParams("store1,store2,store3");
+    DataRecoveryClient.DataRecoveryParams drParams = new DataRecoveryClient.DataRecoveryParams(storeName);
     dataRecoveryClient.monitor(drParams, monitorParams);
   }
 

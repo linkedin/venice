@@ -1,7 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.ArrayCollection;
+import com.linkedin.venice.utils.collections.ArrayCollection;
 import java.util.Arrays;
 import java.util.Collection;
 
