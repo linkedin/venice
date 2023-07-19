@@ -596,7 +596,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             null,
             readerSchemaId,
             deserializerCache,
-            compressor);
+            compressor,
+            null);
       } catch (Exception ex) {
         // We might get an exception if we haven't persisted all the chunks for a given key. This
         // can actually happen if the client seeks to the middle of a chunked record either by

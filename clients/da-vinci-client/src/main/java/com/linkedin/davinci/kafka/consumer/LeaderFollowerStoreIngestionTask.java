@@ -2941,7 +2941,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             null,
             readerValueSchemaID,
             storeDeserializerCache,
-            compressor.get());
+            compressor.get(),
+            null);
         hostLevelIngestionStats.recordWriteComputeLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
       } catch (Exception e) {
         writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
