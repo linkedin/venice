@@ -209,12 +209,15 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
         if (getRequestContext.longTailRetryRequestTriggered) {
           clientStats.recordLongTailRetryRequest();
+          clientStats.recordRetryRequestKeyCount(1);
         }
         if (getRequestContext.errorRetryRequestTriggered) {
           clientStats.recordErrorRetryRequest();
+          clientStats.recordRetryRequestKeyCount(1);
         }
         if (getRequestContext.retryWin) {
           clientStats.recordRetryRequestWin();
+          clientStats.recordRetryRequestSuccessKeyCount(1);
         }
       } else if (requestContext instanceof BatchGetRequestContext) {
         BatchGetRequestContext<K, V> batchGetRequestContext = (BatchGetRequestContext<K, V>) requestContext;

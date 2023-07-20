@@ -109,7 +109,6 @@ public class ClientStats extends BasicClientStats {
     retryKeySuccessRatioSensor = registerSensor(
         "retry_key_success_ratio",
         new TehutiUtils.SimpleRatioStat(retryRequestSuccessKeyCount, getSuccessRequestKeyCountRate()));
-
   }
 
   public void recordHttpRequest(int httpStatus) {

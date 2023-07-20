@@ -12,6 +12,7 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.utils.TestClientSimulator;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -38,16 +39,17 @@ import org.testng.annotations.Test;
  * Multithreaded scenario and testing
  */
 public class BatchGetAvroStoreClientUnitTest {
+  private static final int TEST_TIMEOUT = 5 * Time.MS_PER_SECOND;
   private static final Logger LOGGER = LogManager.getLogger(BatchGetAvroStoreClientUnitTest.class);
-  private static final long TIME_OUT_IN_SECONDS = 10;
+  private static final long CLIENT_TIME_OUT_IN_SECONDS = 10;
   private static final int RETRY_THRESHOLD_IN_MS = 50;
   private static final int NUM_KEYS = 12;
   private static final int NUM_PARTITIONS = 3;
 
   /**
-   * Basic test with 1 partition, 1 replica and 1000 keys
+   * Basic test with 1 partition, 1 replica and 1000 keys. No retries.
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testSimpleStreamingBatchGet() throws InterruptedException, ExecutionException, TimeoutException {
 
     TestClientSimulator client = new TestClientSimulator();
@@ -63,23 +65,13 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    validateMetrics(client, 1000, 1000, 0, 0);
   }
 
   /**
    * Error case: Timeout due to response taking a longer time than the simulator's allowed timeout.
    */
-  @Test
+  @Test(timeOut = CLIENT_TIME_OUT_IN_SECONDS * 5 * Time.MS_PER_SECOND)
   public void testSimpleStreamingBatchGettingTimeout()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -88,7 +80,7 @@ public class BatchGetAvroStoreClientUnitTest {
         .partitionKeys(2)
         .assignRouteToPartitions("https://host1.linkedin.com", 0)
         .expectRequestWithKeysForPartitionOnRoute(1, 1, "https://host1.linkedin.com", 0)
-        .respondToRequestWithKeyValues((int) TIME_OUT_IN_SECONDS * 2 * 1000, 1)
+        .respondToRequestWithKeyValues((int) CLIENT_TIME_OUT_IN_SECONDS * 2 * 1000, 1)
         .simulate();
 
     callStreamingBatchGetAndVerifyResults(
@@ -97,27 +89,15 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture(),
         true);
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    // Timed out before incrementing any counters
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    // Timed out before incrementing any counters, so pass in all 0s
+    validateMetrics(client, 0, 0, 0, 0);
   }
 
   /**
    * Error case: Setting up Response without setting up request.
    */
-  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = "Must have a corresponding request")
-  public void testSimpleStreamingBatchGetWithoutRequest()
-      throws InterruptedException, ExecutionException, TimeoutException {
-
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = "Must have a corresponding request")
+  public void testSimpleStreamingBatchGetWithoutRequest() {
     TestClientSimulator client = new TestClientSimulator();
     client.generateKeyValues(0, 2)
         .partitionKeys(1)
@@ -129,10 +109,8 @@ public class BatchGetAvroStoreClientUnitTest {
   /**
    * Error case: Bad Timeline: Response occurs before request.
    */
-  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = "Request should happen before response")
-  public void testSimpleStreamingBatchGetWithBadTimeLine()
-      throws InterruptedException, ExecutionException, TimeoutException {
-
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = "Request should happen before response")
+  public void testSimpleStreamingBatchGetWithBadTimeLine() {
     TestClientSimulator client = new TestClientSimulator();
     client.generateKeyValues(0, 2)
         .partitionKeys(1)
@@ -148,7 +126,7 @@ public class BatchGetAvroStoreClientUnitTest {
    * of {@link TestClientSimulator} expects all the keys from the same route to be requested together,
    * if not it will fail. so this test will fail.
    */
-  @Test(expectedExceptions = AssertionError.class, expectedExceptionsMessageRegExp = "Unexpected key.*")
+  @Test(timeOut = TEST_TIMEOUT, expectedExceptions = AssertionError.class, expectedExceptionsMessageRegExp = "Unexpected key.*")
   public void testSimpleStreamingBatchGetWithBadTimeLineWithSameRoute()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -165,17 +143,7 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    fail("Expected to throw an exception");
   }
 
   /**
@@ -183,7 +151,7 @@ public class BatchGetAvroStoreClientUnitTest {
    * so client will be an instance of {@link RetriableAvroGenericStoreClient}, but multiGet should not support retry.
    * This test case will fail if we retry multiGet when retry for multiGet is not enabled.
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testSimpleStreamingBatchGetAndLongTailRetryEnabledForSingleGet()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -202,23 +170,13 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    validateMetrics(client, 1000, 1000, 0, 0);
   }
 
   /**
    * Similar to {@link #testSimpleStreamingBatchGet} but with multiple partitions
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testSimpleStreamingBatchGetMultiplePartitions()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -235,29 +193,19 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    validateMetrics(client, 1000, 1000, 0, 0);
   }
 
   /**
    * Adding multiple routes on top of {@link #testSimpleStreamingBatchGetMultiplePartitions}
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetMultipleRoutesAndPartitions()
       throws InterruptedException, ExecutionException, TimeoutException {
 
     TestClientSimulator client = new TestClientSimulator();
-    client.generateKeyValues(0, 12)
-        .partitionKeys(3)
+    client.generateKeyValues(0, NUM_KEYS)
+        .partitionKeys(NUM_PARTITIONS)
         .assignRouteToPartitions("https://host0.linkedin.com", 0)
         .assignRouteToPartitions("https://host1.linkedin.com", 1)
         .assignRouteToPartitions("https://host2.linkedin.com", 2)
@@ -274,17 +222,7 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    validateMetrics(client, NUM_KEYS, NUM_KEYS, 0, 0);
   }
 
   /**
@@ -292,13 +230,13 @@ public class BatchGetAvroStoreClientUnitTest {
    * parallel execution of response: By changing the input timeticks of requests. Just an additional check to make
    * sure the timeticks are working as expected.
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetMultipleRoutesAndPartitionsV2()
       throws InterruptedException, ExecutionException, TimeoutException {
 
     TestClientSimulator client = new TestClientSimulator();
-    client.generateKeyValues(0, 12)
-        .partitionKeys(3)
+    client.generateKeyValues(0, NUM_KEYS)
+        .partitionKeys(NUM_PARTITIONS)
         .assignRouteToPartitions("https://host0.linkedin.com", 0)
         .assignRouteToPartitions("https://host1.linkedin.com", 1)
         .assignRouteToPartitions("https://host2.linkedin.com", 2)
@@ -315,29 +253,19 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    validateMetrics(client, NUM_KEYS, NUM_KEYS, 0, 0);
   }
 
   /**
    * Introducing >1 replicas: By setting multiple routes to each partitions
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetMultiplePartitionsPerRoute()
       throws InterruptedException, ExecutionException, TimeoutException {
 
     TestClientSimulator client = new TestClientSimulator();
-    client.generateKeyValues(0, 12)
-        .partitionKeys(3)
+    client.generateKeyValues(0, NUM_KEYS)
+        .partitionKeys(NUM_PARTITIONS)
         .assignRouteToPartitions("https://host0.linkedin.com", 0, 1)
         .assignRouteToPartitions("https://host1.linkedin.com", 1, 2)
         .assignRouteToPartitions("https://host2.linkedin.com", 2, 0)
@@ -364,17 +292,7 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    validateMetrics(client, NUM_KEYS, NUM_KEYS, 0, 0);
   }
 
   /**
@@ -388,7 +306,7 @@ public class BatchGetAvroStoreClientUnitTest {
   /**
    * In this test: retry is not triggered as all the responses are received within 10 timeticks.
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsNoRetryTriggered()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -407,24 +325,14 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    validateMetrics(client, NUM_KEYS, NUM_KEYS, 0, 0);
   }
 
   /**
    * Retry for requestId 3 is triggered after 50 timeticks (requestId 4).
    * Retry succeeds as response for Original request never comes back.
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsNoOrigResponse()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -444,28 +352,19 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    int expectedNumberOfKeysToBeRetried = NUM_KEYS / NUM_PARTITIONS; // get for 1 partition is retried
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetried);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetried);
+    validateMetrics(
+        client,
+        NUM_KEYS,
+        NUM_KEYS,
+        NUM_KEYS / NUM_PARTITIONS, // get for 1 partition is retried
+        NUM_KEYS / NUM_PARTITIONS); // all retries are successful
   }
 
   /**
    * Retry for requestId 3 is triggered after 50 timeticks (requestId 4).
    * Retry succeeds as response for Original request came after response for retry.
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsOrigResponseLate()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -487,28 +386,19 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    int expectedNumberOfKeysToBeRetried = NUM_KEYS / NUM_PARTITIONS; // get for 1 partition is retried
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetried);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetried);
+    validateMetrics(
+        client,
+        NUM_KEYS,
+        NUM_KEYS,
+        NUM_KEYS / NUM_PARTITIONS, // get for 1 partition is retried
+        NUM_KEYS / NUM_PARTITIONS); // all retries are successful
   }
 
   /**
    * Retry for requestId 3 is triggered after 50 timeticks (requestId 4).
    * Original succeeds as response for Original request came before response for retry.
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsOrigResponseEarly()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -530,27 +420,19 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    int expectedNumberOfKeysToBeRetried = NUM_KEYS / NUM_PARTITIONS; // get for 1 partition is retried
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetried);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    validateMetrics(
+        client,
+        NUM_KEYS,
+        NUM_KEYS,
+        NUM_KEYS / NUM_PARTITIONS, // get for 1 partition is retried
+        0); // none of the retries succeed
   }
 
   /**
    * Retry for requestId 2 is triggered after 50 timeticks (requestId 4) => Response for 2 is returned before response for 4 (which never returns)
    * Retry for requestId 3 is triggered after 50 timeticks (requestId 5) => Response for 5 is returned before response for 3 (which never returns)
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetLongTailRetryMultiplePartitionsMixedResponse()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -573,22 +455,12 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    int expectedNumberOfKeysToBeRetried = (NUM_KEYS / NUM_PARTITIONS) * 2; // get for 2 partitions are retried
-    int expectedNumberOfKeysToBeRetriedSuccessfully = NUM_KEYS / NUM_PARTITIONS; // retry for 1 partition wins
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetried);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetriedSuccessfully);
+    validateMetrics(
+        client,
+        NUM_KEYS,
+        NUM_KEYS,
+        (NUM_KEYS / NUM_PARTITIONS) * 2, // get for 2 partitions are retried
+        NUM_KEYS / NUM_PARTITIONS); // retry for 1 partition wins
   }
 
   /**
@@ -597,7 +469,7 @@ public class BatchGetAvroStoreClientUnitTest {
    * the same as the error is handled in {@link RetriableAvroGenericStoreClient#getStreamingCallback} such that the
    * exception will be thrown further up only when both the original request and the retry fails.
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetLongTailRetryOriginalRequestErrorBeforeRetry()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -622,29 +494,19 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     /** same as {@link #testStreamingBatchGetLongTailRetryMultiplePartitionsMixedResponse} */
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    int expectedNumberOfKeysToBeRetried = (NUM_KEYS / NUM_PARTITIONS) * 2; // get for 2 partitions are retried
-    int expectedNumberOfKeysToBeRetriedSuccessfully = NUM_KEYS / NUM_PARTITIONS; // retry for 1 partition wins
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetried);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetriedSuccessfully);
+    validateMetrics(
+        client,
+        NUM_KEYS,
+        NUM_KEYS,
+        (NUM_KEYS / NUM_PARTITIONS) * 2, // get for 2 partitions are retried
+        NUM_KEYS / NUM_PARTITIONS); // retry for 1 partition wins
   }
 
   /**
    * same as {@link #testStreamingBatchGetLongTailRetryOriginalRequestErrorBeforeRetry} but requestId 3 returns Error
    * after the retry for it (requestId 5) starts. It works the same way.
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetLongTailRetryOriginalRequestErrorAfterRetry()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -669,28 +531,18 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture());
 
     /** same as {@link #testStreamingBatchGetLongTailRetryMultiplePartitionsMixedResponse} */
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    int expectedNumberOfKeysToBeRetried = (NUM_KEYS / NUM_PARTITIONS) * 2; // get for 2 partitions are retried
-    int expectedNumberOfKeysToBeRetriedSuccessfully = NUM_KEYS / NUM_PARTITIONS; // retry for 1 partition wins
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetried);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetriedSuccessfully);
+    validateMetrics(
+        client,
+        NUM_KEYS,
+        NUM_KEYS,
+        (NUM_KEYS / NUM_PARTITIONS) * 2, // get for 2 partitions are retried
+        NUM_KEYS / NUM_PARTITIONS); // retry for 1 partition wins
   }
 
   /**
    * Similar to the above cases but the retry errors out while the original succeeds
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetLongTailRetryRequestError()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -712,26 +564,18 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getRequestedKeyValues(),
         client.getSimulatorCompleteFuture());
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    int expectedNumberOfKeysToBeRetried = NUM_KEYS / NUM_PARTITIONS; // get for 1 partitions are retried
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetried);
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    validateMetrics(
+        client,
+        NUM_KEYS,
+        NUM_KEYS,
+        NUM_KEYS / NUM_PARTITIONS, // get for 1 partitions are retried
+        0); // no retries are successful
   }
 
   /**
    * Both Original request and retry errors out
    */
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStreamingBatchGetLongTailBothError()
       throws InterruptedException, ExecutionException, TimeoutException {
 
@@ -754,29 +598,17 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture(),
         true);
 
-    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    int expectedNumberOfKeysToBeRetried = NUM_KEYS / NUM_PARTITIONS; // get for 1 partitions are retried
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-    assertTrue(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
-
     /**
      *  When the request is closed exceptionally (when both original request and the retry throws exception),
      *  only unhealthy counters gets incremented, so not checking for retry related metrics being true here.
      *  Check {@link StatsAvroGenericStoreClient#recordRequestMetrics} for more details.
      */
-    // The 1 following assert should have been true but counters are not incremented as mentioned above
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-            .value() > 0);
-    // The 1 following assert should have been true but counters are not incremented as mentioned above
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max")
-            .value() == expectedNumberOfKeysToBeRetried);
-
-    assertFalse(
-        metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
+    validateMetrics(
+        client,
+        NUM_KEYS,
+        0,
+        0, // metric not incremented as mentioned above
+        0); // no retries are successful: But again, metrics won't be incremented
   }
 
   private TestClientSimulator setupLongTailRetryWithMultiplePartitions(TestClientSimulator client) {
@@ -862,15 +694,80 @@ public class BatchGetAvroStoreClientUnitTest {
 
     /**
      * Below get() on {@link allCompletionFuture} makes the test wait until both the simulation
-     * and record completion is done and validated within {@link TIME_OUT_IN_SECONDS}
+     * and record completion is done and validated within {@link CLIENT_TIME_OUT_IN_SECONDS}
      */
     try {
-      allCompletionFuture.get(TIME_OUT_IN_SECONDS, TimeUnit.SECONDS);
+      allCompletionFuture.get(CLIENT_TIME_OUT_IN_SECONDS, TimeUnit.SECONDS);
     } catch (Exception exception) {
       if (expectedError) {
         LOGGER.info("Test completed successfully because was expecting an exception");
       } else
         throw exception;
+    }
+  }
+
+  private void validateMetrics(
+      TestClientSimulator client,
+      double totalNumberOfKeys,
+      double totalNumberOfSuccessfulKeys,
+      double expectedNumberOfKeysToBeRetried,
+      double expectedNumberOfKeysToBeRetriedSuccessfully) {
+    Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
+    if (totalNumberOfKeys > 0) {
+      assertTrue(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
+      assertEquals(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_request_key_count.Max").value(),
+          totalNumberOfKeys);
+    } else {
+      assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_request_key_count.Max").value() > 0);
+    }
+
+    if (totalNumberOfSuccessfulKeys > 0) {
+      assertTrue(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
+      assertEquals(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_success_request_key_count.Max").value(),
+          totalNumberOfSuccessfulKeys);
+      assertFalse(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
+    } else {
+      assertFalse(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
+      assertFalse(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_success_request_key_count.Max").value() > 0);
+      if (totalNumberOfKeys > 0) {
+        assertTrue(
+            metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
+      } else {
+        assertFalse(
+            metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
+      }
+    }
+
+    if (expectedNumberOfKeysToBeRetried > 0) {
+      assertTrue(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
+              .value() > 0);
+      assertEquals(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max").value(),
+          expectedNumberOfKeysToBeRetried);
+    } else {
+      assertFalse(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
+              .value() > 0);
+      assertFalse(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max").value() > 0);
+    }
+
+    if (expectedNumberOfKeysToBeRetriedSuccessfully > 0) {
+      assertEquals(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max").value(),
+          expectedNumberOfKeysToBeRetriedSuccessfully);
+    } else {
+      assertFalse(
+          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
+              .value() > 0);
     }
   }
 
