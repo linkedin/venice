@@ -16,7 +16,6 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -2824,11 +2823,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         valueManifestContainer);
 
     final byte[] updatedValueBytes;
-    // Samza VeniceWriter doesn't handle chunking config properly. It reads chunking config
-    // from user's input instead of getting it from store's metadata repo. This causes SN
-    // to der-se of keys a couple of times.
-    final byte[] updatedKeyBytes =
-        isChunked ? ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes) : keyBytes;
     final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
 
     try {
@@ -2880,8 +2874,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       updatedPut.putValue = updateValueWithSchemaId;
       updatedPut.schemaId = readerValueSchemaId;
 
-      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
-          .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
+      LeaderProducedRecordContext leaderProducedRecordContext =
+          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, updatedPut);
 
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
           (callback, leaderMetadataWrapper) -> veniceWriter.get()

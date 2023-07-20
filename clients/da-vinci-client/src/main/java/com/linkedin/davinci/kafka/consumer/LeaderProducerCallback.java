@@ -141,7 +141,11 @@ class LeaderProducerCallback implements ChunkAwareCallback {
                   currentTimeForMetricsMs);
         }
       }
-
+      // update the keyBytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in
+      // VeniceWriter.
+      if (key != null) {
+        leaderProducedRecordContext.setKeyBytes(key);
+      }
       int producedRecordNum = 0;
       int producedRecordSize = 0;
       // produce to drainer buffer service for further processing.
@@ -151,11 +155,6 @@ class LeaderProducerCallback implements ChunkAwareCallback {
          * Otherwise, queue the chunks and manifest individually to drainer service.
          */
         if (chunkedValueManifest == null) {
-          // update the keyBytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in
-          // VeniceWriter.
-          if (key != null) {
-            leaderProducedRecordContext.setKeyBytes(key);
-          }
           leaderProducedRecordContext.setProducedOffset(produceResult.getOffset());
           ingestionTask.produceToStoreBufferService(
               sourceConsumerRecord,

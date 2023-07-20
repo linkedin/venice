@@ -19,7 +19,11 @@ public interface ChunkAwareCallback extends PubSubProducerCallback {
    *
    * @param key A byte[] corresponding to the top-level key written to Kafka, potentially including a chunking suffix
    * @param valueChunks An array of {@link ByteBuffer} where the backing array has sufficient headroom to prepend Venice's header
-   * @param chunkedValueManifest The {@link ChunkedValueManifest} of the chunked value
+   * @param chunkedValueManifest The {@link ChunkedValueManifest} of the new chunked value
+   * @param rmdChunks An array of {@link ByteBuffer} where the backing array has sufficient headroom to prepend Venice's header
+   * @param chunkedRmdManifest The {@link ChunkedValueManifest} of the new chunked RMD
+   * @param oldValueManifest The {@link ChunkedValueManifest} of the previous chunked value
+   * @param oldRmdManifest The {@link ChunkedValueManifest} of the previous chunked RMD
    */
   void setChunkingInfo(
       byte[] key,

@@ -15,7 +15,6 @@ import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
-import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -506,7 +505,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       producePutOrDeleteToKafka(
           mergeConflictResult,
           partitionConsumptionState,
-          msgType,
           keyBytes,
           consumerRecord,
           subPartition,
@@ -630,7 +628,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private void producePutOrDeleteToKafka(
       MergeConflictResult mergeConflictResult,
       PartitionConsumptionState partitionConsumptionState,
-      MessageType msgType,
       byte[] key,
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       int subPartition,
@@ -649,10 +646,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
     final ByteBuffer updatedRmdBytes =
         rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
-    // Since data is not chunked in RT but chunked in VT, creating the key for the small record case or CVM to be
-    // used to persist on disk after producing to Kafka.
-    final byte[] updatedKeyBytes =
-        isChunked ? ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key) : key;
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {
       hostLevelIngestionStats.recordTombstoneCreatedDCR();
@@ -722,8 +715,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
-          LeaderProducedRecordContext
-              .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut),
+          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), key, updatedPut),
           produceToTopicFunction,
           subPartition,
           kafkaUrl,
