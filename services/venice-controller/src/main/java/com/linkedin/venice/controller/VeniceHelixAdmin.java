@@ -4700,8 +4700,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void deleteHelixResource(String clusterName, String kafkaTopic) {
     checkControllerLeadershipFor(clusterName);
-    List<String> instances = getStorageNodes(clusterName);
 
+    getHelixAdminClient().dropResource(clusterName, kafkaTopic);
+    LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
+
+    List<String> instances = getStorageNodes(clusterName);
     for (String instance: instances) {
       Map<String, List<String>> disabledPartitions =
           getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
@@ -4713,9 +4716,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       }
     }
-
-    getHelixAdminClient().dropResource(clusterName, kafkaTopic);
-    LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
   }
 
   /**
