@@ -353,15 +353,10 @@ public class PartialUpdateTest {
     String parentControllerUrl = parentController.getControllerUrl();
     String keySchemaStr = "{\"type\" : \"string\"}";
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
-    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
     ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
-    // when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1)).thenReturn(new RmdSchemaEntry(1, 1, rmdSchema));
     when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, partialUpdateSchema));
     when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
-    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
-        new StringAnnotatedStoreSchemaCache(storeName, schemaRepo);
-    // RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
