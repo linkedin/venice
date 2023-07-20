@@ -94,10 +94,13 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
     try (
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), zkServerWrapper, venice.getKafka())
-                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                .extraProperties(properties)
-                .build());
+            new VeniceControllerCreateOptions.Builder(
+                venice.getClusterName(),
+                zkServerWrapper,
+                venice.getPubSubBrokerWrapper())
+                    .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                    .extraProperties(properties)
+                    .build());
         ControllerClient parentControllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
       String storeName = Utils.getUniqueString("testStore");
@@ -123,10 +126,13 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(REPLICATION_METADATA_VERSION, String.valueOf(1));
     try (
         VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), zkServerWrapper, venice.getKafka())
-                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                .extraProperties(properties)
-                .build());
+            new VeniceControllerCreateOptions.Builder(
+                venice.getClusterName(),
+                zkServerWrapper,
+                venice.getPubSubBrokerWrapper())
+                    .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                    .extraProperties(properties)
+                    .build());
         ControllerClient parentControllerClient =
             new ControllerClient(venice.getClusterName(), parentControllerWrapper.getControllerUrl())) {
       // Adding store
@@ -243,10 +249,13 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
     try (
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), zkServerWrapper, venice.getKafka())
-                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                .extraProperties(properties)
-                .build());
+            new VeniceControllerCreateOptions.Builder(
+                venice.getClusterName(),
+                zkServerWrapper,
+                venice.getPubSubBrokerWrapper())
+                    .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                    .extraProperties(properties)
+                    .build());
         ControllerClient parentControllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
       String storeName = Utils.getUniqueString("testStore");
@@ -303,9 +312,12 @@ public class VeniceParentHelixAdminTest {
   @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
   public void testHybridAndETLStoreConfig() {
     try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), zkServerWrapper, venice.getKafka())
-            .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-            .build())) {
+        new VeniceControllerCreateOptions.Builder(
+            venice.getClusterName(),
+            zkServerWrapper,
+            venice.getPubSubBrokerWrapper())
+                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                .build())) {
       String controllerUrl = parentControllerWrapper.getControllerUrl();
 
       // Adding store

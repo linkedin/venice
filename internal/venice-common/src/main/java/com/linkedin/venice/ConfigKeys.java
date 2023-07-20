@@ -1965,4 +1965,10 @@ public class ConfigKeys {
    * Old state clearing is disabled if this config is set to -1.
    */
   public static final String DIV_PRODUCER_STATE_MAX_AGE_MS = "div.producer.state.max.age.ms";
+
+  public static final String PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS = "pub.sub.admin.adapter.factory.class";
+
+  public static final String PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS = "pub.sub.producer.adapter.factory.class";
+
+  public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
 }

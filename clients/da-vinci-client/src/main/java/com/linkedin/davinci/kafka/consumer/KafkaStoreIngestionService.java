@@ -66,7 +66,6 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
@@ -266,7 +265,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     VeniceWriterFactory veniceWriterFactory =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
-    VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter = new VeniceWriterFactory(veniceWriterProperties);
+    VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter =
+        new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, null);
 
     EventThrottler bandwidthThrottler = new EventThrottler(
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),
@@ -310,7 +310,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setMetricsRepository(metricsRepository)
         .setLocalKafkaBootstrapServers(serverConfig.getKafkaBootstrapServers())
-        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
+        .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
         .setTopicDeletionStatusPollIntervalMs(DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS)
         .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
@@ -407,7 +407,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
     aggKafkaConsumerService = new AggKafkaConsumerService(
-        new ApacheKafkaConsumerAdapterFactory(),
+        pubSubClientsFactory.getConsumerAdapterFactory(),
         this::getPubSubSSLPropertiesFromServerConfig,
         serverConfig,
         bandwidthThrottler,

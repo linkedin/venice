@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -47,7 +48,7 @@ public class TestKafkaInputFormat {
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100L,
                 24 * Time.MS_PER_HOUR,
-                pubSubBrokerWrapper.getAddress(),
+                pubSubBrokerWrapper,
                 pubSubTopicRepository)
             .getTopicManager();
   }
@@ -61,7 +62,10 @@ public class TestKafkaInputFormat {
   public String getTopic(int numRecord, int numPartition) {
     String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
     manager.createTopic(pubSubTopicRepository.getTopic(topicName), numPartition, 1, true);
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(pubSubBrokerWrapper.getAddress());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory veniceWriterFactory =
+        TestUtils.getVeniceWriterFactory(pubSubBrokerWrapper.getAddress(), pubSubProducerAdapterFactory);
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {
       for (int i = 0; i < numRecord; ++i) {

@@ -64,6 +64,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.security.SSLFactory;
@@ -2579,8 +2580,9 @@ public class VenicePushJob implements AutoCloseable {
 
   private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(TopicInfo topicInfo) {
     if (veniceWriter == null) {
-      // Initialize VeniceWriter
-      VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(topicInfo));
+      // Initialize VeniceWriter, TODO: passing configurable PubSubProducerAdapter
+      VeniceWriterFactory veniceWriterFactory =
+          new VeniceWriterFactory(getVeniceWriterProperties(topicInfo), new ApacheKafkaProducerAdapterFactory(), null);
       Properties partitionerProperties = new Properties();
       partitionerProperties.putAll(topicInfo.partitionerParams);
       VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(

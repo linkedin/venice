@@ -17,6 +17,7 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -47,6 +48,7 @@ import org.testng.annotations.Test;
 public abstract class TestRestartServerDuringIngestion {
   private VeniceClusterWrapper cluster;
   private VeniceServerWrapper serverWrapper;
+  private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
 
   protected abstract PersistenceType getPersistenceType();
 
@@ -70,6 +72,9 @@ public abstract class TestRestartServerDuringIngestion {
     int partitionSize = 1000;
     cluster = ServiceFactory
         .getVeniceCluster(numberOfController, 0, numberOfRouter, replicaFactor, partitionSize, false, false);
+    pubSubProducerAdapterFactory =
+        cluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+
     serverWrapper = cluster.addVeniceServer(new Properties(), getVeniceServerProperties());
   }
 
@@ -115,7 +120,7 @@ public abstract class TestRestartServerDuringIngestion {
     }
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl, pubSubProducerAdapterFactory);
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
@@ -262,7 +267,7 @@ public abstract class TestRestartServerDuringIngestion {
     }
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl, pubSubProducerAdapterFactory);
 
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {

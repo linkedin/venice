@@ -199,7 +199,7 @@ public class PartialUpdateTest {
       Properties props =
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
       props.setProperty(SOURCE_KAFKA, "true");
-      props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+      props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
       props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
       // intentionally stop re-consuming from RT so stale records don't affect the testing results
       // props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
@@ -626,7 +626,7 @@ public class PartialUpdateTest {
       Properties props =
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
       props.setProperty(SOURCE_KAFKA, "true");
-      props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+      props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
       props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
       // intentionally stop re-consuming from RT so stale records don't affect the testing results
       props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);

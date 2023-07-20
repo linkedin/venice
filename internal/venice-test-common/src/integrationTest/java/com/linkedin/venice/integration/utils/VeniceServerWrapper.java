@@ -14,6 +14,9 @@ import static com.linkedin.venice.ConfigKeys.LOCAL_D2_ZK_HOST;
 import static com.linkedin.venice.ConfigKeys.MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
@@ -228,6 +231,15 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true)
           .put(LOCAL_CONTROLLER_D2_SERVICE_NAME, VeniceControllerWrapper.D2_SERVICE_NAME)
           .put(LOCAL_D2_ZK_HOST, zkAddress)
+          .put(
+              PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+              pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory().getClass().getName())
+          .put(
+              PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+              pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory().getClass().getName())
+          .put(
+              PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
+              pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory().getClass().getName())
           .put(configProperties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
@@ -277,8 +289,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
                 .setMetricsRepository(new MetricsRepository())
                 .setSslFactory(sslFactory)
                 .setClientConfigForConsumer(consumerClientConfig)
-                .setServiceDiscoveryAnnouncers(d2Servers)
-                .setPubSubClientsFactory(pubSubBrokerWrapper.getPubSubClientsFactory());
+                .setServiceDiscoveryAnnouncers(d2Servers);
 
         TestVeniceServer server = new TestVeniceServer(serverContextBuilder.build());
         return new VeniceServerWrapper(
@@ -407,7 +418,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             .setMetricsRepository(new MetricsRepository())
             .setSslFactory(sslFactory)
             .setClientConfigForConsumer(consumerClientConfig)
-            .setPubSubClientsFactory(pubSubClientsFactory)
             .build());
   }
 
@@ -481,7 +491,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         .setMetricsRepository(new MetricsRepository())
         .setSslFactory(ssl ? SslUtils.getVeniceLocalSslFactory() : null)
         .setClientConfigForConsumer(consumerClientConfig)
-        .setPubSubClientsFactory(ServiceFactory.getPubSubClientsFactory())
         .build();
     TestVeniceServer server = new TestVeniceServer(serverContext);
 
