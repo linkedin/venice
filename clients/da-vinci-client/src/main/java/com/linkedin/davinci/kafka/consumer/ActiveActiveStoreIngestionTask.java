@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -52,7 +53,6 @@ import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -670,7 +670,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                   key,
                   callback,
                   sourceTopicOffset,
-                  new DeleteMetadata(valueSchemaId, rmdProtocolVersionID, updatedRmdBytes));
+                  APP_DEFAULT_LOGICAL_TS,
+                  new DeleteMetadata(valueSchemaId, rmdProtocolVersionID, updatedRmdBytes),
+                  oldValueManifest,
+                  oldRmdManifest);
       LeaderProducedRecordContext leaderProducedRecordContext =
           LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), key, deletePayload);
       produceToLocalKafka(
@@ -1402,7 +1405,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               valueSchemaId,
               callback,
               leaderMetadataWrapper,
-              VeniceWriter.APP_DEFAULT_LOGICAL_TS,
+              APP_DEFAULT_LOGICAL_TS,
               new PutMetadata(getRmdProtocolVersionID(), updatedRmdBytes),
               oldValueManifest,
               oldRmdManifest);

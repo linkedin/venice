@@ -204,9 +204,9 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               currentTimeForMetricsMs);
           producedRecordNum++;
           producedRecordSize += key.length + manifest.remaining();
-          produceDeprecatedChunkDeletionToStoreBufferService(oldValueManifest, currentTimeForMetricsMs);
-          produceDeprecatedChunkDeletionToStoreBufferService(oldRmdManifest, currentTimeForMetricsMs);
         }
+        produceDeprecatedChunkDeletionToStoreBufferService(oldValueManifest, currentTimeForMetricsMs);
+        produceDeprecatedChunkDeletionToStoreBufferService(oldRmdManifest, currentTimeForMetricsMs);
         recordProducerStats(producedRecordSize, producedRecordNum);
 
       } catch (Exception oe) {

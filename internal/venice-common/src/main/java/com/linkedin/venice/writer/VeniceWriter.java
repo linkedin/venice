@@ -535,6 +535,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         APP_DEFAULT_LOGICAL_TS);
   }
 
+  private Future<PubSubProduceResult> delete(
+      K key,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      DeleteMetadata deleteMetadata) {
+    return delete(key, callback, leaderMetadataWrapper, logicalTs, deleteMetadata, null, null);
+  }
+
   /**
    * Execute a standard "delete" on the key.
    *
@@ -551,12 +560,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  private Future<PubSubProduceResult> delete(
+  public Future<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
       long logicalTs,
-      DeleteMetadata deleteMetadata) {
+      DeleteMetadata deleteMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     int partition = getPartition(serializedKey);
 
@@ -573,7 +584,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
+      ((ChunkAwareCallback) callback)
+          .setChunkingInfo(serializedKey, null, null, null, null, oldValueManifest, oldRmdManifest);
     }
 
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
@@ -589,7 +601,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       delete.replicationMetadataPayload = deleteMetadata.getRmdPayload();
     }
 
-    return sendMessage(
+    Future<PubSubProduceResult> produceResultFuture = sendMessage(
         producerMetadata -> kafkaKey,
         MessageType.DELETE,
         delete,
@@ -597,6 +609,23 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         callback,
         leaderMetadataWrapper,
         logicalTs);
+    PubSubProducerCallback chunkCallback = callback == null ? null : new ErrorPropagationCallback(callback);
+    DeleteMetadata deleteMetadataForOldChunk =
+        new DeleteMetadata(delete.schemaId, delete.replicationMetadataVersionId, VeniceWriter.EMPTY_BYTE_BUFFER);
+    deleteDeprecatedChunksFromManifest(
+        oldValueManifest,
+        partition,
+        chunkCallback,
+        leaderMetadataWrapper,
+        deleteMetadataForOldChunk);
+    deleteDeprecatedChunksFromManifest(
+        oldRmdManifest,
+        partition,
+        chunkCallback,
+        leaderMetadataWrapper,
+        deleteMetadataForOldChunk);
+
+    return produceResultFuture;
   }
 
   /**
@@ -606,7 +635,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param value - The value to be associated with the given key
    * @param valueSchemaId - value schema id for the given value
    * @param callback - Callback function invoked by Kafka producer after sending the message
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * @return a java.util.concurrent.Future. Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
@@ -764,8 +793,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (callback instanceof ChunkAwareCallback) {
-      // TODO: in this case, also produce chunk deletion.
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null, null, null);
+      ((ChunkAwareCallback) callback)
+          .setChunkingInfo(serializedKey, null, null, null, null, oldValueManifest, oldRmdManifest);
     }
 
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
@@ -782,7 +811,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       putPayload.replicationMetadataVersionId = putMetadata.getRmdVersionId();
       putPayload.replicationMetadataPayload = putMetadata.getRmdPayload();
     }
-    return sendMessage(
+    Future<PubSubProduceResult> produceResultFuture = sendMessage(
         producerMetadata -> kafkaKey,
         MessageType.PUT,
         putPayload,
@@ -790,6 +819,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         callback,
         leaderMetadataWrapper,
         logicalTs);
+    DeleteMetadata deleteMetadata =
+        new DeleteMetadata(valueSchemaId, putPayload.replicationMetadataVersionId, VeniceWriter.EMPTY_BYTE_BUFFER);
+    PubSubProducerCallback chunkCallback = callback == null ? null : new ErrorPropagationCallback(callback);
+    deleteDeprecatedChunksFromManifest(
+        oldValueManifest,
+        partition,
+        chunkCallback,
+        leaderMetadataWrapper,
+        deleteMetadata);
+    deleteDeprecatedChunksFromManifest(oldRmdManifest, partition, chunkCallback, leaderMetadataWrapper, deleteMetadata);
+
+    return produceResultFuture;
   }
 
   /**
