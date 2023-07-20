@@ -90,7 +90,7 @@ public class ParticipantStoreTest {
         new VeniceControllerCreateOptions.Builder(
             veniceClusterWrapper.getClusterName(),
             parentZk,
-            veniceClusterWrapper.getKafka())
+            veniceClusterWrapper.getPubSubBrokerWrapper())
                 .childControllers(veniceClusterWrapper.getVeniceControllers().toArray(new VeniceControllerWrapper[0]))
                 .extraProperties(controllerConfig)
                 .build());

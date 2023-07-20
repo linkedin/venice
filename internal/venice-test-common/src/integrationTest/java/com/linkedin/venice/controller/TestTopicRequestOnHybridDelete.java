@@ -190,7 +190,7 @@ public class TestTopicRequestOnHybridDelete {
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,
         0l,
-        venice.getKafka().getAddress(),
+        venice.getPubSubBrokerWrapper(),
         pubSubTopicRepository)) {
 
       TopicManager topicManager = topicManagerRepository.getTopicManager();

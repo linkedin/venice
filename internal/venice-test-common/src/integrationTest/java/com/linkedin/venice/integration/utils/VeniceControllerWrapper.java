@@ -39,6 +39,9 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
@@ -112,8 +115,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final MetricsRepository metricsRepository;
   private final String regionName;
 
-  private final PubSubClientsFactory pubSubClientsFactory;
-
   private VeniceControllerWrapper(
       String regionName,
       String serviceName,
@@ -125,8 +126,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       boolean isParent,
       List<ServiceDiscoveryAnnouncer> d2ServerList,
       String zkAddress,
-      MetricsRepository metricsRepository,
-      PubSubClientsFactory pubSubClientsFactory) {
+      MetricsRepository metricsRepository) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.configs = configs;
@@ -137,7 +137,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.d2ServerList = d2ServerList;
     this.metricsRepository = metricsRepository;
     this.regionName = regionName;
-    this.pubSubClientsFactory = pubSubClientsFactory;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(VeniceControllerCreateOptions options) {
@@ -165,6 +164,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         clusterToServerD2 = options.getClusterToServerD2();
       }
 
+      PubSubClientsFactory pubSubClientsFactory = options.getKafkaBroker().getPubSubClientsFactory();
       for (String clusterName: options.getClusterNames()) {
         VeniceProperties clusterProps = IntegrationTestUtils
             .getClusterProps(clusterName, options.getZkAddress(), options.getKafkaBroker(), options.isSslToKafka());
@@ -211,6 +211,15 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
             .put(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true)
+            .put(
+                PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+                pubSubClientsFactory.getProducerAdapterFactory().getClass().getName())
+            .put(
+                PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+                pubSubClientsFactory.getConsumerAdapterFactory().getClass().getName())
+            .put(
+                PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
+                pubSubClientsFactory.getAdminAdapterFactory().getClass().getName())
             .put(extraProps.toProperties());
 
         if (sslEnabled) {
@@ -341,7 +350,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           .setD2Client(d2Client)
           .setRouterClientConfig(consumerClientConfig.orElse(null))
           .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
-          .setPubSubClientsFactory(options.getKafkaBroker().getPubSubClientsFactory())
           .build();
       VeniceController veniceController = new VeniceController(ctx);
       return new VeniceControllerWrapper(
@@ -355,8 +363,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           options.isParent(),
           d2ServerList,
           options.getZkAddress(),
-          metricsRepository,
-          options.getKafkaBroker().getPubSubClientsFactory());
+          metricsRepository);
     };
   }
 
@@ -432,7 +439,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         new VeniceControllerContext.Builder().setPropertiesList(configs)
             .setServiceDiscoveryAnnouncers(d2ServerList)
             .setD2Client(d2Client)
-            .setPubSubClientsFactory(pubSubClientsFactory)
             .build());
   }
 

@@ -45,9 +45,6 @@ import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
@@ -70,7 +67,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -154,11 +150,6 @@ public class VeniceServer {
             .setClientConfigForConsumer(clientConfigForConsumer.orElse(null))
             .setIcProvider(icProvider)
             .setServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers)
-            .setPubSubClientsFactory(
-                new PubSubClientsFactory(
-                    new ApacheKafkaProducerAdapterFactory(),
-                    new ApacheKafkaConsumerAdapterFactory(),
-                    new ApacheKafkaAdminAdapterFactory()))
             .build());
   }
 
@@ -182,7 +173,8 @@ public class VeniceServer {
     this.metricsRepository = ctx.getMetricsRepository();
     this.icProvider = ctx.getIcProvider();
     this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
-    this.pubSubClientsFactory = Objects.requireNonNull(ctx.getPubSubClientsFactory(), "PubSubClientsFactory is null");
+    VeniceServerConfig veniceServerConfig = ctx.getVeniceConfigLoader().getVeniceServerConfig();
+    this.pubSubClientsFactory = veniceServerConfig.getPubSubClientsFactory();
     this.sslFactory = Optional.ofNullable(ctx.getSslFactory());
     this.routerAccessController = Optional.ofNullable(ctx.getRouterAccessController());
     this.storeAccessController = Optional.ofNullable(ctx.getStoreAccessController());
@@ -726,13 +718,8 @@ public class VeniceServer {
   }
 
   public static void run(VeniceConfigLoader veniceConfigService, boolean joinThread) throws Exception {
-    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
-        new ApacheKafkaProducerAdapterFactory(),
-        new ApacheKafkaConsumerAdapterFactory(),
-        new ApacheKafkaAdminAdapterFactory());
-    VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService)
-        .setPubSubClientsFactory(pubSubClientsFactory)
-        .build();
+    VeniceServerContext serverContext =
+        new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService).build();
     final VeniceServer server = new VeniceServer(serverContext);
     if (!server.isStarted()) {
       server.start();

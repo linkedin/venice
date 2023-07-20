@@ -26,6 +26,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -290,8 +291,12 @@ public class HelixParticipationService extends AbstractVeniceService
     zkClient = ZkClientFactory.newZkClient(zkAddress);
 
     // we use push status store for persisting incremental push statuses
-    VeniceProperties veniceProperties = veniceConfigLoader.getVeniceServerConfig().getClusterProperties();
-    VeniceWriterFactory writerFactory = new VeniceWriterFactory(veniceProperties.toProperties());
+    VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
+    VeniceProperties veniceProperties = veniceServerConfig.getClusterProperties();
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory writerFactory =
+        new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
     statusStoreWriter = new PushStatusStoreWriter(
         writerFactory,
         instance.getNodeId(),
