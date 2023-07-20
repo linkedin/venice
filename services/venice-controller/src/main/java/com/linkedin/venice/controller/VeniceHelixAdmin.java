@@ -4860,7 +4860,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType)
    */
-  @Override
   public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
     return addValueSchema(
         clusterName,
@@ -4875,6 +4874,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * containing the schema and its id.
    * @return an <code>SchemaEntry</code> object composed of a schema and its corresponding id.
    */
+  @Override
   public SchemaEntry addValueSchema(
       String clusterName,
       String storeName,
