@@ -82,7 +82,6 @@ public class TestStreaming {
   private int valueSchemaId;
   private String storeName;
   private CompressorFactory compressorFactory;
-
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
   private VeniceWriter<Object, Object, Object> veniceWriter;
@@ -340,11 +339,12 @@ public class TestStreaming {
         Assert.assertTrue(metrics.get(metricPrefix + "--compute_streaming_response_tt99pr.50thPercentile").value() > 0);
 
         if (readComputeEnabled) {
-          Assert.assertEquals(metrics.get(metricPrefix + "--compute_streaming_multiget_fallback.Total").value(), 0.0);
-        } else {
           Assert.assertEquals(
-              metrics.get(metricPrefix + "--compute_streaming_multiget_fallback.Total").value(),
-              2.0 * rounds * (MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM));
+              metrics.get(metricPrefix + "--compute_streaming_multiget_fallback.OccurrenceRate").value(),
+              0.0);
+        } else {
+          Assert.assertTrue(
+              metrics.get(metricPrefix + "--compute_streaming_multiget_fallback.OccurrenceRate").value() > 0);
         }
 
         LOGGER.info("The following metrics are Router metrics:");

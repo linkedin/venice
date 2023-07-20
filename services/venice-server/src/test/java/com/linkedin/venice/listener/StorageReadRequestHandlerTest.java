@@ -132,7 +132,7 @@ public class StorageReadRequestHandlerTest {
   private final MetadataRetriever metadataRetriever = mock(MetadataRetriever.class);
   private final VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
   private final VenicePartitioner partitioner = new SimplePartitioner();
-  private final int amplificationFactor = 3;
+  private static final int amplificationFactor = 3;
 
   @BeforeMethod
   public void setUp() {

@@ -251,12 +251,13 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
             getName(),
             getFullMetricName("storage_engine_read_compute_serialization_latency")));
 
-    String readComputeEfficiencySensorName = "storage_engine_read_compute_efficiency";
     readComputeEfficiencySensor = registerPerStoreAndTotal(
-        readComputeEfficiencySensorName,
+        "storage_engine_read_compute_efficiency",
         totalStats,
         () -> totalStats.readComputeEfficiencySensor,
-        TehutiUtils.getPercentileStatWithAvgAndMax(getName(), getFullMetricName(readComputeEfficiencySensorName)));
+        new Avg(),
+        new Min(),
+        new Max());
 
     /**
      * Total will reflect counts for the entire server host, while Avg will reflect the counts for each request.

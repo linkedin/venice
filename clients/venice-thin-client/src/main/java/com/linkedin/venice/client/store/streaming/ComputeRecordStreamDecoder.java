@@ -10,18 +10,17 @@ import java.util.List;
 import java.util.concurrent.Executor;
 
 
-public class ComputeRecordStreamDecoder<K, V> extends RecordStreamDecoder<ComputeResponseRecordV1, K, V> {
+public class ComputeRecordStreamDecoder<K, V> extends AbstractRecordStreamDecoder<ComputeResponseRecordV1, K, V> {
   private final RecordDeserializer<StreamingFooterRecordV1> streamingFooterDeserializer;
   private final RecordDeserializer<V> valueDeserializer;
 
   public ComputeRecordStreamDecoder(
       List<K> keyList,
-      StreamingCallback<K, V> callback,
-      StreamingCallback trackingCallback,
+      TrackingStreamingCallback<K, V> callback,
       Executor deserializationExecutor,
       RecordDeserializer<StreamingFooterRecordV1> streamingFooterDeserializer,
       RecordDeserializer<V> valueDeserializer) {
-    super(keyList, callback, trackingCallback, deserializationExecutor);
+    super(keyList, callback, deserializationExecutor);
     this.streamingFooterDeserializer = streamingFooterDeserializer;
     this.valueDeserializer = valueDeserializer;
   }

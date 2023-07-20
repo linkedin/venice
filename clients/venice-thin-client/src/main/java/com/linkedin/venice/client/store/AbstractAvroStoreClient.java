@@ -14,8 +14,9 @@ import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.stats.Reporter;
 import com.linkedin.venice.client.store.streaming.ClientComputeRecordStreamDecoder;
-import com.linkedin.venice.client.store.streaming.ClientComputeStreamingCallback;
+import com.linkedin.venice.client.store.streaming.DelegatingTrackingCallback;
 import com.linkedin.venice.client.store.streaming.MultiGetRecordStreamDecoder;
+import com.linkedin.venice.client.store.streaming.RecordStreamDecoder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -634,59 +635,53 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       return;
     }
 
+    ClientComputeRecordStreamDecoder.Callback<K, GenericRecord> decoderCallback =
+        new ClientComputeRecordStreamDecoder.Callback<K, GenericRecord>(
+            DelegatingTrackingCallback.wrap((StreamingCallback) callback)) {
+          private final Map<String, Object> sharedContext = new HashMap<>();
+
+          @Override
+          public void onRawRecordReceived(K key, GenericRecord value) {
+            if (value != null) {
+              value = ComputeUtils.computeResult(
+                  computeRequest.getComputeRequestVersion(),
+                  computeRequest.getOperations(),
+                  sharedContext,
+                  value,
+                  resultSchema);
+              getStats().ifPresent(stats -> stats.recordMultiGetFallback(1));
+            }
+            onRecordReceived(key, value);
+          }
+
+          @Override
+          public void onRecordReceived(K key, GenericRecord value) {
+            super.onRecordReceived(
+                key,
+                value != null ? new ComputeGenericRecord(value, computeRequest.getValueSchema()) : null);
+          }
+
+          @Override
+          public void onRemoteComputeStateChange(boolean enabled) {
+            remoteComputationAllowed.set(enabled);
+          }
+        };
+
     List<K> keyList = new ArrayList<>(keys);
-
-    Optional<ClientStats> stats = getClientStats(callback);
-    ClientComputeStreamingCallback clientComputeCallback = new ClientComputeStreamingCallback<K, GenericRecord>() {
-      Map<String, Object> sharedContext = new HashMap<>();
-
-      @Override
-      public void onRawRecordReceived(K key, GenericRecord value) {
-        if (value != null) {
-          value = ComputeUtils.computeResult(
-              computeRequest.getComputeRequestVersion(),
-              computeRequest.getOperations(),
-              sharedContext,
-              value,
-              resultSchema);
-          stats.ifPresent(s -> s.recordMultiGetFallback(1));
-        }
-        onRecordReceived(key, value);
-      }
-
-      @Override
-      public void onRecordReceived(K key, GenericRecord value) {
-        callback.onRecordReceived(
-            key,
-            value != null ? new ComputeGenericRecord(value, computeRequest.getValueSchema()) : null);
-      }
-
-      @Override
-      public void onRemoteComputeStateChange(boolean enabled) {
-        remoteComputationAllowed.set(enabled);
-      }
-
-      @Override
-      public void onCompletion(Optional<Exception> exception) {
-        callback.onCompletion(exception);
-      }
-    };
-
-    TransportClientStreamingCallback decoder = new ClientComputeRecordStreamDecoder<K, GenericRecord>(
+    RecordStreamDecoder decoder = new ClientComputeRecordStreamDecoder<>(
         keyList,
-        clientComputeCallback,
-        callback,
+        decoderCallback,
         getDeserializationExecutor(),
         streamingFooterRecordDeserializer,
         () -> getComputeResultRecordDeserializer(resultSchema),
-        schemaId -> (RecordDeserializer<GenericRecord>) getDataRecordDeserializer(schemaId),
+        schemaId -> (RecordDeserializer) getDataRecordDeserializer(schemaId),
         this::decompressRecord);
 
     if (clientConfig.isRemoteComputationOnly() || remoteComputationAllowed.get()) {
-      compute(computeRequest, keyList, decoder, stats);
+      compute(computeRequest, keyList, decoder, decoderCallback.getStats());
     } else {
       /** Multi-get fallback is on until the router tells otherwise via {@link HttpConstants.VENICE_CLIENT_COMPUTE} */
-      streamingBatchGet(keyList, decoder, stats);
+      streamingBatchGet(keyList, decoder, decoderCallback.getStats());
     }
   }
 
@@ -826,15 +821,15 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       return;
     }
     List<K> keyList = new ArrayList<>(keys);
-    TransportClientStreamingCallback decoder = new MultiGetRecordStreamDecoder<>(
+    TrackingStreamingCallback<K, V> decoderCallback = DelegatingTrackingCallback.wrap(callback);
+    RecordStreamDecoder decoder = new MultiGetRecordStreamDecoder<>(
         keyList,
-        callback,
-        callback,
+        decoderCallback,
         getDeserializationExecutor(),
         streamingFooterRecordDeserializer,
         this::getDataRecordDeserializer,
         this::decompressRecord);
-    streamingBatchGet(keyList, decoder, getClientStats(callback));
+    streamingBatchGet(keyList, decoder, decoderCallback.getStats());
   }
 
   private void streamingBatchGet(
@@ -866,10 +861,5 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       return true;
     }
     return false;
-  }
-
-  protected static Optional<ClientStats> getClientStats(StreamingCallback callback) {
-    return Optional.ofNullable(
-        callback instanceof TrackingStreamingCallback ? ((TrackingStreamingCallback) callback).getStats() : null);
   }
 }

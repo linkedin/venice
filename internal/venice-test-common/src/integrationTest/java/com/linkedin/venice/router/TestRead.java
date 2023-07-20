@@ -398,15 +398,16 @@ public abstract class TestRead {
                 getMaxServerMetricValue(".total--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
             Assert.assertEquals(getAggregateRouterMetricValue(".total--compute_multiget_fallback.Total"), 0.0);
             Assert.assertEquals(
-                clientMetrics.getMetric("." + storeName + "--compute_streaming_multiget_fallback.Total").value(),
+                clientMetrics.getMetric("." + storeName + "--compute_streaming_multiget_fallback.OccurrenceRate")
+                    .value(),
                 0.0);
           } else {
             Assert.assertEquals(
                 getAggregateRouterMetricValue(".total--compute_multiget_fallback.Total"),
                 (double) MAX_KEY_LIMIT);
-            Assert.assertEquals(
-                clientMetrics.getMetric("." + storeName + "--compute_streaming_multiget_fallback.Total").value(),
-                (double) rounds * (MAX_KEY_LIMIT - 1));
+            Assert.assertTrue(
+                clientMetrics.getMetric("." + storeName + "--compute_streaming_multiget_fallback.OccurrenceRate")
+                    .value() > 0);
           }
         }
 

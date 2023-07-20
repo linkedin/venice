@@ -15,7 +15,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 
 
-public class MultiGetRecordStreamDecoder<K, V> extends RecordStreamDecoder<MultiGetResponseRecordV1, K, V> {
+public class MultiGetRecordStreamDecoder<K, V> extends AbstractRecordStreamDecoder<MultiGetResponseRecordV1, K, V> {
   private final Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
   private final RecordDeserializer<StreamingFooterRecordV1> streamingFooterDeserializer;
   private final Function<Integer, RecordDeserializer<V>> valueDeserializerProvider;
@@ -23,13 +23,12 @@ public class MultiGetRecordStreamDecoder<K, V> extends RecordStreamDecoder<Multi
 
   public MultiGetRecordStreamDecoder(
       List<K> keyList,
-      StreamingCallback<K, V> callback,
-      StreamingCallback trackingCallback,
+      TrackingStreamingCallback<K, V> callback,
       Executor deserializationExecutor,
       RecordDeserializer<StreamingFooterRecordV1> streamingFooterDeserializer,
       Function<Integer, RecordDeserializer<V>> valueDeserializerProvider,
       BiFunction<CompressionStrategy, ByteBuffer, ByteBuffer> decompressor) {
-    super(keyList, callback, trackingCallback, deserializationExecutor);
+    super(keyList, callback, deserializationExecutor);
     this.streamingFooterDeserializer = streamingFooterDeserializer;
     this.valueDeserializerProvider = valueDeserializerProvider;
     this.decompressor = decompressor;

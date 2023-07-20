@@ -3,8 +3,8 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.streaming.DelegatingTrackingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
@@ -158,8 +158,9 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     }
   }
 
-  private static class StatTrackingStreamingCallback<K, V> extends TrackingStreamingCallback<K, V> {
+  private static class StatTrackingStreamingCallback<K, V> extends DelegatingTrackingCallback<K, V> {
     private final ClientStats stats;
+    private final Optional<ClientStats> statsOptional;
     private final int keyCntForP50;
     private final int keyCntForP90;
     private final int keyCntForP95;
@@ -174,6 +175,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         long preRequestTimeInNS) {
       super(callback);
       this.stats = stats;
+      this.statsOptional = Optional.of(stats);
       this.keyCntForP50 = keyCnt / 2;
       this.keyCntForP90 = keyCnt * 9 / 10;
       this.keyCntForP95 = keyCnt * 95 / 100;
@@ -182,8 +184,8 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     }
 
     @Override
-    public ClientStats getStats() {
-      return stats;
+    public Optional<ClientStats> getStats() {
+      return statsOptional;
     }
 
     @Override
@@ -212,15 +214,15 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
     @Override
     public void onDeserializationCompletion(
-        Optional<VeniceClientException> veniceException,
-        int successKeyCnt,
-        int duplicateEntryCnt) {
+        Optional<Exception> exception,
+        int successKeyCount,
+        int duplicateEntryCount) {
       handleMetricTrackingForStreamingCallback(
           stats,
           preRequestTimeInNS,
-          veniceException,
-          successKeyCnt,
-          duplicateEntryCnt);
+          exception,
+          successKeyCount,
+          duplicateEntryCount);
     }
   }
 
@@ -252,21 +254,21 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   private static void handleMetricTrackingForStreamingCallback(
       ClientStats clientStats,
       long startTimeInNS,
-      Optional<VeniceClientException> veniceException,
+      Optional<Exception> exception,
       int successKeyCnt,
       int duplicateEntryCnt) {
     double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
-    if (veniceException.isPresent()) {
+    if (exception.isPresent()) {
       clientStats.recordUnhealthyRequest();
       clientStats.recordUnhealthyLatency(latency);
 
-      if (veniceException.get() instanceof VeniceClientHttpException) {
-        VeniceClientHttpException httpException = (VeniceClientHttpException) veniceException.get();
+      if (exception.get() instanceof VeniceClientHttpException) {
+        VeniceClientHttpException httpException = (VeniceClientHttpException) exception.get();
         clientStats.recordHttpRequest(httpException.getHttpStatus());
       } else {
         // Http related exception logging is being taken care by underlying transporting layer,
         // and here will dump other kinds of exceptions
-        LOGGER.error("Received exception in streaming callback", veniceException.get());
+        LOGGER.error("Received exception in streaming callback", exception.get());
       }
     } else {
       emitRequestHealthyMetrics(clientStats, latency);
