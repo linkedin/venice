@@ -23,6 +23,7 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
@@ -383,10 +384,11 @@ public class ActiveActiveStoreIngestionTaskTest {
         .thenCallRealMethod();
     when(ingestionTask.isChunked()).thenReturn(true);
     when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
-
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey1)).thenReturn(expectedNonChunkedValue);
-    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1, null, 0L);
+    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1, container, 0L);
     Assert.assertNotNull(result);
+    Assert.assertNull(container.getManifest());
     Assert.assertEquals(result, expectedNonChunkedValue);
 
     /**
@@ -418,8 +420,10 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey2)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
-    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2, null, 0L);
+    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2, container, 0L);
     Assert.assertNotNull(result2);
+    Assert.assertNotNull(container.getManifest());
+    Assert.assertEquals(container.getManifest().getKeysWithChunkIdSuffix().size(), 1);
     Assert.assertEquals(result2, expectedChunkedValue1);
 
     /**
@@ -457,8 +461,10 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey3)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey3)).thenReturn(chunkedValue1);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey2InKey3)).thenReturn(chunkedValue2);
-    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3, null, 0L);
+    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3, container, 0L);
     Assert.assertNotNull(result3);
+    Assert.assertNotNull(container.getManifest());
+    Assert.assertEquals(container.getManifest().getKeysWithChunkIdSuffix().size(), 2);
     Assert.assertEquals(result3, expectedChunkedValue2);
   }
 }

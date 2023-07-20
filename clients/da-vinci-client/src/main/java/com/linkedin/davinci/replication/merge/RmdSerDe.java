@@ -63,7 +63,6 @@ public class RmdSerDe {
     rmdWithValueSchemaId.setValueSchemaID(valueSchemaId);
     rmdWithValueSchemaId.setRmdProtocolVersionID(rmdVersionId);
     rmdWithValueSchemaId.setRmdRecord(rmdRecord);
-    // return new RmdWithValueSchemaId(valueSchemaId, rmdVersionId, rmdRecord);
   }
 
   /**

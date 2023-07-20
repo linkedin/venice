@@ -301,6 +301,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       byte[] key,
       int subPartition,
       long currentTimeForMetricsMs) {
+    LOGGER.info("DEBUGGING: {}", key);
+    LOGGER.info("DEBUGGING: {}", partitionConsumptionState);
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
       getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
@@ -318,8 +320,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
     RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
     rmdWithValueSchemaId.setRmdManifest(rmdManifestContainer.getManifest());
-    rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes, rmdWithValueSchemaId);
+    getRmdSerDe()
+        .deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes, rmdWithValueSchemaId);
     return rmdWithValueSchemaId;
+  }
+
+  public RmdSerDe getRmdSerDe() {
+    return rmdSerDe;
   }
 
   byte[] getRmdWithValueSchemaByteBufferFromStorage(
