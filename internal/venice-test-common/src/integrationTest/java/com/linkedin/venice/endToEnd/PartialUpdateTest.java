@@ -35,6 +35,7 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -66,6 +67,9 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -78,6 +82,7 @@ import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -87,6 +92,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -112,6 +118,9 @@ public class PartialUpdateTest {
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final int TEST_TIMEOUT_MS = 120_000;
   private static final String CLUSTER_NAME = "venice-cluster0";
+
+  private static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
+      new ChunkedValueManifestSerializer(false);
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private VeniceControllerWrapper parentController;
@@ -338,6 +347,133 @@ public class PartialUpdateTest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT_MS * 4)
+  public void testNonAAPartialUpdateChunkDeletion() throws IOException {
+    final String storeName = Utils.getUniqueString("partialUpdateChunking");
+    String parentControllerUrl = parentController.getControllerUrl();
+    String keySchemaStr = "{\"type\" : \"string\"}";
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+    ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+    when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, partialUpdateSchema));
+    when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(false)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(false)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+
+    String key = "key1";
+    String primitiveFieldName = "name";
+    String mapFieldName = "stringMap";
+
+    // Insert large amount of Map entries to trigger RMD chunking.
+    int oldUpdateCount = 29;
+    int singleUpdateEntryCount = 10000;
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      for (int i = 0; i < oldUpdateCount; i++) {
+        producePartialUpdate(
+            storeName,
+            veniceProducer,
+            partialUpdateSchema,
+            key,
+            primitiveFieldName,
+            mapFieldName,
+            singleUpdateEntryCount,
+            i);
+      }
+      // Verify the value record has been partially updated.
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, key);
+          boolean nullRecord = (valueRecord == null);
+          assertFalse(nullRecord);
+          assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
+          Map<String, String> mapFieldResult = new HashMap<>();
+          ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
+              .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
+          assertEquals(mapFieldResult.size(), oldUpdateCount * singleUpdateEntryCount);
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+      String kafkaTopic_v1 = Version.composeKafkaTopic(storeName, 1);
+      validateValueChunks(kafkaTopic_v1, key, Assert::assertNotNull);
+      VeniceServerWrapper serverWrapper = multiRegionMultiClusterWrapper.getChildRegions()
+          .get(0)
+          .getClusters()
+          .get("venice-cluster0")
+          .getVeniceServers()
+          .get(0);
+      AbstractStorageEngine storageEngine =
+          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic_v1);
+      ChunkedValueManifest valueManifest = getChunkValueManifest(storageEngine, 0, key, false);
+
+      int updateCount = 30;
+      producePartialUpdate(
+          storeName,
+          veniceProducer,
+          partialUpdateSchema,
+          key,
+          primitiveFieldName,
+          mapFieldName,
+          singleUpdateEntryCount,
+          updateCount - 1);
+
+      // Verify the value record has been partially updated.
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, key);
+          boolean nullRecord = (valueRecord == null);
+          assertFalse(nullRecord);
+          assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
+          Map<String, String> mapFieldResult = new HashMap<>();
+          ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
+              .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
+          assertEquals(mapFieldResult.size(), updateCount * singleUpdateEntryCount);
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        Assert.assertNotNull(valueManifest);
+        validateChunksFromManifests(kafkaTopic_v1, 0, valueManifest, null, (valueChunkBytes, rmdChunkBytes) -> {
+          Assert.assertNull(valueChunkBytes);
+        }, false);
+      });
+    } finally {
+      veniceProducer.stop();
+    }
+
+  }
+
   /**
    * This integration test performs a few actions to test RMD chunking logic:
    * (1) Send a bunch of large UPDATE messages to make sure eventually the key's value + RMD size greater than 1MB and
@@ -353,10 +489,10 @@ public class PartialUpdateTest {
     String keySchemaStr = "{\"type\" : \"string\"}";
     Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
-    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+    Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
     ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
     when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1)).thenReturn(new RmdSchemaEntry(1, 1, rmdSchema));
-    when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, writeComputeSchema));
+    when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, partialUpdateSchema));
     when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
     StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
         new StringAnnotatedStoreSchemaCache(storeName, schemaRepo);
@@ -398,23 +534,60 @@ public class PartialUpdateTest {
     String mapFieldName = "stringMap";
 
     // Insert large amount of Map entries to trigger RMD chunking.
-    int updateCount = 30;
+    int oldUpdateCount = 29;
     int singleUpdateEntryCount = 10000;
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
-      Map<String, String> newEntries = new HashMap<>();
-      for (int i = 0; i < updateCount; i++) {
-        UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
-        updateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
-        newEntries.clear();
-        for (int j = 0; j < singleUpdateEntryCount; j++) {
-          String idx = String.valueOf(i * singleUpdateEntryCount + j);
-          newEntries.put("key_" + idx, "value_" + idx);
-        }
-        updateBuilder.setEntriesToAddToMapField(mapFieldName, newEntries);
-        GenericRecord partialUpdateRecord = updateBuilder.build();
-        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord, i * 10L + 1);
+      for (int i = 0; i < oldUpdateCount; i++) {
+        producePartialUpdate(
+            storeName,
+            veniceProducer,
+            partialUpdateSchema,
+            key,
+            primitiveFieldName,
+            mapFieldName,
+            singleUpdateEntryCount,
+            i);
       }
+      // Verify the value record has been partially updated.
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, key);
+          boolean nullRecord = (valueRecord == null);
+          assertFalse(nullRecord);
+          assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
+          Map<String, String> mapFieldResult = new HashMap<>();
+          ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
+              .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
+          assertEquals(mapFieldResult.size(), oldUpdateCount * singleUpdateEntryCount);
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+      String kafkaTopic_v1 = Version.composeKafkaTopic(storeName, 1);
+      validateValueChunks(kafkaTopic_v1, key, Assert::assertNotNull);
+      VeniceServerWrapper serverWrapper = multiRegionMultiClusterWrapper.getChildRegions()
+          .get(0)
+          .getClusters()
+          .get("venice-cluster0")
+          .getVeniceServers()
+          .get(0);
+      AbstractStorageEngine storageEngine =
+          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic_v1);
+      ChunkedValueManifest valueManifest = getChunkValueManifest(storageEngine, 0, key, false);
+      ChunkedValueManifest rmdManifest = getChunkValueManifest(storageEngine, 0, key, true);
+
+      int updateCount = 30;
+      producePartialUpdate(
+          storeName,
+          veniceProducer,
+          partialUpdateSchema,
+          key,
+          primitiveFieldName,
+          mapFieldName,
+          singleUpdateEntryCount,
+          updateCount - 1);
 
       // Verify the value record has been partially updated.
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, () -> {
@@ -432,15 +605,24 @@ public class PartialUpdateTest {
         }
       });
       // Validate RMD bytes after PUT requests.
-      String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
-      validateRmdData(rmdSerDe, kafkaTopic, key, rmdWithValueSchemaId -> {
+      validateRmdData(rmdSerDe, kafkaTopic_v1, key, rmdWithValueSchemaId -> {
         GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get("timestamp");
         GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
         List<Long> activeElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("activeElementsTimestamps");
         assertEquals(activeElementsTimestamps.size(), updateCount * singleUpdateEntryCount);
       });
 
-      // Perform one time repush to make sure repush can handle RMD chunks data correctly.
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        Assert.assertNotNull(valueManifest);
+        Assert.assertNotNull(rmdManifest);
+        validateChunksFromManifests(kafkaTopic_v1, 0, valueManifest, rmdManifest, (valueChunkBytes, rmdChunkBytes) -> {
+          Assert.assertNull(valueChunkBytes);
+          Assert.assertNotNull(rmdChunkBytes);
+          Assert.assertEquals(rmdChunkBytes.length, 4);
+        }, true);
+      });
+
+      // <!--- Perform one time repush to make sure repush can handle RMD chunks data correctly -->
       Properties props =
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
       props.setProperty(SOURCE_KAFKA, "true");
@@ -474,8 +656,8 @@ public class PartialUpdateTest {
       });
 
       // Validate RMD bytes after PUT requests.
-      kafkaTopic = Version.composeKafkaTopic(storeName, 2);
-      validateRmdData(rmdSerDe, kafkaTopic, key, rmdWithValueSchemaId -> {
+      String kafkaTopic_v2 = Version.composeKafkaTopic(storeName, 2);
+      validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
         GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get("timestamp");
         GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
         List<Long> activeElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("activeElementsTimestamps");
@@ -496,7 +678,7 @@ public class PartialUpdateTest {
         assertEquals(mapFieldResult.size(), singleUpdateEntryCount);
       });
 
-      validateRmdData(rmdSerDe, kafkaTopic, key, rmdWithValueSchemaId -> {
+      validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
         GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get("timestamp");
         GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
         List<Long> activeElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("activeElementsTimestamps");
@@ -512,7 +694,7 @@ public class PartialUpdateTest {
         boolean nullRecord = (valueRecord == null);
         assertTrue(nullRecord);
       });
-      validateRmdData(rmdSerDe, kafkaTopic, key, rmdWithValueSchemaId -> {
+      validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
         Assert.assertTrue(
             rmdWithValueSchemaId.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME) instanceof GenericRecord);
         GenericRecord timestampRecord =
@@ -539,12 +721,13 @@ public class PartialUpdateTest {
           serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
       assertNotNull(storageEngine);
       ValueRecord result = SingleGetChunkingAdapter
-          .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null);
+          .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null, null);
       // Avoid assertion failure logging massive RMD record.
       boolean nullRmd = (result == null);
       assertFalse(nullRmd);
       byte[] value = result.serialize();
-      RmdWithValueSchemaId rmdWithValueSchemaId = rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(value);
+      RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
+      rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(value, rmdWithValueSchemaId);
       rmdDataValidationFlow.accept(rmdWithValueSchemaId);
     }
   }
@@ -1013,4 +1196,102 @@ public class PartialUpdateTest {
     }
     return out.toByteArray();
   }
+
+  private void producePartialUpdate(
+      String storeName,
+      SystemProducer veniceProducer,
+      Schema partialUpdateSchema,
+      String key,
+      String primitiveFieldName,
+      String mapFieldName,
+      int singleUpdateEntryCount,
+      int updateCount) {
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
+    Map<String, String> newEntries = new HashMap<>();
+    for (int j = 0; j < singleUpdateEntryCount; j++) {
+      String idx = String.valueOf(updateCount * singleUpdateEntryCount + j);
+      newEntries.put("key_" + idx, "value_" + idx);
+    }
+    updateBuilder.setEntriesToAddToMapField(mapFieldName, newEntries);
+    GenericRecord partialUpdateRecord = updateBuilder.build();
+    sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord, updateCount * 10L + 1);
+  }
+
+  private void validateValueChunks(String kafkaTopic, String key, Consumer<byte[]> validationFlow) {
+    for (VeniceServerWrapper serverWrapper: multiRegionMultiClusterWrapper.getChildRegions()
+        .get(0)
+        .getClusters()
+        .get("venice-cluster0")
+        .getVeniceServers()) {
+      AbstractStorageEngine storageEngine =
+          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
+      assertNotNull(storageEngine);
+
+      ChunkedValueManifest manifest = getChunkValueManifest(storageEngine, 0, key, false);
+      Assert.assertNotNull(manifest);
+
+      for (ByteBuffer chunkedKey: manifest.keysWithChunkIdSuffix) {
+        byte[] chunkValueBytes = storageEngine.get(0, chunkedKey.array());
+        validationFlow.accept(chunkValueBytes);
+      }
+    }
+  }
+
+  private void validateChunksFromManifests(
+      String kafkaTopic,
+      int partition,
+      ChunkedValueManifest valueManifest,
+      ChunkedValueManifest rmdManifest,
+      BiConsumer<byte[], byte[]> validationFlow,
+      boolean isAAEnabled) {
+    for (VeniceServerWrapper serverWrapper: multiRegionMultiClusterWrapper.getChildRegions()
+        .get(0)
+        .getClusters()
+        .get("venice-cluster0")
+        .getVeniceServers()) {
+      AbstractStorageEngine storageEngine =
+          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
+      assertNotNull(storageEngine);
+
+      validateChunkDataFromManifest(storageEngine, partition, valueManifest, validationFlow, isAAEnabled);
+      validateChunkDataFromManifest(storageEngine, partition, rmdManifest, validationFlow, isAAEnabled);
+    }
+  }
+
+  private ChunkedValueManifest getChunkValueManifest(
+      AbstractStorageEngine storageEngine,
+      int partition,
+      String key,
+      boolean isRmd) {
+    byte[] serializedKeyBytes =
+        ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializeStringKeyToByteArray(key));
+    byte[] manifestValueBytes = isRmd
+        ? storageEngine.getReplicationMetadata(partition, serializedKeyBytes)
+        : storageEngine.get(partition, serializedKeyBytes);
+    if (manifestValueBytes == null) {
+      return null;
+    }
+    int schemaId = ValueRecord.parseSchemaId(manifestValueBytes);
+    Assert.assertEquals(schemaId, AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+    return CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(manifestValueBytes, schemaId);
+  }
+
+  private void validateChunkDataFromManifest(
+      AbstractStorageEngine storageEngine,
+      int partition,
+      ChunkedValueManifest manifest,
+      BiConsumer<byte[], byte[]> validationFlow,
+      boolean isAAEnabled) {
+    if (manifest == null) {
+      return;
+    }
+    for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
+      byte[] chunkKeyBytes = manifest.keysWithChunkIdSuffix.get(i).array();
+      byte[] valueBytes = storageEngine.get(partition, chunkKeyBytes);
+      byte[] rmdBytes = isAAEnabled ? storageEngine.getReplicationMetadata(partition, chunkKeyBytes) : null;
+      validationFlow.accept(valueBytes, rmdBytes);
+    }
+  }
+
 }

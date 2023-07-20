@@ -7,14 +7,15 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.PAUSE_TRANSITION_FROM_STANDBY_TO_LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingAdapter;
-import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -51,6 +52,7 @@ import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -2665,6 +2667,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               putValue.position(),
               putValue.remaining(),
               put.schemaId,
+              null,
+              null, // Since we did not perform read, it is not possible to delete old value chunks here.
               null);
         }
 
@@ -2733,7 +2737,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
          */
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
-          partitionConsumptionState.setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null);
+          partitionConsumptionState
+              .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null, null, null);
         }
         leaderProducedRecordContext =
             LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, null);
@@ -2770,20 +2775,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   *  1. Currently we support chunking only for messages produced on VT topic during batch part of the ingestion
+   *  1. Currently, we support chunking only for messages produced on VT topic during batch part of the ingestion
    *     for hybrid stores. Chunking is NOT supported for messages produced to RT topics during streaming ingestion.
    *
    *     So the assumption here is that the PUT/UPDATE messages stored in transientRecord should always be a full value
-   *     (non chunked). Decoding should succeed using the the simplified API
+   *     (non chunked). Decoding should succeed using the simplified API
    *     {@link ChunkingAdapter#constructValue}
    *
    *  2. We always use the latest value schema to deserialize stored value bytes.
-   *  3. We always use the write compute schema with an ID combination of latest value schema ID + update schema ID
+   *  3. We always use the partial update schema with an ID combination of the latest value schema ID + update schema ID
    *     to deserialize the incoming Update request payload bytes.
    *
    *  The reason for 2 and 3 is that we depend on the fact that the latest value schema must be a superset schema
    *  that contains all value fields that ever existed in a store value schema. So, always using a superset schema
-   *  as the reader schema avoids data loss where the serialized bytes contain data for a field , however, the
+   *  as the reader schema avoids data loss where the serialized bytes contain data for a field, however, the
    *  deserialized record does not contain that field because the reader schema does not contain that field.
    */
   private void handleUpdateRequest(
@@ -2809,15 +2814,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       readerValueSchemaId = supersetSchemaEntry.getId();
       readerUpdateProtocolVersion = update.updateSchemaId;
     }
-
+    ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
     final GenericRecord currValue = readStoredValueRecord(
         partitionConsumptionState,
         keyBytes,
         readerValueSchemaId,
-        consumerRecord.getTopicPartition());
+        consumerRecord.getTopicPartition(),
+        valueManifestContainer);
 
-    // Apply Write Compute.
     final byte[] updatedValueBytes;
+    final ChunkedValueManifest oldValueManifest = valueManifestContainer.getManifest();
+
     try {
       long writeComputeStartTimeInNS = System.nanoTime();
       // Leader nodes are the only ones which process UPDATES, so it's valid to always compress and not call
@@ -2856,6 +2863,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           0,
           updatedValueBytes.length,
           readerValueSchemaId,
+          null,
+          oldValueManifest,
           null);
 
       ByteBuffer updateValueWithSchemaId =
@@ -2865,25 +2874,27 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       updatedPut.putValue = updateValueWithSchemaId;
       updatedPut.schemaId = readerValueSchemaId;
 
-      byte[] updatedKeyBytes = keyBytes;
-      if (isChunked) {
-        // Samza VeniceWriter doesn't handle chunking config properly. It reads chunking config
-        // from user's input instead of getting it from store's metadata repo. This causes SN
-        // to der-se of keys a couple of times.
-        updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
-      }
-      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
-          .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
+      LeaderProducedRecordContext leaderProducedRecordContext =
+          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, updatedPut);
 
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produce =
+      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
           (callback, leaderMetadataWrapper) -> veniceWriter.get()
-              .put(keyBytes, updatedValueBytes, readerValueSchemaId, callback, leaderMetadataWrapper);
+              .put(
+                  keyBytes,
+                  updatedValueBytes,
+                  readerValueSchemaId,
+                  callback,
+                  leaderMetadataWrapper,
+                  APP_DEFAULT_LOGICAL_TS,
+                  null,
+                  oldValueManifest,
+                  null);
 
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
           leaderProducedRecordContext,
-          produce,
+          produceFunction,
           subPartition,
           kafkaUrl,
           kafkaClusterId,
@@ -2900,7 +2911,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       byte[] keyBytes,
       int readerValueSchemaID,
-      PubSubTopicPartition topicPartition) {
+      PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer manifestContainer) {
     final GenericRecord currValue;
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(keyBytes);
     if (transientRecord == null) {
@@ -2916,7 +2928,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             null,
             readerValueSchemaID,
             storeDeserializerCache,
-            compressor.get());
+            compressor.get(),
+            manifestContainer);
         hostLevelIngestionStats.recordWriteComputeLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
       } catch (Exception e) {
         writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
@@ -2937,6 +2950,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;
           throw e;
         }
+        if (manifestContainer != null) {
+          manifestContainer.setManifest(transientRecord.getValueManifest());
+        }
+
       } else {
         currValue = null;
       }
@@ -3121,7 +3138,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   // test method
-  protected void addPartititionConsumptionState(Integer partition, PartitionConsumptionState pcs) {
+  protected void addPartitionConsumptionState(Integer partition, PartitionConsumptionState pcs) {
     partitionConsumptionStateMap.put(partition, pcs);
   }
 }

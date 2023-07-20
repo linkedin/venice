@@ -73,7 +73,7 @@ public class ChunkingUtils {
       int partition,
       ByteBuffer keyBuffer,
       ReadResponse response) {
-    return getFromStorage(adapter, store, partition, keyBuffer, response, null, null, -1, null, null, false);
+    return getFromStorage(adapter, store, partition, keyBuffer, response, null, null, -1, null, null, false, null);
   }
 
   static <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getReplicationMetadataFromStorage(
@@ -81,8 +81,21 @@ public class ChunkingUtils {
       AbstractStorageEngine store,
       int partition,
       ByteBuffer keyBuffer,
-      ReadResponse response) {
-    return getFromStorage(adapter, store, partition, keyBuffer, response, null, null, -1, null, null, true);
+      ReadResponse response,
+      ChunkedValueManifestContainer manifestContainer) {
+    return getFromStorage(
+        adapter,
+        store,
+        partition,
+        keyBuffer,
+        response,
+        null,
+        null,
+        -1,
+        null,
+        null,
+        true,
+        manifestContainer);
   }
 
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
@@ -115,7 +128,8 @@ public class ChunkingUtils {
         readerSchemaId,
         storeDeserializerCache,
         compressor,
-        false);
+        false,
+        null);
   }
 
   static <CHUNKS_CONTAINER, VALUE> void getFromStorageByPartialKey(
@@ -205,7 +219,8 @@ public class ChunkingUtils {
       int readerSchemaID,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor,
-      boolean isRmdValue) {
+      boolean isRmdValue,
+      ChunkedValueManifestContainer manifestContainer) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
     byte[] value =
         isRmdValue ? store.getReplicationMetadata(partition, keyBuffer.array()) : store.get(partition, keyBuffer);
@@ -223,7 +238,24 @@ public class ChunkingUtils {
         readerSchemaID,
         storeDeserializerCache,
         compressor,
-        isRmdValue);
+        isRmdValue,
+        manifestContainer);
+  }
+
+  public static ChunkedValueManifest getChunkValueManifestFromStorage(
+      byte[] key,
+      int partition,
+      boolean isRmd,
+      AbstractStorageEngine store) {
+    byte[] value = isRmd ? store.getReplicationMetadata(partition, key) : store.get(partition, key);
+    if (value == null) {
+      return null;
+    }
+    int writerSchemaId = ValueRecord.parseSchemaId(value);
+    if (writerSchemaId > 0) {
+      return null;
+    }
+    return CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, writerSchemaId);
   }
 
   /**
@@ -251,7 +283,8 @@ public class ChunkingUtils {
       int readerSchemaId,
       StoreDeserializerCache<VALUE> storeDeserializerCache,
       VeniceCompressor compressor,
-      boolean isRmdValue) {
+      boolean isRmdValue,
+      ChunkedValueManifestContainer manifestContainer) {
 
     if (value == null) {
       return null;
@@ -281,6 +314,9 @@ public class ChunkingUtils {
     // End of initial sanity checks. We have a chunked value, so we need to fetch all chunks
 
     ChunkedValueManifest chunkedValueManifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, writerSchemaId);
+    if (manifestContainer != null) {
+      manifestContainer.setManifest(chunkedValueManifest);
+    }
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);
     int actualSize = 0;
 

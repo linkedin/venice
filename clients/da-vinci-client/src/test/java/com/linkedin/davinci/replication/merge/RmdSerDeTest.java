@@ -64,8 +64,8 @@ public class RmdSerDeTest {
     rmdAndValueSchemaIDBytes.put(rmdBytes.array());
 
     // Deserialize all bytes and expect to get value schema ID and RMD record back.
-    RmdWithValueSchemaId rmdAndValueID =
-        rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(rmdAndValueSchemaIDBytes.array());
+    RmdWithValueSchemaId rmdAndValueID = new RmdWithValueSchemaId();
+    rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(rmdAndValueSchemaIDBytes.array(), rmdAndValueID);
     Assert.assertEquals(rmdAndValueID.getValueSchemaId(), valueSchemaID);
     Assert.assertEquals(rmdAndValueID.getRmdRecord(), rmd);
   }
