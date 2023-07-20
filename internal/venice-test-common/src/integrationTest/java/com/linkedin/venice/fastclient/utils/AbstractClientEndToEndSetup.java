@@ -42,6 +42,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.system.store.MetaStoreDataType;
@@ -247,7 +248,10 @@ public abstract class AbstractClientEndToEndSetup {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
-    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress())
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    veniceWriter = TestUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory)
         .createVeniceWriter(
             new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
                 .setValueSerializer(valueSerializer)

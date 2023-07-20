@@ -19,6 +19,7 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -387,7 +388,8 @@ public class VeniceReducer extends AbstractMapReduceTask
       LOGGER.warn("Unable to parse job tracker id, using default value for guid generation", e);
     }
     writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, mapReduceJobId.getId());
-    VeniceWriterFactory veniceWriterFactoryFactory = new VeniceWriterFactory(writerProps);
+    VeniceWriterFactory veniceWriterFactoryFactory =
+        new VeniceWriterFactory(writerProps, new ApacheKafkaProducerAdapterFactory(), null);
     boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
     boolean rmdChunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, false);
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);

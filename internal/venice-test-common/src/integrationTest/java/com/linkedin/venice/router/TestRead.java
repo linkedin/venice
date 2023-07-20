@@ -31,6 +31,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
@@ -185,8 +186,10 @@ public abstract class TestRead {
     // TODO: Make serializers parameterized so we test them all.
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
-
-    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress())
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    veniceWriter = TestUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory)
         .createVeniceWriter(
             new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
                 .setValueSerializer(valueSerializer)

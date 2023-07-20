@@ -17,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -47,12 +48,15 @@ public class VeniceWriterTest {
   private TopicManager topicManager;
   private PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory;
 
+  private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
+
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     pubSubConsumerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory();
+    pubSubProducerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
     topicManager = IntegrationTestPushUtils
         .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100L, 0L, pubSubBrokerWrapper, pubSubTopicRepository)
         .getTopicManager();
@@ -76,11 +80,12 @@ public class VeniceWriterTest {
     properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
 
     ExecutorService executorService = null;
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(properties)
-        .createVeniceWriter(
-            new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
-                .setPartitionCount(partitionCount)
-                .build())) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
+        TestUtils.getVeniceWriterFactory(properties, pubSubProducerAdapterFactory)
+            .createVeniceWriter(
+                new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
+                    .setPartitionCount(partitionCount)
+                    .build())) {
       executorService = Executors.newFixedThreadPool(numberOfThreads);
       Future[] vwFutures = new Future[numberOfThreads];
       for (int i = 0; i < numberOfThreads; i++) {

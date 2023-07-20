@@ -13,6 +13,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
@@ -98,7 +99,10 @@ public class TestHelixCustomizedView {
     controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
-    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress())
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    veniceWriter = TestUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory)
         .createVeniceWriter(
             new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
                 .setValueSerializer(valueSerializer)

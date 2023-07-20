@@ -4,7 +4,9 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.VeniceView;
@@ -35,6 +37,10 @@ public class ViewWriterUtilsTest {
 
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
     Mockito.when(mockVeniceServerConfig.getKafkaClusterUrlToIdMap()).thenReturn(urlMappingMap);
+    PubSubProducerAdapterFactory mockPubSubProducerAdapterFactory = Mockito.mock(PubSubProducerAdapterFactory.class);
+    PubSubClientsFactory mockPubSubClientsFactory = Mockito.mock(PubSubClientsFactory.class);
+    Mockito.when(mockPubSubClientsFactory.getProducerAdapterFactory()).thenReturn(mockPubSubProducerAdapterFactory);
+    Mockito.when(mockVeniceServerConfig.getPubSubClientsFactory()).thenReturn(mockPubSubClientsFactory);
 
     VeniceConfigLoader mockVeniceConfigLoader = Mockito.mock(VeniceConfigLoader.class);
     Mockito.when(mockVeniceConfigLoader.getCombinedProperties()).thenReturn(props);

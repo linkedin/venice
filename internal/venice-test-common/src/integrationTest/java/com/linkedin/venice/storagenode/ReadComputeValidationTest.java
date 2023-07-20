@@ -20,6 +20,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -142,9 +143,10 @@ public class ReadComputeValidationTest {
     VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName);
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
-
-    VeniceWriterFactory vwFactory =
-        TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = TestUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory);
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
             new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
@@ -227,9 +229,10 @@ public class ReadComputeValidationTest {
     VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName);
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
-
-    VeniceWriterFactory vwFactory =
-        TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = TestUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory);
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
             .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer).build());
@@ -341,9 +344,10 @@ public class ReadComputeValidationTest {
     Map<Integer, GenericRecord> valuesByKey = new HashMap<>(2);
     valuesByKey.put(key1, value1);
     valuesByKey.put(key2, value2);
-
-    VeniceWriterFactory vwFactory =
-        TestUtils.getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = TestUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory);
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
             .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer).build());

@@ -181,8 +181,9 @@ public class DaVinciBackend implements Closeable {
           true,
           functionToCheckWhetherStorageEngineShouldBeKeptOrNot(managedClients));
       storageService.start();
-
-      VeniceWriterFactory writerFactory = new VeniceWriterFactory(backendProps.toProperties());
+      PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
+      VeniceWriterFactory writerFactory =
+          new VeniceWriterFactory(backendProps.toProperties(), pubSubClientsFactory.getProducerAdapterFactory(), null);
       String instanceName = Utils.getHostName() + "_" + Utils.getPid();
       int derivedSchemaID = backendProps.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1);
       pushStatusStoreWriter = new PushStatusStoreWriter(writerFactory, instanceName, derivedSchemaID);
@@ -219,7 +220,6 @@ public class DaVinciBackend implements Closeable {
       cacheBackend = cacheConfig
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
-      PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
       ingestionService = new KafkaStoreIngestionService(
           storageService.getStorageEngineRepository(),
           configLoader,

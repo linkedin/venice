@@ -45,6 +45,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -220,12 +221,15 @@ public class DataRecoveryTest {
           false,
           -1);
       Assert.assertFalse(versionCreationResponse.isError());
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          childDatacenters.get(0).getKafkaBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
       TestUtils.writeBatchData(
           versionCreationResponse,
           STRING_SCHEMA,
           STRING_SCHEMA,
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
-          HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+          HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
+          pubSubProducerAdapterFactory);
       TestUtils.waitForNonDeterministicPushCompletion(
           versionCreationResponse.getKafkaTopic(),
           parentControllerClient,

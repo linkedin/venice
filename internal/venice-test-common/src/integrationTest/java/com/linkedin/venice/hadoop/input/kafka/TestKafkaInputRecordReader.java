@@ -61,7 +61,9 @@ public class TestKafkaInputRecordReader {
   public String getTopic(int numRecord, Pair<Integer, Integer> updateRange, Pair<Integer, Integer> deleteRange) {
     String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
     manager.createTopic(pubSubTopicRepository.getTopic(topicName), 1, 1, true);
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(pubSubBrokerWrapper.getAddress());
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(
+        pubSubBrokerWrapper.getAddress(),
+        pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory());
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {
       for (int i = 0; i < numRecord; ++i) {

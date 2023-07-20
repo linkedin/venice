@@ -265,7 +265,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     VeniceWriterFactory veniceWriterFactory =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
-    VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter = new VeniceWriterFactory(veniceWriterProperties);
+    VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter =
+        new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, null);
 
     EventThrottler bandwidthThrottler = new EventThrottler(
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),
