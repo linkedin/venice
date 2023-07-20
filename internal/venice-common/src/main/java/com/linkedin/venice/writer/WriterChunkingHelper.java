@@ -22,7 +22,7 @@ import java.util.function.Supplier;
  * This class is a helper class that contains writer side chunking logics.
  */
 public class WriterChunkingHelper {
-  private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
+  public static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
 
   /**
    * This method chunks payload and send each chunk out.

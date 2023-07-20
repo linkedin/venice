@@ -1,7 +1,13 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
@@ -10,8 +16,11 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.Utils;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
@@ -83,5 +92,31 @@ public class LeaderProducerCallbackTest {
       ctx.updateLoggers();
       inMemoryLogAppender.stop();
     }
+  }
+
+  @Test
+  public void testLeaderProducerCallbackProduceDeprecatedChunkDeletion() throws InterruptedException {
+    LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord = mock(PubSubMessage.class);
+    PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
+    LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+    LeaderProducerCallback leaderProducerCallback = new LeaderProducerCallback(
+        storeIngestionTask,
+        sourceConsumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        0,
+        "url",
+        0);
+
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.keysWithChunkIdSuffix = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      manifest.keysWithChunkIdSuffix.add(ByteBuffer.wrap(new byte[] { 0xa, 0xb }));
+    }
+    leaderProducerCallback.produceDeprecatedChunkDeletionToStoreBufferService(manifest, 0);
+    verify(storeIngestionTask, times(10))
+        .produceToStoreBufferService(any(), any(), anyInt(), anyString(), anyLong(), anyLong());
+
   }
 }

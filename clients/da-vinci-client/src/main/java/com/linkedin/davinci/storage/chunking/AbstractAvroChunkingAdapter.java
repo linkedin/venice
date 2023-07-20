@@ -106,7 +106,8 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       ReadResponse response,
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
-      VeniceCompressor compressor) {
+      VeniceCompressor compressor,
+      ChunkedValueManifestContainer manifestContainer) {
     if (isChunked) {
       key = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
     }
@@ -121,7 +122,8 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         readerSchemaId,
         storeDeserializerCache,
         compressor,
-        false);
+        false,
+        manifestContainer);
   }
 
   public T get(
