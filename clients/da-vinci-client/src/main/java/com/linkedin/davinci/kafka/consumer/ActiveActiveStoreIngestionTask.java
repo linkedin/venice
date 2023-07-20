@@ -301,8 +301,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       byte[] key,
       int subPartition,
       long currentTimeForMetricsMs) {
-    LOGGER.info("DEBUGGING: {}", key);
-    LOGGER.info("DEBUGGING: {}", partitionConsumptionState);
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
       getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
