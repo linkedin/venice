@@ -317,6 +317,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       return null; // No RMD for this key
     }
     RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
+    // Get old RMD manifest value from RMD Manifest container object.
     rmdWithValueSchemaId.setRmdManifest(rmdManifestContainer.getManifest());
     getRmdSerDe()
         .deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes, rmdWithValueSchemaId);
@@ -327,6 +328,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return rmdSerDe;
   }
 
+  /**
+   * This method tries to retrieve the RMD bytes with prepended value schema ID from storage engine. It will also store
+   * RMD manifest into passed-in {@link ChunkedValueManifestContainer} container object if current RMD value is chunked.
+   */
   byte[] getRmdWithValueSchemaByteBufferFromStorage(
       int subPartition,
       byte[] key,

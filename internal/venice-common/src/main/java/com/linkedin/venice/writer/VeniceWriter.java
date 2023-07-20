@@ -508,6 +508,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return delete(key, callback, DEFAULT_LEADER_METADATA_WRAPPER, APP_DEFAULT_LOGICAL_TS, deleteMetadata);
   }
 
+  /**
+   * This method produces a DELETE request to a deprecated chunk key.
+   */
   public void deleteDeprecatedChunk(
       byte[] serializedKey,
       int partition,
@@ -1386,6 +1389,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return manifestProduceFuture;
   }
 
+  /**
+   * This method iterates over a {@link ChunkedValueManifest} object's chunk key list and issue DELETE request for each
+   * chunk.
+   */
   private void deleteDeprecatedChunksFromManifest(
       ChunkedValueManifest manifest,
       int partition,

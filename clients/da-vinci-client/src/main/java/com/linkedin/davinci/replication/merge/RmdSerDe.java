@@ -44,9 +44,8 @@ public class RmdSerDe {
   }
 
   /**
-   * @param valueSchemaIdPrependedBytes The raw bytes with value schema ID prepended.
-   * @return A {@link RmdWithValueSchemaId} object composed by extracting the value schema ID from the
-   *    * header of the replication metadata.
+   * This method takes in the RMD bytes with prepended value schema ID and a {@link RmdWithValueSchemaId} container object.
+   * It will deserialize the RMD bytes into RMD record and fill the passed-in container.
    */
   public void deserializeValueSchemaIdPrependedRmdBytes(
       byte[] valueSchemaIdPrependedBytes,
