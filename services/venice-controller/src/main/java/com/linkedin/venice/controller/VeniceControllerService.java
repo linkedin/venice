@@ -65,7 +65,11 @@ public class VeniceControllerService extends AbstractVeniceService {
     DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore =
         new DelegatingClusterLeaderInitializationRoutine();
 
-    // In child controller, we do not set these system stores up. They will get set up through the admin channel
+    /**
+     * In child controller, we do not set these system stores up explicitly. The parent controller creates and
+     * configures them. They will get set up in child regions when the child controller consumes the corresponding
+     * messages from the admin channel.
+     */
     if (!multiClusterConfigs.isParent()) {
       initRoutineForPushJobDetailsSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();

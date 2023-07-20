@@ -505,14 +505,6 @@ public class VeniceParentHelixAdmin implements Admin {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
-
-    if (initializePushJobDetailsStore && veniceHelixAdmin.isLeaderControllerFor(pushJobDetailsStoreClusterName)) {
-      veniceHelixAdmin.getClusterLeaderInitializationManager().execute(pushJobDetailsStoreClusterName);
-    }
-
-    if (initializeBatchJobHeartbeatStore && veniceHelixAdmin.isLeaderControllerFor(batchJobHeartbeatStoreClusterName)) {
-      veniceHelixAdmin.getClusterLeaderInitializationManager().execute(batchJobHeartbeatStoreClusterName);
-    }
   }
 
   // For testing purpose.
@@ -531,7 +523,6 @@ public class VeniceParentHelixAdmin implements Admin {
    *  <li> waiting resource's (partial) partition to appear in the external view.</li>
    *  <li> making sure admin Kafka topics is created.</li>
    *  <li> creating a Venice writer for the cluster.</li>
-   *  <li> setting up venice RT store for push-job-status records as well as batch-job liveness heartbeat if not yet done.</li>
    * </ul>
    * @param clusterName Venice cluster name.
    */
@@ -2684,41 +2675,28 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       String newValueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    final int newValueSchemaId = getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-        clusterName,
-        storeName,
-        newValueSchemaStr,
-        expectedCompatibilityType);
+    acquireAdminMessageLock(clusterName, storeName);
+    try {
+      final int newValueSchemaId = getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+          clusterName,
+          storeName,
+          newValueSchemaStr,
+          expectedCompatibilityType);
 
-    /**
-     * If we find this is an exactly duplicate schema, return the existing schema id;
-     * else add the schema with possible doc field change.
-     */
-    if (newValueSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      return new SchemaEntry(
-          getVeniceHelixAdmin().getValueSchemaId(clusterName, storeName, newValueSchemaStr),
-          newValueSchemaStr);
+      /**
+       * If we find this is an exactly duplicate schema, return the existing schema id;
+       * else add the schema with possible doc field change.
+       */
+      if (newValueSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+        return new SchemaEntry(
+            getVeniceHelixAdmin().getValueSchemaId(clusterName, storeName, newValueSchemaStr),
+            newValueSchemaStr);
+      }
+
+      return addValueSchema(clusterName, storeName, newValueSchemaStr, newValueSchemaId, expectedCompatibilityType);
+    } finally {
+      releaseAdminMessageLock(clusterName, storeName);
     }
-
-    final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
-
-    /**
-     * Do not register superset schema for system store for now. Because some system stores specify the schema ID
-     * explicitly, which may conflict with the superset schema generated internally, the new value schema registration
-     * could fail.
-     *
-     * TODO: Design a long-term plan.
-     */
-    final boolean doUpdateSupersetSchemaID =
-        !store.isSystemStore() && (store.isReadComputationEnabled() || store.isWriteComputationEnabled());
-
-    return addValueSchemaInternal(
-        clusterName,
-        storeName,
-        newValueSchemaStr,
-        newValueSchemaId,
-        expectedCompatibilityType,
-        doUpdateSupersetSchemaID);
   }
 
   private SchemaEntry addValueAndSupersetSchemaEntries(
@@ -2877,15 +2855,28 @@ public class VeniceParentHelixAdmin implements Admin {
       final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
       Schema existingValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
 
-      if (doUpdateSupersetSchemaID) {
+      final boolean doUpdateSupersetSchemaID;
+      if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
         SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
         Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
 
         if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, newValueSchema)) {
           doUpdateSupersetSchemaID = true;
+
         } else if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, existingValueSchema)) {
           doUpdateSupersetSchemaID = false;
+
+        } else if (store.isSystemStore()) {
+          /**
+           * Do not register superset schema for system store for now. Because some system stores specify the schema ID
+           * explicitly, which may conflict with the superset schema generated internally, the new value schema registration
+           * could fail.
+           *
+           * TODO: Design a long-term plan.
+           */
+          doUpdateSupersetSchemaID = false;
+
         } else {
           // Register superset schema only if it does not match with existing or new schema.
 
@@ -2912,6 +2903,8 @@ public class VeniceParentHelixAdmin implements Admin {
               new SchemaEntry(supersetSchemaId, newSuperSetSchema),
               store.isWriteComputationEnabled());
         }
+      } else {
+        doUpdateSupersetSchemaID = false;
       }
 
       SchemaEntry addedSchemaEntry =

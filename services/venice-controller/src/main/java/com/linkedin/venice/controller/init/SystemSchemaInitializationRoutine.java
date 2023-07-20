@@ -163,7 +163,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
 
         if (knownSchema == null) {
           try {
-            admin.addValueSchemaInternal(
+            admin.addValueSchema(
                 clusterToInit,
                 systemStoreName,
                 schemaInLocalResources.toString(),

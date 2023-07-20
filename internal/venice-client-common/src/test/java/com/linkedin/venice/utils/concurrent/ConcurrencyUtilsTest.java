@@ -57,11 +57,9 @@ public class ConcurrencyUtilsTest {
 
     Assert.assertEquals(actionCount.get(), 1);
     Assert.assertEquals(orElseActionCount.get(), numRunnables - 1);
-    Mockito.verify(lockConditionOnGlobalState, atLeast(numRunnables + 1)).getAsBoolean();
-    Mockito.verify(lockConditionOnGlobalState, atMost(2 * numRunnables)).getAsBoolean();
+    Mockito.verify(lockConditionOnGlobalState, times(numRunnables)).getAsBoolean();
 
-    // Lock will always return false now. The action should never get executed and the condition should only be checked
-    // in the outer block
+    // Lock will always return false now. The action should never get executed but the condition should still be checked
     Mockito.reset(lockConditionOnGlobalState);
 
     runTestWithOrElseAction(numRunnables, action, orElseAction, lockConditionOnGlobalState);
@@ -96,7 +94,7 @@ public class ConcurrencyUtilsTest {
     Object lockObject = new Object();
     for (int i = 0; i < numRunnables; i++) {
       executorService.submit(() -> {
-        ConcurrencyUtils.executeUnderConditionalLock(action, orElseAction, lockCondition, lockObject);
+        ConcurrencyUtils.executeUnderLock(action, orElseAction, lockCondition, lockObject);
         latch.countDown();
       });
     }

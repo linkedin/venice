@@ -13,7 +13,7 @@ public class DelegatingClusterLeaderInitializationRoutine implements ClusterLead
 
   @Override
   public void execute(String clusterToInit) {
-    ConcurrencyUtils.executeUnderConditionalLock(() -> delegate.execute(clusterToInit), () -> {
+    ConcurrencyUtils.executeUnderLock(() -> delegate.execute(clusterToInit), () -> {
       if (allowEmptyDelegateInitializationToSucceed) {
         LOGGER.info("Allowing initialization even though delegate is not set");
       } else {

@@ -350,11 +350,7 @@ public interface Admin extends AutoCloseable, Closeable {
    *
    * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType)
    */
-  default SchemaEntry addValueSchema(
-      String clusterName,
-      String storeName,
-      String valueSchemaStr,
-      int schemaId) {
+  default SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
     return addValueSchema(
         clusterName,
         storeName,

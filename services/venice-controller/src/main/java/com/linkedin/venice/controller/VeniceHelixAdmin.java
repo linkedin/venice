@@ -763,11 +763,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return adapterSerializer;
   }
 
-  // Package private on purpose
-  ClusterLeaderInitializationManager getClusterLeaderInitializationManager() {
-    return clusterLeaderInitializationManager;
-  }
-
   // For testing purpose.
   void setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
     this.topicManagerRepository = topicManagerRepository;
@@ -4864,18 +4859,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
     return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
-  }
-
-  /**
-   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType)
-   */
-  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
-    return addValueSchema(
-        clusterName,
-        storeName,
-        valueSchemaStr,
-        schemaId,
-        SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE);
   }
 
   /**
