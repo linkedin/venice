@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
-import static com.linkedin.venice.ConfigKeys.*;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -25,6 +24,7 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -89,7 +89,6 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.Timer;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import it.unimi.dsi.fastutil.ints.IntList;
@@ -407,7 +406,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         amplificationFactorAdapter);
 
     this.cacheBackend = cacheBackend;
-    this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
+    this.localKafkaServer = this.kafkaProps.getProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
@@ -2876,7 +2875,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
     // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
     aggKafkaConsumerService
-        .createKafkaConsumerService(createKafkaConsumerPropertiesChanged(kafkaProps, kafkaURL, consumeRemotely));
+        .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
     aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, topicPartition, startOffset);
   }
 
@@ -3243,28 +3242,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Properties localConsumerProps,
       String remoteKafkaSourceAddress,
       boolean consumeRemotely) {
-    Properties newConsumerProps = serverConfig.getClusterProperties().getPropertiesCopy();
-    newConsumerProps.putAll(localConsumerProps);
-    newConsumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
-    VeniceProperties customizedConsumerConfigs = consumeRemotely
-        ? serverConfig.getKafkaConsumerConfigsForRemoteConsumption()
-        : serverConfig.getKafkaConsumerConfigsForLocalConsumption();
-    if (!customizedConsumerConfigs.isEmpty()) {
-      newConsumerProps.putAll(customizedConsumerConfigs.toProperties());
-    }
-    return newConsumerProps;
-  }
-
-  protected Properties createKafkaConsumerPropertiesChanged(
-      Properties localConsumerProps,
-      String remoteKafkaSourceAddress,
-      boolean consumeRemotely) {
 
     Properties newConsumerProps = new Properties();
     newConsumerProps.putAll(localConsumerProps);
-    newConsumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
+    newConsumerProps.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
     if (consumeRemotely) {
-      newConsumerProps.setProperty(PUB_SUB_CONSUMER_LOCAL_CONSUMPTION, "false");
+      newConsumerProps.setProperty(ConfigKeys.PUB_SUB_CONSUMER_LOCAL_CONSUMPTION, "false");
     }
     return newConsumerProps;
   }

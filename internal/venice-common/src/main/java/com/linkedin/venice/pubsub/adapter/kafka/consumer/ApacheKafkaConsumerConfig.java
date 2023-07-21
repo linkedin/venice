@@ -1,6 +1,5 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 
 import com.linkedin.venice.ConfigKeys;
@@ -54,10 +53,7 @@ public class ApacheKafkaConsumerConfig {
       if (pubSubComponentsUsage.equals(PubSubClientsFactory.PUB_SUB_CLIENT_USAGE_FOR_CONTROLLER)) {
         properties = preparePubSubSSLPropertiesForController(veniceProperties);
         properties.setProperty(ApacheKafkaConsumerConfig.KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
-        /**
-         * Reason to disable auto_commit
-         * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
-         */
+        // Reason to disable auto_commit: OffsetRecord is persisted in Zookeeper by {@link AdminConsumptionTask}.
         properties.setProperty(ApacheKafkaConsumerConfig.KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
       } else if (pubSubComponentsUsage.equals(PubSubClientsFactory.PUB_SUB_CLIENT_USAGE_FOR_SERVER)) {
         properties = preparePubSubSSLPropertiesForServer(veniceProperties);
@@ -95,14 +91,14 @@ public class ApacheKafkaConsumerConfig {
     VeniceClusterConfig clusterConfig = new VeniceClusterConfig(veniceProperties, kafkaClusterMap);
     if (!kafkaBootstrapUrls.equals(clusterConfig.getKafkaBootstrapServers())) {
       Properties clonedProperties = clusterConfig.getClusterProperties().toProperties();
-      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
+      clonedProperties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
       clusterConfig =
           new VeniceClusterConfig(new VeniceProperties(clonedProperties), clusterConfig.getKafkaClusterMap());
     }
 
-    if (veniceProperties.containsKey(PUB_SUB_CONSUMER_LOCAL_CONSUMPTION)) {
+    if (veniceProperties.containsKey(ConfigKeys.PUB_SUB_CONSUMER_LOCAL_CONSUMPTION)) {
       properties.putAll(getCommonKafkaConsumerPropertiesForServer(clusterConfig));
-      if (veniceProperties.getBoolean(PUB_SUB_CONSUMER_LOCAL_CONSUMPTION)) {
+      if (veniceProperties.getBoolean(ConfigKeys.PUB_SUB_CONSUMER_LOCAL_CONSUMPTION)) {
         if (!clusterConfig.getKafkaConsumerConfigsForLocalConsumption().isEmpty()) {
           properties.putAll(clusterConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
         }
@@ -121,7 +117,7 @@ public class ApacheKafkaConsumerConfig {
     if (resolvedKafkaUrl != null) {
       kafkaBootstrapUrls = resolvedKafkaUrl;
     }
-    properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
+    properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
     SecurityProtocol securityProtocol = clusterConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
     if (KafkaSSLUtils.isKafkaSSLProtocol(securityProtocol)) {
       Optional<SSLConfig> sslConfig = clusterConfig.getSslConfig();
@@ -138,7 +134,7 @@ public class ApacheKafkaConsumerConfig {
     Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
     ApacheKafkaProducerConfig
         .copyKafkaSASLProperties(serverConfig.getClusterProperties(), kafkaConsumerProperties, false);
-    kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
+    kafkaConsumerProperties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
     kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Venice is persisting offset in local offset db.
     kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
@@ -172,16 +168,16 @@ public class ApacheKafkaConsumerConfig {
       brokerAddress = veniceProperties.getString(ConfigKeys.PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE);
     }
 
-    if (veniceProperties.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false)) {
-      clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
+    if (veniceProperties.getBooleanWithAlternative(ConfigKeys.KAFKA_OVER_SSL, ConfigKeys.SSL_TO_KAFKA_LEGACY, false)) {
+      clonedProperties.setProperty(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
     } else {
-      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
+      clonedProperties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, brokerAddress);
     }
 
     Properties properties = new Properties();
     VeniceProperties clonedVeniceProperties = new VeniceProperties(clonedProperties);
     String kafkaSecurityProtocol =
-        clonedVeniceProperties.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
+        clonedVeniceProperties.getString(ConfigKeys.KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(clonedProperties, properties, false);
     if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
@@ -192,9 +188,13 @@ public class ApacheKafkaConsumerConfig {
       sslConfig = Optional.of(new SSLConfig(clonedVeniceProperties));
       properties.putAll(sslConfig.get().getKafkaSSLConfig());
       properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, kafkaSecurityProtocol);
-      properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, clonedVeniceProperties.getString(SSL_KAFKA_BOOTSTRAP_SERVERS));
+      properties.setProperty(
+          ConfigKeys.KAFKA_BOOTSTRAP_SERVERS,
+          clonedVeniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS));
     } else {
-      properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, clonedProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS));
+      properties.setProperty(
+          ConfigKeys.KAFKA_BOOTSTRAP_SERVERS,
+          clonedProperties.getProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS));
     }
     return properties;
   }

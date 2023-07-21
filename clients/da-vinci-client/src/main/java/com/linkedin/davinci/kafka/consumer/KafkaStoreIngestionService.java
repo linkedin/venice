@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static java.lang.Thread.currentThread;
@@ -28,6 +27,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -1038,8 +1038,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private Properties getCommonKafkaConsumerPropertiesForLocalIngestion(VeniceClusterConfig serverConfig) {
     Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
-    kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
-    kafkaConsumerProperties.setProperty(PUB_SUB_CONSUMER_LOCAL_CONSUMPTION, "true");
+    kafkaConsumerProperties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
+    kafkaConsumerProperties.setProperty(ConfigKeys.PUB_SUB_CONSUMER_LOCAL_CONSUMPTION, "true");
     return kafkaConsumerProperties;
   }
 
@@ -1047,10 +1047,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     Properties properties = serverConfig.getClusterProperties().toProperties();
     properties.setProperty(
-        PUB_SUB_KAFKA_CLUSTER_MAP_STRING,
+        ConfigKeys.PUB_SUB_KAFKA_CLUSTER_MAP_STRING,
         VeniceClusterConfig.flattenKafkaClusterMapToStr(serverConfig.getKafkaClusterMap()));
-    properties.setProperty(PUB_SUB_COMPONENTS_USAGE, PubSubClientsFactory.PUB_SUB_CLIENT_USAGE_FOR_SERVER);
-    properties.setProperty(PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE, kafkaBootstrapUrls);
+    properties.setProperty(ConfigKeys.PUB_SUB_COMPONENTS_USAGE, PubSubClientsFactory.PUB_SUB_CLIENT_USAGE_FOR_SERVER);
+    properties.setProperty(ConfigKeys.PUB_SUB_BOOTSTRAP_SERVERS_TO_RESOLVE, kafkaBootstrapUrls);
     return new VeniceProperties(properties);
   }
 

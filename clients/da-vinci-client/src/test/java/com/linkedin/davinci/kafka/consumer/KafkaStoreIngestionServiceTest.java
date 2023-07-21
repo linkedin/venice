@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -22,6 +21,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
@@ -137,9 +137,9 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     VeniceClusterConfig mockVeniceClusterConfig = mock(VeniceClusterConfig.class);
     Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, dummyKafkaUrl);
-    properties.setProperty(CLUSTER_NAME, "testCluster");
-    properties.setProperty(ZOOKEEPER_ADDRESS, "localhost:1234");
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, dummyKafkaUrl);
+    properties.setProperty(ConfigKeys.CLUSTER_NAME, "testCluster");
+    properties.setProperty(ConfigKeys.ZOOKEEPER_ADDRESS, "localhost:1234");
     VeniceProperties mockVeniceProperties = new VeniceProperties(properties);
     doReturn(mockVeniceProperties).when(mockVeniceClusterConfig).getClusterProperties();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getClusterProperties();
