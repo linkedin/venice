@@ -35,7 +35,7 @@ import org.apache.logging.log4j.Logger;
 public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private static final Logger LOGGER = LogManager.getLogger(HttpChannelInitializer.class);
 
-  private final StorageReadRequestsHandler requestHandler;
+  private final StorageReadRequestHandler requestHandler;
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
@@ -59,7 +59,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       VeniceServerConfig serverConfig,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
-      StorageReadRequestsHandler requestHandler) {
+      StorageReadRequestHandler requestHandler) {
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
 

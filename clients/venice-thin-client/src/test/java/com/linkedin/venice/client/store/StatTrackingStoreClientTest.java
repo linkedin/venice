@@ -643,7 +643,7 @@ public class StatTrackingStoreClientTest {
             callback.onRecordReceived((K) ("key_" + (i + 1)), null);
           }
           if (callback instanceof TrackingStreamingCallback) {
-            TrackingStreamingCallback<K, org.apache.avro.generic.GenericRecord> trackingStreamingCallback =
+            TrackingStreamingCallback<K, GenericRecord> trackingStreamingCallback =
                 (TrackingStreamingCallback) callback;
             trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
           }

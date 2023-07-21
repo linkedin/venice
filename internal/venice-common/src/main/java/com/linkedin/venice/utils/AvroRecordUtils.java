@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificRecord;
 
 
@@ -83,5 +84,15 @@ public class AvroRecordUtils {
     }
 
     return recordType;
+  }
+
+  public static void clearRecord(GenericRecord record) {
+    if (record instanceof SpecificRecord) {
+      throw new UnsupportedOperationException("SpecificRecord clearing is not supported");
+    }
+    int fieldCount = record.getSchema().getFields().size();
+    for (int i = 0; i < fieldCount; ++i) {
+      record.put(i, null);
+    }
   }
 }
