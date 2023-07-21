@@ -3084,7 +3084,12 @@ public class VeniceParentHelixAdmin implements Admin {
    * Unsupported operation in the parent controller.
    */
   @Override
-  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
+  public SchemaEntry addValueSchema(
+      String clusterName,
+      String storeName,
+      String valueSchemaStr,
+      int schemaId,
+      DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     throw new VeniceUnsupportedOperationException("addValueSchema");
   }
 
