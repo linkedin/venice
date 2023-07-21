@@ -347,12 +347,7 @@ public interface Admin extends AutoCloseable, Closeable {
    *
    * TODO: make it private and remove from the interface list
    */
-  SchemaEntry addValueSchema(
-      String clusterName,
-      String storeName,
-      String valueSchemaStr,
-      int schemaId,
-      boolean doUpdateSupersetSchemaID);
+  SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId);
 
   SchemaEntry addSupersetSchema(
       String clusterName,
