@@ -77,7 +77,7 @@ public class SchemaRoutes extends AbstractRoute {
 
   /**
    * Route to handle adding value schema request.
-   * @see Admin#addValueSchema(String, String, String, int, boolean)
+   * @see Admin#addValueSchema(String, String, String, int)
    */
   public Route addValueSchema(Admin admin) {
     return (request, response) -> {
@@ -102,8 +102,7 @@ public class SchemaRoutes extends AbstractRoute {
               responseObject.getCluster(),
               responseObject.getName(),
               request.queryParams(VALUE_SCHEMA),
-              Integer.parseInt(schemaIdString),
-              false);
+              Integer.parseInt(schemaIdString));
         } else {
           valueSchemaEntry = admin.addValueSchema(
               responseObject.getCluster(),
