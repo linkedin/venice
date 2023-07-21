@@ -198,6 +198,14 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getDisabledRoutes();
   }
 
+  public int getUnusedSchemaCleanupIntervalMinutes() {
+    return getCommonConfig().getUnusedSchemaCleanupIntervalMinutes();
+  }
+
+  public int getMinSchemaCountToKeep() {
+    return getCommonConfig().getMinSchemaCountToKeep();
+  }
+
   public Set<String> getClusters() {
     return clusterToControllerConfigMap.keySet();
   }

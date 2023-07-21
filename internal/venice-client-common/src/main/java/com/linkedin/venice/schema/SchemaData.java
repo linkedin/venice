@@ -131,4 +131,11 @@ public final class SchemaData {
   public boolean hasRmdSchema(int valueSchemaId) {
     return rmdSchemaExistenceSet.get(valueSchemaId) != null;
   }
+
+  public void deleteValueSchema(SchemaEntry valueSchema) {
+    // value schema should be unique in store level, same as schema id
+    Integer id = valueSchema.getId();
+    valueSchemaMap.remove(id);
+    valueSchemaRMap.remove(valueSchema);
+  }
 }

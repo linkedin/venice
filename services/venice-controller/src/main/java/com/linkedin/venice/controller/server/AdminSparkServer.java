@@ -102,7 +102,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_P
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPLOAD_PUSH_JOB_STATUS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.SSLConfig;
@@ -448,6 +447,9 @@ public class AdminSparkServer extends AbstractVeniceService {
         GET_STORAGE_PERSONA_ASSOCIATED_WITH_STORE.getPath(),
         storagePersonaRoutes.getPersonaAssociatedWithStore(admin));
     httpService.get(GET_CLUSTER_STORAGE_PERSONAS.getPath(), storagePersonaRoutes.getClusterStoragePersonas(admin));
+
+    httpService.post(DELETE_VALUE_SCHEMAS.getPath(), storesRoutes.deleteValueSchemas(admin));
+    httpService.get(GET_INUSE_SCHEMA_IDS.getPath(), storesRoutes.getInUseSchemaIds(admin));
 
     httpService
         .post(CLEANUP_INSTANCE_CUSTOMIZED_STATES.getPath(), clusterRoutes.cleanupInstanceCustomizedStates(admin));

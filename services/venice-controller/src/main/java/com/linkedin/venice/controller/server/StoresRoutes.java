@@ -72,6 +72,7 @@ import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
+import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
@@ -100,10 +101,12 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistExceptio
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
@@ -260,6 +263,42 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
         veniceResponse.setStoreStatusMap(storeStatusMap);
+      }
+    };
+  }
+
+  public Route getInUseSchemaIds(Admin admin) {
+    return new VeniceRouteHandler<SchemaUsageResponse>(SchemaUsageResponse.class) {
+      @Override
+      public void internalHandle(Request request, SchemaUsageResponse response) {
+        AdminSparkServer.validateParams(request, GET_INUSE_SCHEMA_IDS.getParams(), admin);
+
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        Set<Integer> schemaIds = admin.getInUseValueSchemaIds(clusterName, storeName);
+        response.setInUseValueSchemaIds(schemaIds);
+
+      }
+    };
+  }
+
+  public Route deleteValueSchemas(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse response) {
+        AdminSparkServer.validateParams(request, DELETE_VALUE_SCHEMAS.getParams(), admin);
+
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        String schemaIdsString = AdminSparkServer.getOptionalParameterValue(request, VALUE_SCHEMA_IDS);
+        Set<Integer> schemaIds = schemaIdsString == null
+            ? Collections.emptySet()
+            : Arrays.stream(schemaIdsString.split(LOCKED_NODE_ID_LIST_SEPARATOR))
+                .map(String::trim)
+                .map(Integer::valueOf)
+                .collect(Collectors.toSet());
+        admin.deleteValueSchemas(clusterName, storeName, schemaIds);
+        response.setCluster(clusterName);
       }
     };
   }

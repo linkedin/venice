@@ -252,6 +252,56 @@ public class MetaStoreWriter implements Closeable {
   }
 
   /**
+   * This function should be invoked during ingestion when execution status changes.
+   */
+  public void writeStoreReplicaStatus(
+      String clusterName,
+      String storeName,
+      int version,
+      int partitionId,
+      Instance instance,
+      ExecutionStatus executionStatus) {
+    update(storeName, MetaStoreDataType.STORE_REPLICA_STATUSES, () -> new HashMap<String, String>() {
+      {
+        put(KEY_STRING_STORE_NAME, storeName);
+        put(KEY_STRING_CLUSTER_NAME, clusterName);
+        put(KEY_STRING_VERSION_NUMBER, Integer.toString(version));
+        put(KEY_STRING_PARTITION_ID, Integer.toString(partitionId));
+      }
+    }, () -> {
+      // Construct an update
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(this.derivedComputeSchema);
+      updateBuilder.setNewFieldValue("timestamp", System.currentTimeMillis());
+      Map<String, StoreReplicaStatus> instanceStatusMap = new HashMap<>();
+      StoreReplicaStatus replicaStatus = new StoreReplicaStatus();
+      replicaStatus.status = executionStatus.getValue();
+      instanceStatusMap.put(instance.getUrl(true), replicaStatus);
+      updateBuilder.setEntriesToAddToMapField("storeReplicaStatuses", instanceStatusMap);
+      return updateBuilder.build();
+    });
+  }
+
+  public void deleteInUseValueSchema(String storeName, int versionNumber, int valueSchemaId) {
+    update(storeName, MetaStoreDataType.VALUE_SCHEMAS_WRITTEN_PER_STORE_VERSION, () -> {
+      Map<String, String> map = new HashMap<>(2);
+      map.put(KEY_STRING_STORE_NAME, storeName);
+      map.put(KEY_STRING_VERSION_NUMBER, Integer.toString(versionNumber));
+      return map;
+    }, () -> {
+      // Construct an update
+      StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
+      writeOpRecord.timestamp = System.currentTimeMillis();
+      List<Integer> list = new ArrayList<>();
+      list.add(valueSchemaId);
+      storeValueSchemaIdsWrittenPerStoreVersionListOps listOps = new storeValueSchemaIdsWrittenPerStoreVersionListOps();
+      listOps.setUnion = Collections.emptyList();
+      listOps.setDiff = list;
+      writeOpRecord.storeValueSchemaIdsWrittenPerStoreVersion = listOps;
+      return writeOpRecord;
+    });
+  }
+
+  /**
    * Write {@link com.linkedin.venice.meta.StoreConfig} equivalent to the meta system store. This is still only invoked
    * by child controllers only.
    */

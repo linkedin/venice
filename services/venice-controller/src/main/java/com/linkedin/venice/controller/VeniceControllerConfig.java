@@ -99,7 +99,6 @@ import static com.linkedin.venice.ConfigKeys.TOPIC_MANAGER_KAFKA_OPERATION_TIMEO
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
-
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -311,6 +310,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean systemSchemaInitializationAtStartTimeEnabled;
 
   private final boolean isKMERegistrationFromMessageHeaderEnabled;
+  private final boolean unusedValueSchemaCleanupServiceEnabled;
+
+  private final int unusedSchemaCleanupIntervalMinutes;
+
+  private final int minSchemaCountToKeep;
 
   private final PubSubClientsFactory pubSubClientsFactory;
 
@@ -537,6 +541,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, false);
     this.enableDisabledReplicaEnabled = props.getBoolean(CONTROLLER_ENABLE_DISABLED_REPLICA_ENABLED, false);
 
+    this.unusedValueSchemaCleanupServiceEnabled =
+        props.getBoolean(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, false);
+    this.unusedSchemaCleanupIntervalMinutes = props.getInt(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS, 300);
+    this.minSchemaCountToKeep = props.getInt(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 20);
+
     try {
       String producerFactoryClassName =
           props.getString(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
@@ -663,6 +672,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getClusterDiscoveryD2ServiceName() {
     return clusterDiscoveryD2ServiceName;
+  }
+
+  public boolean isUnusedValueSchemaCleanupServiceEnabled() {
+    return unusedValueSchemaCleanupServiceEnabled;
+  }
+
+  public int getUnusedSchemaCleanupIntervalMinutes() {
+    return unusedSchemaCleanupIntervalMinutes;
+  }
+
+  public int getMinSchemaCountToKeep() {
+    return minSchemaCountToKeep;
   }
 
   public Map<String, String> getChildDataCenterControllerD2Map() {

@@ -446,6 +446,14 @@ public class ConfigKeys {
    */
   public static final String ROUTER_ENABLE_SSL = "router.enable.ssl";
 
+  public static final String CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED =
+      "controller.unused.value.schema.cleanup.enabled";
+
+  public static final String CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_MINS =
+      "controller.unused.schema.cleanup.interval.mins";
+
+  public static final String CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP = "controller.min.schema.count.keep";
+
   public static final String SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS =
       "server.remote.ingestion.repair.sleep.interval.seconds";
   /**

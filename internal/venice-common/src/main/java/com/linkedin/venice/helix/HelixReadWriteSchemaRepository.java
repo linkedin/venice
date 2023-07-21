@@ -507,6 +507,11 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
+  public void removeValueSchema(String storeName, int valueSchemaId) {
+    accessor.removeValueSchema(storeName, valueSchemaId);
+  }
+
+  @Override
   public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     preCheckStoreCondition(storeName);
 

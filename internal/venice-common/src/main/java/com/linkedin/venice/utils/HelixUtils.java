@@ -201,6 +201,10 @@ public class HelixUtils {
     }
   }
 
+  public static <T> boolean exists(ZkBaseDataAccessor<T> dataAccessor, String path) {
+    return exists(dataAccessor, path);
+  }
+
   public static <T> void remove(ZkBaseDataAccessor<T> dataAccessor, String path) {
     remove(dataAccessor, path, DEFAULT_HELIX_OP_RETRY_COUNT);
   }
