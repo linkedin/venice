@@ -186,164 +186,6 @@ public class RetriableAvroGenericStoreClientTest {
   }
 
   /**
-   * Original request is faster than retry threshold.
-   */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithoutTriggeringLongTailRetry(boolean batchGet) throws ExecutionException, InterruptedException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfig = clientConfigBuilder.build();
-    retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(
-            false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2,
-            false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 2,
-            clientConfig),
-        clientConfig);
-    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
-    if (!batchGet) {
-      validateSingleGetMetrics(false, false, false, false);
-    } else {
-      validateBatchGetMetrics(false, false, false);
-    }
-  }
-
-  /**
-   * Original request latency is higher than retry threshold, but still faster than retry request
-   */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndOriginalWins(boolean batchGet)
-      throws ExecutionException, InterruptedException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfig = clientConfigBuilder.build();
-    retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(
-            false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10,
-            false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 50,
-            clientConfig),
-        clientConfig);
-    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
-    if (!batchGet) {
-      validateSingleGetMetrics(false, false, true, false);
-    } else {
-      validateBatchGetMetrics(false, true, false);
-    }
-  }
-
-  /**
-   * Original request latency is higher than retry threshold and slower than the retry request
-   */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndRetryWins(boolean batchGet)
-      throws ExecutionException, InterruptedException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfig = clientConfigBuilder.build();
-    retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(
-            false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10,
-            false,
-            LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2,
-            clientConfig),
-        clientConfig);
-    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
-    if (!batchGet) {
-      validateSingleGetMetrics(false, false, true, true);
-    } else {
-      validateBatchGetMetrics(false, true, true);
-    }
-  }
-
-  /**
-   * Original request fails and retry succeeds.
-   */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringErrorRetryAndRetryWins(boolean batchGet)
-      throws ExecutionException, InterruptedException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfig = clientConfigBuilder.build();
-    retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(true, 0, false, LONG_TAIL_RETRY_THRESHOLD_IN_MS, clientConfig),
-        clientConfig);
-    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
-    if (!batchGet) {
-      validateSingleGetMetrics(false, true, false, true);
-    } else {
-      validateBatchGetMetrics(false, true, true);
-    }
-  }
-
-  /**
-   * Original request latency exceeds the retry threshold but succeeds and the retry fails.
-   */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndRetryFails(boolean batchGet)
-      throws ExecutionException, InterruptedException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfig = clientConfigBuilder.build();
-    retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(false, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, clientConfig),
-        clientConfig);
-    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
-    if (!batchGet) {
-      validateSingleGetMetrics(false, false, true, false);
-    } else {
-      validateBatchGetMetrics(false, true, false);
-    }
-  }
-
-  /**
-   * Original request latency exceeds the retry threshold, and both the original request and the retry fails.
-   */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndBothFailsV1(boolean batchGet)
-      throws InterruptedException, ExecutionException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfig = clientConfigBuilder.build();
-    retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(true, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, clientConfig),
-        clientConfig);
-    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
-    /**
-     *  When the request is closed exceptionally (when both original request and the retry throws exception),
-     *  only unhealthy counters gets incremented, so not checking for retry related metrics being true,
-     *  but requestContext values should be checked.
-     *  Check {@link StatsAvroGenericStoreClient#recordRequestMetrics} for more details.
-     */
-    if (!batchGet) {
-      validateSingleGetMetrics(true, false, true, false);
-    } else {
-      validateBatchGetMetrics(true, true, false);
-    }
-  }
-
-  /**
-   * Original request latency is lower than the retry threshold, and both the original request and the retry fails.
-   */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndBothFailsV2(boolean batchGet)
-      throws InterruptedException, ExecutionException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfig = clientConfigBuilder.build();
-    retriableClient =
-        new RetriableAvroGenericStoreClient<>(prepareDispatchingClient(true, 0, true, 0, clientConfig), clientConfig);
-    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
-    /**
-     *  When the request is closed exceptionally (when both original request and the retry throws exception),
-     *  only unhealthy counters gets incremented, so not checking for retry related metrics being true,
-     *  but requestContext values should be checked.
-     *  Check {@link StatsAvroGenericStoreClient#recordRequestMetrics} for more details.
-     */
-    if (!batchGet) {
-      validateSingleGetMetrics(true, true, false, false);
-    } else {
-      validateBatchGetMetrics(true, true, false);
-    }
-  }
-
-  /**
    * @param bothOriginalAndRetryFails In this case, get and batchGet both will throw veniceClientException
    *                                  and most metrics are not incremented, but requestContext values should
    *                                  be checked. Check {@link StatsAvroGenericStoreClient#recordRequestMetrics}
@@ -352,7 +194,7 @@ public class RetriableAvroGenericStoreClientTest {
    * @param longTailRetry request is retried because the original request is taking more time
    * @param retryWin retry request wins
    */
-  private void validateSingleGetMetrics(
+  private void testSingleGetAndValidateMetrics(
       boolean bothOriginalAndRetryFails,
       boolean errorRetry,
       boolean longTailRetry,
@@ -425,8 +267,10 @@ public class RetriableAvroGenericStoreClientTest {
    * @param longTailRetry request is retried because the original request is taking more time
    * @param retryWin retry request wins
    */
-  private void validateBatchGetMetrics(boolean bothOriginalAndRetryFails, boolean longTailRetry, boolean retryWin)
-      throws ExecutionException, InterruptedException {
+  private void testBatchGetAndvalidateMetrics(
+      boolean bothOriginalAndRetryFails,
+      boolean longTailRetry,
+      boolean retryWin) throws ExecutionException, InterruptedException {
     batchGetRequestContext = new BatchGetRequestContext<>();
     try {
       Map<String, String> value =
@@ -471,6 +315,165 @@ public class RetriableAvroGenericStoreClientTest {
     } else {
       assertFalse(metrics.get("." + STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
       assertFalse(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0);
+    }
+  }
+
+  /**
+   * Original request is faster than retry threshold.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testGetWithoutTriggeringLongTailRetry(boolean batchGet) throws ExecutionException, InterruptedException {
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfig = clientConfigBuilder.build();
+    retriableClient = new RetriableAvroGenericStoreClient<>(
+        prepareDispatchingClient(
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2,
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 2,
+            clientConfig),
+        clientConfig);
+    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
+    if (!batchGet) {
+      testSingleGetAndValidateMetrics(false, false, false, false);
+    } else {
+      testBatchGetAndvalidateMetrics(false, false, false);
+    }
+  }
+
+  /**
+   * Original request latency is higher than retry threshold, but still faster than retry request
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringLongTailRetryAndOriginalWins(boolean batchGet)
+      throws ExecutionException, InterruptedException {
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfig = clientConfigBuilder.build();
+    retriableClient = new RetriableAvroGenericStoreClient<>(
+        prepareDispatchingClient(
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10,
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 50,
+            clientConfig),
+        clientConfig);
+    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
+    if (!batchGet) {
+      testSingleGetAndValidateMetrics(false, false, true, false);
+    } else {
+      testBatchGetAndvalidateMetrics(false, true, false);
+    }
+  }
+
+  /**
+   * Original request latency is higher than retry threshold and slower than the retry request
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringLongTailRetryAndRetryWins(boolean batchGet)
+      throws ExecutionException, InterruptedException {
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfig = clientConfigBuilder.build();
+    retriableClient = new RetriableAvroGenericStoreClient<>(
+        prepareDispatchingClient(
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10,
+            false,
+            LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2,
+            clientConfig),
+        clientConfig);
+    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
+    if (!batchGet) {
+      testSingleGetAndValidateMetrics(false, false, true, true);
+    } else {
+      testBatchGetAndvalidateMetrics(false, true, true);
+    }
+  }
+
+  /**
+   * Original request fails and retry succeeds.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringErrorRetryAndRetryWins(boolean batchGet)
+      throws ExecutionException, InterruptedException {
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfig = clientConfigBuilder.build();
+    retriableClient = new RetriableAvroGenericStoreClient<>(
+        prepareDispatchingClient(true, 0, false, LONG_TAIL_RETRY_THRESHOLD_IN_MS, clientConfig),
+        clientConfig);
+    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
+    if (!batchGet) {
+      testSingleGetAndValidateMetrics(false, true, false, true);
+    } else {
+      testBatchGetAndvalidateMetrics(false, true, true);
+    }
+  }
+
+  /**
+   * Original request latency exceeds the retry threshold but succeeds and the retry fails.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringLongTailRetryAndRetryFails(boolean batchGet)
+      throws ExecutionException, InterruptedException {
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfig = clientConfigBuilder.build();
+    retriableClient = new RetriableAvroGenericStoreClient<>(
+        prepareDispatchingClient(false, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, clientConfig),
+        clientConfig);
+    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
+    if (!batchGet) {
+      testSingleGetAndValidateMetrics(false, false, true, false);
+    } else {
+      testBatchGetAndvalidateMetrics(false, true, false);
+    }
+  }
+
+  /**
+   * Original request latency exceeds the retry threshold, and both the original request and the retry fails.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringLongTailRetryAndBothFailsV1(boolean batchGet)
+      throws InterruptedException, ExecutionException {
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfig = clientConfigBuilder.build();
+    retriableClient = new RetriableAvroGenericStoreClient<>(
+        prepareDispatchingClient(true, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, clientConfig),
+        clientConfig);
+    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
+    /**
+     *  When the request is closed exceptionally (when both original request and the retry throws exception),
+     *  only unhealthy counters gets incremented, so not checking for retry related metrics being true,
+     *  but requestContext values should be checked.
+     *  Check {@link StatsAvroGenericStoreClient#recordRequestMetrics} for more details.
+     */
+    if (!batchGet) {
+      testSingleGetAndValidateMetrics(true, false, true, false);
+    } else {
+      testBatchGetAndvalidateMetrics(true, true, false);
+    }
+  }
+
+  /**
+   * Original request latency is lower than the retry threshold, and both the original request and the retry fails.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class/*, timeOut = TEST_TIMEOUT*/)
+  public void testGetWithTriggeringLongTailRetryAndBothFailsV2(boolean batchGet)
+      throws InterruptedException, ExecutionException {
+    batchGet = true;
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfig = clientConfigBuilder.build();
+    retriableClient =
+        new RetriableAvroGenericStoreClient<>(prepareDispatchingClient(true, 0, true, 0, clientConfig), clientConfig);
+    statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
+    /**
+     *  When the request is closed exceptionally (when both original request and the retry throws exception),
+     *  only unhealthy counters gets incremented, so not checking for retry related metrics being true,
+     *  but requestContext values should be checked.
+     *  Check {@link StatsAvroGenericStoreClient#recordRequestMetrics} for more details.
+     */
+    if (!batchGet) {
+      testSingleGetAndValidateMetrics(true, true, false, false);
+    } else {
+      testBatchGetAndvalidateMetrics(true, true, false);
     }
   }
 }
