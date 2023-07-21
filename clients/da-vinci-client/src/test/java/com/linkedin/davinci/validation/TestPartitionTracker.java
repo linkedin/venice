@@ -264,11 +264,8 @@ public class TestPartitionTracker {
     Assert.assertThrows(
         DuplicateDataException.class,
         () -> partitionTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE));
-    Assert
-        .assertEquals(partitionTracker.getLockAndSegmentIfPresent(guid).getRef().getSegmentNumber(), skipSegmentNumber);
-    Assert.assertEquals(
-        partitionTracker.getLockAndSegmentIfPresent(guid).getRef().getSequenceNumber(),
-        skipSequenceNumber);
+    Assert.assertEquals(partitionTracker.getSegment(guid).getSegmentNumber(), skipSegmentNumber);
+    Assert.assertEquals(partitionTracker.getSegment(guid).getSequenceNumber(), skipSequenceNumber);
   }
 
   @Test
@@ -293,7 +290,7 @@ public class TestPartitionTracker {
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
-    Assert.assertEquals(partitionTracker.getLockAndSegmentIfPresent(guid).getRef().getSequenceNumber(), 0);
+    Assert.assertEquals(partitionTracker.getSegment(guid).getSequenceNumber(), 0);
 
     // send EOS
     ControlMessage endOfSegment = getEndOfSegment();
@@ -309,7 +306,7 @@ public class TestPartitionTracker {
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.TRUE);
-    Assert.assertEquals(partitionTracker.getLockAndSegmentIfPresent(guid).getRef().getSequenceNumber(), 5);
+    Assert.assertEquals(partitionTracker.getSegment(guid).getSequenceNumber(), 5);
 
     // Send a put msg following EOS
     Put firstPut = getPutMessage("first_message".getBytes());
@@ -327,7 +324,7 @@ public class TestPartitionTracker {
         DuplicateDataException.class,
         () -> partitionTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE));
     // The sequence number should not change
-    Assert.assertEquals(partitionTracker.getLockAndSegmentIfPresent(guid).getRef().getSequenceNumber(), 5);
+    Assert.assertEquals(partitionTracker.getSegment(guid).getSequenceNumber(), 5);
   }
 
   /**
