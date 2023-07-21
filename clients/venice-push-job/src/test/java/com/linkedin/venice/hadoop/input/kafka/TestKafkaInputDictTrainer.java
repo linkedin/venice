@@ -16,6 +16,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -55,13 +56,14 @@ public class TestKafkaInputDictTrainer {
     doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
     RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> mockRecordReader = mock(RecordReader.class);
     doReturn(false).when(mockRecordReader).next(any(), any());
-    doReturn(mockRecordReader).when(mockFormat).getRecordReader(any(), any(), any());
+    doReturn(mockRecordReader).when(mockFormat).getRecordReader(any(), any(), any(), any());
 
     KafkaInputDictTrainer trainer = new KafkaInputDictTrainer(
         mockFormat,
         Optional.empty(),
         getParam(100),
         getCompressorBuilder(new NoopCompressor()));
+    trainer.setReusedConsumer(mock(PubSubConsumerAdapter.class));
     trainer.trainDict();
   }
 
@@ -153,8 +155,8 @@ public class TestKafkaInputDictTrainer {
     ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> readerForP1 =
         mockReader(Arrays.asList("p1_value0".getBytes(), "p1_value1".getBytes(), "p1_value2".getBytes()));
 
-    doReturn(readerForP0).when(mockFormat).getRecordReader(eq(splits[0]), any(), any());
-    doReturn(readerForP1).when(mockFormat).getRecordReader(eq(splits[1]), any(), any());
+    doReturn(readerForP0).when(mockFormat).getRecordReader(eq(splits[0]), any(), any(), any());
+    doReturn(readerForP1).when(mockFormat).getRecordReader(eq(splits[1]), any(), any(), any());
 
     // Big sampling will collect every record.
     ZstdDictTrainer mockTrainer1 = mock(ZstdDictTrainer.class);
@@ -163,6 +165,7 @@ public class TestKafkaInputDictTrainer {
         Optional.of(mockTrainer1),
         getParam(1000),
         getCompressorBuilder(new NoopCompressor()));
+    trainer1.setReusedConsumer(mock(PubSubConsumerAdapter.class));
     trainer1.trainDict();
 
     verify(mockTrainer1).addSample(eq("p0_value0".getBytes()));
@@ -181,6 +184,7 @@ public class TestKafkaInputDictTrainer {
         Optional.of(mockTrainer2),
         getParam(20),
         getCompressorBuilder(new NoopCompressor()));
+    trainer2.setReusedConsumer(mock(PubSubConsumerAdapter.class));
     trainer2.trainDict();
     verify(mockTrainer2).addSample(eq("p0_value0".getBytes()));
     verify(mockTrainer2, never()).addSample(eq("p0_value1".getBytes()));
@@ -204,8 +208,8 @@ public class TestKafkaInputDictTrainer {
     ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> readerForP1 =
         mockReader(Arrays.asList("p1_value0".getBytes(), "p1_value1".getBytes(), "p1_value2".getBytes()));
 
-    doReturn(readerForP0).when(mockFormat).getRecordReader(eq(splits[0]), any(), any());
-    doReturn(readerForP1).when(mockFormat).getRecordReader(eq(splits[1]), any(), any());
+    doReturn(readerForP0).when(mockFormat).getRecordReader(eq(splits[0]), any(), any(), any());
+    doReturn(readerForP1).when(mockFormat).getRecordReader(eq(splits[1]), any(), any(), any());
 
     VeniceCompressor mockedCompressor = mock(VeniceCompressor.class);
     doReturn(CompressionStrategy.GZIP).when(mockedCompressor).getCompressionStrategy();
@@ -219,6 +223,7 @@ public class TestKafkaInputDictTrainer {
         Optional.of(mockTrainer1),
         getParam(1000, CompressionStrategy.GZIP),
         getCompressorBuilder(mockedCompressor));
+    trainer1.setReusedConsumer(mock(PubSubConsumerAdapter.class));
     trainer1.trainDict();
 
     List<byte[]> allValues = new ArrayList<>(
@@ -257,8 +262,8 @@ public class TestKafkaInputDictTrainer {
     ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> readerForP1 =
         mockReader(Arrays.asList("p1_value0".getBytes(), "p1_value1".getBytes(), "p1_value2".getBytes()));
 
-    doReturn(readerForP0).when(mockFormat).getRecordReader(eq(splits[0]), any(), any());
-    doReturn(readerForP1).when(mockFormat).getRecordReader(eq(splits[1]), any(), any());
+    doReturn(readerForP0).when(mockFormat).getRecordReader(eq(splits[0]), any(), any(), any());
+    doReturn(readerForP1).when(mockFormat).getRecordReader(eq(splits[1]), any(), any(), any());
 
     VeniceCompressor mockedCompressor = mock(VeniceCompressor.class);
     doReturn(CompressionStrategy.GZIP).when(mockedCompressor).getCompressionStrategy();
@@ -272,6 +277,7 @@ public class TestKafkaInputDictTrainer {
         Optional.of(mockTrainer1),
         getParam(1000, CompressionStrategy.GZIP),
         getCompressorBuilder(mockedCompressor));
+    trainer1.setReusedConsumer(mock(PubSubConsumerAdapter.class));
     trainer1.trainDict();
 
     List<byte[]> allValues = new ArrayList<>(

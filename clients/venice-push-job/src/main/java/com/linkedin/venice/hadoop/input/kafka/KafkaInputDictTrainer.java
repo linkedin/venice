@@ -11,8 +11,14 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobZstdConfig;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -119,6 +125,9 @@ public class KafkaInputDictTrainer {
   private final CompressionStrategy sourceVersionCompressionStrategy;
   private final CompressorBuilder compressorBuilder;
 
+  // For testing purpose
+  private PubSubConsumerAdapter reusedConsumer;
+
   public KafkaInputDictTrainer(Param param) {
     this(new KafkaInputFormat(), Optional.empty(), param, KafkaInputUtils::getCompressor);
   }
@@ -159,6 +168,10 @@ public class KafkaInputDictTrainer {
     this.compressorBuilder = compressorBuilder;
   }
 
+  synchronized void setReusedConsumer(PubSubConsumerAdapter reusedConsumer) {
+    this.reusedConsumer = reusedConsumer;
+  }
+
   public synchronized byte[] trainDict() {
     if (dict != null) {
       return dict;
@@ -191,12 +204,26 @@ public class KafkaInputDictTrainer {
     int currentPartition = 0;
     long totalSampledRecordCnt = 0;
 
+    // Reuse the same Kafka Consumer across all partitions avoid log flooding
+    if (reusedConsumer == null) {
+      reusedConsumer = new ApacheKafkaConsumerAdapterFactory().create(
+          KafkaInputUtils.getConsumerProperties(jobConf),
+          false,
+          new PubSubMessageDeserializer(
+              new OptimizedKafkaValueSerializer(),
+              new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+              new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
+          null);
+    }
+
     try {
       for (InputSplit split: splits) {
         long currentFilledSize = 0;
         long sampledRecordCnt = 0;
+        // Reset Kafka consumer before using it
+        reusedConsumer.batchUnsubscribe(reusedConsumer.getAssignment());
         RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> recordReader =
-            kafkaInputFormat.getRecordReader(split, jobConf, Reporter.NULL);
+            kafkaInputFormat.getRecordReader(split, jobConf, Reporter.NULL, reusedConsumer);
         try {
           if (mapperKey == null) {
             mapperKey = recordReader.createKey();
@@ -246,6 +273,10 @@ public class KafkaInputDictTrainer {
     } finally {
       if (compressorFactory != null) {
         compressorFactory.close();
+      }
+      if (reusedConsumer != null) {
+        reusedConsumer.close();
+        reusedConsumer = null;
       }
     }
     if (totalSampledRecordCnt == 0) {
