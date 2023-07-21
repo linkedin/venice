@@ -26,12 +26,16 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -378,6 +382,37 @@ public class RocksDBStoragePartitionTest {
     // Verify all the key/value pairs can be read using the new format
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), entry.getValue().getBytes());
+      // Try to read via multi-get API
+      List<byte[]> values = storagePartition.multiGet(Arrays.asList(entry.getKey().getBytes()));
+      Assert.assertEquals(values.get(0), entry.getValue().getBytes());
+
+      // Try to read via multi-get buffer reuse API
+      List<ByteBuffer> keys = new ArrayList<>();
+      ByteBuffer key = ByteBuffer.allocateDirect(100);
+      key.put(entry.getKey().getBytes());
+      key.flip();
+      keys.add(key);
+      List<ByteBuffer> byteBufferList = new ArrayList<>();
+      byteBufferList.add(ByteBuffer.allocateDirect(100));
+      // Test with a large enough buffer
+      Assert.assertEquals(
+          ByteUtils.copyByteArray(storagePartition.multiGet(keys, byteBufferList).get(0)),
+          entry.getValue().getBytes());
+
+      // Test with a small buffer
+      byteBufferList.set(0, ByteBuffer.allocateDirect(1));
+      Assert.assertEquals(
+          ByteUtils.copyByteArray(storagePartition.multiGet(keys, byteBufferList).get(0)),
+          entry.getValue().getBytes());
+      // test it again with the internally enlarged buffer
+      Assert.assertTrue(byteBufferList.get(0).capacity() > 1);
+      Assert.assertEquals(
+          ByteUtils.copyByteArray(storagePartition.multiGet(keys, byteBufferList).get(0)),
+          entry.getValue().getBytes());
+
+      // Test with a non-existing key
+      keys.set(0, ByteBuffer.allocateDirect(1));
+      Assert.assertNull(storagePartition.multiGet(keys, byteBufferList).get(0));
     }
 
     // Test deletion
