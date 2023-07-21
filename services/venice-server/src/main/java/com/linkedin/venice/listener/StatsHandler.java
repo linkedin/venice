@@ -41,6 +41,9 @@ public class StatsHandler extends ChannelDuplexHandler {
   private IntList keySizeList;
   private IntList valueSizeList;
 
+  private int valueSize = 0;
+  private int readComputeOutputSize = 0;
+
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
@@ -76,7 +79,7 @@ public class StatsHandler extends ChannelDuplexHandler {
    * {@link VerifySslHandler}
    * {@link ServerAclHandler}
    * {@link RouterRequestHttpHandler}
-   * {@link StorageReadRequestsHandler}
+   * {@link StorageReadRequestHandler}
    *
    */
   private double firstPartLatency = -1;
@@ -358,10 +361,13 @@ public class StatsHandler extends ChannelDuplexHandler {
             serverHttpRequestStats.recordValueSizeInByte(valueSizeList.getInt(i));
         }
       }
+      if (readComputeOutputSize > 0) {
+        serverHttpRequestStats.recordReadComputeEfficiency((double) valueSize / readComputeOutputSize);
+      }
     }
   }
 
-  // This method does not have to be synchronised since operations in Tehuti are already synchronised.
+  // This method does not have to be synchronized since operations in Tehuti are already synchronized.
   // Please re-consider the race condition if new logic is added.
   private void successRequest(ServerHttpRequestStats stats, double elapsedTime) {
     if (storeName != null) {
@@ -380,5 +386,13 @@ public class StatsHandler extends ChannelDuplexHandler {
       stats.recordErrorRequest();
       stats.recordErrorRequestLatency(elapsedTime);
     }
+  }
+
+  public void setValueSize(int size) {
+    this.valueSize = size;
+  }
+
+  public void setReadComputeOutputSize(int size) {
+    this.readComputeOutputSize = size;
   }
 }

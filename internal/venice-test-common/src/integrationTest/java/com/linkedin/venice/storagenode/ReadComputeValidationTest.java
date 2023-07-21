@@ -10,7 +10,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
-import com.linkedin.venice.compute.ComputeOperationUtils;
+import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -380,10 +380,10 @@ public class ReadComputeValidationTest {
         // Results for key 1 should be non-null since the nullable field in the value of key 1 is non-null
         Assert.assertEquals(
             computeResult.get(key1).get("dot_product_result"),
-            ComputeOperationUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+            ComputeUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
         Assert.assertEquals(
             computeResult.get(key1).get("hadamard_product_result"),
-            ComputeOperationUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+            ComputeUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
         Assert.assertEquals(computeResult.get(key1).get("cosine_similarity_result"), 1.0f); // Cosine similarity between
                                                                                             // a vector and itself is
                                                                                             // 1.0

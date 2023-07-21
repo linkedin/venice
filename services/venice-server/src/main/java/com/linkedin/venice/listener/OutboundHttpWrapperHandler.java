@@ -64,6 +64,8 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         statsHandler.setCountOperatorCount(obj.getCountOperatorCount());
         statsHandler.setKeySizeList(obj.getKeySizeList());
         statsHandler.setValueSizeList(obj.getValueSizeList());
+        statsHandler.setValueSize(obj.getValueSize());
+        statsHandler.setReadComputeOutputSize(obj.getReadComputeOutputSize());
         compressionStrategy = obj.getCompressionStrategy();
         if (obj.isFound()) {
           body = obj.getResponseBody();

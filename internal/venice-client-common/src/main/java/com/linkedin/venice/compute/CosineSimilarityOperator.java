@@ -1,6 +1,6 @@
 package com.linkedin.venice.compute;
 
-import static com.linkedin.venice.compute.ComputeOperationUtils.CACHED_SQUARED_L2_NORM_KEY;
+import static com.linkedin.venice.compute.ComputeUtils.CACHED_SQUARED_L2_NORM_KEY;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
@@ -22,7 +22,7 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
     CosineSimilarity cosineSimilarity = (CosineSimilarity) op.operation;
     try {
       List<Float> valueVector =
-          ComputeOperationUtils.getNullableFieldValueAsList(valueRecord, cosineSimilarity.field.toString());
+          ComputeUtils.getNullableFieldValueAsList(valueRecord, cosineSimilarity.field.toString());
       List<Float> cosSimilarityParam = cosineSimilarity.cosSimilarityParam;
 
       if (valueVector.size() == 0 || cosSimilarityParam.size() == 0) {
@@ -38,8 +38,8 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
         return;
       }
 
-      float dotProductResult = ComputeOperationUtils.dotProduct(cosSimilarityParam, valueVector);
-      float valueVectorSquaredL2Norm = ComputeOperationUtils.squaredL2Norm(valueVector);
+      float dotProductResult = ComputeUtils.dotProduct(cosSimilarityParam, valueVector);
+      float valueVectorSquaredL2Norm = ComputeUtils.squaredL2Norm(valueVector);
       float cosSimilarityParamSquaredL2Norm;
       // Build the context as we go though all the computations
       // The following caching is assuming the float vector is immutable, which is the case for compute.
@@ -55,7 +55,7 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
         cosSimilarityParamSquaredL2Norm = cachedResult;
       } else {
         // Cache the computed result
-        cosSimilarityParamSquaredL2Norm = ComputeOperationUtils.squaredL2Norm(cosSimilarityParam);
+        cosSimilarityParamSquaredL2Norm = ComputeUtils.squaredL2Norm(cosSimilarityParam);
         cachedSquareL2Norm.put(cosSimilarityParam, cosSimilarityParamSquaredL2Norm);
       }
 
