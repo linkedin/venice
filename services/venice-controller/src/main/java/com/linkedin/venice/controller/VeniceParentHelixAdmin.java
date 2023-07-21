@@ -649,10 +649,12 @@ public class VeniceParentHelixAdmin implements Admin {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
       SchemaUsageResponse response = controllerClient.getInUseSchemaIds(storeName);
-      if (response.isError()) {
-        LOGGER.error(
-            "Could not query store from region: " + region + " for cluster: " + clusterName + ". "
-                + response.getError());
+      if (response.isError() || response.getInUseValueSchemaIds().isEmpty()) {
+        if (response.isError()) {
+          LOGGER.error(
+              "Could not query store from region: " + region + " for cluster: " + clusterName + ". "
+                  + response.getError());
+        }
         return Collections.emptySet();
       } else {
         // make union of all used schemas
