@@ -24,7 +24,6 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -121,7 +120,6 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -406,7 +404,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         amplificationFactorAdapter);
 
     this.cacheBackend = cacheBackend;
-    this.localKafkaServer = this.kafkaProps.getProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    this.localKafkaServer = storeConfig.getKafkaBootstrapServers();
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
@@ -2872,10 +2870,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
 
   public void consumerSubscribe(PubSubTopicPartition topicPartition, long startOffset, String kafkaURL) {
-    final boolean consumeRemotely = !Objects.equals(kafkaURL, localKafkaServer);
-    // TODO: Move remote KafkaConsumerService creating operations into the aggKafkaConsumerService.
-    aggKafkaConsumerService
-        .createKafkaConsumerService(createKafkaConsumerProperties(kafkaProps, kafkaURL, consumeRemotely));
     aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, topicPartition, startOffset);
   }
 
@@ -3233,23 +3227,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public boolean isPartitionConsuming(int userPartition) {
     return amplificationFactorAdapter.meetsAny(userPartition, partitionConsumptionStateMap::containsKey);
-  }
-
-  /**
-   * Override the {@link CommonClientConfigs#BOOTSTRAP_SERVERS_CONFIG} config with a remote Kafka bootstrap url.
-   */
-  protected Properties createKafkaConsumerProperties(
-      Properties localConsumerProps,
-      String remoteKafkaSourceAddress,
-      boolean consumeRemotely) {
-
-    Properties newConsumerProps = new Properties();
-    newConsumerProps.putAll(localConsumerProps);
-    newConsumerProps.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
-    if (consumeRemotely) {
-      newConsumerProps.setProperty(ConfigKeys.PUB_SUB_CONSUMER_LOCAL_CONSUMPTION, "false");
-    }
-    return newConsumerProps;
   }
 
   /**

@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -54,6 +55,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final PubSubMessageDeserializer pubSubDeserializer;
   private final TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier;
 
+  private final Properties localCommonKafkaConsumerConfigs;
+  private final VeniceServerConfig serverConfig;
+
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
       TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier,
@@ -65,6 +69,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       TopicExistenceChecker topicExistenceChecker,
       final PubSubMessageDeserializer pubSubDeserializer) {
     this.consumerFactory = consumerFactory;
+    this.serverConfig = serverConfig;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.numOfConsumersPerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
     this.sharedConsumerNonExistingTopicCleanupDelayMS = serverConfig.getSharedConsumerNonExistingTopicCleanupDelayMS();
@@ -80,12 +85,14 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.isKafkaConsumerOffsetCollectionEnabled = serverConfig.isKafkaConsumerOffsetCollectionEnabled();
     this.pubSubDeserializer = pubSubDeserializer;
     this.sslPropertiesSupplier = sslPropertiesSupplier;
-    LOGGER.info("Successfully initialized AggKafkaConsumerService");
+    this.localCommonKafkaConsumerConfigs = getCommonKafkaConsumerPropertiesForLocalIngestion();
+    createKafkaConsumerService(localCommonKafkaConsumerConfigs);
+    LOGGER.info("Successfully initialized AggKafkaConsumerService and create local KafkaConsumerService");
   }
 
   /**
    * IMPORTANT: All newly created KafkaConsumerService are already started in {@link #createKafkaConsumerService(Properties)},
-   * if this is no longer the case in future, make sure to update the startInner logic here.
+   * if this is no longer the case in the future, make sure to update the startInner logic here.
    */
   @Override
   public boolean startInner() {
@@ -104,7 +111,21 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    *         or null if there isn't any.
    */
   private KafkaConsumerService getKafkaConsumerService(final String kafkaURL) {
+    if (!kafkaServerToConsumerServiceMap.containsKey(kafkaURL)) {
+      Properties newConsumerProps = new Properties();
+      newConsumerProps.putAll(localCommonKafkaConsumerConfigs);
+      newConsumerProps.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaURL);
+      newConsumerProps.setProperty(ConfigKeys.PUB_SUB_CONSUMER_LOCAL_CONSUMPTION, "false");
+      kafkaServerToConsumerServiceMap.put(kafkaURL, createKafkaConsumerService(newConsumerProps));
+    }
     return kafkaServerToConsumerServiceMap.get(kafkaURL);
+  }
+
+  private Properties getCommonKafkaConsumerPropertiesForLocalIngestion() {
+    Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
+    kafkaConsumerProperties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
+    kafkaConsumerProperties.setProperty(ConfigKeys.PUB_SUB_CONSUMER_LOCAL_CONSUMPTION, "true");
+    return kafkaConsumerProperties;
   }
 
   /**

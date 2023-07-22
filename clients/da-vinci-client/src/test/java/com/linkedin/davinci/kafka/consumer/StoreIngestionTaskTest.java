@@ -2966,6 +2966,7 @@ public abstract class StoreIngestionTaskTest {
 
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
+    doReturn("localhost").when(mockVeniceStoreVersionConfig).getKafkaBootstrapServers();
 
     Version mockVersion = mock(Version.class);
     doReturn(1).when(mockVersion).getPartitionCount();
@@ -3221,6 +3222,7 @@ public abstract class StoreIngestionTaskTest {
     }, isActiveActiveReplicationEnabled, configOverride -> {
       // set very high threshold so offsetRecord isn't be synced during regular consumption
       doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();
+      doReturn(inMemoryLocalKafkaBroker.getKafkaBootstrapServer()).when(configOverride).getKafkaBootstrapServers();
     });
     Assert.assertEquals(mockNotifierError.size(), 0);
   }
@@ -3474,6 +3476,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(databaseSyncBytesIntervalForDeferredWriteMode).when(storeConfig)
         .getDatabaseSyncBytesIntervalForDeferredWriteMode();
     doReturn(false).when(storeConfig).isReadOnlyForBatchOnlyStoreEnabled();
+    doReturn(inMemoryLocalKafkaBroker.getKafkaBootstrapServer()).when(storeConfig).getKafkaBootstrapServers();
     storeVersionConfigOverride.accept(storeConfig);
     return storeConfig;
   }

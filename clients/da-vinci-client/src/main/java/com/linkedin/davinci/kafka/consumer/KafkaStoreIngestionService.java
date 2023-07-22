@@ -389,6 +389,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
+    /**
+     * After initializing a {@link AggKafkaConsumerService} service, it will create KafkaConsumerService for the local Kafka cluster.
+     *
+     * Pass through all the customized Kafka consumer configs into the consumer as long as the customized config key
+     * starts with {@link ConfigKeys#SERVER_LOCAL_CONSUMER_CONFIG_PREFIX}; the clipping and filtering work is done
+     * in {@link VeniceServerConfig} already.
+     *
+     * Here, we only pass through the customized Kafka consumer configs for local consumption, if an ingestion task
+     * creates a dedicated consumer or a new consumer service for a remote Kafka URL, we will pass through the configs
+     * for remote consumption inside the ingestion task.
+     */
     aggKafkaConsumerService = new AggKafkaConsumerService(
         pubSubClientsFactory.getConsumerAdapterFactory(),
         this::getPubSubPropertiesFromServerConfig,
@@ -399,20 +410,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         metricsRepository,
         new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()),
         pubSubDeserializer);
-    /**
-     * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
-     * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.
-     *
-     * Pass through all the customized Kafka consumer configs into the consumer as long as the customized config key
-     * starts with {@link ConfigKeys#SERVER_LOCAL_CONSUMER_CONFIG_PREFIX}; the clipping and filtering work is done
-     * in {@link VeniceServerConfig} already.
-     *
-     * Here, we only pass through the customized Kafka consumer configs for local consumption, if an ingestion task
-     * creates a dedicated consumer or a new consumer service for a remote Kafka URL, we will passthrough the configs
-     * for remote consumption inside the ingestion task.
-     */
-    Properties commonKafkaConsumerConfigs = getCommonKafkaConsumerPropertiesForLocalIngestion(serverConfig);
-    aggKafkaConsumerService.createKafkaConsumerService(commonKafkaConsumerConfigs);
 
     /**
      * Use the same diskUsage instance for all ingestion tasks; so that all the ingestion tasks can update the same
