@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -23,6 +24,7 @@ import com.linkedin.venice.datarecovery.DataRecoveryTask;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.MonitorCommand;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
@@ -158,7 +160,14 @@ public class TestDataRecoveryClient {
         .setTimestamp(LocalDateTime.parse("2999-12-31T00:00:00", DateTimeFormatter.ISO_LOCAL_DATE_TIME))
         .setSSLFactory(Optional.empty())
         .setDestFabric("ei-ltx1")
-        .setSourceFabric("ei-ltx1");
+        .setSourceFabric("ei4");
+
+    ControllerResponse mockRecoveryResponse = spy(ControllerResponse.class);
+    doReturn(false).when(mockRecoveryResponse).isError();
+    doReturn(mockRecoveryResponse).when(controllerClient)
+        .prepareDataRecovery(anyString(), anyString(), anyString(), anyInt(), any());
+    doReturn(mockRecoveryResponse).when(controllerClient)
+        .dataRecovery(anyString(), anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean(), any());
 
     StoreRepushCommand.Params cmdParams = builder.build();
 
@@ -182,10 +191,11 @@ public class TestDataRecoveryClient {
     StoreRepushCommand mockStoreRepushCmd = spy(StoreRepushCommand.class);
     mockStoreRepushCmd.setParams(cmdParams);
     doReturn(mockCmd).when(mockStoreRepushCmd).getShellCmd();
+    doCallRealMethod().when(mockStoreRepushCmd).getRepushViability();
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));
-    List<DataRecoveryTask> tasks = buildExecuteDataRecoveryTasks(storeName, mockStoreRepushCmd, cmdParams);
+    List<DataRecoveryTask> tasks = buildExecuteDataRecoveryTasks(storeName, mockStoreRepushCmd, cmdParams, isSuccess);
     doReturn(tasks).when(executor).buildTasks(any(), any());
 
     // Store filtering mocks
@@ -202,12 +212,17 @@ public class TestDataRecoveryClient {
     doReturn(storeStatusMap).when(storeStatusResponse).getStoreStatusMap();
     doReturn(storeStatusResponse).when(controllerClient).getFutureVersions(anyString(), anyString());
 
+    StoreResponse storeResponse = mock(StoreResponse.class);
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0L, 0L, 0L, null, null));
+    doReturn(storeInfo).when(storeResponse).getStore();
+    doReturn(storeResponse).when(controllerClient).getStore(anyString());
+
     // Partial mock of Client class to confirm to-be-repushed stores from standard input.
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
     doReturn(executor).when(dataRecoveryClient).getExecutor();
     doCallRealMethod().when(dataRecoveryClient).execute(any(), any());
     doReturn(true).when(dataRecoveryClient).confirmStores(any());
-    doCallRealMethod().when(dataRecoveryClient).getRepushViability(any(), any());
     doReturn(controllerClient).when(dataRecoveryClient).buildControllerClient(anyString(), anyString(), any());
     // client executes three store recovery.
     DataRecoveryClient.DataRecoveryParams drParams = new DataRecoveryClient.DataRecoveryParams(storeName);
@@ -215,17 +230,32 @@ public class TestDataRecoveryClient {
     dataRecoveryClient.execute(drParams, cmdParams);
 
     verifyExecuteRecoveryResults(isSuccess);
+    dataRecoveryClient.getExecutor().getTasks().clear();
+
+    // test batch store
+    storeInfo.setHybridStoreConfig(null);
+    dataRecoveryClient.execute(drParams, cmdParams);
+    for (DataRecoveryTask t: dataRecoveryClient.getExecutor().getTasks()) {
+      Assert.assertFalse(t.getTaskResult().getCmdResult().isError());
+    }
+
+    dataRecoveryClient.getExecutor().getTasks().clear();
 
     // testing repush with invalid timestamps
 
     storeStatusMap.put("ei-ltx1", "7");
     builder.setTimestamp(LocalDateTime.parse("1999-12-31T00:00:00", DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+    cmdParams = builder.build();
     doReturn("2999-12-31T23:59:59.171961").when(regionPushDetailsMock).getPushStartTimestamp();
     Assert.assertEquals(
         storeHealthInfoMock.getRegionPushDetails().get("ei-ltx1").getPushStartTimestamp(),
         "2999-12-31T23:59:59.171961");
     dataRecoveryClient.execute(drParams, cmdParams);
-    Assert.assertEquals(dataRecoveryClient.getExecutor().getSkippedStores().contains("store3"), true);
+
+    // verify
+    for (DataRecoveryTask t: dataRecoveryClient.getExecutor().getTasks()) {
+      Assert.assertTrue(t.getCommand().getResult().isError());
+    }
 
     drParams = new DataRecoveryClient.DataRecoveryParams(null);
     dataRecoveryClient.execute(drParams, cmdParams);
@@ -234,14 +264,33 @@ public class TestDataRecoveryClient {
   private List<DataRecoveryTask> buildExecuteDataRecoveryTasks(
       Set<String> storeNames,
       Command cmd,
-      StoreRepushCommand.Params params) {
+      StoreRepushCommand.Params params,
+      boolean isSuccess) {
     List<DataRecoveryTask> tasks = new ArrayList<>();
     StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder(params);
     for (String name: storeNames) {
       StoreRepushCommand.Params p = builder.build();
       p.setStore(name);
       DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
-      tasks.add(new DataRecoveryTask(cmd, taskParams));
+
+      StoreRepushCommand newCmd = mock(StoreRepushCommand.class);
+      doReturn(p).when(newCmd).getParams();
+      doReturn(p.getPCtrlCliWithoutCluster()).when(newCmd).buildControllerClient(anyString(), anyString(), any());
+      List<String> mockCmd = new ArrayList<>();
+      mockCmd.add("sh");
+      mockCmd.add("-c");
+
+      if (isSuccess) {
+        mockCmd.add("echo \\\"success: https://example.com/executor?execid=21585379\\\"");
+      } else {
+        mockCmd.add("echo \"failure: Incorrect Login. Username/Password+VIP not found.\"");
+      }
+      doReturn(mockCmd).when(newCmd).getShellCmd();
+      StoreRepushCommand.Result r = new StoreRepushCommand.Result();
+      doReturn(r).when(newCmd).getResult();
+      doCallRealMethod().when(newCmd).toString();
+
+      tasks.add(new DataRecoveryTask(newCmd, taskParams));
     }
     return tasks;
   }

@@ -21,10 +21,10 @@ public abstract class Command {
   }
 
   public abstract static class Result {
-    private String cluster;
-    private String store;
-    protected String error;
-    protected String message;
+    private String cluster = null;
+    private String store = null;
+    protected String error = null;
+    protected String message = null;
 
     // isCoreWorkDone indicates if the core task is finished when an interval is specified.
     protected boolean isCoreWorkDone = false;

@@ -1,17 +1,27 @@
 package com.linkedin.venice.datarecovery;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.RegionPushDetails;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.security.SSLFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -33,6 +43,8 @@ public class StoreRepushCommand extends Command {
   private Params params;
   private Result result = new Result();
   private List<String> shellCmd;
+
+  private boolean isShellCmdExecuted = false;
 
   // For unit test only.
   public StoreRepushCommand() {
@@ -62,12 +74,26 @@ public class StoreRepushCommand extends Command {
     return true;
   }
 
+  public boolean isShellCmdExecuted() {
+    return isShellCmdExecuted;
+  }
+
+  public void completeCoreWorkWithMessage(String message) {
+    getResult().setMessage(message);
+    getResult().setCoreWorkDone(true);
+  }
+
+  public void completeCoreWorkWithError(String error) {
+    getResult().setError(error);
+    getResult().setCoreWorkDone(true);
+  }
+
   private List<String> generateRepushCommand() {
     List<String> cmd = new ArrayList<>();
     cmd.add(this.getParams().command);
-    cmd.add(this.params.extraCommandArgs);
-    cmd.add(String.format("--store '%s'", this.params.store));
-    cmd.add(String.format("--fabric '%s'", this.params.sourceFabric));
+    cmd.add(this.getParams().extraCommandArgs);
+    cmd.add(String.format("--store '%s'", this.getParams().store));
+    cmd.add(String.format("--fabric '%s'", this.getParams().sourceFabric));
     return cmd;
   }
 
@@ -88,14 +114,106 @@ public class StoreRepushCommand extends Command {
   }
 
   private void processOutput(String output, int exitCode) {
-    result.setStdOut(output);
-    result.setExitCode(exitCode);
-    result.parseStandardOutput();
-    result.setCoreWorkDone(true);
+    getResult().setStdOut(output);
+    getResult().setExitCode(exitCode);
+    getResult().parseStandardOutput();
+    getResult().setCoreWorkDone(true);
+  }
+
+  public ControllerClient buildControllerClient(String clusterName, String url, Optional<SSLFactory> sslFactory) {
+    return new ControllerClient(clusterName, url, sslFactory);
+  }
+
+  public Pair<Boolean, String> getRepushViability() {
+    String url = getParams().getUrl();
+    ControllerClient cli = getParams().getPCtrlCliWithoutCluster();
+    LocalDateTime timestamp = getParams().getTimestamp();
+    String destFabric = getParams().getDestFabric();
+    String s = getParams().getStore();
+    try {
+      String clusterName = cli.discoverCluster(s).getCluster();
+      if (clusterName == null) {
+        return Pair.of(false, "unable to discover cluster for store (likely invalid store name)");
+      }
+      try (ControllerClient parentCtrlCli = buildControllerClient(clusterName, url, getParams().getSSLFactory())) {
+        StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(s, false);
+        Map<String, RegionPushDetails> regionPushDetails = storeHealthInfo.getRegionPushDetails();
+        if (!regionPushDetails.containsKey(destFabric)) {
+          return Pair.of(false, "nothing to repush, store version 0");
+        }
+        String latestTimestamp = regionPushDetails.get(destFabric).getPushStartTimestamp();
+        LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+
+        if (latestPushStartTime.isAfter(timestamp)) {
+          return Pair.of(false, "input timestamp earlier than latest push");
+        }
+
+        boolean isBatch = false;
+        StoreResponse storeResponse = parentCtrlCli.getStore(s);
+        if (storeResponse.getStore().getHybridStoreConfig() == null) {
+          isBatch = true;
+        }
+
+        MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, s);
+        // No future version status for target region.
+        if (!response.getStoreStatusMap().containsKey(destFabric)) {
+          return Pair.of(true, isBatch ? "BATCH" : StringUtils.EMPTY);
+        }
+
+        int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(destFabric));
+        // No ongoing offline pushes detected for target region.
+        if (futureVersion == Store.NON_EXISTING_VERSION) {
+          return Pair.of(true, isBatch ? "BATCH" : StringUtils.EMPTY);
+        }
+        // Find ongoing pushes for this store, skip.
+        return Pair.of(false, String.format("find ongoing push, version: %d", futureVersion));
+      }
+    } catch (Exception e) {
+      return Pair.of(false, "Exception Thrown: " + e.toString());
+    }
   }
 
   @Override
   public void execute() {
+    Pair<Boolean, String> repushViability = getRepushViability();
+    StoreRepushCommand.Params repushParams = getParams();
+    ControllerClient cli = repushParams.getPCtrlCliWithoutCluster();
+    if (repushViability.getLeft() == false) {
+      completeCoreWorkWithError("failure: " + repushViability.getRight());
+      return;
+    }
+    if (repushViability.getRight() == "BATCH") {
+      try {
+        String clusterName = cli.discoverCluster(repushParams.getStore()).getCluster();
+        try (ControllerClient parentCtrlCli =
+            buildControllerClient(clusterName, repushParams.getUrl(), repushParams.getSSLFactory())) {
+          ControllerResponse prepareResponse = parentCtrlCli.prepareDataRecovery(
+              repushParams.getSourceFabric(),
+              repushParams.getDestFabric(),
+              repushParams.getStore(),
+              -1,
+              Optional.empty());
+          if (prepareResponse.isError()) {
+            completeCoreWorkWithError("failure: " + prepareResponse.getError());
+          }
+          ControllerResponse dataRecoveryResponse = parentCtrlCli.dataRecovery(
+              repushParams.getSourceFabric(),
+              repushParams.getDestFabric(),
+              repushParams.getStore(),
+              -1,
+              false,
+              true,
+              Optional.empty());
+          if (dataRecoveryResponse.isError()) {
+            completeCoreWorkWithError("failure: " + dataRecoveryResponse.getError());
+          }
+          completeCoreWorkWithMessage("success: (batch store -- no url)");
+        }
+      } catch (VeniceException e) {
+        completeCoreWorkWithError("failure: VeniceException -- " + e.getMessage());
+      }
+      return;
+    }
     ProcessBuilder pb = new ProcessBuilder(getShellCmd());
     // so we can ignore the error stream.
     pb.redirectErrorStream(true);
@@ -122,6 +240,7 @@ public class StoreRepushCommand extends Command {
     } catch (InterruptedException e) {
       LOGGER.warn("Interrupted when waiting for executing command: {}", this, e);
     } finally {
+      isShellCmdExecuted = true;
       try {
         if (reader != null) {
           reader.close();
@@ -131,7 +250,7 @@ public class StoreRepushCommand extends Command {
       }
     }
 
-    if (params.debug) {
+    if (getParams().debug) {
       LOGGER.info("Cmd: {}, StdOut: {}, Exit code: {}", this, stdOut, exitCode);
     }
   }
@@ -301,7 +420,7 @@ public class StoreRepushCommand extends Command {
   }
 
   public static class Result extends Command.Result {
-    private String stdOut;
+    private String stdOut = null;
     private int exitCode;
 
     public int getExitCode() {
