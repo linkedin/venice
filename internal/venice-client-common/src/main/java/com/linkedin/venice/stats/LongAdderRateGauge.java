@@ -9,13 +9,15 @@ import java.util.concurrent.atomic.LongAdder;
 
 /**
  * This metric class is to optimize for high write throughput, low read throughput measurement use case instead of real-time
- * measurement. The smallest measurement interval is 1 minute.
+ * measurement. The smallest measurement interval is 30 seconds.
  */
 public class LongAdderRateGauge extends Gauge {
   private final Time time;
   private final LongAdder adder = new LongAdder();
   private long lastMeasurementTime;
   private double lastMeasuredValue = 0.0D;
+
+  public static final int RATE_GAUGE_CACHE_DURATION_IN_SECONDS = 30;
 
   public LongAdderRateGauge() {
     this(new SystemTime());
@@ -49,7 +51,7 @@ public class LongAdderRateGauge extends Gauge {
    */
   private double getRate(long currentTimeMs) {
     double elapsedTimeInSeconds = (double) (currentTimeMs - this.lastMeasurementTime) / Time.MS_PER_SECOND;
-    if (elapsedTimeInSeconds < Time.SECONDS_PER_MINUTE) {
+    if (elapsedTimeInSeconds < RATE_GAUGE_CACHE_DURATION_IN_SECONDS) {
       return lastMeasuredValue;
     }
     this.lastMeasurementTime = currentTimeMs;
