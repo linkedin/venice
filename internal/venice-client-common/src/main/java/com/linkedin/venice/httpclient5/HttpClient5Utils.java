@@ -37,7 +37,7 @@ public class HttpClient5Utils {
     private long requestTimeOutInMilliseconds = TimeUnit.SECONDS.toMillis(1); // 1s by default
     /**
      * We need to use a high connect timeout to avoid reconnect issue, which might result in confusing logging and unhealthy requests.
-     * For now, we remove the functions updating the connect timeout to avoid mistakes.
+     * For now, we remove the functions updating to connect timeout to avoid mistakes.
      */
     private final Timeout CONNECT_TIMEOUT_IN_MILLISECONDS = Timeout.ofMilliseconds(TimeUnit.MINUTES.toMillis(1)); // 1m
                                                                                                                   // by
@@ -54,7 +54,7 @@ public class HttpClient5Utils {
       return this;
     }
 
-    public HttpClient5Builder setRequestTimeOutInMilliseconds(int requestTimeOutInMilliseconds) {
+    public HttpClient5Builder setRequestTimeOutInMilliseconds(long requestTimeOutInMilliseconds) {
       this.requestTimeOutInMilliseconds = requestTimeOutInMilliseconds;
       return this;
     }
