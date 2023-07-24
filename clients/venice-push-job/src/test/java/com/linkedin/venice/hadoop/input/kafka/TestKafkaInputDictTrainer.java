@@ -63,8 +63,7 @@ public class TestKafkaInputDictTrainer {
         Optional.empty(),
         getParam(100),
         getCompressorBuilder(new NoopCompressor()));
-    trainer.setReusedConsumer(mock(PubSubConsumerAdapter.class));
-    trainer.trainDict();
+    trainer.trainDict(Optional.of(mock(PubSubConsumerAdapter.class)));
   }
 
   interface ResettableRecordReader<K, V> extends RecordReader<K, V> {
@@ -165,8 +164,7 @@ public class TestKafkaInputDictTrainer {
         Optional.of(mockTrainer1),
         getParam(1000),
         getCompressorBuilder(new NoopCompressor()));
-    trainer1.setReusedConsumer(mock(PubSubConsumerAdapter.class));
-    trainer1.trainDict();
+    trainer1.trainDict(Optional.of(mock(PubSubConsumerAdapter.class)));
 
     verify(mockTrainer1).addSample(eq("p0_value0".getBytes()));
     verify(mockTrainer1).addSample(eq("p0_value1".getBytes()));
@@ -184,8 +182,7 @@ public class TestKafkaInputDictTrainer {
         Optional.of(mockTrainer2),
         getParam(20),
         getCompressorBuilder(new NoopCompressor()));
-    trainer2.setReusedConsumer(mock(PubSubConsumerAdapter.class));
-    trainer2.trainDict();
+    trainer2.trainDict(Optional.of(mock(PubSubConsumerAdapter.class)));
     verify(mockTrainer2).addSample(eq("p0_value0".getBytes()));
     verify(mockTrainer2, never()).addSample(eq("p0_value1".getBytes()));
     verify(mockTrainer2, never()).addSample(eq("p0_value2".getBytes()));
@@ -223,8 +220,7 @@ public class TestKafkaInputDictTrainer {
         Optional.of(mockTrainer1),
         getParam(1000, CompressionStrategy.GZIP),
         getCompressorBuilder(mockedCompressor));
-    trainer1.setReusedConsumer(mock(PubSubConsumerAdapter.class));
-    trainer1.trainDict();
+    trainer1.trainDict(Optional.of(mock(PubSubConsumerAdapter.class)));
 
     List<byte[]> allValues = new ArrayList<>(
         Arrays.asList(
@@ -277,8 +273,7 @@ public class TestKafkaInputDictTrainer {
         Optional.of(mockTrainer1),
         getParam(1000, CompressionStrategy.GZIP),
         getCompressorBuilder(mockedCompressor));
-    trainer1.setReusedConsumer(mock(PubSubConsumerAdapter.class));
-    trainer1.trainDict();
+    trainer1.trainDict(Optional.of(mock(PubSubConsumerAdapter.class)));
 
     List<byte[]> allValues = new ArrayList<>(
         Arrays.asList(

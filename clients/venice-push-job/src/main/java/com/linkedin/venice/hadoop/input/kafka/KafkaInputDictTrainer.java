@@ -125,9 +125,6 @@ public class KafkaInputDictTrainer {
   private final CompressionStrategy sourceVersionCompressionStrategy;
   private final CompressorBuilder compressorBuilder;
 
-  // For testing purpose
-  private PubSubConsumerAdapter reusedConsumer;
-
   public KafkaInputDictTrainer(Param param) {
     this(new KafkaInputFormat(), Optional.empty(), param, KafkaInputUtils::getCompressor);
   }
@@ -168,11 +165,12 @@ public class KafkaInputDictTrainer {
     this.compressorBuilder = compressorBuilder;
   }
 
-  synchronized void setReusedConsumer(PubSubConsumerAdapter reusedConsumer) {
-    this.reusedConsumer = reusedConsumer;
+  public synchronized byte[] trainDict() {
+    return trainDict(Optional.empty());
   }
 
-  public synchronized byte[] trainDict() {
+  // Package access for unit test to test with a mock consumer.
+  synchronized byte[] trainDict(Optional<PubSubConsumerAdapter> reusedConsumerOptional) {
     if (dict != null) {
       return dict;
     }
@@ -205,17 +203,15 @@ public class KafkaInputDictTrainer {
     long totalSampledRecordCnt = 0;
 
     // Reuse the same Kafka Consumer across all partitions avoid log flooding
-    if (reusedConsumer == null) {
-      reusedConsumer = new ApacheKafkaConsumerAdapterFactory().create(
-          KafkaInputUtils.getConsumerProperties(jobConf),
-          false,
-          new PubSubMessageDeserializer(
-              new OptimizedKafkaValueSerializer(),
-              new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-              new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
-          null);
-    }
-
+    PubSubConsumerAdapter reusedConsumer = reusedConsumerOptional.orElseGet(
+        () -> new ApacheKafkaConsumerAdapterFactory().create(
+            KafkaInputUtils.getConsumerProperties(jobConf),
+            false,
+            new PubSubMessageDeserializer(
+                new OptimizedKafkaValueSerializer(),
+                new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
+            null));
     try {
       for (InputSplit split: splits) {
         long currentFilledSize = 0;
@@ -274,9 +270,9 @@ public class KafkaInputDictTrainer {
       if (compressorFactory != null) {
         compressorFactory.close();
       }
-      if (reusedConsumer != null) {
+      if (!reusedConsumerOptional.isPresent()) {
+        // Closed the consumer initialized in this function
         reusedConsumer.close();
-        reusedConsumer = null;
       }
     }
     if (totalSampledRecordCnt == 0) {
