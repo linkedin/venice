@@ -86,6 +86,11 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordIterator;
 
   private final Reporter reporter;
+  /**
+   * Whether the consumer being used in this class is owned or not, and this is used to decide
+   * whether the consumer should be closed when closing {@link KafkaInputRecordReader}.
+   */
+  private boolean ownedConsumer = true;
 
   public KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter) {
     this(
@@ -101,6 +106,11 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
                 new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
             null),
         PUBSUB_TOPIC_REPOSITORY);
+  }
+
+  public KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter, PubSubConsumerAdapter consumer) {
+    this(split, job, reporter, consumer, PUBSUB_TOPIC_REPOSITORY);
+    this.ownedConsumer = false;
   }
 
   /** For unit tests */
@@ -133,6 +143,10 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
      * Not accurate since the topic partition could be log compacted.
      */
     this.maxNumberOfRecords = endingOffset - startingOffset;
+    // In case the Kafka Consumer is passed by the caller, we will unsubscribe all the existing subscriptions first
+    if (!ownedConsumer) {
+      this.consumer.batchUnsubscribe(this.consumer.getAssignment());
+    }
     this.consumer.subscribe(pubSubTopicPartition, currentOffset);
     this.reporter = reporter;
     LOGGER.info(
@@ -274,7 +288,9 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
   @Override
   public void close() {
-    this.consumer.close();
+    if (ownedConsumer) {
+      this.consumer.close();
+    }
   }
 
   @Override
