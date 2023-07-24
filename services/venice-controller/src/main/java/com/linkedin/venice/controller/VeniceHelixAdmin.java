@@ -4681,7 +4681,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     pushMonitor.recordPushPreparationDuration(topic, TimeUnit.MILLISECONDS.toSeconds(maxWaitTimeMs));
     throw new VeniceException(
         "After waiting for " + maxWaitTimeMs + "ms, resource assignment for: " + topic + " timed out, strategy="
-            + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
+            + strategy + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
   }
 
   @Override
@@ -4693,8 +4693,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void deleteHelixResource(String clusterName, String kafkaTopic) {
     checkControllerLeadershipFor(clusterName);
-    helixAdminClient.dropResource(clusterName, kafkaTopic);
+
+    getHelixAdminClient().dropResource(clusterName, kafkaTopic);
     LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
+
+    List<String> instances = getStorageNodes(clusterName);
+    for (String instance: instances) {
+      Map<String, List<String>> disabledPartitions =
+          getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
+      for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
+        if (entry.getKey().equals(kafkaTopic)) {
+          // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
+          getHelixAdminClient().enablePartition(true, clusterName, instance, kafkaTopic, entry.getValue());
+          LOGGER.info("Cleaning up disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
+        }
+      }
+    }
   }
 
   /**
@@ -5169,6 +5183,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public List<String> getStorageNodes(String clusterName) {
     checkControllerLeadershipFor(clusterName);
     return helixAdminClient.getInstancesInCluster(clusterName);
+  }
+
+  public HelixAdminClient getHelixAdminClient() {
+    return helixAdminClient;
   }
 
   /**
