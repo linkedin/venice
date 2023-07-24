@@ -116,7 +116,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       newConsumerProps.putAll(localCommonKafkaConsumerConfigs);
       newConsumerProps.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaURL);
       newConsumerProps.setProperty(ConfigKeys.PUB_SUB_CONSUMER_LOCAL_CONSUMPTION, "false");
-      kafkaServerToConsumerServiceMap.put(kafkaURL, createKafkaConsumerService(newConsumerProps));
+      return createKafkaConsumerService(newConsumerProps);
     }
     return kafkaServerToConsumerServiceMap.get(kafkaURL);
   }
