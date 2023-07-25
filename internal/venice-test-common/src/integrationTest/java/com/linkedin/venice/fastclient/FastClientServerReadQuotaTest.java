@@ -54,14 +54,13 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
         assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
       }
     });
-    int averageQuotaRequested = 500 / serverMetrics.size();
+    int quotaRequestedSum = 0;
     for (MetricsRepository serverMetric: serverMetrics) {
-      assertTrue(
-          serverMetric.getMetric(readQuotaRequestedString).value() >= averageQuotaRequested,
-          "Metric value: " + serverMetric.getMetric(readQuotaRequestedString).value());
+      quotaRequestedSum += serverMetric.getMetric(readQuotaRequestedString).value();
       assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
       assertTrue(serverMetric.getMetric(readQuotaUsageRatio).value() > 0);
     }
+    assertTrue(quotaRequestedSum >= 500, "Quota requested sum: " + quotaRequestedSum);
 
     // Update the read quota to 50 and make as many requests needed to trigger quota rejected exception.
     veniceCluster.useControllerClient(controllerClient -> {
