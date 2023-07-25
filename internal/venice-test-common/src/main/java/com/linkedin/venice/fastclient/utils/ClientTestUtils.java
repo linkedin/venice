@@ -52,7 +52,7 @@ public class ClientTestUtils {
         return setupTransportClientFactory(fastClientHTTPVariant);
 
       case HTTP_2_BASED_HTTPCLIENT5:
-        return HttpClient5BasedR2Client.getR2Client(SslUtils.getVeniceLocalSslFactory().getSSLContext(), 8);
+        return HttpClient5BasedR2Client.getR2Client(SslUtils.getVeniceLocalSslFactory().getSSLContext(), 8, 5000);
 
       default:
         throw new VeniceException("Unsupported Http type: " + fastClientHTTPVariant);
