@@ -259,14 +259,19 @@ public class TestHAASController {
   }
 
   private HelixAsAServiceWrapper startAndWaitForHAASToBeAvailable(String zkAddress) {
-    HelixAsAServiceWrapper helixAsAServiceWrapper = ServiceFactory.getHelixController(zkAddress);
-    waitForNonDeterministicAssertion(
-        30,
-        TimeUnit.SECONDS,
-        true,
-        () -> assertNotNull(
-            helixAsAServiceWrapper.getSuperClusterLeader(),
-            "Helix super cluster doesn't have a leader yet"));
-    return helixAsAServiceWrapper;
+    HelixAsAServiceWrapper helixAsAServiceWrapper = null;
+    try {
+      helixAsAServiceWrapper = ServiceFactory.getHelixController(zkAddress);
+      final HelixAsAServiceWrapper finalHaas = helixAsAServiceWrapper;
+      waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertNotNull(finalHaas.getSuperClusterLeader(), "Helix super cluster doesn't have a leader yet"));
+      return helixAsAServiceWrapper;
+    } catch (Exception e) {
+      Utils.closeQuietlyWithErrorLogged(helixAsAServiceWrapper);
+      throw e;
+    }
   }
 }

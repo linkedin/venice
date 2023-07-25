@@ -516,25 +516,31 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public VeniceControllerWrapper addVeniceController(Properties properties) {
-    VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(getClusterName(), zkServerWrapper, pubSubBrokerWrapper)
-            .regionName(options.getRegionName())
-            .replicationFactor(options.getReplicationFactor())
-            .partitionSize(options.getPartitionSize())
-            .numberOfPartitions(options.getNumberOfPartitions())
-            .maxNumberOfPartitions(options.getMaxNumberOfPartitions())
-            .rebalanceDelayMs(options.getRebalanceDelayMs())
-            .minActiveReplica(options.getMinActiveReplica())
-            .sslToKafka(options.isSslToKafka())
-            .clusterToD2(clusterToD2)
-            .clusterToServerD2(clusterToServerD2)
-            .extraProperties(properties)
-            .build());
-    synchronized (this) {
-      veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
-      setExternalControllerDiscoveryURL(getAllControllersURLs());
+    VeniceControllerWrapper veniceControllerWrapper = null;
+    try {
+      veniceControllerWrapper = ServiceFactory.getVeniceController(
+          new VeniceControllerCreateOptions.Builder(getClusterName(), zkServerWrapper, pubSubBrokerWrapper)
+              .regionName(options.getRegionName())
+              .replicationFactor(options.getReplicationFactor())
+              .partitionSize(options.getPartitionSize())
+              .numberOfPartitions(options.getNumberOfPartitions())
+              .maxNumberOfPartitions(options.getMaxNumberOfPartitions())
+              .rebalanceDelayMs(options.getRebalanceDelayMs())
+              .minActiveReplica(options.getMinActiveReplica())
+              .sslToKafka(options.isSslToKafka())
+              .clusterToD2(clusterToD2)
+              .clusterToServerD2(clusterToServerD2)
+              .extraProperties(properties)
+              .build());
+      synchronized (this) {
+        veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
+        setExternalControllerDiscoveryURL(getAllControllersURLs());
+      }
+      return veniceControllerWrapper;
+    } catch (Exception e) {
+      Utils.closeQuietlyWithErrorLogged(veniceControllerWrapper);
+      throw e;
     }
-    return veniceControllerWrapper;
   }
 
   public void addVeniceControllerWrapper(VeniceControllerWrapper veniceControllerWrapper) {
