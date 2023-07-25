@@ -12,7 +12,6 @@ import com.linkedin.venice.meta.RoutersClusterManager;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
@@ -60,7 +59,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
    * this
    * reference points to has been changed.
    */
-  private final AtomicReference<ConcurrentMap<String, StoreReadThrottler>> storesThrottlers;
+  private final AtomicReference<ConcurrentMap<String, EventThrottler>> storesThrottlers;
 
   private final AggRouterHttpRequestStats stats;
 
@@ -122,21 +121,18 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
    *
    * @param storeName        name of the store that request is trying to visit.
    * @param readCapacityUnit usage of this read request.
-   * @param storageNodeId    id of the node where the request will send to.
-   *
    * @throws QuotaExceededException if the usage exceeded the quota throw this exception to reject the request.
    */
   @Override
-  public void mayThrottleRead(String storeName, double readCapacityUnit, String storageNodeId)
-      throws QuotaExceededException {
+  public void mayThrottleRead(String storeName, double readCapacityUnit) throws QuotaExceededException {
     if (!zkRoutersManager.isThrottlingEnabled() || isNoopThrottlerEnabled) {
       return;
     }
-    StoreReadThrottler throttler = storesThrottlers.get().get(storeName);
+    EventThrottler throttler = storesThrottlers.get().get(storeName);
     if (throttler == null) {
       throw new VeniceException("Could not find the throttler for store: " + storeName);
     } else {
-      throttler.mayThrottleRead(readCapacityUnit);
+      throttler.maybeThrottle(readCapacityUnit);
     }
   }
 
@@ -204,25 +200,24 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     return totalQuota;
   }
 
-  protected StoreReadThrottler getStoreReadThrottler(String storeName) {
+  protected EventThrottler getStoreReadThrottler(String storeName) {
     return storesThrottlers.get().get(storeName);
   }
 
-  private StoreReadThrottler buildStoreReadThrottler(String storeName, long storeQuotaPerRouter) {
+  private EventThrottler buildStoreReadThrottler(String storeName, long storeQuotaPerRouter) {
     stats.recordQuota(storeName, storeQuotaPerRouter);
-    return new StoreReadThrottler(
-        storeName,
+    return new EventThrottler(
         storeQuotaPerRouter,
-        EventThrottler.REJECT_STRATEGY,
-        perStorageNodeReadQuotaBuffer,
         storeQuotaCheckTimeWindow,
-        storageNodeQuotaCheckTimeWindow);
+        storeName + "-throttler",
+        true,
+        EventThrottler.REJECT_STRATEGY);
   }
 
-  private ConcurrentMap<String, StoreReadThrottler> buildAllStoreReadThrottlers() {
+  private ConcurrentMap<String, EventThrottler> buildAllStoreReadThrottlers() {
     // Total quota for this router is changed, we have to update all store throttlers.
     List<Store> allStores = storeRepository.getAllStores();
-    ConcurrentMap<String, StoreReadThrottler> newStoreThrottlers = new ConcurrentHashMap<>();
+    ConcurrentMap<String, EventThrottler> newStoreThrottlers = new ConcurrentHashMap<>();
     for (Store store: allStores) {
       if (storeHasNoValidVersion(store)) {
         continue;
@@ -304,14 +299,11 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   public void handleStoreDeleted(String storeName) {
     updateStoreThrottler(() -> {
       LOGGER.info("Store: {} has been deleted. Remove the throttler for this store.", storeName);
-      StoreReadThrottler throttler = storesThrottlers.get().remove(storeName);
+      EventThrottler throttler = storesThrottlers.get().remove(storeName);
       if (throttler == null) {
         return;
       }
       stats.recordQuota(storeName, 0);
-      throttler.clearStorageNodesThrottlers();
-      routingDataRepository
-          .unSubscribeRoutingDataChange(Version.composeKafkaTopic(storeName, throttler.getCurrentVersion()), this);
     });
   }
 
@@ -321,8 +313,8 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       return;
     }
     updateStoreThrottler(() -> {
-      StoreReadThrottler storeReadThrottler = storesThrottlers.get().get(store.getName());
-      if (storeReadThrottler == null) {
+      EventThrottler eventThrottler = storesThrottlers.get().get(store.getName());
+      if (eventThrottler == null) {
         LOGGER.warn(
             "Throttler have not been created for store: {}. Router might miss the creation event.",
             store.getName());
@@ -331,12 +323,12 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       }
 
       long storeQuotaPerRouter = calculateStoreQuotaPerRouter(store.getReadQuotaInCU());
-      if (storeQuotaPerRouter != storesThrottlers.get().get(store.getName()).getQuota()) {
+      if (storeQuotaPerRouter != storesThrottlers.get().get(store.getName()).getMaxRatePerSecond()) {
         // Handle store's quota was updated.
         LOGGER.info(
             "Read quota has been changed for store: {} - oldQuota: {}, newQuota: {}. Updating the store read throttler.",
             store.getName(),
-            storeReadThrottler.getQuota(),
+            eventThrottler.getMaxRatePerSecond(),
             storeQuotaPerRouter);
         storesThrottlers.get().put(store.getName(), buildStoreReadThrottler(store.getName(), storeQuotaPerRouter));
       }
