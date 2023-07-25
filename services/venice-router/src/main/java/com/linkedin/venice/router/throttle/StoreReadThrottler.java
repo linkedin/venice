@@ -11,7 +11,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.logging.log4j.LogManager;
@@ -45,7 +44,6 @@ public class StoreReadThrottler {
       String storeName,
       long localQuota,
       EventThrottlingStrategy throttlingStrategy,
-      Optional<PartitionAssignment> partitionAssignment,
       double perStorageNodeReadQuotaBuffer,
       long storeQuotaCheckTimeWindow,
       long storageNodeQuotaCheckTimeWindow) {
@@ -57,20 +55,9 @@ public class StoreReadThrottler {
     storeThrottler =
         new EventThrottler(localQuota, storeQuotaCheckTimeWindow, storeName + "-throttler", true, throttlingStrategy);
     this.storageNodeQuotaCheckTimeWindow = storageNodeQuotaCheckTimeWindow;
-    if (partitionAssignment.isPresent()) {
-      updateStorageNodesThrottlers(partitionAssignment.get());
-    }
   }
 
-  public void mayThrottleRead(double readCapacityUnit, String storageNodeId) {
-    if (storageNodeId != null) {
-      EventThrottler storageNodeThrottler = storageNodesThrottlers.get(storageNodeId);
-      // TODO While updating storage nodes' throttlers, there might be a very short period that we haven't create a
-      // TODO throttler for the given storage node. Right now just accept this request, could add a default quota later.
-      if (storageNodeThrottler != null) {
-        storageNodeThrottler.maybeThrottle(readCapacityUnit);
-      }
-    }
+  public void mayThrottleRead(double readCapacityUnit) {
     storeThrottler.maybeThrottle(readCapacityUnit);
   }
 

@@ -61,8 +61,7 @@ public class ReadRequestThrottlerTest {
         0.0,
         PER_STORE_ROUTER_QUOTA_BUFFER,
         1000,
-        1000,
-        true);
+        1000);
   }
 
   @Test

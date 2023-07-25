@@ -76,8 +76,7 @@ public class RouterRequestThrottlingTest {
         0.0,
         1.5,
         1000,
-        1000,
-        true);
+        1000);
   }
 
   @DataProvider(name = "multiGet_compute")
