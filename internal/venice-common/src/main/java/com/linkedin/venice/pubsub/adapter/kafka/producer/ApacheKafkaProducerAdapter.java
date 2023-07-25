@@ -32,7 +32,7 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
 
   private KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
   private final ApacheKafkaProducerConfig producerConfig;
-  private boolean forceClose = false;
+  private boolean forceClosed = false;
 
   /**
    * @param producerConfig contains producer configs
@@ -118,7 +118,7 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
       LOGGER.info("Flushed all the messages in producer before closing");
     }
     if (closeTimeOutMs == 0) {
-      forceClose = true;
+      forceClosed = true;
     }
     producer.close(Duration.ofMillis(closeTimeOutMs));
     // Recycle the internal buffer allocated by KafkaProducer ASAP.
@@ -152,7 +152,7 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
     return producerConfig.getBrokerAddress();
   }
 
-  boolean isForceClose() {
-    return forceClose;
+  boolean isForceClosed() {
+    return forceClosed;
   }
 }

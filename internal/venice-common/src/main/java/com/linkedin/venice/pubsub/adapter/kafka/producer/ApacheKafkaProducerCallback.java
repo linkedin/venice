@@ -63,7 +63,7 @@ public class ApacheKafkaProducerCallback implements Callback {
     }
 
     // This is a special case where the producer is closed forcefully. We can skip the callback processing
-    if (exception != null && exception.getMessage() != null && producerAdapter.isForceClose()
+    if (exception != null && exception.getMessage() != null && producerAdapter.isForceClosed()
         && exception.getMessage().contains("Producer is closed forcefully")) {
       LOGGER.debug("Producer is closed forcefully. Skipping the callback processing.");
       return;
