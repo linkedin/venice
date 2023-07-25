@@ -226,6 +226,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           clientStats.recordRetryRequestKeyCount(batchGetRequestContext.numberOfKeysSentInRetryRequest);
           clientStats
               .recordRetryRequestSuccessKeyCount(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get());
+          if (batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0) {
+            clientStats.recordRetryRequestWin();
+          }
         }
       }
 

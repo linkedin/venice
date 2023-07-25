@@ -493,24 +493,30 @@ public abstract class AbstractClientEndToEndSetup {
       int expectedBatchGetKeySizeMetricsCount,
       int expectedBatchGetKeySizeSuccessMetricsCount,
       boolean retryEnabled) {
-    String metricPrefix = useStreamingBatchGetAsDefault ? "--multiget_" : "--";
+    String metricPrefix = "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--");
     double keyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeMetricsCount : 1;
     double successKeyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeSuccessMetricsCount : 1;
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+
     // counters are incremented in an async manner, so adding non-deterministic wait
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertTrue(metrics.get(metricPrefix + "request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get(metricPrefix + "healthy_request_latency.Avg").value() > 0);
+      assertFalse(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get(metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
       assertTrue(
-          metrics.get("." + storeName + metricPrefix + "request_key_count.Rate").value() > 0,
+          metrics.get(metricPrefix + "request_key_count.Rate").value() > 0,
           "Respective request_key_count should have been incremented");
       assertEquals(
-          metrics.get("." + storeName + metricPrefix + "request_key_count.Max").value(),
+          metrics.get(metricPrefix + "request_key_count.Max").value(),
           keyCount,
           "Respective request_key_count should have been incremented");
       assertTrue(
-          metrics.get("." + storeName + metricPrefix + "success_request_key_count.Rate").value() > 0,
+          metrics.get(metricPrefix + "success_request_key_count.Rate").value() > 0,
           "Respective success_request_key_count should have been incremented");
       assertEquals(
-          metrics.get("." + storeName + metricPrefix + "success_request_key_count.Max").value(),
+          metrics.get(metricPrefix + "success_request_key_count.Max").value(),
           successKeyCount,
           "Respective success_request_key_count should have been incremented");
     });
@@ -523,7 +529,7 @@ public abstract class AbstractClientEndToEndSetup {
     if (retryEnabled) {
       String log = useStreamingBatchGetAsDefault ? "batch Get" : "single Get";
       assertTrue(
-          metrics.get("." + storeName + metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0,
+          metrics.get(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0,
           "Long tail retry for " + log + " should be triggered");
     } else {
       metrics.forEach((mName, metric) -> {

@@ -23,12 +23,16 @@ import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 
 public class RequestBasedMetadataTestUtils {
   private static final int CURRENT_VERSION = 1;
-  private static final String REPLICA_NAME = "host1";
+  private static final String REPLICA1_NAME = "host1";
+  private static final String REPLICA2_NAME = "host2";
   public static final String KEY_SCHEMA = "\"string\"";
   public static final String VALUE_SCHEMA = "\"string\"";
   private static final byte[] DICTIONARY = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
@@ -49,18 +53,24 @@ public class RequestBasedMetadataTestUtils {
     VersionProperties versionProperties = new VersionProperties(
         CURRENT_VERSION,
         CompressionStrategy.ZSTD_WITH_DICT.getValue(),
-        1,
+        2,
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
         Collections.emptyMap(),
         1);
+    Map<CharSequence, List<CharSequence>> routeMap = new HashMap<>();
+    routeMap.put("0", Collections.singletonList(REPLICA1_NAME));
+    routeMap.put("1", Collections.singletonList(REPLICA2_NAME));
+    Map<CharSequence, Integer> helixGroupMap = new HashMap<>();
+    helixGroupMap.put(REPLICA1_NAME, 0);
+    helixGroupMap.put(REPLICA2_NAME, 1);
     MetadataResponseRecord metadataResponse = new MetadataResponseRecord(
         versionProperties,
         Collections.singletonList(CURRENT_VERSION),
         Collections.singletonMap("1", KEY_SCHEMA),
         Collections.singletonMap("1", VALUE_SCHEMA),
         1,
-        Collections.singletonMap("0", Collections.singletonList(REPLICA_NAME)),
-        Collections.singletonMap(REPLICA_NAME, 0));
+        routeMap,
+        helixGroupMap);
 
     byte[] metadataBody = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
@@ -101,9 +111,8 @@ public class RequestBasedMetadataTestUtils {
   }
 
   public static RequestBasedMetadata getMockMetaData(ClientConfig clientConfig, String storeName) {
-    D2TransportClient d2TransportClient = RequestBasedMetadataTestUtils.getMockD2TransportClient(storeName);
-    D2ServiceDiscovery d2ServiceDiscovery =
-        RequestBasedMetadataTestUtils.getMockD2ServiceDiscovery(d2TransportClient, storeName);
+    D2TransportClient d2TransportClient = getMockD2TransportClient(storeName);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
     RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient);
     requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
     requestBasedMetadata.start();

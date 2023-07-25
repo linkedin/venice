@@ -57,6 +57,7 @@ public class RetriableAvroGenericStoreClientTest {
   private RetriableAvroGenericStoreClient<String, String> retriableClient;
   private StatsAvroGenericStoreClient statsAvroGenericStoreClient;
   private Map<String, ? extends Metric> metrics;
+  boolean enablePartialFailure = false;
 
   @BeforeClass
   public void setUp() {
@@ -185,15 +186,6 @@ public class RetriableAvroGenericStoreClientTest {
     return metrics;
   }
 
-  /**
-   * @param bothOriginalAndRetryFails In this case, get and batchGet both will throw veniceClientException
-   *                                  and most metrics are not incremented, but requestContext values should
-   *                                  be checked. Check {@link StatsAvroGenericStoreClient#recordRequestMetrics}
-   *                                  for more details.
-   * @param errorRetry request is retried because the original request results in exception
-   * @param longTailRetry request is retried because the original request is taking more time
-   * @param retryWin retry request wins
-   */
   private void testSingleGetAndValidateMetrics(
       boolean bothOriginalAndRetryFails,
       boolean errorRetry,
@@ -212,61 +204,9 @@ public class RetriableAvroGenericStoreClientTest {
       }
     }
 
-    metrics = getStats(clientConfig);
-    assertEquals(metrics.get("." + STORE_NAME + "--request_key_count.Max").value(), 1.0);
-
-    if (errorRetry || longTailRetry) {
-      if (!bothOriginalAndRetryFails) {
-        assertEquals(metrics.get("." + STORE_NAME + "--retry_request_key_count.Max").value(), 1.0);
-      } else {
-        assertFalse(metrics.get("." + STORE_NAME + "--retry_request_key_count.Max").value() > 0);
-      }
-    } else {
-      assertFalse(metrics.get("." + STORE_NAME + "--retry_request_key_count.Max").value() > 0);
-    }
-    if (errorRetry) {
-      if (!bothOriginalAndRetryFails) {
-        assertTrue(metrics.get("." + STORE_NAME + "--error_retry_request.OccurrenceRate").value() > 0);
-      } else {
-        assertFalse(metrics.get("." + STORE_NAME + "--error_retry_request.OccurrenceRate").value() > 0);
-      }
-      assertTrue(getRequestContext.errorRetryRequestTriggered);
-    } else {
-      assertFalse(metrics.get("." + STORE_NAME + "--error_retry_request.OccurrenceRate").value() > 0);
-      assertFalse(getRequestContext.errorRetryRequestTriggered);
-    }
-
-    if (longTailRetry) {
-      if (!bothOriginalAndRetryFails) {
-        assertTrue(metrics.get("." + STORE_NAME + "--long_tail_retry_request.OccurrenceRate").value() > 0);
-      } else {
-        assertFalse(metrics.get("." + STORE_NAME + "--long_tail_retry_request.OccurrenceRate").value() > 0);
-      }
-      assertTrue(getRequestContext.longTailRetryRequestTriggered);
-    } else {
-      assertFalse(metrics.get("." + STORE_NAME + "--long_tail_retry_request.OccurrenceRate").value() > 0);
-      assertFalse(getRequestContext.longTailRetryRequestTriggered);
-    }
-
-    if (retryWin) {
-      assertTrue(metrics.get("." + STORE_NAME + "--retry_request_win.OccurrenceRate").value() > 0);
-      assertEquals(metrics.get("." + STORE_NAME + "--retry_request_success_key_count.Max").value(), 1.0);
-      assertTrue(getRequestContext.retryWin);
-    } else {
-      assertFalse(metrics.get("." + STORE_NAME + "--retry_request_win.OccurrenceRate").value() > 0);
-      assertFalse(metrics.get("." + STORE_NAME + "--retry_request_success_key_count.Max").value() > 0);
-      assertFalse(getRequestContext.retryWin);
-    }
+    validateMetrics(false, bothOriginalAndRetryFails, errorRetry, longTailRetry, retryWin);
   }
 
-  /**
-   * @param bothOriginalAndRetryFails In this case, get and batchGet both will throw veniceClientException
-   *                                  and most metrics are not incremented, but requestContext values should
-   *                                  be checked. Check {@link StatsAvroGenericStoreClient#recordRequestMetrics}
-   *                                  for more details.
-   * @param longTailRetry request is retried because the original request is taking more time
-   * @param retryWin retry request wins
-   */
   private void testBatchGetAndvalidateMetrics(
       boolean bothOriginalAndRetryFails,
       boolean longTailRetry,
@@ -285,36 +225,101 @@ public class RetriableAvroGenericStoreClientTest {
         throw e;
       }
     }
-    metrics = getStats(clientConfig, RequestType.MULTI_GET);
 
-    assertEquals(metrics.get("." + STORE_NAME + "--multiget_request_key_count.Max").value(), 2.0);
+    validateMetrics(true, bothOriginalAndRetryFails, false, longTailRetry, retryWin);
+  }
 
+  /**
+   * Note that DispatchingAvroGenericStoreClient is mocked in this test and so the counters
+   *
+   * @param bothOriginalAndRetryFails In this case, get and batchGet both will throw veniceClientException
+   *                                  and most metrics are not incremented, but requestContext values should
+   *                                  be checked. Check {@link StatsAvroGenericStoreClient#recordRequestMetrics}
+   *                                  for more details.
+   * @param errorRetry request is retried because the original request results in exception. Only applicable
+   *                   for single gets.
+   * @param longTailRetry request is retried because the original request is taking more time
+   * @param retryWin retry request wins
+   */
+  private void validateMetrics(
+      boolean batchGet,
+      boolean bothOriginalAndRetryFails,
+      boolean errorRetry,
+      boolean longTailRetry,
+      boolean retryWin) {
+    metrics = getStats(clientConfig);
+    String metricsPrefix = "." + STORE_NAME + (batchGet ? "--multiget_" : "--");
+    double expectedKeyCount = batchGet ? 2.0 : 1.0;
+    assertTrue(metrics.get(metricsPrefix + "request.OccurrenceRate").value() > 0);
+    assertEquals(metrics.get(metricsPrefix + "request_key_count.Max").value(), expectedKeyCount);
+
+    if (errorRetry || longTailRetry) {
+      if (!bothOriginalAndRetryFails) {
+        assertTrue(metrics.get(metricsPrefix + "retry_request_key_count.Rate").value() > 0);
+        assertEquals(metrics.get(metricsPrefix + "retry_request_key_count.Max").value(), expectedKeyCount);
+      } else {
+        assertFalse(metrics.get(metricsPrefix + "retry_request_key_count.Rate").value() > 0);
+        assertFalse(metrics.get(metricsPrefix + "retry_request_key_count.Max").value() > 0);
+      }
+    } else {
+      assertFalse(metrics.get(metricsPrefix + "retry_request_key_count.Rate").value() > 0);
+      assertFalse(metrics.get(metricsPrefix + "retry_request_key_count.Max").value() > 0);
+    }
+
+    // errorRetry is only for single gets
+    if (!batchGet) {
+      if (errorRetry) {
+        if (!bothOriginalAndRetryFails) {
+          assertTrue(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
+        } else {
+          assertFalse(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
+        }
+        assertTrue(getRequestContext.errorRetryRequestTriggered);
+      } else {
+        assertFalse(metrics.get(metricsPrefix + "error_retry_request.OccurrenceRate").value() > 0);
+        assertFalse(getRequestContext.errorRetryRequestTriggered);
+      }
+    }
+
+    // longTailRetry is for both single and batch gets
     if (longTailRetry) {
       if (!bothOriginalAndRetryFails) {
-        assertTrue(metrics.get("." + STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate").value() > 0);
-        assertTrue(metrics.get("." + STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-        assertEquals(metrics.get("." + STORE_NAME + "--multiget_retry_request_key_count.Max").value(), 2.0);
+        assertTrue(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
       } else {
-        assertFalse(metrics.get("." + STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate").value() > 0);
-        assertFalse(metrics.get("." + STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-        assertFalse(metrics.get("." + STORE_NAME + "--multiget_retry_request_key_count.Max").value() > 0);
+        assertFalse(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
       }
-      assertTrue(batchGetRequestContext.longTailRetryTriggered);
-      assertEquals(batchGetRequestContext.numberOfKeysSentInRetryRequest, 2);
+      if (batchGet) {
+        assertTrue(batchGetRequestContext.longTailRetryTriggered);
+        assertEquals(batchGetRequestContext.numberOfKeysSentInRetryRequest, (int) expectedKeyCount);
+      } else {
+        assertTrue(getRequestContext.longTailRetryRequestTriggered);
+      }
     } else {
-      assertFalse(metrics.get("." + STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate").value() > 0);
-      assertFalse(batchGetRequestContext.longTailRetryTriggered);
-      assertFalse(metrics.get("." + STORE_NAME + "--multiget_retry_request_key_count.Rate").value() > 0);
-      assertFalse(metrics.get("." + STORE_NAME + "--multiget_retry_request_key_count.Max").value() > 0);
-      assertFalse(batchGetRequestContext.numberOfKeysSentInRetryRequest > 0);
+      assertFalse(metrics.get(metricsPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
+      if (batchGet) {
+        assertFalse(batchGetRequestContext.longTailRetryTriggered);
+        assertFalse(batchGetRequestContext.numberOfKeysSentInRetryRequest > 0);
+      } else {
+        assertFalse(getRequestContext.longTailRetryRequestTriggered);
+      }
     }
 
     if (retryWin) {
-      assertTrue(metrics.get("." + STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
-      assertEquals(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get(), 2);
+      assertTrue(metrics.get(metricsPrefix + "retry_request_win.OccurrenceRate").value() > 0);
+      assertEquals(metrics.get(metricsPrefix + "retry_request_success_key_count.Max").value(), expectedKeyCount);
+      if (batchGet) {
+        assertTrue(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0);
+      } else {
+        assertTrue(getRequestContext.retryWin);
+      }
     } else {
-      assertFalse(metrics.get("." + STORE_NAME + "--multiget_retry_request_success_key_count.Rate").value() > 0);
-      assertFalse(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0);
+      assertFalse(metrics.get(metricsPrefix + "retry_request_win.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get(metricsPrefix + "retry_request_success_key_count.Max").value() > 0);
+      if (batchGet) {
+        assertFalse(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0);
+      } else {
+        assertFalse(getRequestContext.retryWin);
+      }
     }
   }
 
@@ -455,10 +460,9 @@ public class RetriableAvroGenericStoreClientTest {
   /**
    * Original request latency is lower than the retry threshold, and both the original request and the retry fails.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class/*, timeOut = TEST_TIMEOUT*/)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testGetWithTriggeringLongTailRetryAndBothFailsV2(boolean batchGet)
       throws InterruptedException, ExecutionException {
-    batchGet = true;
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();
     retriableClient =
