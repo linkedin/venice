@@ -15,7 +15,7 @@ import org.apache.avro.Schema;
 
 
 /**
- * This class helps in generating a active-active metadata schema to hold update timestamps and offsets from a value schema of a store .
+ * This class helps in generating an active-active metadata schema to hold update timestamps and offsets from a value schema of a store.
  *
  * If the value schema is a RECORD then the generated schema will be a RECORD having a UNION field and an array. The UNION will consists
  *   of 1 record to hold a single timestamp field for the entire record. This timestamp indicates when the full record was last update as a whole.
@@ -27,7 +27,7 @@ import org.apache.avro.Schema;
  * If the value schema is not RECORD then the generated schema will be a RECORD to hold a single timestamp field, and the same offset array.
  *   This timestamp indicates when the full record was last update as a whole.
  *
- * Currently nested fields are not supported.
+ * Currently, nested fields are not supported.
  */
 
 public class RmdSchemaGeneratorV1 {

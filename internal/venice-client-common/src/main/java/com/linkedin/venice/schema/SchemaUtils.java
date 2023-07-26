@@ -25,38 +25,25 @@ public class SchemaUtils {
     // Utility class
   }
 
-  /**
-   * Utility function that checks to make sure that given a union schema, there only exists 1 collection type amongst the
-   * provided types.  Multiple collections will make the result of the flattened write compute schema lead to ambiguous behavior
-   *
-   * @param unionSchema a union schema to validate.
-   * @throws VeniceException When the unionSchema contains more then one collection type
-   */
-  public static void containsOnlyOneCollection(Schema unionSchema) {
-    List<Schema> types = unionSchema.getTypes();
-    boolean hasCollectionType = false;
-    for (Schema type: types) {
-      switch (type.getType()) {
-        case ARRAY:
-        case MAP:
-          if (hasCollectionType) {
-            // More then one collection type found, this won't work.
-            throw new VeniceException(
-                "Multiple collection types in a union are not allowedSchema: " + unionSchema.toString(true));
-          }
-          hasCollectionType = true;
-          continue;
-        case RECORD:
-        case UNION:
-        default:
-          continue;
-      }
+  public static boolean isCollectionUnionSchema(Schema unionSchema) {
+    if (!isNullableUnionPair(unionSchema)) {
+      throw new VeniceException(
+          "Partial update only supports union type with 2 branches and one of them being NULL type. Got invalid union schema: "
+              + unionSchema.toString(true));
     }
+    Schema.Type actualSchemaType = (unionSchema.getTypes().get(0).getType() == Schema.Type.NULL)
+        ? unionSchema.getTypes().get(1).getType()
+        : unionSchema.getTypes().get(0).getType();
+    // This is a safeguard to explicitly disallow nested UNION, even though Avro does not support it either.
+    if (actualSchemaType == UNION) {
+      throw new VeniceException("Partial update does not support nested union type");
+    }
+    return actualSchemaType == ARRAY || actualSchemaType == MAP;
   }
 
   /**
-   * @param unionSchema
-   * @return True iif the schema is of type UNION and it has 2 fields and one of them is NULL.
+   * @param unionSchema Input UNION schema.
+   * @return True if the schema is of type UNION, plus it has 2 fields and one of them is NULL.
    */
   public static boolean isNullableUnionPair(Schema unionSchema) {
     if (unionSchema.getType() != Schema.Type.UNION) {
@@ -66,7 +53,6 @@ public class SchemaUtils {
     if (types.size() != 2) {
       return false;
     }
-
     return types.get(0).getType() == Schema.Type.NULL || types.get(1).getType() == Schema.Type.NULL;
   }
 

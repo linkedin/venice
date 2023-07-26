@@ -40,6 +40,23 @@ public class TestSchemaUtils {
   private static final String MAP_FIELD_NAME = "IntMapField";
   private static final String NULLABLE_LIST_FIELD_NAME = "NullableStringListField";
   private static final String NULLABLE_MAP_FIELD_NAME = "NullableIntMapField";
+  private static final Schema UNION_VALUE_SCHEMA =
+      AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(loadSchemaFileAsString("testUnionSchema.avsc"));
+
+  @Test
+  public void testUnionSchemaForPartialUpdate() {
+    Assert.assertTrue(
+        SchemaUtils.isCollectionUnionSchema(UNION_VALUE_SCHEMA.getField("goodNullableCollectionField").schema()));
+    Assert.assertFalse(SchemaUtils.isCollectionUnionSchema(UNION_VALUE_SCHEMA.getField("goodRegularField").schema()));
+    // Union with single type
+    Assert.assertThrows(() -> SchemaUtils.isCollectionUnionSchema(UNION_VALUE_SCHEMA.getField("singleType").schema()));
+    // Union with a regular field and a collection field
+    Assert.assertThrows(() -> SchemaUtils.isCollectionUnionSchema(UNION_VALUE_SCHEMA.getField("mixedType1").schema()));
+    // Union with 2 collection fields
+    Assert.assertThrows(() -> SchemaUtils.isCollectionUnionSchema(UNION_VALUE_SCHEMA.getField("mixedType2").schema()));
+    // Union with 3 fields
+    Assert.assertThrows(() -> SchemaUtils.isCollectionUnionSchema(UNION_VALUE_SCHEMA.getField("mixedType3").schema()));
+  }
 
   @Test
   public void testAnnotateValueSchema() {

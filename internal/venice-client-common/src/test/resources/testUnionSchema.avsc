@@ -1,0 +1,76 @@
+{
+  "type": "record",
+  "namespace": "com.linkedin.avro",
+  "name": "TestRecord",
+  "fields": [
+    {
+      "name": "goodNullableCollectionField",
+      "type": [
+        "null",
+        {
+          "type": "array",
+          "items": "string"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "goodRegularField",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "singleType",
+      "type": [
+        {
+          "type": "array",
+          "items": "string"
+        }
+      ],
+      "default": []
+    },
+    {
+      "name": "mixedType1",
+      "type": [
+        "string",
+        {
+          "type": "array",
+          "items": "string"
+        }
+      ],
+      "default": ""
+    },
+    {
+      "name": "mixedType2",
+      "type": [
+        {
+          "type": "map",
+          "values": "int"
+        },
+        {
+          "type": "array",
+          "items": "string"
+        }
+      ],
+      "default": {}
+    },
+    {
+      "name": "mixedType3",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "int"
+        },
+        {
+          "type": "array",
+          "items": "string"
+        }
+      ],
+      "default": null
+    }
+  ]
+}

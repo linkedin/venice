@@ -1,5 +1,6 @@
 package com.linkedin.venice.schema.writecompute;
 
+import static com.linkedin.venice.schema.SchemaUtils.isCollectionUnionSchema;
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.LIST_OPS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.MAP_OPS;
@@ -27,7 +28,7 @@ import org.apache.commons.lang.Validate;
 
 
 /**
- * This class converts a Avro {@link Type#RECORD} schema to its write compute schema. Note that the input schema must
+ * This class converts an Avro {@link Type#RECORD} schema to its write compute schema. Note that the input schema must
  * be of type {@link Type#RECORD}.
  *
  * Currently, it supports record partial update, collection merging and deletion
@@ -318,91 +319,24 @@ public class WriteComputeSchemaConverter {
   }
 
   /**
-   * Wrap up a union schema with possible write compute operations.
-   *
-   * N.B.: if it's an top level union field, the convert will try to convert the elements(except for RECORD)
-   * inside the union. It's not supported if an union contains more than 1 collections since it will
-   * confuse the interpreter about which elements the operation is supposed to be applied.
-   *
-   * e.g.
-   * original schema:
-   *{
-   *   "type" : "record",
-   *   "name" : "record",
-   *   "fields" : [ {
-   *     "name" : "nullableArrayField",
-   *     "type" : [ "null", {
-   *       "type" : "array",
-   *       "items" : {
-   *         "type" : "record",
-   *         "name" : "simpleRecord",
-   *         "fields" : [ {
-   *           "name" : "intField",
-   *           "type" : "int",
-   *           "default" : 0
-   *         } ]
-   *       }
-   *     } ],
-   *     "default" : null
-   *   } ]
-   * }
-   *
-   * write compute schema:
-   * {
-   *   "type" : "record",
-   *   "name" : "testRecordWriteOpRecord",
-   *   "fields" : [ {
-   *     "name" : "nullableArrayField",
-   *     "type" : [ {
-   *       "type" : "record",
-   *       "name" : "NoOp",
-   *       "fields" : [ ]
-   *     }, "null", {
-   *       "type" : "record",
-   *       "name" : "nullableArrayFieldListOps",
-   *       "fields" : [ {
-   *         "name" : "setUnion",
-   *         "type" : {
-   *           "type" : "array",
-   *           "items" : {
-   *             "type" : "record",
-   *             "name" : "simpleRecord",
-   *             "fields" : [ {
-   *               "name" : "intField",
-   *               "type" : "int",
-   *               "default" : 0
-   *             } ]
-   *           }
-   *         },
-   *         "default" : [ ]
-   *       }, {
-   *         "name" : "setDiff",
-   *         "type" : {
-   *           "type" : "array",
-   *           "items" : "simpleRecord"
-   *         },
-   *         "default" : [ ]
-   *       } ]
-   *     }, {
-   *       "type" : "array",
-   *       "items" : "simpleRecord"
-   *     } ],
-   *     "default" : { }
-   *   } ]
-   * }
+   * Wrap up a union schema with possible partial update operations.
+   * Only two branches union with one being NULL type is allowed. This will make partial update logic compatible with
+   * Active/Active replication schema requirement.
    */
   private Schema convertUnion(Schema unionSchema, String name, String namespace) {
     if (unionSchema.getType() != UNION) {
       throw new VeniceException("Expect schema to be UNION type. Got: " + unionSchema);
     }
-    SchemaUtils.containsOnlyOneCollection(unionSchema);
-    return SchemaUtils.createFlattenedUnionSchema(unionSchema.getTypes().stream().sequential().map(schema -> {
-      Schema.Type type = schema.getType();
-      if (type == RECORD) {
-        return schema;
-      }
-      return convert(schema, name, namespace);
-    }).collect(Collectors.toList()));
+    if (isCollectionUnionSchema(unionSchema)) {
+      return SchemaUtils.createFlattenedUnionSchema(
+          unionSchema.getTypes()
+              .stream()
+              .sequential()
+              .map(schema -> convert(schema, name, namespace))
+              .collect(Collectors.toList()));
+    }
+    return SchemaUtils
+        .createFlattenedUnionSchema(unionSchema.getTypes().stream().sequential().collect(Collectors.toList()));
   }
 
   /**
