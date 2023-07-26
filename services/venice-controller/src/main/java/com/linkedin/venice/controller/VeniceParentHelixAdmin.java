@@ -2334,9 +2334,6 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.pushStreamSourceAddress =
           pushStreamSourceAddress.map(addToUpdatedConfigList(updatedConfigsList, PUSH_STREAM_SOURCE_ADDRESS))
               .orElseGet(currStore::getPushStreamSourceAddress);
-      setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
-          .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
-          .orElseGet(currStore::isActiveActiveReplicationEnabled);
 
       if (storeViewConfig.isPresent()) {
         // Validate and merge store views if they're getting set
@@ -2411,16 +2408,30 @@ public class VeniceParentHelixAdmin implements Admin {
           hybridDataReplicationPolicy,
           hybridBufferReplayPolicy);
 
+      // Get VeniceControllerClusterConfig for the cluster
       VeniceControllerClusterConfig clusterConfig =
           veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig();
+      // Check if the store is being converted to a hybrid store
       boolean storeBeingConvertedToHybrid =
           !currStore.isHybrid() && hybridStoreConfigNew != null && veniceHelixAdmin.isHybrid(hybridStoreConfigNew);
+
+      // Update active-active replication and incremental push settings
+      setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
+          .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
+          .orElseGet(currStore::isActiveActiveReplicationEnabled);
+      // Enable active-active replication automatically when batch user store being converted to hybrid store and
+      // active-active replication is enabled for all hybrid store via the cluster config
+      if (storeBeingConvertedToHybrid && !setStore.activeActiveReplicationEnabled && !currStore.isSystemStore()
+          && clusterConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
+        setStore.activeActiveReplicationEnabled = true;
+        updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+      }
+
       setStore.incrementalPushEnabled =
           incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
               .orElseGet(currStore::isIncrementalPushEnabled);
       // Enable incremental push automatically when batch user store being converted to hybrid store and active-active
       // replication is enabled or being and the cluster config allows it.
-
       if (!setStore.incrementalPushEnabled && !currStore.isSystemStore() && storeBeingConvertedToHybrid
           && setStore.activeActiveReplicationEnabled
           && clusterConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
