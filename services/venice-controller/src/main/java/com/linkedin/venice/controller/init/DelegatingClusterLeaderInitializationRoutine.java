@@ -27,6 +27,8 @@ public class DelegatingClusterLeaderInitializationRoutine implements ClusterLead
   }
 
   public void setAllowEmptyDelegateInitializationToSucceed() {
-    allowEmptyDelegateInitializationToSucceed = true;
+    // Ideally, we'd have guarded this under a synchronized lock directly, but Spotbugs isn't happy with it
+    ConcurrencyUtils
+        .executeUnderConditionalLock(() -> allowEmptyDelegateInitializationToSucceed = true, () -> true, this);
   }
 }

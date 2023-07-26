@@ -10,12 +10,16 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
+import java.time.Duration;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -29,7 +33,11 @@ import org.apache.logging.log4j.Logger;
  */
 public final class SystemStoreInitializationHelper {
   private static final Logger LOGGER = LogManager.getLogger(SystemStoreInitializationHelper.class);
-  private static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
+  // Visible for testing
+  static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
+
+  // How much time to wait between checks of store updates
+  private static Duration delayBetweenStoreUpdateRetries = Duration.ofSeconds(10);
 
   private SystemStoreInitializationHelper() {
   }
@@ -67,9 +75,13 @@ public final class SystemStoreInitializationHelper {
           keySchemaString,
           firstValueSchema,
           true);
-      // TODO: wait for some time since parent controller might take time to consume admin channel and update
-      store = admin.getStore(clusterName, systemStoreName);
-      if (store == null) {
+      try {
+        store = RetryUtils.executeWithMaxAttempt(() -> {
+          Store internalStore = admin.getStore(clusterName, systemStoreName);
+          Validate.notNull(internalStore);
+          return internalStore;
+        }, 5, delayBetweenStoreUpdateRetries, Collections.singletonList(IllegalArgumentException.class));
+      } catch (IllegalArgumentException e) {
         throw new VeniceException("Unable to create or fetch store " + systemStoreName);
       }
     } else {
@@ -151,14 +163,18 @@ public final class SystemStoreInitializationHelper {
     if (updateStoreQueryParams != null && updateStoreCheckSupplier.apply(store)) {
       admin.updateStore(clusterName, systemStoreName, updateStoreQueryParams);
 
-      // TODO: wait for some time since parent controller might take time to consume admin channel and update
-      store = admin.getStore(clusterName, systemStoreName);
+      store = RetryUtils.executeWithMaxAttempt(() -> {
+        Store internalStore = admin.getStore(clusterName, systemStoreName);
 
-      // TODO: This assumes "updateStoreCheckSupplier" inverts after applying the update. This works for the current set
-      // of system store initializations, but might not be right for every case. Find a better way to do this.
-      if (updateStoreCheckSupplier.apply(store)) {
-        throw new VeniceException("Unable to update store " + systemStoreName);
-      }
+        // This assumes "updateStoreCheckSupplier" inverts after applying the update. This works for the current set
+        // of system store initializations, but might not be right for every case. TODO: Find a better way to do this.
+        if (updateStoreCheckSupplier.apply(internalStore)) {
+          throw new VeniceException("Unable to update store " + systemStoreName);
+        }
+
+        return internalStore;
+      }, 5, delayBetweenStoreUpdateRetries, Collections.singletonList(VeniceException.class));
+
       LOGGER.info("Updated internal store " + systemStoreName + " in cluster " + clusterName);
     }
 
@@ -173,11 +189,21 @@ public final class SystemStoreInitializationHelper {
           replicationFactor);
       // SOP is already sent by incrementVersionIdempotent. No need to write again.
       admin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), false);
-      store = admin.getStore(clusterName, systemStoreName);
-      if (store.getVersions().isEmpty()) {
-        throw new VeniceException("Unable to initialize a version for store " + systemStoreName);
-      }
+      // Wait for version to be created
+      RetryUtils.executeWithMaxAttempt(() -> {
+        Store internalStore = admin.getStore(clusterName, systemStoreName);
+
+        if (internalStore.getVersions().isEmpty()) {
+          throw new VeniceException("Unable to initialize a version for store " + systemStoreName);
+        }
+      }, 5, delayBetweenStoreUpdateRetries, Collections.singletonList(VeniceException.class));
+
       LOGGER.info("Created a version for internal store {} in cluster {}", systemStoreName, clusterName);
     }
+  }
+
+  // Visible for testing
+  static void setDelayBetweenStoreUpdateRetries(Duration delayForTests) {
+    delayBetweenStoreUpdateRetries = delayForTests;
   }
 }
