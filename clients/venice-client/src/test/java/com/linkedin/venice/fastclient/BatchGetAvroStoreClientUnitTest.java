@@ -598,17 +598,13 @@ public class BatchGetAvroStoreClientUnitTest {
         client.getSimulatorCompleteFuture(),
         true);
 
-    /**
-     *  When the request is closed exceptionally (when both original request and the retry throws exception),
-     *  only unhealthy counters gets incremented, so not checking for retry related metrics being true here.
-     *  Check {@link StatsAvroGenericStoreClient#recordRequestMetrics} for more details.
-     */
     validateMetrics(
         client,
         NUM_KEYS,
-        0,
-        0, // metric not incremented as mentioned above
-        0); // no retries are successful: But again, metrics won't be incremented
+        0, // ideally its (NUM_KEYS/3) * 2, but we aren't incrementing successful metrics in case of request marked as
+           // failed
+        (NUM_KEYS / 3),
+        0); // no retries are successful. Not counted regardless
   }
 
   private TestClientSimulator setupLongTailRetryWithMultiplePartitions(TestClientSimulator client) {
@@ -713,61 +709,43 @@ public class BatchGetAvroStoreClientUnitTest {
       double expectedNumberOfKeysToBeRetried,
       double expectedNumberOfKeysToBeRetriedSuccessfully) {
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
+    String metricPrefix = "." + client.UNIT_TEST_STORE_NAME + "--multiget_";
     if (totalNumberOfKeys > 0) {
-      assertTrue(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
-      assertEquals(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_request_key_count.Max").value(),
-          totalNumberOfKeys);
+      assertTrue(metrics.get(metricPrefix + "request.OccurrenceRate").value() > 0);
+      assertEquals(metrics.get(metricPrefix + "request_key_count.Max").value(), totalNumberOfKeys);
     } else {
-      assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
-      assertFalse(metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_request_key_count.Max").value() > 0);
+      assertFalse(metrics.get(metricPrefix + "request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get(metricPrefix + "request_key_count.Max").value() > 0);
     }
 
     if (totalNumberOfSuccessfulKeys > 0) {
-      assertTrue(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-      assertEquals(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_success_request_key_count.Max").value(),
-          totalNumberOfSuccessfulKeys);
-      assertFalse(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
+      assertEquals(metrics.get(metricPrefix + "success_request_key_count.Max").value(), totalNumberOfSuccessfulKeys);
+      assertFalse(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
     } else {
-      assertFalse(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_healthy_request.OccurrenceRate").value() > 0);
-      assertFalse(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_success_request_key_count.Max").value() > 0);
+      assertFalse(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get(metricPrefix + "success_request_key_count.Max").value() > 0);
       if (totalNumberOfKeys > 0) {
-        assertTrue(
-            metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
       } else {
-        assertFalse(
-            metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_unhealthy_request.OccurrenceRate").value() > 0);
+        assertFalse(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
       }
     }
 
     if (expectedNumberOfKeysToBeRetried > 0) {
-      assertTrue(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-              .value() > 0);
-      assertEquals(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max").value(),
-          expectedNumberOfKeysToBeRetried);
+      assertTrue(metrics.get(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
+      assertEquals(metrics.get(metricPrefix + "retry_request_key_count.Max").value(), expectedNumberOfKeysToBeRetried);
     } else {
-      assertFalse(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_long_tail_retry_request.OccurrenceRate")
-              .value() > 0);
-      assertFalse(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_key_count.Max").value() > 0);
+      assertFalse(metrics.get(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get(metricPrefix + "retry_request_key_count.Max").value() > 0);
     }
 
     if (expectedNumberOfKeysToBeRetriedSuccessfully > 0) {
       assertEquals(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max").value(),
+          metrics.get(metricPrefix + "retry_request_success_key_count.Max").value(),
           expectedNumberOfKeysToBeRetriedSuccessfully);
     } else {
-      assertFalse(
-          metrics.get("." + client.UNIT_TEST_STORE_NAME + "--multiget_retry_request_success_key_count.Max")
-              .value() > 0);
+      assertFalse(metrics.get(metricPrefix + "retry_request_success_key_count.Max").value() > 0);
     }
   }
 

@@ -259,6 +259,7 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean noAvailableReplicas) {
     metrics = getStats(clientConfig);
     String metricPrefix = "." + STORE_NAME + ((batchGet && useStreamingBatchGetAsDefault) ? "--multiget_" : "--");
+    String routeMetricsPrefix = "." + STORE_NAME;
     double requestKeyCount;
     double successKeyCount;
     if (useStreamingBatchGetAsDefault) {
@@ -296,6 +297,7 @@ public class DispatchingAvroGenericStoreClientTest {
       assertFalse(metrics.get(metricPrefix + "healthy_request_latency.Avg").value() > 0);
       assertTrue(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
       assertTrue(metrics.get(metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
+      // as partial healthy request is still considered unhealthy, not incrementing the below metric
       assertFalse(metrics.get(metricPrefix + "success_request_key_count.Max").value() > 0);
       if (batchGet) {
         if (useStreamingBatchGetAsDefault) {
@@ -319,9 +321,11 @@ public class DispatchingAvroGenericStoreClientTest {
       }
     }
 
-    // the below counter will always fail as we never increment them
-    assertFalse(metrics.get(metricPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
     if (noAvailableReplicas) {
+      assertTrue(metrics.get(metricPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
+      assertEquals(metrics.get(routeMetricsPrefix + "_host1--pending_request_count.Max").value(), 1.0);
+      assertEquals(metrics.get(routeMetricsPrefix + "_host2--pending_request_count.Max").value(), 1.0);
+      assertEquals(metrics.get(routeMetricsPrefix + "--blocked_instance_count.Max").value(), 2.0);
       if (batchGet) {
         if (useStreamingBatchGetAsDefault) {
           assertTrue(batchGetRequestContext.noAvailableReplica);
@@ -330,6 +334,7 @@ public class DispatchingAvroGenericStoreClientTest {
         assertTrue(getRequestContext.noAvailableReplica);
       }
     } else {
+      assertFalse(metrics.get(metricPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
       if (batchGet) {
         if (useStreamingBatchGetAsDefault) {
           assertFalse(batchGetRequestContext.noAvailableReplica);
@@ -479,15 +484,15 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 5 * Time.MS_PER_SECOND)
   public void testBatchGetToUnreachableClient(boolean useStreamingBatchGetAsDefault) throws IOException {
     try {
-      setUpClient(useStreamingBatchGetAsDefault, false, false, false, 7 * Time.MS_PER_SECOND);
+      setUpClient(useStreamingBatchGetAsDefault, false, false, false, 3 * Time.MS_PER_SECOND);
       batchGetRequestContext = new BatchGetRequestContext<>();
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } catch (Exception e) {
-      // First batchGet fails with unreachable host after wait time and this add these hosts
+      // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
       if (useStreamingBatchGetAsDefault) {
         assertTrue(e.getMessage().endsWith("At least one route did not complete"));
@@ -498,7 +503,7 @@ public class DispatchingAvroGenericStoreClientTest {
 
       try {
         // the second batchGet is not going to find any routes (as the instances
-        // are blocked) and fail due to that
+        // are blocked) and fail instantly
         batchGetRequestContext = new BatchGetRequestContext<>();
         statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
         fail();

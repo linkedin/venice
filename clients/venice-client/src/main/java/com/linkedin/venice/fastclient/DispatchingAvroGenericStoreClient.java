@@ -458,6 +458,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       CompletableFuture<TransportClientResponse> routeFuture = transportClient.post(url, headers, serializedKeys);
       CompletableFuture<HttpStatus> routeRequestFuture =
           metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, 0, routeFuture);
+      requestContext.routeRequestMap.put(route, routeRequestFuture);
 
       routeFuture.whenComplete((transportClientResponse, throwable) -> {
         requestContext.recordRequestSubmissionToResponseHandlingTime(route);
