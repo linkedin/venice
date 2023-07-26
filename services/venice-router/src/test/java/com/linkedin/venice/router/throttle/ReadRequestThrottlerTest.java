@@ -59,7 +59,6 @@ public class ReadRequestThrottlerTest {
         maxCapacity,
         stats,
         PER_STORE_ROUTER_QUOTA_BUFFER,
-        1000,
         1000);
   }
 

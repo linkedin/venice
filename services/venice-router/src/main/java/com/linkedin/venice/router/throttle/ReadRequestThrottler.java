@@ -63,7 +63,6 @@ public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedLi
   private final double perStoreRouterQuotaBuffer;
 
   private final long storeQuotaCheckTimeWindow;
-  private final long storageNodeQuotaCheckTimeWindow;
 
   private volatile boolean isNoopThrottlerEnabled;
 
@@ -80,8 +79,7 @@ public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedLi
         routerConfig.getMaxReadCapacityCu(),
         stats,
         routerConfig.getPerStoreRouterQuotaBuffer(),
-        DEFAULT_STORE_QUOTA_TIME_WINDOW,
-        DEFAULT_STORAGE_NODE_QUOTA_TIME_WINDOW);
+        DEFAULT_STORE_QUOTA_TIME_WINDOW);
   }
 
   public ReadRequestThrottler(
@@ -91,13 +89,11 @@ public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedLi
       long maxRouterReadCapacity,
       AggRouterHttpRequestStats stats,
       double perStoreRouterQuotaBuffer,
-      long storeQuotaCheckTimeWindow,
-      long storageNodeQuotaCheckTimeWindow) {
+      long storeQuotaCheckTimeWindow) {
     this.zkRoutersManager = zkRoutersManager;
     this.storeRepository = storeRepository;
     this.routingDataRepository = routingDataRepository;
     this.storeQuotaCheckTimeWindow = storeQuotaCheckTimeWindow;
-    this.storageNodeQuotaCheckTimeWindow = storageNodeQuotaCheckTimeWindow;
     this.storeRepository.registerStoreDataChangedListener(this);
     this.stats = stats;
     this.maxRouterReadCapacity = maxRouterReadCapacity;
