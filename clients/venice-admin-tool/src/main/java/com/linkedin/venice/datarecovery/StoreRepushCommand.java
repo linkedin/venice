@@ -180,11 +180,11 @@ public class StoreRepushCommand extends Command {
     this.repushViabilityResult = repushViability.getResult();
     StoreRepushCommand.Params repushParams = getParams();
     ControllerClient cli = repushParams.getPCtrlCliWithoutCluster();
-    if (repushViability.isViable() == false) {
+    if (!repushViability.isViable()) {
       completeCoreWorkWithError("failure: " + repushViability.getResult().toString());
       return;
     }
-    if (repushViability.isHybrid() == false) {
+    if (!repushViability.isHybrid()) {
       try {
         String clusterName = cli.discoverCluster(repushParams.getStore()).getCluster();
         try (ControllerClient parentCtrlCli =
