@@ -182,7 +182,7 @@ public class StoreRepushCommand extends Command {
       completeCoreWorkWithError("failure: " + repushViability.getRight());
       return;
     }
-    if (repushViability.getRight() == "BATCH") {
+    if (repushViability.getRight().equals("BATCH")) {
       try {
         String clusterName = cli.discoverCluster(repushParams.getStore()).getCluster();
         try (ControllerClient parentCtrlCli =
