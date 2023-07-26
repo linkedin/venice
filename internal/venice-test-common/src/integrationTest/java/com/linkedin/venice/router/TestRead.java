@@ -306,8 +306,8 @@ public abstract class TestRead {
             record.put(UNUSED_FIELD_NAME, -i);
             Assert.assertEquals(result.get(KEY_PREFIX + i), record);
             Assert.assertEquals(computeResult.get(KEY_PREFIX + i).get(VALUE_FIELD_NAME), i);
-            Assert.assertNull(computeResult.get(KEY_PREFIX + i).get(UNUSED_FIELD_NAME));
-            Assert.assertNull(computeResult.get(KEY_PREFIX + i).get(UNKNOWN_FIELD_NAME));
+            TestUtils.checkMissingFieldInAvroRecord(computeResult.get(KEY_PREFIX + i), UNUSED_FIELD_NAME);
+            TestUtils.checkMissingFieldInAvroRecord(computeResult.get(KEY_PREFIX + i), UNKNOWN_FIELD_NAME);
           }
 
           // Test simple get

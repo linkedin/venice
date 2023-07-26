@@ -10,6 +10,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
@@ -80,13 +81,7 @@ public class ConsumerTest {
                 "Field '" + f + "' is not equal pre- and post-serialization."));
 
     // The new field should be absent in order to be fully compliant with the reader's compiled schema
-    try {
-      messageFromObliviousDeserializer.get(NEW_FIELD);
-      Assert.fail("The new field name should not be available because the reader does not want it.");
-    } catch (Exception e) {
-      // Expected
-      Assert.assertEquals(e.getClass(), NullPointerException.class);
-    }
+    TestUtils.checkMissingFieldInAvroRecord(messageFromObliviousDeserializer, NEW_FIELD);
     Assert.assertNotEquals(
         messageFromObliviousDeserializer,
         messageFromNewProtocol,

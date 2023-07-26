@@ -594,6 +594,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     reusableObjects.computeContext.clear();
 
     ComputeResponseWrapper response = new ComputeResponseWrapper(request.getKeyCount());
+    request.getComputeRequest().initializeOperationResultFields(reusableResultRecord.getSchema());
+    int hits = 0;
     for (ComputeRouterRequestKeyV1 key: request.getKeys()) {
       AvroRecordUtils.clearRecord(reusableResultRecord);
       GenericRecord result = computeResult(
@@ -606,8 +608,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           response,
           reusableObjects,
           reusableResultRecord);
-      addComputationResult(response, key, result, resultSerializer, request.isStreamingRequest());
+      if (addComputationResult(response, key, result, resultSerializer, request.isStreamingRequest())) {
+        hits++;
+      }
     }
+    incrementOperatorCounters(response, request.getComputeRequest().getOperations(), hits);
     return response;
   }
 
@@ -642,7 +647,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         : superSetOrLatestValueSchema.getSchema();
   }
 
-  private void addComputationResult(
+  /**
+   * @return true if the result is not null, false otherwise
+   */
+  private boolean addComputationResult(
       ComputeResponseWrapper response,
       ComputeRouterRequestKeyV1 key,
       GenericRecord result,
@@ -656,6 +664,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
       response.addReadComputeOutputSize(record.value.remaining());
       response.addRecord(record);
+      return true;
     } else if (isStreaming) {
       // For streaming, we need to send back non-existing keys
       ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
@@ -664,6 +673,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       record.value = StreamingUtils.EMPTY_BYTE_BUFFER;
       response.addRecord(record);
     }
+    return false;
   }
 
   private GenericRecord computeResult(
@@ -686,11 +696,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     reusableResultRecord = ComputeUtils.computeResult(
         computeRequest.getComputeRequestVersion(),
         computeRequest.getOperations(),
+        computeRequest.getOperationResultFields(),
         reusableObjects.computeContext,
         reusableValueRecord,
         reusableResultRecord);
     response.addReadComputeLatency(LatencyUtils.getLatencyInMS(computeStartTimeInNS));
-    incrementOperatorCounters(response, computeRequest.getOperations());
     return reusableResultRecord;
   }
 
@@ -720,20 +730,21 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private static void incrementOperatorCounters(
       ComputeResponseWrapper response,
-      Iterable<ComputeOperation> operations) {
+      Iterable<ComputeOperation> operations,
+      int hits) {
     for (ComputeOperation operation: operations) {
       switch (ComputeOperationType.valueOf(operation)) {
         case DOT_PRODUCT:
-          response.incrementDotProductCount();
+          response.incrementDotProductCount(hits);
           break;
         case COSINE_SIMILARITY:
-          response.incrementCosineSimilarityCount();
+          response.incrementCosineSimilarityCount(hits);
           break;
         case HADAMARD_PRODUCT:
-          response.incrementHadamardProductCount();
+          response.incrementHadamardProductCount(hits);
           break;
         case COUNT:
-          response.incrementCountOperatorCount();
+          response.incrementCountOperatorCount(hits);
           break;
       }
     }

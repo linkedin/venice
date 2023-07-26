@@ -23,7 +23,7 @@ import org.apache.logging.log4j.Logger;
 public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
   private static final Logger LOGGER = LogManager.getLogger(ClassPathSupplierForVeniceCluster.class);
 
-  private static final String AVRO_192_JAR_FILE = "avro-1.9.2.jar";
+  private static final String AVRO_JAR_FILE = "avro-1.10.2.jar";
 
   @Override
   public String get() {
@@ -67,7 +67,7 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
 
   private File extractAvro192JarFileBasedOnExistingAvroJarFile(File existingAvroJarFile) {
     LOGGER.info("Existing avro jar file: {}", existingAvroJarFile.getAbsolutePath());
-    if (existingAvroJarFile.getName().equals(AVRO_192_JAR_FILE)) {
+    if (existingAvroJarFile.getName().equals(AVRO_JAR_FILE)) {
       return existingAvroJarFile;
     }
     /**
@@ -79,11 +79,11 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
     File avroRootDir = existingAvroJarFile.getParentFile().getParentFile().getParentFile();
     Collection<File> jarFiles = FileUtils.listFiles(avroRootDir, new String[] { "jar" }, true);
     for (File jarFile: jarFiles) {
-      if (jarFile.getName().equals(AVRO_192_JAR_FILE)) {
-        LOGGER.info("Found the jar file: {} for {}", jarFile.getAbsolutePath(), AVRO_192_JAR_FILE);
+      if (jarFile.getName().equals(AVRO_JAR_FILE)) {
+        LOGGER.info("Found the jar file: {} for {}", jarFile.getAbsolutePath(), AVRO_JAR_FILE);
         return jarFile;
       }
     }
-    throw new VeniceException("Failed to find out " + AVRO_192_JAR_FILE + " in the existing class path");
+    throw new VeniceException("Failed to find out " + AVRO_JAR_FILE + " in the existing class path");
   }
 }

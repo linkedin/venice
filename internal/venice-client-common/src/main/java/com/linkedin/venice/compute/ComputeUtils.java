@@ -17,7 +17,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -245,20 +244,20 @@ public class ComputeUtils {
   /**
    *
    * @param record the record from which the value of the given field is extracted
-   * @param fieldName name of the file which is used to extract the value from the given record
+   * @param field field which is used to extract the value from the given record
    * @param <T> Type of the list element to cast the extracted value to
    *
    * @return An unmodifiable empty list if the extracted value is null. Otherwise return a list that may or may not be
    *         modifiable depending on specified type of the list as a field in the record.
    */
-  public static <T> List<T> getNullableFieldValueAsList(final GenericRecord record, final String fieldName) {
-    Object value = record.get(fieldName);
+  public static <T> List<T> getNullableFieldValueAsList(final GenericRecord record, Schema.Field field) {
+    Object value = record.get(field.pos());
     if (value == null) {
       return Collections.emptyList();
     }
     if (!(value instanceof List)) {
       throw new IllegalArgumentException(
-          String.format("Field %s in the record is not of the type list. Value: %s", fieldName, record));
+          String.format("Field %s in the record is not of the type list. Value: %s", field.name(), record));
     }
     return (List<T>) value;
   }
@@ -266,27 +265,26 @@ public class ComputeUtils {
   /**
    * @return Error message if the nullable field validation failed or Optional.empty() otherwise.
    */
-  public static Optional<String> validateNullableFieldAndGetErrorMsg(
+  public static String validateNullableFieldAndGetErrorMsg(
       ReadComputeOperator operator,
       GenericRecord valueRecord,
+      Schema.Field operatorField,
       String operatorFieldName) {
-    if (valueRecord.get(operatorFieldName) != null) {
-      return Optional.empty();
+    if (operatorField == null) {
+      return "Failed to execute compute request as the field " + operatorFieldName
+          + " does not exist in the value record. " + "Fields present in the value record are: "
+          + getStringOfSchemaFieldNames(valueRecord);
     }
-    if (valueRecord.getSchema().getField(operatorFieldName) == null) {
-      return Optional.of(
-          "Failed to execute compute request as the field " + operatorFieldName
-              + " does not exist in the value record. " + "Fields present in the value record are: "
-              + getStringOfSchemaFieldNames(valueRecord));
+    if (valueRecord.get(operatorField.pos()) != null) {
+      return null;
     }
 
     // Field exist and the value is null. That means the field is nullable.
     if (operator.allowFieldValueToBeNull()) {
-      return Optional.empty();
+      return null;
     }
-    return Optional.of(
-        "Failed to execute compute request as the field " + operatorFieldName + " is not allowed to be null for "
-            + operator + " in value record.");
+    return "Failed to execute compute request as the field " + operatorFieldName + " is not allowed to be null for "
+        + operator + " in value record.";
   }
 
   private static String getStringOfSchemaFieldNames(GenericRecord valueRecord) {
@@ -298,15 +296,23 @@ public class ComputeUtils {
   public static GenericRecord computeResult(
       int computeVersion,
       List<ComputeOperation> operations,
+      List<Schema.Field> operationResultFields,
       Map<String, Object> sharedContext,
       GenericRecord inputRecord,
       Schema outputSchema) {
-    return computeResult(computeVersion, operations, sharedContext, inputRecord, new GenericData.Record(outputSchema));
+    return computeResult(
+        computeVersion,
+        operations,
+        operationResultFields,
+        sharedContext,
+        inputRecord,
+        new GenericData.Record(outputSchema));
   }
 
   public static GenericRecord computeResult(
       int computeVersion,
       List<ComputeOperation> operations,
+      List<Schema.Field> operationResultFields,
       Map<String, Object> sharedContext,
       GenericRecord inputRecord,
       GenericRecord outputRecord) {
@@ -315,17 +321,32 @@ public class ComputeUtils {
     }
 
     Map<String, String> errorMap = new HashMap<>();
-    for (ComputeOperation computeOperation: operations) {
-      ReadComputeOperator operator = ComputeOperationType.valueOf(computeOperation).getOperator();
-      String errorMessage =
-          validateNullableFieldAndGetErrorMsg(operator, inputRecord, operator.getOperatorFieldName(computeOperation))
-              .orElse(null);
+    ComputeOperation computeOperation;
+    ReadComputeOperator operator;
+    String operatorFieldName, errorMessage;
+    Schema.Field operatorField, resultField;
+    for (int i = 0; i < operations.size(); i++) {
+      computeOperation = operations.get(i);
+      operator = ComputeOperationType.valueOf(computeOperation).getOperator();
+      operatorFieldName = operator.getOperatorFieldName(computeOperation);
+      operatorField = inputRecord.getSchema().getField(operatorFieldName);
+      resultField = operationResultFields.get(i);
+      errorMessage = validateNullableFieldAndGetErrorMsg(operator, inputRecord, operatorField, operatorFieldName);
       if (errorMessage != null) {
-        operator.putDefaultResult(outputRecord, operator.getResultFieldName(computeOperation));
+        operator.putDefaultResult(outputRecord, resultField);
         errorMap.put(operator.getResultFieldName(computeOperation), errorMessage);
         continue;
       }
-      operator.compute(computeVersion, computeOperation, inputRecord, outputRecord, errorMap, sharedContext);
+
+      operator.compute(
+          computeVersion,
+          computeOperation,
+          operatorField,
+          resultField,
+          inputRecord,
+          outputRecord,
+          errorMap,
+          sharedContext);
     }
 
     Schema outputSchema = outputRecord.getSchema();
@@ -334,9 +355,19 @@ public class ComputeUtils {
       outputRecord.put(errorMapField.pos(), errorMap);
     }
 
+    Schema.Field inputRecordField;
     for (Schema.Field field: outputSchema.getFields()) {
       if (outputRecord.get(field.pos()) == null) {
-        outputRecord.put(field.pos(), inputRecord.get(field.name()));
+        /**
+         * N.B. Up until Avro 1.9, we could directly do {@code inputRecord.get(field.name())}, and it would work
+         * even if that field name didn't exist in the {@link inputRecord} (merely returning null in that case),
+         * but later versions of Avro throw instead, so we need to get the field and manually check whether it's
+         * null (which is the same work that {@link GenericData.Record#get(String)} would do anyway).
+         */
+        inputRecordField = inputRecord.getSchema().getField(field.name());
+        if (inputRecordField != null) {
+          outputRecord.put(field.pos(), inputRecord.get(inputRecordField.pos()));
+        }
       }
     }
     return outputRecord;

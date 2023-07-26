@@ -236,6 +236,7 @@ public class VersionBackend {
     return ComputeUtils.computeResult(
         computeRequestWrapper.getComputeRequestVersion(),
         computeRequestWrapper.getOperations(),
+        computeRequestWrapper.getOperationResultFields(),
         sharedContext,
         reusableValueRecord,
         computeResultSchema);
@@ -260,6 +261,7 @@ public class VersionBackend {
             GenericRecord computeResult = ComputeUtils.computeResult(
                 computeRequestWrapper.getComputeRequestVersion(),
                 computeRequestWrapper.getOperations(),
+                computeRequestWrapper.getOperationResultFields(),
                 sharedContext,
                 value,
                 computeResultSchema);

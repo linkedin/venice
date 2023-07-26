@@ -11,17 +11,17 @@ import com.linkedin.venice.compute.protocol.request.Count;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.exceptions.VeniceException;
-import java.util.HashMap;
-import java.util.Map;
+import com.linkedin.venice.utils.EnumUtils;
+import com.linkedin.venice.utils.VeniceEnumValue;
 
 
-public enum ComputeOperationType {
+public enum ComputeOperationType implements VeniceEnumValue {
   DOT_PRODUCT(0, new DotProductOperator()), COSINE_SIMILARITY(1, new CosineSimilarityOperator()),
   HADAMARD_PRODUCT(2, new HadamardProductOperator()), COUNT(3, new CountOperator());
 
   private final ReadComputeOperator operator;
   private final int value;
-  private static final Map<Integer, ComputeOperationType> OPERATION_TYPE_MAP = getOperationTypeMap();
+  private static final ComputeOperationType[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(ComputeOperationType.class);
 
   ComputeOperationType(int value, ReadComputeOperator operator) {
     this.value = value;
@@ -43,24 +43,16 @@ public enum ComputeOperationType {
     }
   }
 
-  private static ComputeOperationType valueOf(int value) {
-    ComputeOperationType type = OPERATION_TYPE_MAP.get(value);
-    if (type == null) {
+  public static ComputeOperationType valueOf(int value) {
+    try {
+      return TYPES_ARRAY[value];
+    } catch (IndexOutOfBoundsException e) {
       throw new VeniceException("Invalid compute operation type: " + value);
     }
-    return type;
   }
 
   public static ComputeOperationType valueOf(ComputeOperation operation) {
     return valueOf(operation.operationType);
-  }
-
-  private static Map<Integer, ComputeOperationType> getOperationTypeMap() {
-    Map<Integer, ComputeOperationType> intToTypeMap = new HashMap<>();
-    for (ComputeOperationType type: ComputeOperationType.values()) {
-      intToTypeMap.put(type.value, type);
-    }
-    return intToTypeMap;
   }
 
   public int getValue() {

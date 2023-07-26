@@ -7,6 +7,7 @@ import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -15,23 +16,24 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
   public void compute(
       int computeRequestVersion,
       ComputeOperation op,
-      GenericRecord valueRecord,
+      Schema.Field operatorInputField,
+      Schema.Field resultField,
+      GenericRecord inputValueRecord,
       GenericRecord resultRecord,
       Map<String, String> computationErrorMap,
       Map<String, Object> context) {
     CosineSimilarity cosineSimilarity = (CosineSimilarity) op.operation;
     try {
-      List<Float> valueVector =
-          ComputeUtils.getNullableFieldValueAsList(valueRecord, cosineSimilarity.field.toString());
+      List<Float> valueVector = ComputeUtils.getNullableFieldValueAsList(inputValueRecord, operatorInputField);
       List<Float> cosSimilarityParam = cosineSimilarity.cosSimilarityParam;
 
       if (valueVector.size() == 0 || cosSimilarityParam.size() == 0) {
-        putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), null);
+        putResult(resultRecord, resultField, null);
         return;
       } else if (valueVector.size() != cosSimilarityParam.size()) {
-        putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), 0.0f);
+        putResult(resultRecord, resultField, 0.0f);
         computationErrorMap.put(
-            cosineSimilarity.resultFieldName.toString(),
+            resultField.name(),
             "Failed to compute because size of dot product parameter is: " + cosineSimilarity.cosSimilarityParam.size()
                 + " while the size of value vector(" + cosineSimilarity.field.toString() + ") is: "
                 + valueVector.size());
@@ -62,12 +64,12 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
       // write to result record
       double cosineSimilarityResult =
           dotProductResult / Math.sqrt(valueVectorSquaredL2Norm * cosSimilarityParamSquaredL2Norm);
-      putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), (float) cosineSimilarityResult);
+      putResult(resultRecord, resultField, (float) cosineSimilarityResult);
     } catch (Exception e) {
-      putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), 0.0f);
+      putResult(resultRecord, resultField, 0.0f);
       String msg = e.getClass().getSimpleName() + " : "
           + (e.getMessage() == null ? "Failed to execute cosine similarity operator." : e.getMessage());
-      computationErrorMap.put(cosineSimilarity.resultFieldName.toString(), msg);
+      computationErrorMap.put(resultField.name(), msg);
     }
   }
 
