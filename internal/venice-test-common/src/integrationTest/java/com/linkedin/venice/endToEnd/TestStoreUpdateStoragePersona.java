@@ -39,7 +39,7 @@ public class TestStoreUpdateStoragePersona {
     venice = ServiceFactory.getVeniceCluster(1, 1, 1, 2, 1000000, false, false, extraProperties);
     parentZk = ServiceFactory.getZkServer();
     parentController = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), parentZk, venice.getKafka())
+        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), parentZk, venice.getPubSubBrokerWrapper())
             .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
             .build());
     controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());

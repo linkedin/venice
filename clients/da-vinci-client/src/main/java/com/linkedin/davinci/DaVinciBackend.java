@@ -41,9 +41,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
@@ -184,8 +181,9 @@ public class DaVinciBackend implements Closeable {
           true,
           functionToCheckWhetherStorageEngineShouldBeKeptOrNot(managedClients));
       storageService.start();
-
-      VeniceWriterFactory writerFactory = new VeniceWriterFactory(backendProps.toProperties());
+      PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
+      VeniceWriterFactory writerFactory =
+          new VeniceWriterFactory(backendProps.toProperties(), pubSubClientsFactory.getProducerAdapterFactory(), null);
       String instanceName = Utils.getHostName() + "_" + Utils.getPid();
       int derivedSchemaID = backendProps.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1);
       pushStatusStoreWriter = new PushStatusStoreWriter(writerFactory, instanceName, derivedSchemaID);
@@ -222,10 +220,6 @@ public class DaVinciBackend implements Closeable {
       cacheBackend = cacheConfig
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
-      PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
-          new ApacheKafkaProducerAdapterFactory(),
-          new ApacheKafkaConsumerAdapterFactory(),
-          new ApacheKafkaAdminAdapterFactory());
       ingestionService = new KafkaStoreIngestionService(
           storageService.getStorageEngineRepository(),
           configLoader,

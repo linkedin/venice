@@ -11,6 +11,7 @@ import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.HashMap;
@@ -104,5 +105,13 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
       JobConf job,
       Reporter reporter) {
     return new KafkaInputRecordReader(split, job, reporter);
+  }
+
+  public RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> getRecordReader(
+      InputSplit split,
+      JobConf job,
+      Reporter reporter,
+      PubSubConsumerAdapter consumer) {
+    return new KafkaInputRecordReader(split, job, reporter, consumer);
   }
 }

@@ -56,17 +56,15 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor noAvailableReplicaAbortedRetryRequest;
   private final Sensor readQuotaUsageSensor;
   private final Sensor inFlightRequestSensor;
-  private Sensor keySizeSensor;
-
   private final AtomicInteger currentInFlightRequest;
   private final Sensor unavailableReplicaStreamingRequestSensor;
   private final Sensor allowedRetryRequestSensor;
   private final Sensor disallowedRetryRequestSensor;
   private final Sensor errorRetryAttemptTriggeredByPendingRequestCheckSensor;
   private final Sensor retryDelaySensor;
+  private final Sensor multiGetFallbackSensor;
   private final Sensor metaStoreShadowReadSensor;
-
-  private final boolean isKeyValueProfilingEnabled;
+  private Sensor keySizeSensor;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -85,7 +83,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     unhealthySensor = registerSensor("unhealthy_request", new Count());
     unavailableReplicaStreamingRequestSensor = registerSensor("unavailable_replica_streaming_request", new Count());
     tardySensor = registerSensor("tardy_request", new Count(), tardyRequestRate);
-    this.isKeyValueProfilingEnabled = isKeyValueProfilingEnabled;
     healthyRequestRateSensor =
         registerSensor("healthy_request_ratio", new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
     tardyRequestRatioSensor =
@@ -138,6 +135,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
      * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS
      */
     requestUsageSensor = registerSensor("request_usage", new Total(), new OccurrenceRate());
+    multiGetFallbackSensor = registerSensor("multiget_fallback", new Total(), new OccurrenceRate());
 
     requestParsingLatencySensor = registerSensor("request_parse_latency", new Avg());
     requestRoutingLatencySensor = registerSensor("request_route_latency", new Avg());
@@ -297,6 +295,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordRequestUsage(int usage) {
     requestUsageSensor.record(usage);
+  }
+
+  public void recordMultiGetFallback(int keyCount) {
+    multiGetFallbackSensor.record(keyCount);
   }
 
   public void recordRequestParsingLatency(double latency) {

@@ -16,6 +16,8 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Collection;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicLong;
@@ -52,8 +54,9 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   // Whether the request supports streaming or not
   private VeniceChunkedResponse chunkedResponse = null;
-  // Response decompressor
   private VeniceResponseDecompressor responseDecompressor = null;
+  private Optional<Map<CharSequence, String>> responseHeaders = Optional.empty();
+
   private long requestId = -1;
   private int helixGroupId = -1;
 
@@ -282,8 +285,27 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
       // Defensive code
       throw new IllegalStateException("VeniceChunkedWriteHandler has already been setup");
     }
-    this.chunkedResponse =
-        new VeniceChunkedResponse(storeName, getStreamingRequestType(), ctx, chunkedWriteHandler, routerStats);
+    this.chunkedResponse = new VeniceChunkedResponse(
+        storeName,
+        getStreamingRequestType(),
+        ctx,
+        chunkedWriteHandler,
+        routerStats,
+        getResponseHeaders());
+  }
+
+  public void setResponseHeaders(Map<CharSequence, String> responseHeaders) {
+    if (this.chunkedResponse != null) {
+      throw new VeniceException("Response headers must be set before calling setChunkedWriteHandler");
+    }
+    if (this.responseHeaders.isPresent()) {
+      throw new VeniceException("Response headers has already been setup");
+    }
+    this.responseHeaders = Optional.of(responseHeaders);
+  }
+
+  public Optional<Map<CharSequence, String>> getResponseHeaders() {
+    return this.responseHeaders;
   }
 
   public void setResponseDecompressor(VeniceResponseDecompressor decompressor) {

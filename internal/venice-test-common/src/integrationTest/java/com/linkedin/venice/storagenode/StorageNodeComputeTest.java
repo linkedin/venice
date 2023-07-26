@@ -22,6 +22,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -177,7 +178,10 @@ public class StorageNodeComputeTest {
     String keyPrefix = "key_";
     String valuePrefix = "value_";
 
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = TestUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory);
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
             .setValueSerializer(new DefaultSerializer())
@@ -287,8 +291,10 @@ public class StorageNodeComputeTest {
     final int pushVersion = newVersion.getVersion();
 
     try (
+        PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+            veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
         VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils
-            .getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+            .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory)
             .createVeniceWriter(
                 new VeniceWriterOptions.Builder(newVersion.getKafkaTopic()).setKeySerializer(keySerializer).build());
         AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(

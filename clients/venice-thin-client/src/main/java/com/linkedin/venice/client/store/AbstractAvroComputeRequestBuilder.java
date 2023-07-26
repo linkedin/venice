@@ -14,12 +14,12 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFutur
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
-import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.utils.SystemTime;

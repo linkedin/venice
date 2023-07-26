@@ -68,6 +68,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_V
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SINGLE_GET_ROUTER_CACHE_ENABLED;
@@ -157,7 +158,9 @@ public enum ControllerRoute {
   SKIP_ADMIN("/skip_admin_message", HttpMethod.POST, Collections.singletonList(OFFSET)),
 
   GET_KEY_SCHEMA("/get_key_schema", HttpMethod.GET, Collections.singletonList(NAME)),
-  ADD_VALUE_SCHEMA("/add_value_schema", HttpMethod.POST, Arrays.asList(NAME, VALUE_SCHEMA), SCHEMA_ID),
+  ADD_VALUE_SCHEMA(
+      "/add_value_schema", HttpMethod.POST, Arrays.asList(NAME, VALUE_SCHEMA), SCHEMA_ID, SCHEMA_COMPAT_TYPE
+  ),
   ADD_DERIVED_SCHEMA(
       "/add_derived_schema", HttpMethod.POST, Arrays.asList(NAME, SCHEMA_ID, DERIVED_SCHEMA), DERIVED_SCHEMA_ID
   ), SET_OWNER("/set_owner", HttpMethod.POST, Arrays.asList(NAME, OWNER)),

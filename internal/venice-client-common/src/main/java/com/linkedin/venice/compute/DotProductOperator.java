@@ -18,8 +18,7 @@ public class DotProductOperator implements ReadComputeOperator {
       Map<String, Object> context) {
     DotProduct dotProduct = (DotProduct) op.operation;
     try {
-      List<Float> valueVector =
-          ComputeOperationUtils.getNullableFieldValueAsList(valueRecord, dotProduct.field.toString());
+      List<Float> valueVector = ComputeUtils.getNullableFieldValueAsList(valueRecord, dotProduct.field.toString());
       List<Float> dotProductParam = dotProduct.dotProductParam;
 
       if (valueVector.size() == 0 || dotProductParam.size() == 0) {
@@ -34,7 +33,7 @@ public class DotProductOperator implements ReadComputeOperator {
         return;
       }
 
-      float dotProductResult = ComputeOperationUtils.dotProduct(dotProductParam, valueVector);
+      float dotProductResult = ComputeUtils.dotProduct(dotProductParam, valueVector);
       /**
        * Up-casting float to double for V1 users because of backward-compatibility support;
        * V1 users don't require the extra precision in double and it's on purpose that

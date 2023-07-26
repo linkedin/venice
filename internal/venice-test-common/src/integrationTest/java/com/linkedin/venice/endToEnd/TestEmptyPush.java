@@ -64,7 +64,7 @@ public class TestEmptyPush {
   }
 
   private ByteBuffer getDictFromTopic(String topic, Properties properties) {
-    String kafkaUrl = venice.getKafka().getAddress();
+    String kafkaUrl = venice.getPubSubBrokerWrapper().getAddress();
 
     Properties props = (Properties) properties.clone();
     props.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
@@ -83,7 +83,7 @@ public class TestEmptyPush {
                     DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                     100,
                     0l,
-                    venice.getKafka().getAddress(),
+                    venice.getPubSubBrokerWrapper(),
                     venice.getPubSubTopicRepository())
                 .getTopicManager()) {
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);

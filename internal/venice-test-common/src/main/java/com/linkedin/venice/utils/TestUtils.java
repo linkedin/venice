@@ -67,6 +67,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -261,14 +262,16 @@ public class TestUtils {
       String storeName,
       String keySchema,
       String valueSchema,
-      Stream<Map.Entry> batchData) {
+      Stream<Map.Entry> batchData,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     return createVersionWithBatchData(
         controllerClient,
         storeName,
         keySchema,
         valueSchema,
         batchData,
-        HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+        HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
+        pubSubProducerAdapterFactory);
   }
 
   public static VersionCreationResponse createVersionWithBatchData(
@@ -277,7 +280,8 @@ public class TestUtils {
       String keySchema,
       String valueSchema,
       Stream<Map.Entry> batchData,
-      int valueSchemaId) {
+      int valueSchemaId,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     VersionCreationResponse response = TestUtils.assertCommand(
         controllerClient.requestTopicForWrites(
             storeName,
@@ -292,7 +296,7 @@ public class TestUtils {
             Optional.empty(),
             false,
             -1));
-    writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId);
+    writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId, pubSubProducerAdapterFactory);
     return response;
   }
 
@@ -301,8 +305,17 @@ public class TestUtils {
       String keySchema,
       String valueSchema,
       Stream<Map.Entry> batchData,
-      int valueSchemaId) {
-    writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId, CompressionStrategy.NO_OP, null);
+      int valueSchemaId,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+    writeBatchData(
+        response,
+        keySchema,
+        valueSchema,
+        batchData,
+        valueSchemaId,
+        CompressionStrategy.NO_OP,
+        null,
+        pubSubProducerAdapterFactory);
   }
 
   public static void writeBatchData(
@@ -312,13 +325,14 @@ public class TestUtils {
       Stream<Map.Entry> batchData,
       int valueSchemaId,
       CompressionStrategy compressionStrategy,
-      Function<String, ByteBuffer> compressionDictionaryGenerator) {
+      Function<String, ByteBuffer> compressionDictionaryGenerator,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
     props.putAll(response.getPartitionerParams());
     props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
-    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props);
+    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props, pubSubProducerAdapterFactory);
 
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(response.getPartitionerParams());
@@ -546,16 +560,20 @@ public class TestUtils {
     return clusterToD2.entrySet().stream().map(e -> e.getKey() + ":" + e.getValue()).collect(Collectors.joining(","));
   }
 
-  public static VeniceWriterFactory getVeniceWriterFactory(String kafkaBootstrapServers) {
+  public static VeniceWriterFactory getVeniceWriterFactory(
+      String kafkaBootstrapServers,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     Properties properties = new Properties();
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    return getVeniceWriterFactory(properties);
+    return getVeniceWriterFactory(properties, pubSubProducerAdapterFactory);
   }
 
-  public static VeniceWriterFactory getVeniceWriterFactory(Properties properties) {
+  public static VeniceWriterFactory getVeniceWriterFactory(
+      Properties properties,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     Properties factoryProperties = new Properties();
     factoryProperties.putAll(properties);
-    return new VeniceWriterFactory(factoryProperties);
+    return new VeniceWriterFactory(factoryProperties, pubSubProducerAdapterFactory, null);
   }
 
   public static SharedKafkaProducerAdapterFactory getSharedKafkaProducerService(Properties properties) {

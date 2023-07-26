@@ -600,7 +600,7 @@ public class TestVenicePushJob {
     // setup repush job settings
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
-    props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+    props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // This repush should succeed
     TestWriteUtils.runPushJob("Test push job", props);

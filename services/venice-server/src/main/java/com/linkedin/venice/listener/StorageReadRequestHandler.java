@@ -14,13 +14,10 @@ import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
-import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import com.linkedin.venice.compute.ReadComputeOperator;
+import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
@@ -50,6 +47,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
@@ -58,9 +56,9 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.streaming.StreamingConstants;
 import com.linkedin.venice.streaming.StreamingUtils;
+import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
-import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -76,7 +74,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -95,30 +92,20 @@ import org.apache.logging.log4j.Logger;
 
 
 /***
- * {@link StorageReadRequestsHandler} will take the incoming read requests from router{@link RouterRequest}, and delegate
+ * {@link StorageReadRequestHandler} will take the incoming read requests from router{@link RouterRequest}, and delegate
  * the lookup request to a thread pool {@link #executor}, which is being shared by all the requests. Especially, this
  * handler will execute parallel lookups for {@link MultiGetRouterRequestWrapper}.
  */
 @ChannelHandler.Sharable
-public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
-  private static final Logger LOGGER = LogManager.getLogger(StorageReadRequestsHandler.class);
-
-  /**
-   * When constructing a {@link BinaryDecoder}, we pass in this 16 bytes array because if we pass anything
-   * less than that, it would end up getting discarded by the ByteArrayByteSource's constructor, a new byte
-   * array created, and the content of the one passed in would be copied into the newly constructed one.
-   * Therefore, it seems more efficient, in terms of GC, to statically allocate a 16 bytes array and keep
-   * re-using it to construct decoders. Since we always end up re-configuring the decoder and not actually
-   * using its initial value, it shouldn't cause any issue to share it.
-   */
-  private static final byte[] BINARY_DECODER_PARAM = new byte[16];
+public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
+  private static final Logger LOGGER = LogManager.getLogger(StorageReadRequestHandler.class);
 
   private final DiskHealthCheckService diskHealthCheckService;
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
   private final StorageEngineRepository storageEngineRepository;
   private final ReadOnlyStoreRepository metadataRepository;
-  private final ReadOnlySchemaRepository schemaRepo;
+  private final ReadOnlySchemaRepository schemaRepository;
   private final MetadataRetriever metadataRetriever;
   private final Map<Utf8, Schema> computeResultSchemaCache;
   private final boolean fastAvroEnabled;
@@ -133,19 +120,47 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final Optional<ResourceReadUsageTracker> resourceReadUsageTracker;
 
-  private static class StorageExecReusableObjects {
+  private static class PerStoreVersionState {
+    final PartitionerConfig partitionerConfig;
+    final VenicePartitioner partitioner;
+    final AbstractStorageEngine storageEngine;
+    final StoreDeserializerCache<GenericRecord> storeDeserializerCache;
+
+    public PerStoreVersionState(
+        PartitionerConfig partitionerConfig,
+        VenicePartitioner partitioner,
+        AbstractStorageEngine storageEngine,
+        StoreDeserializerCache<GenericRecord> storeDeserializerCache) {
+      this.partitionerConfig = partitionerConfig;
+      this.partitioner = partitioner;
+      this.storageEngine = storageEngine;
+      this.storeDeserializerCache = storeDeserializerCache;
+    }
+  }
+
+  private static class ReusableObjects {
+    /**
+     * When constructing a {@link BinaryDecoder}, we pass in this 16 bytes array because if we pass anything
+     * less than that, it would end up getting discarded by the ByteArrayByteSource's constructor, a new byte
+     * array created, and the content of the one passed in would be copied into the newly constructed one.
+     * Therefore, it seems more efficient, in terms of GC, to statically allocate a 16 bytes array and keep
+     * re-using it to construct decoders. Since we always end up re-configuring the decoder and not actually
+     * using its initial value, it shouldn't cause any issue to share it.
+     */
+    private static final byte[] BINARY_DECODER_PARAM = new byte[16];
+
     // reuse buffer for rocksDB value object
-    final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
+    final ByteBuffer byteBuffer = ByteBuffer.allocate(1024 * 1024);
 
     // LRU cache for storing schema->record map for object reuse of value and result record
-    final LinkedHashMap<Schema, GenericRecord> reuseValueRecordMap =
+    final LinkedHashMap<Schema, GenericRecord> valueRecordMap =
         new LinkedHashMap<Schema, GenericRecord>(100, 0.75f, true) {
           protected boolean removeEldestEntry(Map.Entry<Schema, GenericRecord> eldest) {
             return size() > 100;
           }
         };
 
-    final LinkedHashMap<Schema, GenericRecord> reuseResultRecordMap =
+    final LinkedHashMap<Schema, GenericRecord> resultRecordMap =
         new LinkedHashMap<Schema, GenericRecord>(100, 0.75f, true) {
           protected boolean removeEldestEntry(Map.Entry<Schema, GenericRecord> eldest) {
             return size() > 100;
@@ -154,12 +169,13 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
 
     final BinaryDecoder binaryDecoder =
         AvroCompatibilityHelper.newBinaryDecoder(BINARY_DECODER_PARAM, 0, BINARY_DECODER_PARAM.length, null);
+
+    final Map<String, Object> computeContext = new HashMap<>();
   }
 
-  private final ThreadLocal<StorageExecReusableObjects> threadLocalReusableObjects =
-      ThreadLocal.withInitial(StorageExecReusableObjects::new);
+  private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
 
-  public StorageReadRequestsHandler(
+  public StorageReadRequestHandler(
       ThreadPoolExecutor executor,
       ThreadPoolExecutor computeExecutor,
       StorageEngineRepository storageEngineRepository,
@@ -177,7 +193,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     this.computeExecutor = computeExecutor;
     this.storageEngineRepository = storageEngineRepository;
     this.metadataRepository = metadataStoreRepository;
-    this.schemaRepo = schemaRepository;
+    this.schemaRepository = schemaRepository;
     this.metadataRetriever = metadataRetriever;
     this.diskHealthCheckService = healthCheckService;
     this.fastAvroEnabled = fastAvroEnabled;
@@ -202,7 +218,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
      *
      * The reason for this is two-fold:
      *
-     * 1. We want to make the {@link StorageReadRequestsHandler} fully non-blocking as far as Netty (which
+     * 1. We want to make the {@link StorageReadRequestHandler} fully non-blocking as far as Netty (which
      *    is the one calling this function) is concerned. Therefore, it is beneficial to fork off the
      *    work into the executor from the very beginning.
      * 2. By making the execution asynchronous from the beginning, we can simplify the rest of the class
@@ -408,8 +424,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     if (storageEngine == null) {
       throw new VeniceNoStoreException(storeVersion);
     }
-    StoreDeserializerCache<GenericRecord> storeDeserializerCache = storeDeserializerCacheMap
-        .computeIfAbsent(storeName, s -> new AvroStoreDeserializerCache<>(this.schemaRepo, s, this.fastAvroEnabled));
+    StoreDeserializerCache<GenericRecord> storeDeserializerCache = storeDeserializerCacheMap.computeIfAbsent(
+        storeName,
+        s -> new AvroStoreDeserializerCache<>(this.schemaRepository, s, this.fastAvroEnabled));
     return new PerStoreVersionState(partitionerConfig, partitioner, storageEngine, storeDeserializerCache);
   }
 
@@ -560,193 +577,166 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   }
 
   private ReadResponse handleComputeRequest(ComputeRouterRequestWrapper request) {
-    String topic = request.getResourceName();
-    String storeName = request.getStoreName();
-    Iterable<ComputeRouterRequestKeyV1> keys = request.getKeys();
-    PerStoreVersionState perStoreVersionState = getPerStoreVersionState(topic);
-    AbstractStorageEngine storageEngine = perStoreVersionState.storageEngine;
-
-    SchemaEntry superSetOrLatestValueSchema = this.schemaRepo.getSupersetOrLatestValueSchema(storeName);
-    Schema valueSchema = request.getValueSchemaId() != -1
-        ? this.schemaRepo.getValueSchema(storeName, request.getValueSchemaId()).getSchema()
-        : superSetOrLatestValueSchema.getSchema();
-    ComputeRequestWrapper computeRequestWrapper = request.getComputeRequest();
-
-    // try to get the result schema from the cache
-    Utf8 computeResultSchemaStr = (Utf8) computeRequestWrapper.getResultSchemaStr();
-    Schema computeResultSchema = computeResultSchemaCache.get(computeResultSchemaStr);
-    if (computeResultSchema == null) {
-      computeResultSchema = new Schema.Parser().parse(computeResultSchemaStr.toString());
-      // sanity check on the result schema
-      ComputeUtils.checkResultSchema(
-          computeResultSchema,
-          valueSchema,
-          computeRequestWrapper.getComputeRequestVersion(),
-          computeRequestWrapper.getOperations());
-      computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
-    }
-
-    ComputeResponseWrapper responseWrapper = new ComputeResponseWrapper(request.getKeyCount());
-    CompressionStrategy compressionStrategy = storageEngine.getCompressionStrategy();
-    boolean isChunked = storageEngine.isChunked();
-
-    StorageExecReusableObjects reusableObjects = threadLocalReusableObjects.get();
+    SchemaEntry superSetOrLatestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(request.getStoreName());
+    Schema valueSchema = getComputeValueSchema(request, superSetOrLatestValueSchema);
+    Schema resultSchema = getComputeResultSchema(request.getComputeRequest(), valueSchema);
+    RecordSerializer<GenericRecord> resultSerializer = genericSerializerGetter.apply(resultSchema);
+    PerStoreVersionState storeVersion = getPerStoreVersionState(request.getResourceName());
+    VeniceCompressor compressor =
+        compressorFactory.getCompressor(storeVersion.storageEngine.getCompressionStrategy(), request.getResourceName());
 
     // Reuse the same value record and result record instances for all values
-    GenericRecord reuseValueRecord =
-        reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, GenericData.Record::new);
-    GenericRecord reuseResultRecord =
-        reusableObjects.reuseResultRecordMap.computeIfAbsent(computeResultSchema, GenericData.Record::new);
+    ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+    GenericRecord reusableValueRecord =
+        reusableObjects.valueRecordMap.computeIfAbsent(valueSchema, GenericData.Record::new);
+    GenericRecord reusableResultRecord =
+        reusableObjects.resultRecordMap.computeIfAbsent(resultSchema, GenericData.Record::new);
+    reusableObjects.computeContext.clear();
 
-    ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
-    RecordSerializer<GenericRecord> resultSerializer = genericSerializerGetter.apply(computeResultSchema);
-
-    Map<String, Object> globalContext = new HashMap<>();
-    List<ComputeOperation> computeOperations = computeRequestWrapper.getOperations();
-    int readerSchemaId = superSetOrLatestValueSchema.getId();
-    VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy, topic);
-    for (ComputeRouterRequestKeyV1 key: keys) {
-      clearFieldsInReusedRecord(reuseResultRecord, computeResultSchema);
-      int subPartitionId = getSubPartitionId(key.partitionId, key.keyBytes, perStoreVersionState);
-      ComputeResponseRecordV1 record = computeResult(
-          storageEngine,
-          key.keyBytes,
-          key.keyIndex,
-          subPartitionId,
-          computeRequestWrapper.getComputeRequestVersion(),
-          computeOperations,
-          computeResultSchema,
-          resultSerializer,
-          reuseValueRecord,
-          reuseResultRecord,
+    ComputeResponseWrapper response = new ComputeResponseWrapper(request.getKeyCount());
+    for (ComputeRouterRequestKeyV1 key: request.getKeys()) {
+      AvroRecordUtils.clearRecord(reusableResultRecord);
+      GenericRecord result = computeResult(
+          request.getComputeRequest(),
+          storeVersion,
+          key,
+          reusableValueRecord,
+          superSetOrLatestValueSchema.getId(),
+          compressor,
+          response,
           reusableObjects,
-          isChunked,
-          request.isStreamingRequest(),
-          responseWrapper,
-          globalContext,
-          reusedRawValue,
-          readerSchemaId,
-          perStoreVersionState.storeDeserializerCache,
-          compressor);
-      if (record != null) {
-        // TODO: streaming support in storage node
-        responseWrapper.addRecord(record);
-      }
+          reusableResultRecord);
+      addComputationResult(response, key, result, resultSerializer, request.isStreamingRequest());
     }
-
-    return responseWrapper;
+    return response;
   }
 
   private BinaryResponse handleDictionaryFetchRequest(DictionaryFetchRequest request) {
-    String topic = request.getResourceName();
-    ByteBuffer dictionary = metadataRetriever.getStoreVersionCompressionDictionary(topic);
-
+    ByteBuffer dictionary = metadataRetriever.getStoreVersionCompressionDictionary(request.getResourceName());
     return new BinaryResponse(dictionary);
   }
 
   private MetadataResponse handleMetadataFetchRequest(MetadataFetchRequest request) {
-    String storeName = request.getStoreName();
-    return metadataRetriever.getMetadata(storeName);
+    return metadataRetriever.getMetadata(request.getStoreName());
   }
 
-  private void clearFieldsInReusedRecord(GenericRecord record, Schema schema) {
-    for (int idx = 0; idx < schema.getFields().size(); idx++) {
-      record.put(idx, null);
+  private Schema getComputeResultSchema(ComputeRequestWrapper computeRequest, Schema valueSchema) {
+    Utf8 resultSchemaStr = (Utf8) computeRequest.getResultSchemaStr();
+    Schema resultSchema = computeResultSchemaCache.get(resultSchemaStr);
+    if (resultSchema == null) {
+      resultSchema = new Schema.Parser().parse(resultSchemaStr.toString());
+      // Sanity check on the result schema
+      ComputeUtils.checkResultSchema(
+          resultSchema,
+          valueSchema,
+          computeRequest.getComputeRequestVersion(),
+          computeRequest.getOperations());
+      computeResultSchemaCache.putIfAbsent(resultSchemaStr, resultSchema);
+    }
+    return resultSchema;
+  }
+
+  private Schema getComputeValueSchema(ComputeRouterRequestWrapper request, SchemaEntry superSetOrLatestValueSchema) {
+    return request.getValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID
+        ? schemaRepository.getValueSchema(request.getStoreName(), request.getValueSchemaId()).getSchema()
+        : superSetOrLatestValueSchema.getSchema();
+  }
+
+  private void addComputationResult(
+      ComputeResponseWrapper response,
+      ComputeRouterRequestKeyV1 key,
+      GenericRecord result,
+      RecordSerializer<GenericRecord> resultSerializer,
+      boolean isStreaming) {
+    if (result != null) {
+      long serializeStartTimeInNS = System.nanoTime();
+      ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
+      record.keyIndex = key.getKeyIndex();
+      record.value = ByteBuffer.wrap(resultSerializer.serialize(result));
+      response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
+      response.addReadComputeOutputSize(record.value.remaining());
+      response.addRecord(record);
+    } else if (isStreaming) {
+      // For streaming, we need to send back non-existing keys
+      ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
+      // Negative key index to indicate non-existing key
+      record.keyIndex = Math.negateExact(key.getKeyIndex());
+      record.value = StreamingUtils.EMPTY_BYTE_BUFFER;
+      response.addRecord(record);
     }
   }
 
-  private ComputeResponseRecordV1 computeResult(
-      AbstractStorageEngine store,
-      ByteBuffer key,
-      final int keyIndex,
-      int partition,
-      int computeRequestVersion,
-      List<ComputeOperation> operations,
-      Schema computeResultSchema,
-      RecordSerializer<GenericRecord> resultSerializer,
-      GenericRecord reuseValueRecord,
-      GenericRecord reuseResultRecord,
-      StorageExecReusableObjects reusableObjects,
-      boolean isChunked,
-      boolean isStreaming,
-      ComputeResponseWrapper response,
-      Map<String, Object> globalContext,
-      ByteBuffer reuseRawValue,
+  private GenericRecord computeResult(
+      ComputeRequestWrapper computeRequest,
+      PerStoreVersionState storeVersion,
+      ComputeRouterRequestKeyV1 key,
+      GenericRecord reusableValueRecord,
       int readerSchemaId,
-      StoreDeserializerCache<GenericRecord> storeDeserializerCache,
-      VeniceCompressor compressor) {
-    reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
-        store,
-        partition,
-        ByteUtils.extractByteArray(key),
-        reuseRawValue,
-        reuseValueRecord,
-        reusableObjects.binaryDecoder,
-        isChunked,
-        response,
-        readerSchemaId,
-        storeDeserializerCache,
-        compressor);
-
-    if (reuseValueRecord == null) {
-      if (isStreaming) {
-        // For streaming, we need to send back non-existing keys
-        ComputeResponseRecordV1 computeResponseRecord = new ComputeResponseRecordV1();
-        // Negative key index to indicate non-existing key
-        computeResponseRecord.keyIndex = Math.negateExact(keyIndex);
-        computeResponseRecord.value = StreamingUtils.EMPTY_BYTE_BUFFER;
-        return computeResponseRecord;
-      }
+      VeniceCompressor compressor,
+      ComputeResponseWrapper response,
+      ReusableObjects reusableObjects,
+      GenericRecord reusableResultRecord) {
+    reusableValueRecord =
+        readValueRecord(key, storeVersion, readerSchemaId, compressor, response, reusableObjects, reusableValueRecord);
+    if (reusableValueRecord == null) {
       return null;
     }
 
     long computeStartTimeInNS = System.nanoTime();
-    Map<String, String> computationErrorMap = new HashMap<>();
-
-    // go through all operation
-    for (ComputeOperation operation: operations) {
-      ReadComputeOperator operator = ComputeOperationType.valueOf(operation).getOperator();
-      String fieldName = operator.getOperatorFieldName(operation);
-      String errorMessage =
-          ComputeOperationUtils.validateNullableFieldAndGetErrorMsg(operator, reuseValueRecord, fieldName).orElse(null);
-      if (errorMessage != null) {
-        operator.putDefaultResult(reuseResultRecord, operator.getResultFieldName(operation));
-        computationErrorMap.put(operator.getResultFieldName(operation), errorMessage);
-        continue;
-      }
-      incrementOperatorCount(response, operation);
-      operator.compute(
-          computeRequestVersion,
-          operation,
-          reuseValueRecord,
-          reuseResultRecord,
-          computationErrorMap,
-          globalContext);
-    }
-
-    // fill the empty field in result schema
-    for (Schema.Field field: computeResultSchema.getFields()) {
-      if (reuseResultRecord.get(field.pos()) == null) {
-        if (field.name().equals(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {
-          reuseResultRecord.put(field.pos(), computationErrorMap);
-        } else {
-          // project from value record
-          reuseResultRecord.put(field.pos(), reuseValueRecord.get(field.name()));
-        }
-      }
-    }
+    reusableResultRecord = ComputeUtils.computeResult(
+        computeRequest.getComputeRequestVersion(),
+        computeRequest.getOperations(),
+        reusableObjects.computeContext,
+        reusableValueRecord,
+        reusableResultRecord);
     response.addReadComputeLatency(LatencyUtils.getLatencyInMS(computeStartTimeInNS));
+    incrementOperatorCounters(response, computeRequest.getOperations());
+    return reusableResultRecord;
+  }
 
-    // create a response record
-    ComputeResponseRecordV1 responseRecord = new ComputeResponseRecordV1();
-    responseRecord.keyIndex = keyIndex;
+  private GenericRecord readValueRecord(
+      ComputeRouterRequestKeyV1 key,
+      PerStoreVersionState storeVersion,
+      int readerSchemaId,
+      VeniceCompressor compressor,
+      ReadResponse response,
+      ReusableObjects reusableObjects,
+      GenericRecord reusableValueRecord) {
+    return GenericRecordChunkingAdapter.INSTANCE.get(
+        storeVersion.storageEngine,
+        key.getPartitionId(),
+        storeVersion.partitioner,
+        storeVersion.partitionerConfig,
+        ByteUtils.extractByteArray(key.getKeyBytes()),
+        reusableObjects.byteBuffer,
+        reusableValueRecord,
+        reusableObjects.binaryDecoder,
+        storeVersion.storageEngine.isChunked(),
+        response,
+        readerSchemaId,
+        storeVersion.storeDeserializerCache,
+        compressor);
+  }
 
-    // serialize the compute result
-    long serializeStartTimeInNS = System.nanoTime();
-    responseRecord.value = ByteBuffer.wrap(resultSerializer.serialize(reuseResultRecord));
-    response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
-
-    return responseRecord;
+  private static void incrementOperatorCounters(
+      ComputeResponseWrapper response,
+      Iterable<ComputeOperation> operations) {
+    for (ComputeOperation operation: operations) {
+      switch (ComputeOperationType.valueOf(operation)) {
+        case DOT_PRODUCT:
+          response.incrementDotProductCount();
+          break;
+        case COSINE_SIMILARITY:
+          response.incrementCosineSimilarityCount();
+          break;
+        case HADAMARD_PRODUCT:
+          response.incrementHadamardProductCount();
+          break;
+        case COUNT:
+          response.incrementCountOperatorCount();
+          break;
+      }
+    }
   }
 
   private AdminResponse handleServerAdminRequest(AdminRequest adminRequest) {
@@ -768,41 +758,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         return configResponse;
       default:
         throw new VeniceException("Not a valid admin action: " + adminRequest.getServerAdminAction().toString());
-    }
-  }
-
-  private void incrementOperatorCount(ComputeResponseWrapper response, ComputeOperation operation) {
-    switch (ComputeOperationType.valueOf(operation)) {
-      case DOT_PRODUCT:
-        response.incrementDotProductCount();
-        break;
-      case COSINE_SIMILARITY:
-        response.incrementCosineSimilarityCount();
-        break;
-      case HADAMARD_PRODUCT:
-        response.incrementHadamardProductCount();
-        break;
-      case COUNT:
-        response.incrementCountOperatorCount();
-        break;
-    }
-  }
-
-  static class PerStoreVersionState {
-    final PartitionerConfig partitionerConfig;
-    final VenicePartitioner partitioner;
-    final AbstractStorageEngine storageEngine;
-    final StoreDeserializerCache<GenericRecord> storeDeserializerCache;
-
-    public PerStoreVersionState(
-        PartitionerConfig partitionerConfig,
-        VenicePartitioner partitioner,
-        AbstractStorageEngine storageEngine,
-        StoreDeserializerCache<GenericRecord> storeDeserializerCache) {
-      this.partitionerConfig = partitionerConfig;
-      this.partitioner = partitioner;
-      this.storageEngine = storageEngine;
-      this.storeDeserializerCache = storeDeserializerCache;
     }
   }
 }

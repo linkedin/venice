@@ -41,9 +41,6 @@ import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
@@ -737,10 +734,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     boolean isDaVinciClient = veniceMetadataRepositoryBuilder.isDaVinciClient();
-    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
-        new ApacheKafkaProducerAdapterFactory(),
-        new ApacheKafkaConsumerAdapterFactory(),
-        new ApacheKafkaAdminAdapterFactory());
+    PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
 
     // Create KafkaStoreIngestionService
     storeIngestionService = new KafkaStoreIngestionService(

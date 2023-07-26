@@ -33,7 +33,7 @@ public class HttpChannelInitializerTest {
   private VeniceServerConfig serverConfig;
   private Optional<StaticAccessController> accessController;
   private Optional<DynamicAccessController> storeAccessController;
-  private StorageReadRequestsHandler requestHandler;
+  private StorageReadRequestHandler requestHandler;
 
   @BeforeMethod
   public void setUp() {
@@ -44,7 +44,7 @@ public class HttpChannelInitializerTest {
     sslHandshakeExecutor = mock(Executor.class);
     accessController = Optional.of(mock(StaticAccessController.class));
     storeAccessController = Optional.of(mock(DynamicAccessController.class));
-    requestHandler = mock(StorageReadRequestsHandler.class);
+    requestHandler = mock(StorageReadRequestHandler.class);
     serverConfig = mock(VeniceServerConfig.class);
     customizedViewRepository = new CompletableFuture<>();
   }
