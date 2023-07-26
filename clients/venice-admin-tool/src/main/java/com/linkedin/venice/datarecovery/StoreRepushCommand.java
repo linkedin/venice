@@ -168,7 +168,7 @@ public class StoreRepushCommand extends Command {
         // Find ongoing pushes for this store, skip.
         return Pair.of(false, String.format("find ongoing push, version: %d", futureVersion));
       }
-    } catch (Exception e) {
+    } catch (VeniceException e) {
       return Pair.of(false, "Exception Thrown: " + e.toString());
     }
   }

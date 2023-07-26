@@ -2,9 +2,6 @@ package com.linkedin.venice.datarecovery;
 
 import static com.linkedin.venice.datarecovery.DataRecoveryWorker.INTERVAL_UNSET;
 
-import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.security.SSLFactory;
-import java.util.Optional;
 import java.util.Scanner;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
@@ -45,10 +42,6 @@ public class DataRecoveryClient {
 
   public DataRecoveryMonitor getMonitor() {
     return monitor;
-  }
-
-  public ControllerClient buildControllerClient(String clusterName, String url, Optional<SSLFactory> sslFactory) {
-    return new ControllerClient(clusterName, url, sslFactory);
   }
 
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
