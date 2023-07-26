@@ -12,16 +12,25 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLE
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -33,6 +42,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -149,6 +159,16 @@ public class TestActiveActiveReplicationForIncPush {
       TestWriteUtils.writeSimpleAvroFileWithUserSchema3(inputDirInc2);
 
       TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
+
+      verifyHybridAndIncPushConfig(
+          storeName,
+          false,
+          false,
+          parentControllerClient,
+          dc0ControllerClient,
+          dc1ControllerClient,
+          dc2ControllerClient);
+
       // Store Setup
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -166,6 +186,15 @@ public class TestActiveActiveReplicationForIncPush {
 
       // verify store configs
       TestUtils.verifyDCConfigNativeAndActiveRepl(
+          storeName,
+          true,
+          true,
+          parentControllerClient,
+          dc0ControllerClient,
+          dc1ControllerClient,
+          dc2ControllerClient);
+
+      verifyHybridAndIncPushConfig(
           storeName,
           true,
           true,
@@ -201,6 +230,31 @@ public class TestActiveActiveReplicationForIncPush {
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
       }
       NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
+    }
+  }
+
+  public static void verifyHybridAndIncPushConfig(
+      String storeName,
+      boolean expectedIncPushStatus,
+      boolean isNonNullHybridStoreConfig,
+      ControllerClient... controllerClients) {
+    for (ControllerClient controllerClient: controllerClients) {
+      waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertEquals(
+            storeInfo.isIncrementalPushEnabled(),
+            expectedIncPushStatus,
+            "The incremental push config does not match.");
+        if (!isNonNullHybridStoreConfig) {
+          assertNull(storeInfo.getHybridStoreConfig(), "The hybrid store config is not null.");
+          return;
+        }
+        HybridStoreConfig hybridStoreConfig = storeInfo.getHybridStoreConfig();
+        assertNotNull(hybridStoreConfig, "The hybrid store config is null.");
+        DataReplicationPolicy policy = hybridStoreConfig.getDataReplicationPolicy();
+        assertNotNull(policy, "The data replication policy is null.");
+      });
     }
   }
 }
