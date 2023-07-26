@@ -1150,6 +1150,14 @@ public class ConfigKeys {
    */
   public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES =
       "native.replication.source.fabric.as.default.for.incremental.push.stores";
+
+  /**
+   * We will use this config to determine whether we should enable incremental push for hybrid active-active user stores.
+   * If this config is set to true, we will enable incremental push for hybrid active-active user stores.
+   */
+  public static final String ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
+      "enable.incremental.push.for.hybrid.active.active.user.stores";
+
   /**
    * The highest priority source fabric selection config, specified in parent controller.
    */

@@ -26,6 +26,7 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
+import static com.linkedin.venice.ConfigKeys.ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH;
@@ -179,6 +180,7 @@ public class VeniceControllerClusterConfig {
   private String nativeReplicationSourceFabricAsDefaultForBatchOnly;
   private String nativeReplicationSourceFabricAsDefaultForHybrid;
   private String nativeReplicationSourceFabricAsDefaultForIncremental;
+  private boolean enabledIncrementalPushForHybridActiveActiveUserStores;
 
   /**
    * When this option is enabled, all new batch-only stores will have active-active replication enabled in store config so long
@@ -355,6 +357,8 @@ public class VeniceControllerClusterConfig {
     activeActiveReplicationEnabledAsDefaultForIncremental =
         props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE, false);
     controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
+    enabledIncrementalPushForHybridActiveActiveUserStores =
+        props.getBoolean(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, false);
 
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
@@ -677,5 +681,9 @@ public class VeniceControllerClusterConfig {
 
   public String getChildDatacenters() {
     return childDatacenters;
+  }
+
+  public boolean enabledIncrementalPushForHybridActiveActiveUserStores() {
+    return enabledIncrementalPushForHybridActiveActiveUserStores;
   }
 }
