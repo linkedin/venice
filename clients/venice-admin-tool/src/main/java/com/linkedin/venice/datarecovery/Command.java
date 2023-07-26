@@ -1,11 +1,20 @@
 package com.linkedin.venice.datarecovery;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.security.SSLFactory;
+import java.util.Optional;
+
+
 public abstract class Command {
   public abstract void execute();
 
   public abstract Result getResult();
 
   public abstract boolean needWaitForFirstTaskToComplete();
+
+  public ControllerClient buildControllerClient(String clusterName, String url, Optional<SSLFactory> sslFactory) {
+    return new ControllerClient(clusterName, url, sslFactory);
+  }
 
   public abstract static class Params {
     // Store name.

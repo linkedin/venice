@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.datarecovery.meta.RepushViabilityInfo;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Store;
@@ -21,7 +22,6 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,6 +42,7 @@ public class StoreRepushCommand extends Command {
 
   private Params params;
   private Result result = new Result();
+  private RepushViabilityInfo.Result repushViabilityResult = RepushViabilityInfo.Result.NOT_STARTED;
   private List<String> shellCmd;
 
   private boolean isShellCmdExecuted = false;
@@ -113,6 +114,10 @@ public class StoreRepushCommand extends Command {
     return shellCmd;
   }
 
+  public RepushViabilityInfo.Result getViabilityResult() {
+    return repushViabilityResult;
+  }
+
   private void processOutput(String output, int exitCode) {
     getResult().setStdOut(output);
     getResult().setExitCode(exitCode);
@@ -120,69 +125,66 @@ public class StoreRepushCommand extends Command {
     getResult().setCoreWorkDone(true);
   }
 
-  public ControllerClient buildControllerClient(String clusterName, String url, Optional<SSLFactory> sslFactory) {
-    return new ControllerClient(clusterName, url, sslFactory);
-  }
-
-  public Pair<Boolean, String> getRepushViability() {
+  public RepushViabilityInfo getRepushViability() {
     String url = getParams().getUrl();
     ControllerClient cli = getParams().getPCtrlCliWithoutCluster();
     LocalDateTime timestamp = getParams().getTimestamp();
     String destFabric = getParams().getDestFabric();
     String s = getParams().getStore();
+    RepushViabilityInfo ret = new RepushViabilityInfo();
     try {
       String clusterName = cli.discoverCluster(s).getCluster();
       if (clusterName == null) {
-        return Pair.of(false, "unable to discover cluster for store (likely invalid store name)");
+        return ret.failWithResult(RepushViabilityInfo.Result.DISCOVERY_ERROR);
       }
       try (ControllerClient parentCtrlCli = buildControllerClient(clusterName, url, getParams().getSSLFactory())) {
+        StoreResponse storeResponse = parentCtrlCli.getStore(s);
+        if (storeResponse.getStore().getHybridStoreConfig() != null) {
+          ret.setHybrid(true);
+        }
+
         StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(s, false);
         Map<String, RegionPushDetails> regionPushDetails = storeHealthInfo.getRegionPushDetails();
         if (!regionPushDetails.containsKey(destFabric)) {
-          return Pair.of(false, "nothing to repush, store version 0");
+          return ret.failWithResult(RepushViabilityInfo.Result.NO_FUTURE_VERSION);
         }
         String latestTimestamp = regionPushDetails.get(destFabric).getPushStartTimestamp();
         LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
         if (latestPushStartTime.isAfter(timestamp)) {
-          return Pair.of(false, "input timestamp earlier than latest push");
-        }
-
-        boolean isBatch = false;
-        StoreResponse storeResponse = parentCtrlCli.getStore(s);
-        if (storeResponse.getStore().getHybridStoreConfig() == null) {
-          isBatch = true;
+          return ret.failWithResult(RepushViabilityInfo.Result.TIMESTAMP_MISMATCH);
         }
 
         MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, s);
         // No future version status for target region.
         if (!response.getStoreStatusMap().containsKey(destFabric)) {
-          return Pair.of(true, isBatch ? "BATCH" : StringUtils.EMPTY);
+          return ret.succeedWithResult(RepushViabilityInfo.Result.SUCCESS);
         }
 
         int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(destFabric));
         // No ongoing offline pushes detected for target region.
         if (futureVersion == Store.NON_EXISTING_VERSION) {
-          return Pair.of(true, isBatch ? "BATCH" : StringUtils.EMPTY);
+          return ret.succeedWithResult(RepushViabilityInfo.Result.SUCCESS);
         }
         // Find ongoing pushes for this store, skip.
-        return Pair.of(false, String.format("find ongoing push, version: %d", futureVersion));
+        return ret.failWithResult(RepushViabilityInfo.Result.ONGOING_PUSH);
       }
     } catch (VeniceException e) {
-      return Pair.of(false, "Exception Thrown: " + e.toString());
+      return ret.failWithResult(RepushViabilityInfo.Result.EXCEPTION_THROWN);
     }
   }
 
   @Override
   public void execute() {
-    Pair<Boolean, String> repushViability = getRepushViability();
+    RepushViabilityInfo repushViability = getRepushViability();
+    this.repushViabilityResult = repushViability.getResult();
     StoreRepushCommand.Params repushParams = getParams();
     ControllerClient cli = repushParams.getPCtrlCliWithoutCluster();
-    if (repushViability.getLeft() == false) {
-      completeCoreWorkWithError("failure: " + repushViability.getRight());
+    if (repushViability.isViable() == false) {
+      completeCoreWorkWithError("failure: " + repushViability.getResult().toString());
       return;
     }
-    if (repushViability.getRight().equals("BATCH")) {
+    if (repushViability.isHybrid() == false) {
       try {
         String clusterName = cli.discoverCluster(repushParams.getStore()).getCluster();
         try (ControllerClient parentCtrlCli =

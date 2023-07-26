@@ -2,6 +2,7 @@ package com.linkedin.venice.datarecovery;
 
 import static com.linkedin.venice.datarecovery.DataRecoveryWorker.INTERVAL_UNSET;
 
+import com.linkedin.venice.datarecovery.meta.RepushViabilityInfo;
 import java.util.Scanner;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
@@ -59,7 +60,15 @@ public class DataRecoveryClient {
     for (DataRecoveryTask t: getExecutor().getTasks()) {
       StoreRepushCommand cmd = (StoreRepushCommand) t.getCommand();
       if (cmd.getResult().isError()) {
-        LOGGER.info("Store " + t.getTaskParams().getStore() + " skipped: " + t.getTaskResult().getError());
+        if (cmd.getViabilityResult() != RepushViabilityInfo.Result.SUCCESS) {
+          // unsuccessful viability check
+          LOGGER.info("Store " + t.getTaskParams().getStore() + " skipped: " + cmd.getViabilityResult().toString());
+        } else {
+          // successful viability check, error in execution
+          LOGGER.info(
+              "Store " + t.getTaskParams().getStore() + " encountered an error during execution: "
+                  + cmd.getResult().getError());
+        }
       }
     }
 
