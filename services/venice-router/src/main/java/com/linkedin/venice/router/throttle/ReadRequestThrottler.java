@@ -5,14 +5,12 @@ import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
-import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutersClusterManager;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -32,9 +30,8 @@ import org.apache.logging.log4j.Logger;
  * For each read request throttler will ask the related StoreReadThrottler to check both store level quota and storage
  * level quota then accept or reject it.
  */
-public class ReadRequestThrottler implements RouterThrottler, RoutersClusterManager.RouterCountChangedListener,
-    RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener,
-    RoutersClusterManager.RouterClusterConfigChangedListener {
+public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedListener,
+    RoutersClusterManager.RouterCountChangedListener, RoutersClusterManager.RouterClusterConfigChangedListener {
   // We want to give more tight restriction for store-level quota to protect router but more lenient restriction for
   // storage node level quota. Because in some case per-storage node quota is too small to user.
   public static final long DEFAULT_STORE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(10); // 10sec
@@ -63,7 +60,6 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
 
   private final AggRouterHttpRequestStats stats;
 
-  private final double perStorageNodeReadQuotaBuffer;
   private final double perStoreRouterQuotaBuffer;
 
   private final long storeQuotaCheckTimeWindow;
@@ -83,7 +79,6 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
         routingDataRepository,
         routerConfig.getMaxReadCapacityCu(),
         stats,
-        routerConfig.getPerStorageNodeReadQuotaBuffer(),
         routerConfig.getPerStoreRouterQuotaBuffer(),
         DEFAULT_STORE_QUOTA_TIME_WINDOW,
         DEFAULT_STORAGE_NODE_QUOTA_TIME_WINDOW);
@@ -95,7 +90,6 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       RoutingDataRepository routingDataRepository,
       long maxRouterReadCapacity,
       AggRouterHttpRequestStats stats,
-      double perStorageNodeReadQuotaBuffer,
       double perStoreRouterQuotaBuffer,
       long storeQuotaCheckTimeWindow,
       long storageNodeQuotaCheckTimeWindow) {
@@ -104,11 +98,9 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     this.routingDataRepository = routingDataRepository;
     this.storeQuotaCheckTimeWindow = storeQuotaCheckTimeWindow;
     this.storageNodeQuotaCheckTimeWindow = storageNodeQuotaCheckTimeWindow;
-    this.zkRoutersManager.subscribeRouterCountChangedEvent(this);
     this.storeRepository.registerStoreDataChangedListener(this);
     this.stats = stats;
     this.maxRouterReadCapacity = maxRouterReadCapacity;
-    this.perStorageNodeReadQuotaBuffer = perStorageNodeReadQuotaBuffer;
     this.lastRouterCount = zkRoutersManager.getExpectedRoutersCount();
     this.perStoreRouterQuotaBuffer = perStoreRouterQuotaBuffer;
     this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
@@ -235,26 +227,6 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     LOGGER.info("Number of router has been changed. Delete all of store throttlers.");
     resetAllThrottlers();
     LOGGER.info("All throttlers were reset");
-  }
-
-  @Override
-  public void onExternalViewChange(PartitionAssignment partitionAssignment) {
-  }
-
-  @Override
-  public void onCustomizedViewChange(PartitionAssignment partitionAssignment) {
-  }
-
-  @Override
-  public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
-
-  }
-
-  @Override
-  public void onRoutingDataDeleted(String kafkaTopic) {
-    // Ignore the event. If the deleted resource is not the current version, we don't need to update throttler.
-    // If the deleted resource is the current version, we will handle it once we got the store data changed event with
-    // the new current version.
   }
 
   @Override

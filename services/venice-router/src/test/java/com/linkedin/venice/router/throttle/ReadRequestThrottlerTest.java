@@ -58,7 +58,6 @@ public class ReadRequestThrottlerTest {
         routingDataRepository,
         maxCapacity,
         stats,
-        0.0,
         PER_STORE_ROUTER_QUOTA_BUFFER,
         1000,
         1000);
@@ -318,7 +317,6 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(1).when(assignment).getExpectedNumberOfPartitions();
     String topicName = Version.composeKafkaTopic(store.getName(), version);
     Mockito.doReturn(topicName).when(assignment).getTopic();
-    throttler.onExternalViewChange(assignment);
   }
 
   @Test

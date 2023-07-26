@@ -73,7 +73,6 @@ public class RouterRequestThrottlingTest {
         routingDataRepository,
         2000,
         stats,
-        0.0,
         1.5,
         1000,
         1000);
