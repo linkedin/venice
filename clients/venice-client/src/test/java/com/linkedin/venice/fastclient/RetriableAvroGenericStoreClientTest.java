@@ -57,7 +57,6 @@ public class RetriableAvroGenericStoreClientTest {
   private RetriableAvroGenericStoreClient<String, String> retriableClient;
   private StatsAvroGenericStoreClient statsAvroGenericStoreClient;
   private Map<String, ? extends Metric> metrics;
-  boolean enablePartialFailure = false;
 
   @BeforeClass
   public void setUp() {

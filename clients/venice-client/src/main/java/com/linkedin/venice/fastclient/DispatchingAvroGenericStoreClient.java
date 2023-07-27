@@ -345,8 +345,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         if (exception.isPresent()) {
           streamingResponseFuture.completeExceptionally(exception.get());
         } else {
-          streamingResponseFuture
-              .complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, valueMap.size() == keys.size()));
+          boolean isFullResponse = ((valueMap.size() + nonExistingKeys.size()) == keys.size());
+          streamingResponseFuture.complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, isFullResponse));
         }
       }
     });
