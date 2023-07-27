@@ -35,7 +35,6 @@ public class ReadRequestThrottler implements RouterThrottler, StoreDataChangedLi
   // We want to give more tight restriction for store-level quota to protect router but more lenient restriction for
   // storage node level quota. Because in some case per-storage node quota is too small to user.
   public static final long DEFAULT_STORE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(10); // 10sec
-  public static final long DEFAULT_STORAGE_NODE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(30); // 30sec
 
   private static final Logger LOGGER = LogManager.getLogger(ReadRequestThrottler.class);
   private final ZkRoutersClusterManager zkRoutersManager;
