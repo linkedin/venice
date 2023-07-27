@@ -125,8 +125,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       throw new VeniceClientException("r2Client param shouldn't be null");
     }
     if (useGrpc && nettyServerToGrpcAddressMap == null) {
-      // can maybe simplify to only pass nettyServerToGrpc, if it is null then we know useGrpc is false
-      throw new VeniceClientException("nettyServerToGrpc param shouldn't be null when useGrpc is true");
+      throw new UnsupportedOperationException(
+          "we require a mapping of netty server addresses to grpc server addresses to use a gRPC enabled client");
     }
     this.r2Client = r2Client;
     this.storeName = storeName;
@@ -419,7 +419,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private String clusterDiscoveryD2Service;
     private boolean useStreamingBatchGetAsDefault = false;
     private boolean useGrpc = false;
-    private Map<String, String> nettyServerToGrpc = null;
+    private Map<String, String> nettyServerToGrpcAddressMap = null;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -582,8 +582,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setNettyServerToGrpc(Map<String, String> nettyServerToGrpc) {
-      this.nettyServerToGrpc = nettyServerToGrpc;
+    public ClientConfigBuilder<K, V, T> setNettyServerToGrpcAddressMap(
+        Map<String, String> nettyServerToGrpcAddressMap) {
+      this.nettyServerToGrpcAddressMap = nettyServerToGrpcAddressMap;
       return this;
     }
 
@@ -618,7 +619,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
           .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
           .setUseGrpc(useGrpc)
-          .setNettyServerToGrpc(nettyServerToGrpc);
+          .setNettyServerToGrpcAddressMap(nettyServerToGrpcAddressMap);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -653,7 +654,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           clusterDiscoveryD2Service,
           useStreamingBatchGetAsDefault,
           useGrpc,
-          nettyServerToGrpc);
+          nettyServerToGrpcAddressMap);
     }
   }
 }

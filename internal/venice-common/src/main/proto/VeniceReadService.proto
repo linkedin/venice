@@ -17,11 +17,13 @@ message VeniceClientRequest {
   string storeName = 6;
   bool   isStreamingRequest = 7;
   bool   isRetryRequest = 8;
+  bool   isBatchRequest = 9;
 }
 
 message VeniceServerResponse {
   sint32 schemaId = 1;
   bytes  data = 2;
-  uint32 dataSize = 3;
-  bytes  serializedArr = 4;
+  uint32 compressionStrategy = 3;
+  uint32 responseRCU = 4;
+  bool   isStreamingResponse = 5;
 }

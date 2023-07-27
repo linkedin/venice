@@ -38,6 +38,7 @@ public class VeniceClusterCreateOptions {
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
   private final boolean forkServer;
+  private final boolean enableGrpc;
   private final Properties extraProperties;
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
@@ -63,6 +64,7 @@ public class VeniceClusterCreateOptions {
     this.sslToStorageNodes = builder.sslToStorageNodes;
     this.sslToKafka = builder.sslToKafka;
     this.forkServer = builder.forkServer;
+    this.enableGrpc = builder.enableGrpc;
     this.extraProperties = builder.extraProperties;
     this.kafkaClusterMap = builder.kafkaClusterMap;
     this.zkServerWrapper = builder.zkServerWrapper;
@@ -145,6 +147,10 @@ public class VeniceClusterCreateOptions {
     return forkServer;
   }
 
+  public boolean isGrpcEnabled() {
+    return enableGrpc;
+  }
+
   public Properties getExtraProperties() {
     return extraProperties;
   }
@@ -215,6 +221,9 @@ public class VeniceClusterCreateOptions {
         .append("forkServer:")
         .append(forkServer)
         .append(", ")
+        .append("enableGrpc:")
+        .append(enableGrpc)
+        .append(", ")
         .append("extraProperties:")
         .append(extraProperties)
         .append(", ")
@@ -256,6 +265,7 @@ public class VeniceClusterCreateOptions {
     private boolean sslToKafka = DEFAULT_SSL_TO_KAFKA;
     private boolean forkServer;
     private boolean isMinActiveReplicaSet = false;
+    private boolean enableGrpc = false;
     private Properties extraProperties;
     private Map<String, Map<String, String>> kafkaClusterMap;
     private ZkServerWrapper zkServerWrapper;
@@ -319,6 +329,11 @@ public class VeniceClusterCreateOptions {
     public Builder minActiveReplica(int minActiveReplica) {
       this.minActiveReplica = minActiveReplica;
       this.isMinActiveReplicaSet = true;
+      return this;
+    }
+
+    public Builder enableGrpc(boolean enableGrpc) {
+      this.enableGrpc = enableGrpc;
       return this;
     }
 
