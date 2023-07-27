@@ -7,11 +7,11 @@ public interface RouterThrottler {
   /**
    * Returns if the request should be allowed, throws a com.linkedin.venice.exceptions.QuotaExceededException if the
    * request is out of quota.
-   *  @param storeName
+   *
+   * @param storeName
    * @param readCapacityUnit
-   * @param storageNodeId
    */
-  void mayThrottleRead(String storeName, double readCapacityUnit, String storageNodeId) throws QuotaExceededException;
+  void mayThrottleRead(String storeName, double readCapacityUnit) throws QuotaExceededException;
 
   int getReadCapacity();
 
