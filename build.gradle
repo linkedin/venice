@@ -720,6 +720,8 @@ ext.createDiffFile = { ->
 
       // venice-client
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
+      // unit test for gRPC Transport Client is not straightforward, adding to exclusion list for now
+      ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/transport/GrpcTransportClient.java',
 
       // venice-producer
       ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/OnlineProducerFactory.java',

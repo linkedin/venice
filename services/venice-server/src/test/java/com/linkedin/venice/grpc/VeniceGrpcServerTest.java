@@ -24,11 +24,6 @@ public class VeniceGrpcServerTest {
         .build();
   }
 
-  // @AfterTest
-  // void teardown() {
-  // grpcServer.stop();
-  // }
-
   @Test
   void startServerSuccessfully() {
     grpcServer = new VeniceGrpcServer(serverConfig);
