@@ -50,7 +50,6 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(routerCount).when(zkRoutersClusterManager).getLiveRoutersCount();
     Mockito.doReturn(true).when(zkRoutersClusterManager).isThrottlingEnabled();
     Mockito.doReturn(true).when(zkRoutersClusterManager).isMaxCapacityProtectionEnabled();
-    Mockito.doReturn(true).when(routerConfig).isPerRouterStorageNodeThrottlerEnabled();
     stats = Mockito.mock(AggRouterHttpRequestStats.class);
     throttler = new ReadRequestThrottler(
         zkRoutersClusterManager,
@@ -180,7 +179,6 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(totalQuota).when(storeRepository).getTotalStoreReadQuota();
     Mockito.doReturn(routerCount).when(zkRoutersClusterManager).getLiveRoutersCount();
     Mockito.doReturn(maxCapcity).when(routerConfig).getMaxReadCapacityCu();
-    Mockito.doReturn(true).when(routerConfig).isPerRouterStorageNodeThrottlerEnabled();
 
     ReadRequestThrottler multiStoreThrottler =
         new ReadRequestThrottler(zkRoutersClusterManager, storeRepository, routingDataRepository, stats, routerConfig);
