@@ -352,18 +352,37 @@ public class TopicManager implements Closeable {
     return false;
   }
 
+  public synchronized void updateTopicCompactionPolicy(PubSubTopic topic, boolean expectedLogCompacted) {
+    updateTopicCompactionPolicy(topic, expectedLogCompacted, -1);
+  }
+
   /**
    * Update topic compaction policy.
+   * @param topic
+   * @param expectedLogCompacted
+   * @param minLogCompactionLagMs the overrode min log compaction lag. If this is specified and a valid number (> 0), it will
+   *                              override the default config
    * @throws TopicDoesNotExistException, if the topic doesn't exist
    */
-  public synchronized void updateTopicCompactionPolicy(PubSubTopic topic, boolean expectedLogCompacted)
-      throws TopicDoesNotExistException {
+  public synchronized void updateTopicCompactionPolicy(
+      PubSubTopic topic,
+      boolean expectedLogCompacted,
+      long minLogCompactionLagMs) throws TopicDoesNotExistException {
+    long expectedMinLogCompactionLagMs = 0l;
+    if (expectedLogCompacted) {
+      if (minLogCompactionLagMs > 0) {
+        expectedMinLogCompactionLagMs = minLogCompactionLagMs;
+      } else {
+        expectedMinLogCompactionLagMs = topicMinLogCompactionLagMs;
+      }
+    }
+
     PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topic);
     boolean currentLogCompacted = pubSubTopicConfiguration.isLogCompacted();
-    if (expectedLogCompacted != currentLogCompacted) {
+    long currentMinLogCompactionLagMs = pubSubTopicConfiguration.minLogCompactionLagMs();
+    if (expectedLogCompacted != currentLogCompacted
+        || expectedLogCompacted && expectedMinLogCompactionLagMs != currentMinLogCompactionLagMs) {
       pubSubTopicConfiguration.setLogCompacted(expectedLogCompacted);
-      Long currentMinLogCompactionLagMs = pubSubTopicConfiguration.minLogCompactionLagMs();
-      Long expectedMinLogCompactionLagMs = expectedLogCompacted ? topicMinLogCompactionLagMs : 0;
       pubSubTopicConfiguration.setMinLogCompactionLagMs(expectedMinLogCompactionLagMs);
       kafkaWriteOnlyAdmin.get().setTopicConfig(topic, pubSubTopicConfiguration);
       logger.info(

@@ -455,6 +455,18 @@ public class TopicManagerTest {
         topicManager.isTopicCompactionEnabled(topic),
         "topic: " + topic + " should be with compaction disabled");
     Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 0L);
+
+    topicManager.updateTopicCompactionPolicy(topic, true, 100);
+    Assert.assertTrue(
+        topicManager.isTopicCompactionEnabled(topic),
+        "topic: " + topic + " should be with compaction enabled");
+    Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 100L);
+
+    topicManager.updateTopicCompactionPolicy(topic, true, 1000);
+    Assert.assertTrue(
+        topicManager.isTopicCompactionEnabled(topic),
+        "topic: " + topic + " should be with compaction enabled");
+    Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 1000L);
   }
 
   @Test

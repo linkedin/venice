@@ -76,6 +76,7 @@ import java.text.DecimalFormat;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -580,7 +581,11 @@ public abstract class TestBatch {
                 put(KEY_STRING_VERSION_NUMBER, Integer.toString(1));
               }
             });
-        avroClient.get(key).get();
+        GenericRecord value = (GenericRecord) avroClient.get(key).get();
+        Assert.assertNotNull(value, "Result for meta system store query shouldn't be null");
+        List<Integer> storeValueSchemaIds = (List<Integer>) value.get("storeValueSchemaIdsWrittenPerStoreVersion");
+        Assert.assertNotNull(storeValueSchemaIds, "storeValueSchemaIds shouldn't be null");
+        Assert.assertTrue(storeValueSchemaIds.size() == 1 && storeValueSchemaIds.get(0) == 1);
       } catch (Exception e) {
         Assert.fail("get request to fetch schema from meta store fails", e);
       }

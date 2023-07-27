@@ -221,6 +221,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setRmdVersion(store.getRmdVersion());
     setViewConfigs(store.getViewConfigs());
     setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -824,6 +825,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
     this.storeProperties.storageNodeReadQuotaEnabled = storageNodeReadQuotaEnabled;
+  }
+
+  @Override
+  public long getMinCompactionLagSeconds() {
+    return this.storeProperties.minCompactionLagSeconds;
+  }
+
+  @Override
+  public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
+    this.storeProperties.minCompactionLagSeconds = minCompactionLagSeconds;
   }
 
   /**

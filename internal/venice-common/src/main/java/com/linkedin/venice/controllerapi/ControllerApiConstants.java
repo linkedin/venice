@@ -212,4 +212,6 @@ public class ControllerApiConstants {
   public static final String TARGETED_REGIONS = "targeted_regions";
 
   public static final String STORAGE_NODE_READ_QUOTA_ENABLED = "storage_node_read_quota_enabled";
+
+  public static final String MIN_COMPACTION_LAG_SECONDS = "min_compaction_lag_seconds";
 }
