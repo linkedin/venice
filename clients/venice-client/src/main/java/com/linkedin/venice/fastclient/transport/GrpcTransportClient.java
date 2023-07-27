@@ -23,11 +23,11 @@ import org.apache.logging.log4j.Logger;
 public class GrpcTransportClient extends InternalTransportClient {
   private static final Logger LOGGER = LogManager.getLogger(GrpcTransportClient.class);
   private static final String STORAGE_ACTION = "storage";
-  protected final VeniceConcurrentHashMap<String, ManagedChannel> serverGrpcChannels;
+  private final VeniceConcurrentHashMap<String, ManagedChannel> serverGrpcChannels;
   private final Map<String, String> nettyAddressToGrpcAddressMap;
   // we cache stubs to avoid creating a new stub for each request, improves performance
   private final VeniceConcurrentHashMap<ManagedChannel, VeniceReadServiceGrpc.VeniceReadServiceStub> stubCache;
-  private final TransportClient r2TransportClient; // used for metadata requests
+  private final TransportClient r2TransportClient; // used for non-storage related requests
 
   public GrpcTransportClient(ClientConfig clientConfig) {
     serverGrpcChannels = new VeniceConcurrentHashMap<>();
@@ -36,7 +36,7 @@ public class GrpcTransportClient extends InternalTransportClient {
     this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
   }
 
-  public ManagedChannel getChannel(String serverAddress) {
+  protected ManagedChannel getChannel(String serverAddress) {
     if (!nettyAddressToGrpcAddressMap.containsKey(serverAddress)) {
       throw new VeniceException("No grpc server found for port: " + serverAddress);
     }
@@ -46,7 +46,7 @@ public class GrpcTransportClient extends InternalTransportClient {
         k -> ManagedChannelBuilder.forTarget(nettyAddressToGrpcAddressMap.get(k)).usePlaintext().build());
   }
 
-  private VeniceReadServiceGrpc.VeniceReadServiceStub getStub(ManagedChannel channel) {
+  protected VeniceReadServiceGrpc.VeniceReadServiceStub getStub(ManagedChannel channel) {
     return stubCache.computeIfAbsent(channel, VeniceReadServiceGrpc::newStub);
   }
 
@@ -107,7 +107,7 @@ public class GrpcTransportClient extends InternalTransportClient {
     }
   }
 
-  public static class GrpcTransportClientCallback {
+  private static class GrpcTransportClientCallback {
     // start exception handling
     private final CompletableFuture<TransportClientResponse> valueFuture;
     private final VeniceReadServiceGrpc.VeniceReadServiceStub clientStub;

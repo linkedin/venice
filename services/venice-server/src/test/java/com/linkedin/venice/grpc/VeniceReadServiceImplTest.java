@@ -2,14 +2,13 @@ package com.linkedin.venice.grpc;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.venice.listener.StorageReadRequestsHandler;
+import com.linkedin.venice.listener.StorageReadRequestHandler;
 import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
@@ -20,21 +19,20 @@ import com.linkedin.venice.protocols.VeniceServerResponse;
 import io.grpc.stub.StreamObserver;
 import io.netty.buffer.Unpooled;
 import java.nio.charset.StandardCharsets;
-import org.mockito.MockitoAnnotations;
+import org.mockito.Mockito;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 
 public class VeniceReadServiceImplTest {
-  private StorageReadRequestsHandler mockStorageReadRequestsHandler;
+  private StorageReadRequestHandler mockStorageReadRequestsHandler;
   private StreamObserver<VeniceServerResponse> mockResponseObserver;
 
   private VeniceReadServiceImpl veniceReadService;
 
   @BeforeTest
   public void setUp() {
-    MockitoAnnotations.initMocks(this);
-    mockStorageReadRequestsHandler = mock(StorageReadRequestsHandler.class);
+    mockStorageReadRequestsHandler = mock(StorageReadRequestHandler.class);
     mockResponseObserver = mock(StreamObserver.class);
     veniceReadService = new VeniceReadServiceImpl(mockStorageReadRequestsHandler);
   }
@@ -55,8 +53,7 @@ public class VeniceReadServiceImplTest {
     verify(mockResponseObserver, times(1)).onNext(any(VeniceServerResponse.class));
     verify(mockResponseObserver, times(1)).onCompleted();
 
-    // reset mock counter
-    reset(mockResponseObserver);
+    Mockito.clearInvocations(mockResponseObserver);
   }
 
   @Test
@@ -75,6 +72,6 @@ public class VeniceReadServiceImplTest {
     verify(mockResponseObserver, times(1)).onNext(any(VeniceServerResponse.class));
     verify(mockResponseObserver, times(1)).onCompleted();
 
-    reset(mockResponseObserver);
+    Mockito.clearInvocations(mockResponseObserver);
   }
 }
