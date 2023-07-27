@@ -74,8 +74,6 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERI
 import static com.linkedin.venice.ConfigKeys.ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT;
-import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER;
-import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER;
 import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
 import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
@@ -142,7 +140,6 @@ public class VeniceRouterConfig {
   private int maxOutgoingConn;
   private Map<String, String> clusterToD2Map;
   private Map<String, String> clusterToServerD2Map;
-  private double perStorageNodeReadQuotaBuffer;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
   private int routerNettyGracefulShutdownPeriodSeconds;
@@ -210,7 +207,6 @@ public class VeniceRouterConfig {
   private boolean metaStoreShadowReadEnabled;
   private boolean unregisterMetricForDeletedStoreEnabled;
   private int routerIOWorkerCount;
-  private boolean perRouterStorageNodeThrottlerEnabled;
   private double perStoreRouterQuotaBuffer;
   private boolean httpClientOpensslEnabled;
 
@@ -254,7 +250,6 @@ public class VeniceRouterConfig {
     maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
-    perStorageNodeReadQuotaBuffer = props.getDouble(ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER, 1.0);
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
@@ -389,7 +384,6 @@ public class VeniceRouterConfig {
      * should consider to use some number, which is proportional to the available cores.
      */
     routerIOWorkerCount = props.getInt(ROUTER_IO_WORKER_COUNT, 24);
-    perRouterStorageNodeThrottlerEnabled = props.getBoolean(ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED, true);
     perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 1.5);
     httpClientOpensslEnabled = props.getBoolean(ROUTER_HTTP_CLIENT_OPENSSL_ENABLED, true);
   }
@@ -464,10 +458,6 @@ public class VeniceRouterConfig {
 
   public int getMaxOutgoingConn() {
     return maxOutgoingConn;
-  }
-
-  public double getPerStorageNodeReadQuotaBuffer() {
-    return perStorageNodeReadQuotaBuffer;
   }
 
   public long getRefreshIntervalForZkReconnectInMs() {
@@ -833,10 +823,6 @@ public class VeniceRouterConfig {
 
   public int getRouterIOWorkerCount() {
     return routerIOWorkerCount;
-  }
-
-  public boolean isPerRouterStorageNodeThrottlerEnabled() {
-    return perRouterStorageNodeThrottlerEnabled;
   }
 
   public boolean isHttpClientOpensslEnabled() {

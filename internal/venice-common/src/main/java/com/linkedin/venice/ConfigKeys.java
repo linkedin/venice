@@ -885,11 +885,6 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
 
   /**
-   * Enable per router per storage node throttler by distributing the store quota among the partitions and replicas.
-   */
-  public static final String ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED = "router.per.storage.node.throttler.enabled";
-
-  /**
    * This config is used to bound the pending request.
    * Without this config, the accumulated requests in Http Async Client could grow unlimitedly,
    * which would put Router in a non-recoverable state because of long GC pause introduced
@@ -917,11 +912,6 @@ public class ConfigKeys {
    */
   public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY =
       "router.helix.assisted.routing.group.selection.strategy";
-
-  /**
-   * The buffer we will add to the per storage node read quota. E.g 0.5 means 50% extra quota.
-   */
-  public static final String ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER = "router.per.storage.node.read.quota.buffer";
 
   public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
