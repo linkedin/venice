@@ -48,7 +48,7 @@ import org.testng.annotations.Test;
 public class VeniceGrpcEndToEndTest {
   public static final int maxAllowedKeys = 150;
   private static final Logger LOGGER = LogManager.getLogger(VeniceGrpcEndToEndTest.class);
-  private static final int recordCnt = 3000;
+  private static final int recordCnt = 30000;
   private VeniceClusterWrapper cluster;
   private Map<String, String> nettyToGrpcPortMap;
   private String storeName;
@@ -73,7 +73,7 @@ public class VeniceGrpcEndToEndTest {
             .maxNumberOfPartitions(5)
             .minActiveReplica(1)
             .numberOfRouters(1)
-            .numberOfServers(5)
+            .numberOfServers(10)
             .sslToStorageNodes(true)
             .enableGrpc(true)
             .extraProperties(props)
