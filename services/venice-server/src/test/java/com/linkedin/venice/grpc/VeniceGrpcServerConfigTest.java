@@ -31,6 +31,7 @@ public class VeniceGrpcServerConfigTest {
         .build();
 
     assertNotNull(config.getCredentials());
+    assertEquals(config.getCredentials(), config.getCredentials());
   }
 
   @Test

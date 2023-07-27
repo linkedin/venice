@@ -1,7 +1,5 @@
 package com.linkedin.venice.grpc;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -10,8 +8,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
 import com.linkedin.venice.utils.TestUtils;
 import io.grpc.InsecureServerCredentials;
-import java.util.Collections;
-import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
@@ -22,31 +18,30 @@ public class VeniceGrpcServerTest {
 
   @BeforeTest
   void setUp() {
-    serverConfig = mock(VeniceGrpcServerConfig.class);
-    when(serverConfig.getCredentials()).thenReturn(InsecureServerCredentials.create());
-    when(serverConfig.getService()).thenReturn(mock(VeniceReadServiceImpl.class));
-    when(serverConfig.getInterceptors()).thenReturn(Collections.emptyList());
+    serverConfig = new VeniceGrpcServerConfig.Builder().setPort(TestUtils.getFreePort())
+        .setCredentials(InsecureServerCredentials.create())
+        .setService(new VeniceReadServiceImpl())
+        .build();
   }
 
-  @AfterTest
-  void teardown() {
-    grpcServer.stop();
-  }
+  // @AfterTest
+  // void teardown() {
+  // grpcServer.stop();
+  // }
 
   @Test
   void startServerSuccessfully() {
-    when(serverConfig.getPort()).thenReturn(TestUtils.getFreePort());
-
     grpcServer = new VeniceGrpcServer(serverConfig);
 
     grpcServer.start();
     assertFalse(grpcServer.isTerminated());
+
+    grpcServer.stop();
+    assertTrue(grpcServer.isShutdown());
   }
 
   @Test
   void startServerThrowVeniceException() {
-    int port = TestUtils.getFreePort();
-    when(serverConfig.getPort()).thenReturn(port);
     VeniceGrpcServer firstServer = new VeniceGrpcServer(serverConfig);
     firstServer.start();
     grpcServer = new VeniceGrpcServer(serverConfig);
@@ -62,7 +57,6 @@ public class VeniceGrpcServerTest {
 
   @Test
   void testServerShutdown() throws InterruptedException {
-    when(serverConfig.getPort()).thenReturn(TestUtils.getFreePort());
     grpcServer = new VeniceGrpcServer(serverConfig);
     grpcServer.start();
 

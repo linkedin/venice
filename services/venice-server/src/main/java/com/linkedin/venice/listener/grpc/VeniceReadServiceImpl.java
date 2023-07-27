@@ -4,7 +4,7 @@ import com.google.protobuf.ByteString;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.listener.StorageReadRequestsHandler;
+import com.linkedin.venice.listener.StorageReadRequestHandler;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.response.StorageResponseObject;
@@ -19,15 +19,15 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(VeniceReadServiceImpl.class);
-  StorageReadRequestsHandler storageReadRequestsHandler;
+  StorageReadRequestHandler storageReadRequestHandler;
 
   public VeniceReadServiceImpl() {
     LOGGER.info("Created gRPC Server for VeniceReadService");
   }
 
-  public VeniceReadServiceImpl(StorageReadRequestsHandler storageReadRequestsHandler) {
+  public VeniceReadServiceImpl(StorageReadRequestHandler storageReadRequestHandler) {
     LOGGER.info("Created gRPC Server for VeniceReadService");
-    this.storageReadRequestsHandler = storageReadRequestsHandler;
+    this.storageReadRequestHandler = storageReadRequestHandler;
   }
 
   @Override
@@ -50,7 +50,7 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     GetRouterRequest getRouterRequest = GetRouterRequest.grpcGetRouterRequest(request);
 
     StorageResponseObject response =
-        (StorageResponseObject) storageReadRequestsHandler.handleSingleGetGrpcRequest(getRouterRequest);
+        (StorageResponseObject) storageReadRequestHandler.handleSingleGetGrpcRequest(getRouterRequest);
 
     ValueRecord valueRecord = response.getValueRecord();
     CompressionStrategy compressionStrategy = response.getCompressionStrategy();
@@ -66,7 +66,7 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     MultiGetRouterRequestWrapper multiGetRouterRequestWrapper =
         MultiGetRouterRequestWrapper.parseMultiGetGrpcRequest(request);
 
-    ReadResponse readResponse = storageReadRequestsHandler.handleMultiGetGrpcRequest(multiGetRouterRequestWrapper);
+    ReadResponse readResponse = storageReadRequestHandler.handleMultiGetGrpcRequest(multiGetRouterRequestWrapper);
     int schemaId = readResponse.getResponseSchemaIdHeader();
     ByteBuf data = readResponse.getResponseBody();
     CompressionStrategy compressionStrategy = readResponse.getCompressionStrategy();
@@ -76,5 +76,10 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
         .setSchemaId(schemaId)
         .setCompressionStrategy(compressionStrategy.getValue())
         .build();
+  }
+
+  @Override
+  public String toString() {
+    return this.getClass().getSimpleName();
   }
 }
