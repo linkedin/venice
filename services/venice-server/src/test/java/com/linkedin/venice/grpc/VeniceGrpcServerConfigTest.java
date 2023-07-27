@@ -1,7 +1,9 @@
 package com.linkedin.venice.grpc;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import io.grpc.BindableService;
 import io.grpc.InsecureServerCredentials;
@@ -47,5 +49,4 @@ public class VeniceGrpcServerConfigTest {
   public void testNoService() {
     new VeniceGrpcServerConfig.Builder().setPort(8080).build();
   }
-
 }

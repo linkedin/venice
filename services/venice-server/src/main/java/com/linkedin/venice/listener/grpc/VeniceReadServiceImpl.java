@@ -3,6 +3,7 @@ package com.linkedin.venice.listener.grpc;
 import com.google.protobuf.ByteString;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.StorageReadRequestsHandler;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
@@ -19,6 +20,10 @@ import org.apache.logging.log4j.Logger;
 public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(VeniceReadServiceImpl.class);
   StorageReadRequestsHandler storageReadRequestsHandler;
+
+  public VeniceReadServiceImpl() {
+    LOGGER.info("Created gRPC Server for VeniceReadService");
+  }
 
   public VeniceReadServiceImpl(StorageReadRequestsHandler storageReadRequestsHandler) {
     LOGGER.info("Created gRPC Server for VeniceReadService");
@@ -48,11 +53,11 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
         (StorageResponseObject) storageReadRequestsHandler.handleSingleGetGrpcRequest(getRouterRequest);
 
     ValueRecord valueRecord = response.getValueRecord();
-
+    CompressionStrategy compressionStrategy = response.getCompressionStrategy();
     return VeniceServerResponse.newBuilder()
         .setSchemaId(valueRecord.getSchemaId())
-        .setDataSize(valueRecord.getDataSize())
         .setData(ByteString.copyFrom(valueRecord.getData().array(), 4, valueRecord.getDataSize()))
+        .setCompressionStrategy(compressionStrategy.getValue())
         .build();
 
   }
@@ -64,7 +69,12 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     ReadResponse readResponse = storageReadRequestsHandler.handleMultiGetGrpcRequest(multiGetRouterRequestWrapper);
     int schemaId = readResponse.getResponseSchemaIdHeader();
     ByteBuf data = readResponse.getResponseBody();
+    CompressionStrategy compressionStrategy = readResponse.getCompressionStrategy();
 
-    return VeniceServerResponse.newBuilder().setData(ByteString.copyFrom(data.array())).setSchemaId(schemaId).build();
+    return VeniceServerResponse.newBuilder()
+        .setData(ByteString.copyFrom(data.array()))
+        .setSchemaId(schemaId)
+        .setCompressionStrategy(compressionStrategy.getValue())
+        .build();
   }
 }

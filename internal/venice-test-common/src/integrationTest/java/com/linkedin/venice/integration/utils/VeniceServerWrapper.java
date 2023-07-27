@@ -81,7 +81,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   /**
    *  Possible config options which are not included in {@link com.linkedin.venice.ConfigKeys}.
-    */
+   */
   public static final String SERVER_ENABLE_SERVER_ALLOW_LIST = "server_enable_allow_list";
   public static final String SERVER_IS_AUTO_JOIN = "server_is_auto_join";
   public static final String SERVER_ENABLE_SSL = "server_enable_ssl";
@@ -195,6 +195,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
       boolean ssl = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SSL, "false"));
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
+      boolean isGrpcEnabled = Boolean.parseBoolean(featureProperties.getProperty(ENABLE_GRPC_READ_SERVER, "false"));
       ClientConfig consumerClientConfig = (ClientConfig) featureProperties.get(CLIENT_CONFIG_FOR_CONSUMER);
 
       /** Create config directory under {@link dataDirectory} */
@@ -209,8 +210,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       // Generate server.properties in config directory
       int listenPort = TestUtils.getFreePort();
-      boolean isGrpcEnabled = Boolean.parseBoolean(configProperties.getProperty(ENABLE_GRPC_READ_SERVER, "false"));
-
       int ingestionIsolationApplicationPort = TestUtils.getFreePort();
       int ingestionIsolationServicePort = TestUtils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
@@ -364,6 +363,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
    */
   public int getAdminPort() {
     return serverProps.getInt(ADMIN_PORT);
+  }
+
+  public String getGrpcAddress() {
+    return getHost() + ":" + getGrpcPort();
   }
 
   public int getGrpcPort() {

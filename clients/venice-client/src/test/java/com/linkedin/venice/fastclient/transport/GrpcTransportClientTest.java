@@ -34,7 +34,7 @@ public class GrpcTransportClientTest {
     addrToGrpcMap = new HashMap<>();
     addrToGrpcMap.put(serverAddr, grpcPort);
 
-    client = new GrpcTransportClient(addrToGrpcMap, mock(R2TransportClient.class));
+    // client = new GrpcTransportClient(addrToGrpcMap);
 
     serverGrpcServers = spy(client.serverGrpcChannels);
     when(serverGrpcServers.get(any())).thenReturn(mockChannel);
@@ -64,7 +64,7 @@ public class GrpcTransportClientTest {
 
   @Test(expectedExceptions = com.linkedin.venice.exceptions.VeniceException.class)
   public void testNonExistentGrpcPort() throws Exception {
-    GrpcTransportClient client = new GrpcTransportClient(addrToGrpcMap, mock(R2TransportClient.class));
+    // GrpcTransportClient client = new GrpcTransportClient(addrToGrpcMap);
 
     client.get("https://localhost:1000/storage/fake-store-name/1", Collections.emptyMap());
     client.close();

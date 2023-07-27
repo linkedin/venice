@@ -109,6 +109,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   // TODO: pass it to every venice component.
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final Map<String, String> nettyToGrpcServerMap;
 
   private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
 
@@ -137,7 +138,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       Map<Integer, VeniceServerWrapper> veniceServerWrappers,
       Map<Integer, VeniceRouterWrapper> veniceRouterWrappers,
       Map<String, String> clusterToD2,
-      Map<String, String> clusterToServerD2) {
+      Map<String, String> clusterToServerD2,
+      Map<String, String> nettyToGrpcServerMap) {
 
     super(SERVICE_NAME, null);
     this.options = options;
@@ -149,12 +151,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.clusterToD2 = clusterToD2;
     this.clusterToServerD2 = clusterToServerD2;
     this.pubSubProducerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+    this.nettyToGrpcServerMap = nettyToGrpcServerMap;
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService(VeniceClusterCreateOptions options) {
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
+    Map<String, String> nettyServerToGrpcMap = new HashMap<>();
 
     Map<String, String> clusterToD2;
     if (options.getClusterToD2() == null || options.getClusterToD2().isEmpty()) {
@@ -252,7 +256,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(options.isEnableAutoJoinAllowlist()));
         featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(options.isSslToStorageNodes()));
         featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(options.isSslToKafka()));
-
+        featureProperties.setProperty(ENABLE_GRPC_READ_SERVER, Boolean.toString(options.isGrpcEnabled()));
         // Half of servers on each mode, with 1 server clusters aligning with the default (true)
         featureProperties.setProperty(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, Boolean.toString(i % 2 == 0));
 
@@ -284,6 +288,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             options.getClusterName(),
             veniceServerWrapper.getPort());
         veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
+
+      }
+
+      if (options.isGrpcEnabled()) {
+        for (VeniceServerWrapper vsw: veniceServerWrappers.values()) {
+          nettyServerToGrpcMap.put(vsw.getAddress(), vsw.getGrpcAddress());
+        }
       }
 
       /**
@@ -304,7 +315,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               veniceServerWrappers,
               veniceRouterWrappers,
               clusterToD2,
-              clusterToServerD2);
+              clusterToServerD2,
+              nettyServerToGrpcMap);
           // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
           // VeniceClusterWrapper to tests.
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
@@ -458,6 +470,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public synchronized List<VeniceServerWrapper> getVeniceServers() {
     return new ArrayList<>(veniceServerWrappers.values());
+  }
+
+  public synchronized Map<String, String> getNettyToGrpcServerMap() {
+    return nettyToGrpcServerMap;
   }
 
   public synchronized List<VeniceRouterWrapper> getVeniceRouters() {
