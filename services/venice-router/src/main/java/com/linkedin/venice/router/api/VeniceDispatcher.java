@@ -3,7 +3,6 @@ package com.linkedin.venice.router.api;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.HttpConstants.VENICE_REQUEST_RCU;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
-import static io.netty.handler.codec.http.HttpResponseStatus.METHOD_NOT_ALLOWED;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
@@ -133,16 +132,6 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
     RequestType requestType = path.getRequestType();
     path.recordOriginalRequestStartTimestamp();
 
-    if (requestType.equals(RequestType.COMPUTE) || requestType.equals(RequestType.COMPUTE_STREAMING)) {
-      if (!storeRepository.isReadComputationEnabled(storeName)) {
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(storeName),
-            Optional.of(requestType),
-            METHOD_NOT_ALLOWED,
-            "Read compute is not enabled for the store. Please contact Venice team to enable the feature.");
-      }
-    }
-
     if (part.getHosts().size() != 1) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
           Optional.of(storeName),
@@ -159,7 +148,7 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       try {
         int statusCode = response != null ? response.getStatusCode() : HttpStatus.SC_INTERNAL_SERVER_ERROR;
         if (!retryFuture.isCancelled() && RETRIABLE_ERROR_CODES.contains(statusCode)) {
-          retryFuture.setSuccess(INTERNAL_SERVER_ERROR);
+          retryFuture.setSuccess(HttpResponseStatus.valueOf(statusCode));
           return;
         }
 

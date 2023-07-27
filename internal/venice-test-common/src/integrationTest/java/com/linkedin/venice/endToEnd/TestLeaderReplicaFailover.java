@@ -24,6 +24,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -133,7 +134,9 @@ public class TestLeaderReplicaFailover {
 
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        clusterWrapper.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl, pubSubProducerAdapterFactory);
     HelixBaseRoutingRepository routingDataRepo = clusterWrapper.getLeaderVeniceController()
         .getVeniceHelixAdmin()
         .getHelixVeniceClusterResources(clusterWrapper.getClusterName())

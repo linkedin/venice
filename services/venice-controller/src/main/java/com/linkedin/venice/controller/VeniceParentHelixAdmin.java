@@ -2996,6 +2996,10 @@ public class VeniceParentHelixAdmin implements Admin {
           newSupersetSchemaEntry.getId(),
           newSuperSetWriteComputeSchema.toString());
     }
+    updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setLatestSupersetSchemaId(newSupersetSchemaEntry.getId()));
     return newValueSchemaEntry;
   }
 
@@ -3041,7 +3045,6 @@ public class VeniceParentHelixAdmin implements Admin {
     schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
     valueSchemaCreation.schema = schemaMeta;
     valueSchemaCreation.schemaId = newValueSchemaId;
-    valueSchemaCreation.doUpdateSupersetSchemaID = doUpdateSupersetSchemaID;
 
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.VALUE_SCHEMA_CREATION.getValue();
@@ -3054,6 +3057,10 @@ public class VeniceParentHelixAdmin implements Admin {
       throw new VeniceException(
           "Something bad happens, the expected new value schema id is: " + newValueSchemaId + ", but got: "
               + actualValueSchemaId);
+    }
+
+    if (doUpdateSupersetSchemaID) {
+      updateStore(clusterName, storeName, new UpdateStoreQueryParams().setLatestSupersetSchemaId(newValueSchemaId));
     }
 
     return new SchemaEntry(actualValueSchemaId, valueSchemaStr);
@@ -3082,7 +3089,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       String valueSchemaStr,
       int schemaId,
-      boolean doUpdateSupersetSchemaID) {
+      DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     throw new VeniceUnsupportedOperationException("addValueSchema");
   }
 

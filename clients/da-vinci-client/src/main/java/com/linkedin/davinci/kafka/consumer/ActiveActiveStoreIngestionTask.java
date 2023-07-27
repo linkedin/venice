@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -13,7 +14,7 @@ import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
-import com.linkedin.davinci.storage.chunking.ChunkingUtils;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -42,6 +43,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
@@ -50,7 +52,6 @@ import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -116,6 +117,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         cacheBackend);
 
     this.rmdProtocolVersionID = version.getRmdVersionId();
+
     this.aggVersionedIngestionStats = versionedIngestionStats;
     int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
     int consumerPoolSizePerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
@@ -304,20 +306,39 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       return new RmdWithValueSchemaId(
           cachedRecord.getValueSchemaId(),
           getRmdProtocolVersionID(),
-          cachedRecord.getReplicationMetadataRecord());
+          cachedRecord.getReplicationMetadataRecord(),
+          cachedRecord.getRmdManifest());
     }
+    ChunkedValueManifestContainer rmdManifestContainer = new ChunkedValueManifestContainer();
     byte[] replicationMetadataWithValueSchemaBytes =
-        getRmdWithValueSchemaByteBufferFromStorage(subPartition, key, currentTimeForMetricsMs);
+        getRmdWithValueSchemaByteBufferFromStorage(subPartition, key, rmdManifestContainer, currentTimeForMetricsMs);
     if (replicationMetadataWithValueSchemaBytes == null) {
       return null; // No RMD for this key
     }
-    return rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes);
+    RmdWithValueSchemaId rmdWithValueSchemaId = new RmdWithValueSchemaId();
+    // Get old RMD manifest value from RMD Manifest container object.
+    rmdWithValueSchemaId.setRmdManifest(rmdManifestContainer.getManifest());
+    getRmdSerDe()
+        .deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes, rmdWithValueSchemaId);
+    return rmdWithValueSchemaId;
   }
 
-  byte[] getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key, long currentTimeForMetricsMs) {
+  public RmdSerDe getRmdSerDe() {
+    return rmdSerDe;
+  }
+
+  /**
+   * This method tries to retrieve the RMD bytes with prepended value schema ID from storage engine. It will also store
+   * RMD manifest into passed-in {@link ChunkedValueManifestContainer} container object if current RMD value is chunked.
+   */
+  byte[] getRmdWithValueSchemaByteBufferFromStorage(
+      int subPartition,
+      byte[] key,
+      ChunkedValueManifestContainer rmdManifestContainer,
+      long currentTimeForMetricsMs) {
     final long lookupStartTimeInNS = System.nanoTime();
-    ValueRecord result =
-        SingleGetChunkingAdapter.getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null);
+    ValueRecord result = SingleGetChunkingAdapter
+        .getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null, rmdManifestContainer);
     getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
         LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
         currentTimeForMetricsMs);
@@ -327,7 +348,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     return result.serialize();
   }
 
-  // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
+  // This function may modify the original record in KME, it is unsafe to use the payload from KME directly after
   // this function.
   protected void processMessageAndMaybeProduceToKafka(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
@@ -380,12 +401,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         throw new VeniceMessageException(
             consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
-
+    final ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
     Lazy<ByteBuffer> oldValueProvider = Lazy.of(
         () -> getValueBytesForKey(
             partitionConsumptionState,
             keyBytes,
             consumerRecord.getTopicPartition(),
+            valueManifestContainer,
             currentTimeForMetricsMs));
 
     final RmdWithValueSchemaId rmdWithValueSchemaID =
@@ -488,7 +510,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
+          beforeProcessingRecordTimestampNs,
+          valueManifestContainer.getManifest(),
+          rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
     }
   }
 
@@ -547,6 +571,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       PubSubTopicPartition topicPartition,
+      ChunkedValueManifestContainer valueManifestContainer,
       long currentTimeForMetricsMs) {
     ByteBuffer originalValue = null;
     // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise
@@ -568,7 +593,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           null,
           schemaRepository.getSupersetOrLatestValueSchema(storeName).getId(),
           RawBytesStoreDeserializerCache.getInstance(),
-          compressor.get());
+          compressor.get(),
+          valueManifestContainer);
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
           LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
           currentTimeForMetricsMs);
@@ -576,6 +602,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
       // construct originalValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
+        if (valueManifestContainer != null) {
+          valueManifestContainer.setManifest(transientRecord.getValueManifest());
+        }
         originalValue = ByteBuffer
             .wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
       }
@@ -604,7 +633,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
+      long beforeProcessingRecordTimestampNs,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest) {
 
     final ByteBuffer updatedValueBytes = maybeCompressData(
         consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -615,13 +646,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
     final ByteBuffer updatedRmdBytes =
         rmdSerDe.serializeRmdRecord(mergeConflictResult.getValueSchemaId(), mergeConflictResult.getRmdRecord());
-
     // finally produce and update the transient record map.
     if (updatedValueBytes == null) {
       hostLevelIngestionStats.recordTombstoneCreatedDCR();
       aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-      partitionConsumptionState
-          .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), key, valueSchemaId, rmdRecord);
+      partitionConsumptionState.setTransientRecord(
+          kafkaClusterId,
+          consumerRecord.getOffset(),
+          key,
+          valueSchemaId,
+          rmdRecord,
+          oldValueManifest,
+          oldRmdManifest);
       Delete deletePayload = new Delete();
       deletePayload.schemaId = valueSchemaId;
       deletePayload.replicationMetadataVersionId = rmdProtocolVersionID;
@@ -632,7 +668,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                   key,
                   callback,
                   sourceTopicOffset,
-                  new DeleteMetadata(valueSchemaId, rmdProtocolVersionID, updatedRmdBytes));
+                  APP_DEFAULT_LOGICAL_TS,
+                  new DeleteMetadata(valueSchemaId, rmdProtocolVersionID, updatedRmdBytes),
+                  oldValueManifest,
+                  oldRmdManifest);
       LeaderProducedRecordContext leaderProducedRecordContext =
           LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), key, deletePayload);
       produceToLocalKafka(
@@ -654,7 +693,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           updatedValueBytes.position(),
           valueLen,
           valueSchemaId,
-          rmdRecord);
+          rmdRecord,
+          oldValueManifest,
+          oldRmdManifest);
 
       Put updatedPut = new Put();
       updatedPut.putValue = ByteUtils
@@ -663,23 +704,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
       updatedPut.replicationMetadataPayload = updatedRmdBytes;
 
-      byte[] updatedKeyBytes = key;
-      if (isChunked) {
-        // Since data is not chunked in RT but chunked in VT, creating the key for the small record case or CVM to be
-        // used to persist on disk after producing to Kafka.
-        updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
-      }
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction = getProduceToTopicFunction(
           key,
           updatedValueBytes,
           updatedRmdBytes,
+          oldValueManifest,
+          oldRmdManifest,
           valueSchemaId,
           mergeConflictResult.doesResultReuseInput());
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
-          LeaderProducedRecordContext
-              .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut),
+          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getOffset(), key, updatedPut),
           produceToTopicFunction,
           subPartition,
           kafkaUrl,
@@ -1345,6 +1381,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       byte[] key,
       ByteBuffer updatedValueBytes,
       ByteBuffer updatedRmdBytes,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
       int valueSchemaId,
       boolean resultReuseInput) {
     return (callback, leaderMetadataWrapper) -> {
@@ -1364,8 +1402,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               valueSchemaId,
               callback,
               leaderMetadataWrapper,
-              VeniceWriter.APP_DEFAULT_LOGICAL_TS,
-              new PutMetadata(getRmdProtocolVersionID(), updatedRmdBytes));
+              APP_DEFAULT_LOGICAL_TS,
+              new PutMetadata(getRmdProtocolVersionID(), updatedRmdBytes),
+              oldValueManifest,
+              oldRmdManifest);
     };
   }
 

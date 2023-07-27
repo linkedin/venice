@@ -43,6 +43,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor readComputeLatencyForLargeValueSensor;
   private final Sensor readComputeDeserializationLatencySensor;
   private final Sensor readComputeSerializationLatencySensor;
+  private final Sensor readComputeEfficiencySensor;
   private final Sensor dotProductCountSensor;
   private final Sensor cosineSimilaritySensor;
   private final Sensor hadamardProductSensor;
@@ -250,6 +251,14 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
             getName(),
             getFullMetricName("storage_engine_read_compute_serialization_latency")));
 
+    readComputeEfficiencySensor = registerPerStoreAndTotal(
+        "storage_engine_read_compute_efficiency",
+        totalStats,
+        () -> totalStats.readComputeEfficiencySensor,
+        new Avg(),
+        new Min(),
+        new Max());
+
     /**
      * Total will reflect counts for the entire server host, while Avg will reflect the counts for each request.
      */
@@ -387,6 +396,10 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordReadComputeSerializationLatency(double latency, boolean assembledMultiChunkLargeValue) {
     readComputeSerializationLatencySensor.record(latency);
+  }
+
+  public void recordReadComputeEfficiency(double efficiency) {
+    readComputeEfficiencySensor.record(efficiency);
   }
 
   public void recordDotProductCount(int count) {

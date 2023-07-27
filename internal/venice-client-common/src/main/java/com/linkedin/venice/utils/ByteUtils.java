@@ -213,7 +213,11 @@ public class ByteUtils {
     }
     int size = byteBuffer.remaining();
     byte[] ret = new byte[size];
-    System.arraycopy(byteBuffer.array(), byteBuffer.position(), ret, 0, size);
+    if (byteBuffer.isDirect()) {
+      extractByteArray(byteBuffer, ret, 0, size);
+    } else {
+      System.arraycopy(byteBuffer.array(), byteBuffer.position(), ret, 0, size);
+    }
     return ret;
   }
 

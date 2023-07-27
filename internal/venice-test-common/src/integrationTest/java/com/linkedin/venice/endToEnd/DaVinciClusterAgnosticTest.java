@@ -27,6 +27,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -126,12 +127,18 @@ public class DaVinciClusterAgnosticTest {
         assertFalse(
             parentControllerClient.createNewStore(storeName, "venice-test", INT_KEY_SCHEMA, INT_VALUE_SCHEMA)
                 .isError());
+        PubSubProducerAdapterFactory pubSubProducerAdapterFactory = multiClusterVenice.getClusters()
+            .get(cluster)
+            .getPubSubBrokerWrapper()
+            .getPubSubClientsFactory()
+            .getProducerAdapterFactory();
         VersionCreationResponse response = TestUtils.createVersionWithBatchData(
             parentControllerClient,
             storeName,
             INT_KEY_SCHEMA,
             INT_VALUE_SCHEMA,
-            IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, value)));
+            IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, value)),
+            pubSubProducerAdapterFactory);
         // Verify the data can be ingested by classical Venice before proceeding.
         TestUtils.waitForNonDeterministicPushCompletion(
             response.getKafkaTopic(),
@@ -169,12 +176,18 @@ public class DaVinciClusterAgnosticTest {
       // Verify new push works
       final int newValue = 1000;
       try (ControllerClient parentControllerClient = new ControllerClient(clusterNames[0], parentControllerURLs)) {
+        PubSubProducerAdapterFactory pubSubProducerAdapterFactory = multiClusterVenice.getClusters()
+            .get(clusterNames[0])
+            .getPubSubBrokerWrapper()
+            .getPubSubClientsFactory()
+            .getProducerAdapterFactory();
         VersionCreationResponse versionCreationResponse = TestUtils.createVersionWithBatchData(
             parentControllerClient,
             stores.get(0),
             INT_KEY_SCHEMA,
             INT_VALUE_SCHEMA,
-            IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newValue)));
+            IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newValue)),
+            pubSubProducerAdapterFactory);
         TestUtils.waitForNonDeterministicPushCompletion(
             versionCreationResponse.getKafkaTopic(),
             parentControllerClient,
@@ -195,12 +208,18 @@ public class DaVinciClusterAgnosticTest {
       migrateStore(migratedStoreName, srcCluster, destCluster);
       final int newMigratedStoreValue = 999;
       try (ControllerClient parentControllerClient = new ControllerClient(destCluster, parentControllerURLs)) {
+        PubSubProducerAdapterFactory pubSubProducerAdapterFactory = multiClusterVenice.getClusters()
+            .get(destCluster)
+            .getPubSubBrokerWrapper()
+            .getPubSubClientsFactory()
+            .getProducerAdapterFactory();
         VersionCreationResponse versionCreationResponse = TestUtils.createVersionWithBatchData(
             parentControllerClient,
             migratedStoreName,
             INT_KEY_SCHEMA,
             INT_VALUE_SCHEMA,
-            IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newMigratedStoreValue)));
+            IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newMigratedStoreValue)),
+            pubSubProducerAdapterFactory);
         TestUtils.waitForNonDeterministicPushCompletion(
             versionCreationResponse.getKafkaTopic(),
             parentControllerClient,
@@ -248,6 +267,11 @@ public class DaVinciClusterAgnosticTest {
     GenericRecord record1 = new GenericData.Record(schema);
     record1.put("field1", 1);
     try (ControllerClient parentControllerClient = new ControllerClient(cluster, parentControllerURLs)) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory = multiClusterVenice.getClusters()
+          .get(cluster)
+          .getPubSubBrokerWrapper()
+          .getPubSubClientsFactory()
+          .getProducerAdapterFactory();
       // Create venice store and materialize the corresponding meta system store
       assertFalse(
           parentControllerClient.createNewStore(storeName, "venice-test", INT_KEY_SCHEMA, RECORD_VALUE_SCHEMA)
@@ -258,7 +282,8 @@ public class DaVinciClusterAgnosticTest {
           INT_KEY_SCHEMA,
           RECORD_VALUE_SCHEMA,
           IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record1)),
-          1);
+          1,
+          pubSubProducerAdapterFactory);
       // Verify the data can be ingested by classical Venice before proceeding.
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),
@@ -301,7 +326,8 @@ public class DaVinciClusterAgnosticTest {
             INT_KEY_SCHEMA,
             NEW_RECORD_VALUE_SCHEMA,
             IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record2)),
-            2);
+            2,
+            pubSubProducerAdapterFactory);
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           for (int k = 0; k < keyCount; k++) {

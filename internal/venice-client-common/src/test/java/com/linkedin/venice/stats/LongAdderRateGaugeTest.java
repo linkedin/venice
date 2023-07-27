@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricConfig;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -68,8 +69,10 @@ public class LongAdderRateGaugeTest {
     LongAdderRateGauge larg = new LongAdderRateGauge(TIME);
     assertEquals(rateExtractor.apply(larg), 0.0);
     rateRecorder.accept(larg);
-    TIME.addMilliseconds(1000);
-    assertEquals(rateExtractor.apply(larg), 1.0);
+    TIME.addMilliseconds(Time.MS_PER_SECOND * LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
+    assertEquals(rateExtractor.apply(larg), 1.0 / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
+    // Test that the rate is reset or not after the first call
+    assertEquals(rateExtractor.apply(larg), 1.0 / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
     int numberOfRunnables = 8;
     Runnable[] runnables = new Runnable[numberOfRunnables];
     int recordCallsPerRunnable = 100;
@@ -86,10 +89,10 @@ public class LongAdderRateGaugeTest {
     }
     executor.shutdown();
     executor.awaitTermination(10, TimeUnit.SECONDS);
-    TIME.addMilliseconds(1000);
+    TIME.addMilliseconds(Time.MS_PER_SECOND * LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
     double expectedRate = numberOfRunnables * recordCallsPerRunnable;
-    assertEquals(rateExtractor.apply(larg), expectedRate);
-    TIME.addMilliseconds(1000);
+    assertEquals(rateExtractor.apply(larg), expectedRate / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
+    TIME.addMilliseconds(Time.MS_PER_SECOND * LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
     assertEquals(rateExtractor.apply(larg), 0.0);
     TIME.addMilliseconds(-1);
     assertEquals(rateExtractor.apply(larg), 0.0);

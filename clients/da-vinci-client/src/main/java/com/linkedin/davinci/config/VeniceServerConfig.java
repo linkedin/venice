@@ -4,6 +4,7 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGEST
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.FAST_AVRO_FIELD_LIMIT_PER_METHOD;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
@@ -20,10 +21,16 @@ import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.LISTENER_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
+import static com.linkedin.venice.ConfigKeys.LOCAL_CONTROLLER_D2_SERVICE_NAME;
+import static com.linkedin.venice.ConfigKeys.LOCAL_CONTROLLER_URL;
+import static com.linkedin.venice.ConfigKeys.LOCAL_D2_ZK_HOST;
 import static com.linkedin.venice.ConfigKeys.MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
@@ -101,6 +108,7 @@ import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_MEMORY_CAPACITY
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_NOTIFY_DELTA;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_NUMBER;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 
@@ -108,10 +116,18 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -144,7 +160,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public static final int MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER = 3;
 
   private final int listenerPort;
-  private final String listernerHostname;
+  private final String listenerHostname;
   private final String dataBasePath;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final boolean enableServerAllowList;
@@ -368,6 +384,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long fastClassSchemaWarmupTimeout;
 
   private final boolean schemaPresenceCheckEnabled;
+  private final boolean systemSchemaInitializationAtStartTimeEnabled;
+  private final String localControllerUrl;
+  private final String localControllerD2ServiceName;
+  private final String localD2ZkHost;
 
   private final boolean enableLiveConfigBasedKafkaThrottling;
 
@@ -397,6 +417,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean ingestionMlockEnabled;
   private final List<String> forkedProcessJvmArgList;
 
+  private final long divProducerStateMaxAgeMs;
+  private final PubSubClientsFactory pubSubClientsFactory;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -405,7 +428,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       throws ConfigurationException {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
-    listernerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
+    listenerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
     dataBasePath = serverProperties.getString(
         DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
@@ -599,6 +622,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     fastClassSchemaWarmupTimeout =
         serverProperties.getLong(SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT, 2 * Time.MS_PER_MINUTE);
     schemaPresenceCheckEnabled = serverProperties.getBoolean(SERVER_SCHEMA_PRESENCE_CHECK_ENABLED, true);
+    systemSchemaInitializationAtStartTimeEnabled =
+        serverProperties.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
+    localControllerUrl = serverProperties.getString(LOCAL_CONTROLLER_URL, "");
+    localControllerD2ServiceName = serverProperties.getString(LOCAL_CONTROLLER_D2_SERVICE_NAME, "");
+    localD2ZkHost = serverProperties.getString(LOCAL_D2_ZK_HOST, "");
     enableLiveConfigBasedKafkaThrottling =
         serverProperties.getBoolean(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, false);
     /**
@@ -632,6 +660,30 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ingestionMemoryLimit = extractIngestionMemoryLimit(serverProperties, ingestionMode, forkedProcessJvmArgList);
     LOGGER.info("Ingestion memory limit: {} after subtracting other usages", ingestionMemoryLimit);
     ingestionMlockEnabled = serverProperties.getBoolean(INGESTION_MLOCK_ENABLED, false);
+
+    this.divProducerStateMaxAgeMs =
+        serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, KafkaDataIntegrityValidator.DISABLED);
+    try {
+      String producerFactoryClassName = serverProperties
+          .getString(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
+      String consumerFactoryClassName = serverProperties
+          .getString(PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS, ApacheKafkaConsumerAdapterFactory.class.getName());
+      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
+          (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
+      String adminFactoryClassName = serverProperties
+          .getString(PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
+      PubSubAdminAdapterFactory pubSubAdminAdapterFactory =
+          (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
+      pubSubClientsFactory = new PubSubClientsFactory(
+          pubSubProducerAdapterFactory,
+          pubSubConsumerAdapterFactory,
+          pubSubAdminAdapterFactory);
+    } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
+      LOGGER.error("Failed to create an instance of pub sub clients factory", e);
+      throw new VeniceException(e);
+    }
   }
 
   long extractIngestionMemoryLimit(
@@ -710,7 +762,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   }
 
   public String getListenerHostname() {
-    return listernerHostname;
+    return listenerHostname;
   }
 
   /**
@@ -1062,6 +1114,22 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return schemaPresenceCheckEnabled;
   }
 
+  public boolean isSystemSchemaInitializationAtStartTimeEnabled() {
+    return systemSchemaInitializationAtStartTimeEnabled;
+  }
+
+  public String getLocalControllerUrl() {
+    return localControllerUrl;
+  }
+
+  public String getLocalControllerD2ServiceName() {
+    return localControllerD2ServiceName;
+  }
+
+  public String getLocalD2ZkHost() {
+    return localD2ZkHost;
+  }
+
   public boolean isLiveConfigBasedKafkaThrottlingEnabled() {
     return enableLiveConfigBasedKafkaThrottling;
   }
@@ -1116,5 +1184,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isIngestionMlockEnabled() {
     return ingestionMlockEnabled;
+  }
+
+  public long getDivProducerStateMaxAgeMs() {
+    return this.divProducerStateMaxAgeMs;
+  }
+
+  public PubSubClientsFactory getPubSubClientsFactory() {
+    return pubSubClientsFactory;
   }
 }

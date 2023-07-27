@@ -231,7 +231,8 @@ public class ChunkingTest {
               null,
               readerSchemaId,
               storeDeserializerCache,
-              compressor));
+              compressor,
+              null));
     }
   }
 

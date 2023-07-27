@@ -18,8 +18,7 @@ public class HadamardProductOperator implements ReadComputeOperator {
       Map<String, Object> context) {
     HadamardProduct hadamardProduct = (HadamardProduct) op.operation;
     try {
-      List<Float> valueVector =
-          ComputeOperationUtils.getNullableFieldValueAsList(valueRecord, hadamardProduct.field.toString());
+      List<Float> valueVector = ComputeUtils.getNullableFieldValueAsList(valueRecord, hadamardProduct.field.toString());
       List<Float> dotProductParam = hadamardProduct.hadamardProductParam;
 
       if (valueVector.size() == 0 || dotProductParam.size() == 0) {
@@ -35,7 +34,7 @@ public class HadamardProductOperator implements ReadComputeOperator {
         return;
       }
 
-      List<Float> hadamardProductResult = ComputeOperationUtils.hadamardProduct(dotProductParam, valueVector);
+      List<Float> hadamardProductResult = ComputeUtils.hadamardProduct(dotProductParam, valueVector);
       resultRecord.put(hadamardProduct.resultFieldName.toString(), hadamardProductResult);
     } catch (Exception e) {
       resultRecord.put(hadamardProduct.resultFieldName.toString(), null);

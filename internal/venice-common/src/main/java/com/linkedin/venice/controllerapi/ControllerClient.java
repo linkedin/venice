@@ -50,6 +50,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_F
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SKIP_DIV;
@@ -81,6 +82,7 @@ import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
@@ -908,6 +910,18 @@ public class ControllerClient implements Closeable {
   public SchemaResponse addValueSchema(String storeName, String valueSchemaStr, int valueSchemaId) {
     QueryParams params =
         newParams().add(NAME, storeName).add(VALUE_SCHEMA, valueSchemaStr).add(SCHEMA_ID, valueSchemaId);
+    return request(ControllerRoute.ADD_VALUE_SCHEMA, params, SchemaResponse.class);
+  }
+
+  public SchemaResponse addValueSchema(
+      String storeName,
+      String valueSchemaStr,
+      int valueSchemaId,
+      DirectionalSchemaCompatibilityType schemaCompatType) {
+    QueryParams params = newParams().add(NAME, storeName)
+        .add(VALUE_SCHEMA, valueSchemaStr)
+        .add(SCHEMA_ID, valueSchemaId)
+        .add(SCHEMA_COMPAT_TYPE, schemaCompatType.toString());
     return request(ControllerRoute.ADD_VALUE_SCHEMA, params, SchemaResponse.class);
   }
 

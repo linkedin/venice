@@ -15,10 +15,6 @@ public class VeniceWriterFactory {
   private final Properties properties;
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
-  public VeniceWriterFactory(Properties properties) {
-    this(properties, null, null);
-  }
-
   public VeniceWriterFactory(
       Properties properties,
       PubSubProducerAdapterFactory producerAdapterFactory,

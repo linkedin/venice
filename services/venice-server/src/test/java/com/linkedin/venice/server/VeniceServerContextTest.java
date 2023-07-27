@@ -9,7 +9,6 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.ICProvider;
 import java.util.Collections;
@@ -28,7 +27,6 @@ public class VeniceServerContextTest {
   @Test
   public void testVeniceServerContextCanSetValues() {
     VeniceConfigLoader veniceConfigLoaderMock = mock(VeniceConfigLoader.class);
-    PubSubClientsFactory pubSubClientsFactoryMock = mock(PubSubClientsFactory.class);
     SSLFactory sslFactoryMock = mock(SSLFactory.class);
     StaticAccessController routerAccessControllerMock = mock(StaticAccessController.class);
     DynamicAccessController storeAccessControllerMock = mock(DynamicAccessController.class);
@@ -42,7 +40,6 @@ public class VeniceServerContextTest {
             .setStoreAccessController(storeAccessControllerMock)
             .setClientConfigForConsumer(clientConfigForConsumerMock)
             .setIcProvider(icProviderMock)
-            .setPubSubClientsFactory(pubSubClientsFactoryMock)
             .setMetricsRepository(null)
             .setServiceDiscoveryAnnouncers(null)
             .build();
@@ -55,6 +52,5 @@ public class VeniceServerContextTest {
     assertEquals(veniceServerContext.getStoreAccessController(), storeAccessControllerMock);
     assertEquals(veniceServerContext.getClientConfigForConsumer(), clientConfigForConsumerMock);
     assertEquals(veniceServerContext.getIcProvider(), icProviderMock);
-    assertEquals(veniceServerContext.getPubSubClientsFactory(), pubSubClientsFactoryMock);
   }
 }

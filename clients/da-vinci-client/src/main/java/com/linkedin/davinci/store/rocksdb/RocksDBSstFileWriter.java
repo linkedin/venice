@@ -381,16 +381,16 @@ public class RocksDBSstFileWriter {
       }
 
       long recordCount = 0;
-      Optional<CheckSum> sstFileFinalCheckSum = CheckSum.getInstance(CheckSumType.MD5);
+      CheckSum sstFileFinalCheckSum = CheckSum.getInstance(CheckSumType.MD5);
       sstFileReaderIterator = sstFileReader.newIterator(readOptions);
       sstFileReaderIterator.seekToFirst();
       while (sstFileReaderIterator.isValid()) {
-        sstFileFinalCheckSum.get().update(sstFileReaderIterator.key());
-        sstFileFinalCheckSum.get().update(sstFileReaderIterator.value());
+        sstFileFinalCheckSum.update(sstFileReaderIterator.key());
+        sstFileFinalCheckSum.update(sstFileReaderIterator.value());
         sstFileReaderIterator.next();
         recordCount++;
       }
-      final byte[] finalChecksum = sstFileFinalCheckSum.get().getCheckSum();
+      final byte[] finalChecksum = sstFileFinalCheckSum.getCheckSum();
       boolean result = Arrays.equals(finalChecksum, checksumToMatch);
       if (!result) {
         LOGGER.error(

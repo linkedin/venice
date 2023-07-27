@@ -35,7 +35,7 @@ public class TestUtilsTest {
 
   @Test
   public void testCombineConfigs() {
-    Map<String, String> combinedConfigs = TestUtils.combineConfigs(
+    Map<String, String> combinedConfigs = TestUtils.mergeConfigs(
         Arrays.asList(
             getAdditionalConfigsForRegion(0),
             getAdditionalConfigsForRegion(1),

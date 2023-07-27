@@ -220,7 +220,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       Map<String, Map<String, String>> kafkaClusterMap =
           addKafkaClusterIDMappingToServerConfigs(serverProperties, childRegionName, allPubSubBrokerWrappers);
 
-      Map<String, String> pubSubBrokerProps = PubSubBrokerWrapper.combineAdditionalConfigs(allPubSubBrokerWrappers);
+      Map<String, String> pubSubBrokerProps = PubSubBrokerWrapper.getBrokerDetailsForClients(allPubSubBrokerWrappers);
       finalParentControllerProperties.putAll(pubSubBrokerProps); // parent controllers
       finalChildControllerProperties.putAll(pubSubBrokerProps); // child controllers
 
@@ -460,8 +460,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
             clusterWrapper.getRegionName(),
             clusterWrapper.getAllControllersURLs(),
             clusterWrapper.getZk(),
-            clusterWrapper.getKafka());
-        LOGGER.info("--> broker: {}", clusterWrapper.getKafka());
+            clusterWrapper.getPubSubBrokerWrapper());
+        LOGGER.info("--> broker: {}", clusterWrapper.getPubSubBrokerWrapper());
         for (VeniceControllerWrapper controller: clusterWrapper.getVeniceControllers()) {
           LOGGER.info("--> Controller: {}", controller.getControllerUrl());
         }

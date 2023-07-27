@@ -43,7 +43,10 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -97,7 +100,10 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     mockHelixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
     mockLiveClusterConfigRepo = mock(ReadOnlyLiveClusterConfigRepository.class);
-    mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
+    mockPubSubClientsFactory = new PubSubClientsFactory(
+        mock(PubSubProducerAdapterFactory.class),
+        mock(PubSubConsumerAdapterFactory.class),
+        mock(PubSubAdminAdapterFactory.class));
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     setupMockConfig();

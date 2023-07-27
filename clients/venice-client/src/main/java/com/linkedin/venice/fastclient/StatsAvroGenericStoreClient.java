@@ -286,9 +286,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     }
   }
 
-  private static class StatTrackingStreamingCallBack<K, V> extends StreamingCallback<K, V> {
+  private static class StatTrackingStreamingCallBack<K, V> implements StreamingCallback<K, V> {
     private final StreamingCallback<K, V> inner;
-    // This future is completed with number of keys whose value were successfully received.
+    // This future is completed with a number of keys whose values were successfully received.
     private final CompletableFuture<Void> statFuture;
     private final RequestContext requestContext;
 

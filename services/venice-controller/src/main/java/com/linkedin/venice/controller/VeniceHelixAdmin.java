@@ -317,13 +317,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   static final int VERSION_ID_UNSET = -1;
 
-  static final UpdateStoreQueryParams DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS =
-      new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-          .setHybridOffsetLagThreshold(1)
-          .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
-          .setWriteComputationEnabled(true)
-          .setPartitionCount(1);
-
   // TODO remove this field and all invocations once we are fully on HaaS. Use the helixAdminClient instead.
   private final HelixAdmin admin;
   /**
@@ -587,7 +580,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               multiClusterConfigs,
               this,
               Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-              Optional.of(DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS),
+              Optional.of(VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS),
               true));
     }
     if (multiClusterConfigs.isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled()) {
@@ -598,7 +591,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               multiClusterConfigs,
               this,
               Optional.of(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-              Optional.of(DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS),
+              Optional.of(VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS),
               true));
     }
 
@@ -4688,7 +4681,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     pushMonitor.recordPushPreparationDuration(topic, TimeUnit.MILLISECONDS.toSeconds(maxWaitTimeMs));
     throw new VeniceException(
         "After waiting for " + maxWaitTimeMs + "ms, resource assignment for: " + topic + " timed out, strategy="
-            + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
+            + strategy + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
   }
 
   @Override
@@ -4700,8 +4693,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void deleteHelixResource(String clusterName, String kafkaTopic) {
     checkControllerLeadershipFor(clusterName);
-    helixAdminClient.dropResource(clusterName, kafkaTopic);
+
+    getHelixAdminClient().dropResource(clusterName, kafkaTopic);
     LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
+
+    List<String> instances = getStorageNodes(clusterName);
+    for (String instance: instances) {
+      Map<String, List<String>> disabledPartitions =
+          getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
+      for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
+        if (entry.getKey().equals(kafkaTopic)) {
+          // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
+          getHelixAdminClient().enablePartition(true, clusterName, instance, kafkaTopic, entry.getValue());
+          LOGGER.info("Cleaning up disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
+        }
+      }
+    }
   }
 
   /**
@@ -4850,7 +4857,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType, boolean)
+   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType)
    */
   @Override
   public SchemaEntry addValueSchema(
@@ -4865,22 +4872,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType, boolean)
+   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType)
    */
-  @Override
-  public SchemaEntry addValueSchema(
-      String clusterName,
-      String storeName,
-      String valueSchemaStr,
-      int schemaId,
-      boolean doUpdateSupersetSchemaID) {
+  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
     return addValueSchema(
         clusterName,
         storeName,
         valueSchemaStr,
         schemaId,
-        SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE,
-        doUpdateSupersetSchemaID);
+        SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE);
   }
 
   /**
@@ -4888,13 +4888,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * containing the schema and its id.
    * @return an <code>SchemaEntry</code> object composed of a schema and its corresponding id.
    */
+  @Override
   public SchemaEntry addValueSchema(
       String clusterName,
       String storeName,
       String valueSchemaStr,
       int schemaId,
-      DirectionalSchemaCompatibilityType compatibilityType,
-      final boolean doUpdateSupersetSchemaID) {
+      DirectionalSchemaCompatibilityType compatibilityType) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     int newValueSchemaId =
@@ -4906,34 +4906,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: "
               + valueSchemaStr);
     }
-
-    if (doUpdateSupersetSchemaID) {
-      LOGGER.info(
-          "For store: {} in cluster: {}, value schema is the same as superset schema. Update superset schema ID to {}.",
-          storeName,
-          clusterName,
-          schemaId);
-      updateSupersetSchemaForStore(storeName, clusterName, schemaId);
-    }
     return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
-  }
-
-  private void updateSupersetSchemaForStore(String storeName, String clusterName, int newSupersetSchemaID) {
-    final HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
-    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-      Store store = repository.getStore(storeName);
-      final int existingSupersetSchemaID = store.getLatestSuperSetValueSchemaId();
-      if (existingSupersetSchemaID > newSupersetSchemaID) {
-        throw new VeniceException(
-            "New superset schema ID should not be smaller than existing superset schema ID. "
-                + "Got existing superset schema ID: " + existingSupersetSchemaID + " and new superset schema ID: "
-                + newSupersetSchemaID + " for store " + storeName + " in cluster " + clusterName);
-      }
-      // Update source-of-truth store state.
-      store.setLatestSuperSetValueSchemaId(newSupersetSchemaID);
-      repository.updateStore(store);
-    }
   }
 
   /**
@@ -5019,11 +4992,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    // Update the store config
-    storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setLatestSuperSetValueSchemaId(supersetSchemaId);
-      return store;
-    });
     // add the value schema
     return schemaRepository.addValueSchema(storeName, valueSchema, valueSchemaId);
   }
@@ -5215,6 +5183,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public List<String> getStorageNodes(String clusterName) {
     checkControllerLeadershipFor(clusterName);
     return helixAdminClient.getInstancesInCluster(clusterName);
+  }
+
+  public HelixAdminClient getHelixAdminClient() {
+    return helixAdminClient;
   }
 
   /**
@@ -5931,52 +5903,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * @see Admin#getLeaderController(String)
+   *
+   * Get the Venice controller leader for a storage cluster. We look at the external view of the controller cluster to
+   * find the Venice controller leader for a storage cluster. Because in both Helix as a library or Helix as a service
+   * (HaaS), the leader in the controller cluster external view is the Venice controller leader. During HaaS transition,
+   * controller leader property will become a HaaS controller, which is not the Venice controller that we want.
+   * Therefore, we don't refer to controller leader property to get leader controller.
    */
   @Override
   public Instance getLeaderController(String clusterName) {
-    if (multiClusterConfigs.getControllerConfig(clusterName).isVeniceClusterLeaderHAAS()) {
-      return getVeniceControllerLeader(clusterName);
-    } else {
-      if (!multiClusterConfigs.getClusters().contains(clusterName)) {
-        throw new VeniceNoClusterException(clusterName);
-      }
-
-      final int maxAttempts = 10;
-      PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
-
-      for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
-        LiveInstance instance = helixManager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
-        if (instance != null) {
-          String id = instance.getId();
-          return new Instance(
-              id,
-              Utils.parseHostFromHelixNodeIdentifier(id),
-              Utils.parsePortFromHelixNodeIdentifier(id),
-              multiClusterConfigs.getAdminSecurePort());
-        }
-
-        if (attempt < maxAttempts) {
-          LOGGER
-              .warn("Leader controller does not exist, cluster: {}, attempt: {}/{}", clusterName, attempt, maxAttempts);
-          Utils.sleep(5 * Time.MS_PER_SECOND);
-        }
-      }
-
-      String message = "Leader controller does not exist, cluster=" + clusterName;
-      LOGGER.error(message);
-      throw new VeniceException(message);
-    }
-  }
-
-  /**
-   * Get the Venice controller leader for a given Venice cluster when running Helix as a Service. We need to look at
-   * the external view of the controller cluster to find the Venice logic leader for a Venice cluster. In HaaS the
-   * controller leader property will be a HaaS controller and is not the Venice controller that we want.
-   * TODO replace the implementation of Admin#getLeaderController with this method once we are fully on HaaS
-   * @param clusterName of the Venice cluster
-   * @return
-   */
-  private Instance getVeniceControllerLeader(String clusterName) {
     if (!multiClusterConfigs.getClusters().contains(clusterName)) {
       throw new VeniceNoClusterException(clusterName);
     }

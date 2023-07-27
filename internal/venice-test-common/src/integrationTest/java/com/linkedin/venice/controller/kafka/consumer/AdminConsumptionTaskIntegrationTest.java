@@ -19,6 +19,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -63,7 +64,7 @@ public class AdminConsumptionTaskIntegrationTest {
                     DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                     100,
                     0l,
-                    pubSubBrokerWrapper.getAddress(),
+                    pubSubBrokerWrapper,
                     pubSubTopicRepository)
                 .getTopicManager()) {
       PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
@@ -74,8 +75,10 @@ public class AdminConsumptionTaskIntegrationTest {
               new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
                   .regionName(STANDALONE_REGION_NAME)
                   .build());
+          PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+              pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
           VeniceWriter<byte[], byte[], byte[]> writer =
-              TestUtils.getVeniceWriterFactory(pubSubBrokerWrapper.getAddress())
+              TestUtils.getVeniceWriterFactory(pubSubBrokerWrapper.getAddress(), pubSubProducerAdapterFactory)
                   .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic.getName()).build())) {
         byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1);
         long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
