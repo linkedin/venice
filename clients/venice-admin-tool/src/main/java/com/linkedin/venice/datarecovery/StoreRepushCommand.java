@@ -197,6 +197,7 @@ public class StoreRepushCommand extends Command {
               Optional.empty());
           if (prepareResponse.isError()) {
             completeCoreWorkWithError("failure: " + prepareResponse.getError());
+            return;
           }
           ControllerResponse dataRecoveryResponse = parentCtrlCli.dataRecovery(
               repushParams.getSourceFabric(),
@@ -208,6 +209,7 @@ public class StoreRepushCommand extends Command {
               Optional.empty());
           if (dataRecoveryResponse.isError()) {
             completeCoreWorkWithError("failure: " + dataRecoveryResponse.getError());
+            return;
           }
           completeCoreWorkWithMessage("success: (batch store -- no url)");
         }
