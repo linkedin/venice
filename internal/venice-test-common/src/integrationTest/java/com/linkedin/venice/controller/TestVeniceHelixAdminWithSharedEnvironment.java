@@ -674,7 +674,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitions, 1);
 
     String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, storeName);
-    Assert.assertEquals(rtTopic, storeName + "_rt");
+    Assert.assertEquals(rtTopic, Version.composeRealTimeTopic(storeName));
   }
 
   @Test

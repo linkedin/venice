@@ -1,4 +1,4 @@
-package com.linkedin.venice.hadoop.input.kafka.chunk;
+package com.linkedin.venice.chunking;
 
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import java.nio.ByteBuffer;
