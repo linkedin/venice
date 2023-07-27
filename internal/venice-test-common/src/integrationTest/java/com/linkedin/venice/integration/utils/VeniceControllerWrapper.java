@@ -79,6 +79,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -314,7 +315,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         }
 
         // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
-        Map<String, String> brokerDetails = options.getKafkaBroker().getAdditionalConfig();
+        Map<String, String> brokerDetails =
+            PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(options.getKafkaBroker()));
         for (Map.Entry<String, String> entry: brokerDetails.entrySet()) {
           builder.putIfAbsent(entry.getKey(), entry.getValue());
         }
