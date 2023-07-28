@@ -55,7 +55,7 @@ others. Alternatively, it's possible that correlated hardware failures resulted 
 partitions. In these cases, as long as one of the DCs is healthy, it can be used as the source of a repush to repair the
 data in other DCs.
 
-### [Experimental] Time to Live (TTL)
+### Time to Live (TTL)
 It's usually required to evict stale entries from the store in order to achieve GDPR compliance or other business requirements.
 The repush with TTL functionality will replay and scan through the entries in the current version, 
 and use store-level rewind time as TTL time to evict stale records based on the write timestamp. See [TTL](../user_guide/ttl)
@@ -101,8 +101,7 @@ it defaults to false.
 kafka.input.combiner.enabled = true
 ```
 
-To specify whether to enable TTL for the repush job. This is an experimental functionality.
-If unspecified, it defaults to false.
+To specify whether to enable TTL for the repush job. If unspecified, it defaults to false.
 ```
 repush.ttl.enable = true
 ```

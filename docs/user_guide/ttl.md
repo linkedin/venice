@@ -18,7 +18,7 @@ in case of infra delays or failures.
 
 ## Usage
 
-There are two ways to achieve TTL compliance, via [empty push](#empty-push) or via [Repush with TTL](#experimental-repush-with-ttl).
+There are two ways to achieve TTL compliance, via [empty push](#empty-push) or via [Repush with TTL](#repush-with-ttl).
 
 ## Empty push
 
