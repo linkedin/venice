@@ -403,6 +403,8 @@ public class TestPartialUpdateWithActiveActiveReplication {
       if (expectedField3 == null) {
         assertNull(retrievedValue.get(PERSON_F3_NAME));
       } else {
+        Schema.Field field3 = retrievedValue.getSchema().getField(PERSON_F3_NAME);
+        assertNotNull(field3);
         assertNotNull(retrievedValue.get(PERSON_F3_NAME));
         assertEquals(retrievedValue.get(PERSON_F3_NAME).toString(), expectedField3);
       }

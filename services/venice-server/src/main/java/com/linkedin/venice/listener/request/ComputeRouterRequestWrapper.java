@@ -20,6 +20,9 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
  * {@code ComputeRouterRequestWrapper} encapsulates a POST request for read-compute from routers.
  */
 public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<ComputeRouterRequestKeyV1> {
+  private static final RecordDeserializer<ComputeRouterRequestKeyV1> DESERIALIZER =
+      FastSerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeRouterRequestKeyV1.class);
+
   private final ComputeRequestWrapper computeRequestWrapper;
   private int valueSchemaId = -1;
 
@@ -67,16 +70,9 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
         .createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
     computeRequestWrapper.deserialize(decoder);
 
-    Iterable<ComputeRouterRequestKeyV1> keys = parseKeys(decoder);
+    Iterable<ComputeRouterRequestKeyV1> keys = DESERIALIZER.deserializeObjects(decoder);
     String schemaId = httpRequest.headers().get(HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID);
     return new ComputeRouterRequestWrapper(resourceName, computeRequestWrapper, keys, httpRequest, schemaId);
-  }
-
-  private static Iterable<ComputeRouterRequestKeyV1> parseKeys(BinaryDecoder decoder) {
-    RecordDeserializer<ComputeRouterRequestKeyV1> deserializer =
-        FastSerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeRouterRequestKeyV1.class);
-
-    return deserializer.deserializeObjects(decoder);
   }
 
   public ComputeRequestWrapper getComputeRequest() {

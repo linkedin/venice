@@ -112,20 +112,20 @@ public abstract class ReadResponse {
     return readComputeOutputSize;
   }
 
-  public void incrementDotProductCount() {
-    dotProductCount++;
+  public void incrementDotProductCount(int count) {
+    dotProductCount += count;
   }
 
-  public void incrementCountOperatorCount() {
-    countOperatorCount++;
+  public void incrementCountOperatorCount(int count) {
+    countOperatorCount += count;
   }
 
-  public void incrementCosineSimilarityCount() {
-    cosineSimilarityCount++;
+  public void incrementCosineSimilarityCount(int count) {
+    cosineSimilarityCount += count;
   }
 
-  public void incrementHadamardProductCount() {
-    hadamardProductCount++;
+  public void incrementHadamardProductCount(int count) {
+    hadamardProductCount += count;
   }
 
   public double getReadComputeSerializationLatency() {

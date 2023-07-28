@@ -430,6 +430,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
       Map<String, Object> globalContext = new HashMap<>();
       Schema computeResultSchema = getComputeResultSchema(computeRequestWrapper);
+      computeRequestWrapper.initializeOperationResultFields(computeResultSchema);
 
       int readerSchemaId = versionBackend.getSupersetOrLatestValueSchemaId();
       for (K key: keys) {
@@ -504,6 +505,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
       Map<String, Object> globalContext = new HashMap<>();
       Schema computeResultSchema = getComputeResultSchema(computeRequestWrapper);
+      computeRequestWrapper.initializeOperationResultFields(computeResultSchema);
 
       int partitionCount = versionBackend.getPartitionCount();
       for (int currPartition = 0; currPartition < partitionCount; currPartition++) {

@@ -104,6 +104,8 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.avro.AvroRuntimeException;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -868,5 +870,14 @@ public class TestUtils {
       }
     }
     return aggregateConfigMap;
+  }
+
+  public static void checkMissingFieldInAvroRecord(GenericRecord record, String fieldName) {
+    try {
+      Assert.assertNull(record.get(fieldName));
+    } catch (AvroRuntimeException e) {
+      // But in Avro 1.10+, it throws instead...
+      Assert.assertEquals(e.getMessage(), "Not a valid schema field: " + fieldName);
+    }
   }
 }

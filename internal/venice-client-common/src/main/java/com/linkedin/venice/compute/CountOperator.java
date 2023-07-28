@@ -5,6 +5,7 @@ import com.linkedin.venice.compute.protocol.request.Count;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Collection;
 import java.util.Map;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -13,29 +14,29 @@ public class CountOperator implements ReadComputeOperator {
   public void compute(
       int computeRequestVersion,
       ComputeOperation op,
-      GenericRecord valueRecord,
+      Schema.Field operatorInputField,
+      Schema.Field resultField,
+      GenericRecord inputValueRecord,
       GenericRecord resultRecord,
       Map<String, String> computationErrorMap,
       Map<String, Object> context) {
-    Count count = (Count) op.operation;
-    String resultFieldName = count.resultFieldName.toString();
     try {
-      Object o = valueRecord.get(count.field.toString());
+      Object o = inputValueRecord.get(operatorInputField.pos());
       if (o instanceof Map) {
         Map map = (Map) o;
-        putResult(resultRecord, resultFieldName, map.size());
+        putResult(resultRecord, resultField, map.size());
       } else if (o instanceof Collection) {
         Collection collection = (Collection) o;
-        putResult(resultRecord, resultFieldName, collection.size());
+        putResult(resultRecord, resultField, collection.size());
       } else {
         throw new VeniceException(
-            "Record field " + resultFieldName + " is not valid for count operation, only Map/Array are supported.");
+            "Record field " + resultField.name() + " is not valid for count operation, only Map/Array are supported.");
       }
     } catch (Exception e) {
-      putResult(resultRecord, resultFieldName, -1);
+      putResult(resultRecord, resultField, -1);
       String msg = e.getClass().getSimpleName() + " : "
           + (e.getMessage() == null ? "Failed to execute count operator." : e.getMessage());
-      computationErrorMap.put(resultFieldName, msg);
+      computationErrorMap.put(resultField.name(), msg);
     }
   }
 
@@ -52,7 +53,7 @@ public class CountOperator implements ReadComputeOperator {
   }
 
   @Override
-  public void putDefaultResult(GenericRecord record, String field) {
+  public void putDefaultResult(GenericRecord record, Schema.Field field) {
     putResult(record, field, 0);
   }
 
