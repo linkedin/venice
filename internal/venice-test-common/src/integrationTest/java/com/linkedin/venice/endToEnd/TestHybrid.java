@@ -398,6 +398,12 @@ public class TestHybrid {
           }
         });
 
+        // Update min compaction lag
+        long expectedMinCompactionLagSeconds = TimeUnit.MINUTES.toSeconds(10); // 10mins
+        controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setMinCompactionLagSeconds(expectedMinCompactionLagSeconds));
+
         // Run one more VPJ
         runVPJ(vpjProperties, 2, controllerClient);
         // verify the topic compaction policy
@@ -406,10 +412,12 @@ public class TestHybrid {
         Assert.assertTrue(
             topicManager.isTopicCompactionEnabled(topicForStoreVersion2),
             "topic: " + topicForStoreVersion2 + " should have compaction enabled");
+        long expectedMinCompactionLagMS = TimeUnit.SECONDS.toMillis(expectedMinCompactionLagSeconds);
         Assert.assertEquals(
             topicManager.getTopicMinLogCompactionLagMs(topicForStoreVersion2),
-            MIN_COMPACTION_LAG,
-            "topic:" + topicForStoreVersion2 + " should have min compaction lag config set to " + MIN_COMPACTION_LAG);
+            expectedMinCompactionLagMS,
+            "topic:" + topicForStoreVersion2 + " should have min compaction lag config set to "
+                + expectedMinCompactionLagMS);
 
         // Verify streaming record in second version
         checkLargeRecord(client, 2);

@@ -1294,6 +1294,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public long getMinCompactionLagSeconds() {
+    return this.delegate.getMinCompactionLagSeconds();
+  }
+
+  @Override
+  public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }

@@ -47,6 +47,7 @@ import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -614,6 +615,7 @@ public class VeniceParentHelixAdminTest {
         testWriteComputeSchemaAutoGeneration(parentControllerClient);
         testWriteComputeSchemaEnable(parentControllerClient);
         testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
+        testUpdateMinCompactionLag(parentControllerClient, childControllerClient);
       }
     }
   }
@@ -886,6 +888,36 @@ public class VeniceParentHelixAdminTest {
     parentControllerClient.addValueSchema(storeName, valueSchema.toString());
     MultiSchemaResponse schemaResponse = parentControllerClient.getAllValueSchema(storeName);
     Assert.assertEquals(schemaResponse.getSchemas().length, 2);
+  }
+
+  private void testUpdateMinCompactionLag(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient) {
+    // Adding store
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String schemaStr =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\", \"default\": 0.0}]}";
+    String schemaStrDoc =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field updated\", \"default\": \"default name\"},{\"name\":\"id1\",\"type\":\"double\",\"default\": 0.0}]}";
+    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+
+    final long expectedMinCompactionLagSeconds = 100;
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setMinCompactionLagSeconds(expectedMinCompactionLagSeconds);
+    parentControllerClient.updateStore(storeName, params);
+
+    // Validate in parent
+    StoreResponse parentStoreResponse = parentControllerClient.getStore(storeName);
+    Assert.assertEquals(parentStoreResponse.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreResponse childStoreResponse = parentControllerClient.getStore(storeName);
+      Assert.assertEquals(childStoreResponse.getStore().getMinCompactionLagSeconds(), expectedMinCompactionLagSeconds);
+    });
+
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {

@@ -65,6 +65,7 @@ public class StoreInfo {
     storeInfo.setReplicationMetadataVersionId(store.getRmdVersion());
     storeInfo.setViewConfigs(store.getViewConfigs());
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     return storeInfo;
   }
 
@@ -302,6 +303,8 @@ public class StoreInfo {
    * Whether storage node read quota is enabled for this store.
    */
   private boolean storageNodeReadQuotaEnabled;
+
+  private long minCompactionLagSeconds;
 
   public StoreInfo() {
   }
@@ -751,5 +754,13 @@ public class StoreInfo {
 
   public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
     this.storageNodeReadQuotaEnabled = storageNodeReadQuotaEnabled;
+  }
+
+  public long getMinCompactionLagSeconds() {
+    return minCompactionLagSeconds;
+  }
+
+  public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
+    this.minCompactionLagSeconds = minCompactionLagSeconds;
   }
 }
