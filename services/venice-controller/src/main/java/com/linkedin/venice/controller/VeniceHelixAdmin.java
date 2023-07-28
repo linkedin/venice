@@ -675,8 +675,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     }
     controllerConfig = new VeniceControllerConfig(new VeniceProperties(clonedProperties));
-
-    Properties properties = new Properties();
+    Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(originalPros, properties, false);
     if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
       Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();

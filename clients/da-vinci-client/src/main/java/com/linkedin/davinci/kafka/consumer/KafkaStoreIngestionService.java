@@ -1069,7 +1069,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @return
    */
   private Properties getCommonKafkaConsumerProperties(VeniceServerConfig serverConfig) {
-    Properties kafkaConsumerProperties = new Properties();
+    Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
     ApacheKafkaProducerConfig
         .copyKafkaSASLProperties(serverConfig.getClusterProperties(), kafkaConsumerProperties, false);
     kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
@@ -1107,7 +1107,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       serverConfig = new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
     }
     VeniceProperties clusterProperties = serverConfig.getClusterProperties();
-    Properties properties = new Properties();
+    Properties properties = serverConfig.getClusterProperties().getPropertiesCopy();
     ApacheKafkaProducerConfig.copyKafkaSASLProperties(clusterProperties, properties, false);
     kafkaBootstrapUrls = serverConfig.getKafkaBootstrapServers();
     String resolvedKafkaUrl = serverConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);

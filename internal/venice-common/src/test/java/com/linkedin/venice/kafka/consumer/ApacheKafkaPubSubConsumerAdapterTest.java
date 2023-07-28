@@ -175,7 +175,7 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
             new TopicPartition("test", 42),
             Collections.singletonList(new ConsumerRecord<>("test", 42, 75, "key".getBytes(), "value".getBytes()))));
     doReturn(consumerRecords).when(consumer).poll(any());
-    new ApacheKafkaConsumerAdapter(consumer, new VeniceProperties(new Properties()), false, pubSubMessageDeserializer)
+    new ApacheKafkaConsumerAdapter(consumer, VeniceProperties.empty(), false, pubSubMessageDeserializer)
         .poll(Long.MAX_VALUE);
   }
 
@@ -193,7 +193,7 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(
         Collections.singletonMap(new TopicPartition("test", 42), Collections.singletonList(record)));
     doReturn(records).when(consumer).poll(any());
-    new ApacheKafkaConsumerAdapter(consumer, new VeniceProperties(new Properties()), false, pubSubMessageDeserializer)
+    new ApacheKafkaConsumerAdapter(consumer, VeniceProperties.empty(), false, pubSubMessageDeserializer)
         .poll(Long.MAX_VALUE);
   }
 
@@ -229,11 +229,8 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
         Collections.singletonMap(new TopicPartition("test", 42), Collections.singletonList(record)));
     doReturn(records).when(consumer).poll(any());
 
-    ApacheKafkaConsumerAdapter consumerAdapter = new ApacheKafkaConsumerAdapter(
-        consumer,
-        new VeniceProperties(new Properties()),
-        false,
-        pubSubMessageDeserializer);
+    ApacheKafkaConsumerAdapter consumerAdapter =
+        new ApacheKafkaConsumerAdapter(consumer, VeniceProperties.empty(), false, pubSubMessageDeserializer);
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 42);
     // add partition to assignments

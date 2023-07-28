@@ -121,11 +121,8 @@ public class VeniceClientCompatibilityTest {
 
     Properties extraBackendConfig = new Properties();
     extraBackendConfig.setProperty(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath());
-    daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
-        storeName,
-        zkAddress[0],
-        new DaVinciConfig(),
-        new VeniceProperties(new Properties()));
+    daVinciClient = ServiceFactory
+        .getGenericAvroDaVinciClient(storeName, zkAddress[0], new DaVinciConfig(), VeniceProperties.empty());
 
     daVinciClient.subscribeAll().get(60, TimeUnit.SECONDS);
   }
