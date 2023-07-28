@@ -2400,7 +2400,7 @@ public class VeniceParentHelixAdmin implements Admin {
       hybridTimeLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, TIME_LAG_TO_GO_ONLINE));
       hybridDataReplicationPolicy.map(addToUpdatedConfigList(updatedConfigsList, DATA_REPLICATION_POLICY));
       hybridBufferReplayPolicy.map(addToUpdatedConfigList(updatedConfigsList, BUFFER_REPLAY_POLICY));
-      HybridStoreConfig hybridStoreConfigNew = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
+      HybridStoreConfig updatedHybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
           currStore,
           hybridRewindSeconds,
           hybridOffsetLagThreshold,
@@ -2412,8 +2412,8 @@ public class VeniceParentHelixAdmin implements Admin {
       VeniceControllerClusterConfig clusterConfig =
           veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig();
       // Check if the store is being converted to a hybrid store
-      boolean storeBeingConvertedToHybrid =
-          !currStore.isHybrid() && hybridStoreConfigNew != null && veniceHelixAdmin.isHybrid(hybridStoreConfigNew);
+      boolean storeBeingConvertedToHybrid = !currStore.isHybrid() && updatedHybridStoreConfig != null
+          && veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
 
       // Update active-active replication and incremental push settings
       setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
@@ -2443,29 +2443,30 @@ public class VeniceParentHelixAdmin implements Admin {
       // incremental push without enabling hybrid already (we will automatically convert to hybrid store with default
       // configs).
       if (veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
-          && !veniceHelixAdmin.isHybrid(hybridStoreConfigNew) && setStore.incrementalPushEnabled) {
+          && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig) && setStore.incrementalPushEnabled) {
         throw new VeniceHttpException(
             HttpStatus.SC_BAD_REQUEST,
             "Cannot convert store to batch-only, incremental push enabled stores require valid hybrid configs. "
                 + "Please disable incremental push if you'd like to convert the store to batch-only",
             ErrorType.BAD_REQUEST);
       }
-      if (hybridStoreConfigNew == null) {
+      if (updatedHybridStoreConfig == null) {
         setStore.hybridStoreConfig = null;
       } else {
         HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
-        hybridStoreConfigRecord.offsetLagThresholdToGoOnline = hybridStoreConfigNew.getOffsetLagThresholdToGoOnline();
-        hybridStoreConfigRecord.rewindTimeInSeconds = hybridStoreConfigNew.getRewindTimeInSeconds();
+        hybridStoreConfigRecord.offsetLagThresholdToGoOnline =
+            updatedHybridStoreConfig.getOffsetLagThresholdToGoOnline();
+        hybridStoreConfigRecord.rewindTimeInSeconds = updatedHybridStoreConfig.getRewindTimeInSeconds();
         hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds =
-            hybridStoreConfigNew.getProducerTimestampLagThresholdToGoOnlineInSeconds();
-        hybridStoreConfigRecord.dataReplicationPolicy = hybridStoreConfigNew.getDataReplicationPolicy().getValue();
-        hybridStoreConfigRecord.bufferReplayPolicy = hybridStoreConfigNew.getBufferReplayPolicy().getValue();
+            updatedHybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds();
+        hybridStoreConfigRecord.dataReplicationPolicy = updatedHybridStoreConfig.getDataReplicationPolicy().getValue();
+        hybridStoreConfigRecord.bufferReplayPolicy = updatedHybridStoreConfig.getBufferReplayPolicy().getValue();
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
       }
 
       if (incrementalPushEnabled.orElse(currStore.isIncrementalPushEnabled())
           && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
-          && !veniceHelixAdmin.isHybrid(hybridStoreConfigNew)) {
+          && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig)) {
         LOGGER.info(
             "Enabling incremental push for a batch store:{}. Converting it to a hybrid store with default configs.",
             storeName);
