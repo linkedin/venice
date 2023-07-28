@@ -413,7 +413,7 @@ public class TestStreaming {
       String key = KEY_PREFIX + i;
       GenericRecord record = resultMap.get(key);
       Assert.assertEquals(record.get("int_field"), i);
-      Assert.assertNull(record.get("float_field"));
+      TestUtils.checkMissingFieldInAvroRecord(record, "float_field");
       if (i <= LAST_KEY_INDEX_WITH_NON_NULL_VALUE) {
         Assert.assertEquals("nullable_string_field" + i, record.get("nullable_string_field").toString());
       } else {

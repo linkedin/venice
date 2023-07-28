@@ -8,9 +8,11 @@ import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV3;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV4;
+import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
@@ -40,6 +42,7 @@ public class ComputeRequestWrapper {
   private int version;
   private Object computeRequest;
   private Schema valueSchema;
+  private List<Schema.Field> operationResultFields;
 
   public ComputeRequestWrapper(int version) {
     this.version = version;
@@ -152,5 +155,21 @@ public class ComputeRequestWrapper {
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
     }
+  }
+
+  public void initializeOperationResultFields(Schema resultSchema) {
+    List<ComputeOperation> operations = getOperations();
+    this.operationResultFields = new ArrayList<>(operations.size());
+    ComputeOperation computeOperation;
+    ReadComputeOperator operator;
+    for (int i = 0; i < operations.size(); i++) {
+      computeOperation = operations.get(i);
+      operator = ComputeOperationType.valueOf(computeOperation).getOperator();
+      this.operationResultFields.add(resultSchema.getField(operator.getResultFieldName(computeOperation)));
+    }
+  }
+
+  public List<Schema.Field> getOperationResultFields() {
+    return this.operationResultFields;
   }
 }

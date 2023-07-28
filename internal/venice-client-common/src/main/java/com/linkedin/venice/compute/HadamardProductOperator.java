@@ -4,6 +4,7 @@ import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import java.util.List;
 import java.util.Map;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -12,22 +13,24 @@ public class HadamardProductOperator implements ReadComputeOperator {
   public void compute(
       int computeRequestVersion,
       ComputeOperation op,
-      GenericRecord valueRecord,
+      Schema.Field operatorInputField,
+      Schema.Field resultField,
+      GenericRecord inputValueRecord,
       GenericRecord resultRecord,
       Map<String, String> computationErrorMap,
       Map<String, Object> context) {
     HadamardProduct hadamardProduct = (HadamardProduct) op.operation;
     try {
-      List<Float> valueVector = ComputeUtils.getNullableFieldValueAsList(valueRecord, hadamardProduct.field.toString());
+      List<Float> valueVector = ComputeUtils.getNullableFieldValueAsList(inputValueRecord, operatorInputField);
       List<Float> dotProductParam = hadamardProduct.hadamardProductParam;
 
       if (valueVector.size() == 0 || dotProductParam.size() == 0) {
-        resultRecord.put(hadamardProduct.resultFieldName.toString(), null);
+        putResult(resultRecord, resultField, null);
         return;
       } else if (valueVector.size() != dotProductParam.size()) {
-        resultRecord.put(hadamardProduct.resultFieldName.toString(), null);
+        putResult(resultRecord, resultField, null);
         computationErrorMap.put(
-            hadamardProduct.resultFieldName.toString(),
+            resultField.name(),
             "Failed to compute because size of hadamard product parameter is: "
                 + hadamardProduct.hadamardProductParam.size() + " while the size of value vector("
                 + hadamardProduct.field.toString() + ") is: " + valueVector.size());
@@ -35,12 +38,12 @@ public class HadamardProductOperator implements ReadComputeOperator {
       }
 
       List<Float> hadamardProductResult = ComputeUtils.hadamardProduct(dotProductParam, valueVector);
-      resultRecord.put(hadamardProduct.resultFieldName.toString(), hadamardProductResult);
+      putResult(resultRecord, resultField, hadamardProductResult);
     } catch (Exception e) {
-      resultRecord.put(hadamardProduct.resultFieldName.toString(), null);
+      putResult(resultRecord, resultField, null);
       String msg = e.getClass().getSimpleName() + " : "
           + (e.getMessage() == null ? "Failed to execute hadamard product operator." : e.getMessage());
-      computationErrorMap.put(hadamardProduct.resultFieldName.toString(), msg);
+      computationErrorMap.put(resultField.name(), msg);
     }
   }
 

@@ -233,7 +233,7 @@ public class VeniceClusterInitializer implements Closeable {
    */
   public static void main(String[] args) {
     LOGGER.info("Avro version in VeniceClusterInitializer: {}", AvroCompatibilityHelperCommon.getRuntimeAvroVersion());
-    Assert.assertEquals(AvroCompatibilityHelperCommon.getRuntimeAvroVersion(), AvroVersion.AVRO_1_9);
+    Assert.assertEquals(AvroCompatibilityHelperCommon.getRuntimeAvroVersion(), AvroVersion.AVRO_1_10);
     Assert.assertEquals(args.length, 2, "Store name and router port arguments are expected");
 
     String storeName = args[0];

@@ -2,6 +2,7 @@ package com.linkedin.venice.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import java.util.Map;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -9,16 +10,18 @@ public interface ReadComputeOperator {
   void compute(
       int computeRequestVersion,
       ComputeOperation op,
+      Schema.Field operatorField,
+      Schema.Field resultField,
       GenericRecord valueRecord,
       GenericRecord resultRecord,
       Map<String, String> computationErrorMap,
       Map<String, Object> context);
 
-  default void putResult(GenericRecord record, String field, Object result) {
-    record.put(field, result);
+  default void putResult(GenericRecord record, Schema.Field field, Object result) {
+    record.put(field.pos(), result);
   }
 
-  default void putDefaultResult(GenericRecord record, String field) {
+  default void putDefaultResult(GenericRecord record, Schema.Field field) {
     putResult(record, field, 0.0f);
   }
 

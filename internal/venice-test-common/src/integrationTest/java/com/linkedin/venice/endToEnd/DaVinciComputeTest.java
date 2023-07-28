@@ -302,12 +302,9 @@ public class DaVinciComputeTest {
 
     int numRecords = 100;
     Map<Integer, ComputeGenericRecord> computeResult;
-    Set<Integer> keySetForCompute = new HashSet<Integer>() {
-      {
-        add(1);
-        add(2);
-      }
-    };
+    Set<Integer> keySetForCompute = new HashSet<>();
+    keySetForCompute.add(1);
+    keySetForCompute.add(2);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
@@ -883,7 +880,7 @@ public class DaVinciComputeTest {
       String key = KEY_PREFIX + i;
       GenericRecord record = resultMap.get(key);
       Assert.assertEquals(record.get("int_field"), i);
-      Assert.assertNull(record.get("float_field"));
+      TestUtils.checkMissingFieldInAvroRecord(record, "float_field");
     }
   }
 
