@@ -17,8 +17,8 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This utility is used to remove the existing Avro jars and prepend avro-1.9 to make sure the Venice Cluster
- * is always using avro-1.9.
+ * This utility is used to remove the existing Avro jars and prepend a specific Avro jar version to the classpath,
+ * to control which version the Venice Cluster will use. The version used is controlled by {@link #AVRO_JAR_FILE}.
  */
 public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
   private static final Logger LOGGER = LogManager.getLogger(ClassPathSupplierForVeniceCluster.class);
@@ -54,10 +54,7 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
         if (existingAvroJarFile == null) {
           throw new VeniceException("There should be some existing Avro lib in the class path");
         }
-        /**
-         * Append avro-1.9 jar to the classpath, which is the one being used by the backend.
-         */
-        paths.add(extractAvro192JarFileBasedOnExistingAvroJarFile(existingAvroJarFile));
+        paths.add(extractAvroJarFileBasedOnExistingAvroJarFile(existingAvroJarFile));
       } catch (Exception e) {
         throw new VeniceException("Failed to compose class path", e);
       }
@@ -65,7 +62,10 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
     }
   }
 
-  private File extractAvro192JarFileBasedOnExistingAvroJarFile(File existingAvroJarFile) {
+  /**
+   * Append {@link #AVRO_JAR_FILE} to the classpath, which is the one being used by the backend.
+   */
+  private File extractAvroJarFileBasedOnExistingAvroJarFile(File existingAvroJarFile) {
     LOGGER.info("Existing avro jar file: {}", existingAvroJarFile.getAbsolutePath());
     if (existingAvroJarFile.getName().equals(AVRO_JAR_FILE)) {
       return existingAvroJarFile;
@@ -74,7 +74,7 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
      * The file path should be in the following way:
      * .../org.apache.avro/avro/1.4.1/3548c0bc136e71006f3fc34e22d34a29e5069e50/avro-1.4.1.jar
      * And the target file should be here:
-     * /org.apache.avro/avro/1.9.2/.../avro-1.9.2.jar
+     * /org.apache.avro/avro/1.10.2/.../avro-1.10.2.jar
      */
     File avroRootDir = existingAvroJarFile.getParentFile().getParentFile().getParentFile();
     Collection<File> jarFiles = FileUtils.listFiles(avroRootDir, new String[] { "jar" }, true);

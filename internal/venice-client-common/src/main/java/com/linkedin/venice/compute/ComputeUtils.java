@@ -263,7 +263,7 @@ public class ComputeUtils {
   }
 
   /**
-   * @return Error message if the nullable field validation failed or Optional.empty() otherwise.
+   * @return Error message if the nullable field validation failed or null otherwise.
    */
   public static String validateNullableFieldAndGetErrorMsg(
       ReadComputeOperator operator,
