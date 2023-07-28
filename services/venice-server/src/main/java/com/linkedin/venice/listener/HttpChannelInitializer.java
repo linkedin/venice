@@ -8,6 +8,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
@@ -25,6 +26,8 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -49,6 +52,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final VeniceHttp2PipelineInitializerBuilder http2PipelineInitializerBuilder;
   AggServerQuotaUsageStats quotaUsageStats;
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
+
+  List<VeniceGrpcHandler> inboundHandlers;
+  List<VeniceGrpcHandler> outboundHandlers;
 
   public HttpChannelInitializer(
       ReadOnlyStoreRepository storeMetadataRepository,
@@ -208,5 +214,51 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     } else {
       httpPipelineInitializer.accept(ch.pipeline(), true);
     }
+  }
+
+  public void initGrpcHandlers() {
+    inboundHandlers = new ArrayList<>();
+    outboundHandlers = new ArrayList<>();
+
+    // will replicate initChannel logic
+
+    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
+    inboundHandlers.add(statsHandler);
+    outboundHandlers.add(0, statsHandler);
+
+    OutboundHttpWrapperHandler outboundHttpWrapperHandler = new OutboundHttpWrapperHandler(statsHandler);
+    outboundHandlers.add(0, outboundHttpWrapperHandler);
+
+    if (sslFactory.isPresent()) { // set acls
+      if (aclHandler.isPresent()) {
+        inboundHandlers.add(aclHandler.get());
+        outboundHandlers.add(0, aclHandler.get());
+      }
+
+      if (storeAclHandler.isPresent()) {
+        inboundHandlers.add(storeAclHandler.get());
+        outboundHandlers.add(0, storeAclHandler.get());
+      }
+    }
+
+    RouterRequestHttpHandler grpcRouterRequestHandler =
+        new RouterRequestHttpHandler(statsHandler, serverConfig.getStoreToEarlyTerminationThresholdMSMap());
+    inboundHandlers.add(grpcRouterRequestHandler);
+    outboundHandlers.add(0, grpcRouterRequestHandler);
+
+    if (quotaEnforcer != null) {
+      inboundHandlers.add(quotaEnforcer);
+      outboundHandlers.add(0, quotaEnforcer);
+    }
+
+    inboundHandlers.add(requestHandler);
+  }
+
+  public List<VeniceGrpcHandler> getInboundHandlers() {
+    return inboundHandlers;
+  }
+
+  public List<VeniceGrpcHandler> getOutboundHandlers() {
+    return outboundHandlers;
   }
 }

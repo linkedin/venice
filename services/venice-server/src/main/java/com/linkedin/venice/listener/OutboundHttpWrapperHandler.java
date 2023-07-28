@@ -7,13 +7,17 @@ import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
+import com.google.protobuf.ByteString;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
+import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.utils.ExceptionUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -30,7 +34,7 @@ import java.nio.charset.StandardCharsets;
  * wraps raw bytes into an HTTP response object that HttpServerCodec expects
  */
 
-public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
+public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter implements VeniceGrpcHandler {
   private final StatsHandler statsHandler;
 
   public OutboundHttpWrapperHandler(StatsHandler handler) {
@@ -145,6 +149,9 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       statsHandler.setResponseStatus(responseStatus);
     }
 
+    if (responseStatus.code() == 429) {
+      System.out.println("responseStatus.code() == 429");
+    }
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
@@ -161,5 +168,43 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
      *  writeAndFlush may have some performance issue since it will call the actual send every time.
      */
     ctx.writeAndFlush(response);
+  }
+
+  @Override
+  public void grpcRead(GrpcHandlerContext ctx) {
+
+  }
+
+  @Override
+  public void grpcWrite(GrpcHandlerContext ctx) {
+    ReadResponse obj = ctx.getReadResponse();
+    VeniceServerResponse.Builder veniceServerResponseBuilder = ctx.getVeniceServerResponseBuilder();
+
+    CompressionStrategy compressionStrategy = obj.getCompressionStrategy();
+    statsHandler.setDatabaseLookupLatency(obj.getDatabaseLookupLatency());
+    statsHandler.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
+    statsHandler.setStorageExecutionQueueLen(obj.getStorageExecutionQueueLen());
+    statsHandler.setSuccessRequestKeyCount(obj.getRecordCount());
+    statsHandler.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
+    statsHandler.setReadComputeLatency(obj.getReadComputeLatency());
+    statsHandler.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
+    statsHandler.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
+    statsHandler.setDotProductCount(obj.getDotProductCount());
+    statsHandler.setCosineSimilarityCount(obj.getCosineSimilarityCount());
+    statsHandler.setHadamardProductCount(obj.getHadamardProductCount());
+    statsHandler.setCountOperatorCount(obj.getCountOperatorCount());
+    statsHandler.setKeySizeList(obj.getKeySizeList());
+    statsHandler.setValueSizeList(obj.getValueSizeList());
+    statsHandler.setResponseStatus(OK);
+
+    veniceServerResponseBuilder.setCompressionStrategy(compressionStrategy.getValue());
+    veniceServerResponseBuilder.setSchemaId(obj.getResponseSchemaIdHeader());
+    veniceServerResponseBuilder.setResponseRCU(obj.getRCU());
+    veniceServerResponseBuilder.setIsStreamingResponse(obj.isStreamingResponse());
+
+    ByteBuf data = obj.getResponseBody();
+    byte[] array = new byte[data.readableBytes()];
+    data.getBytes(data.readerIndex(), array);
+    veniceServerResponseBuilder.setData(ByteString.copyFrom(array)); // double copy D:
   }
 }

@@ -128,6 +128,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       throw new UnsupportedOperationException(
           "we require a mapping of netty server addresses to grpc server addresses to use a gRPC enabled client");
     }
+
+    if (useGrpc && r2Client == null) {
+      throw new UnsupportedOperationException(
+          "we require a r2Client to handle unsupported requests when using a gRPC enabled client");
+    }
     this.r2Client = r2Client;
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);

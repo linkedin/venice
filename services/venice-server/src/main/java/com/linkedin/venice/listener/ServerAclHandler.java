@@ -3,6 +3,8 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.utils.NettyUtils;
 import com.linkedin.venice.utils.SslUtils;
 import io.netty.channel.ChannelHandler;
@@ -28,7 +30,7 @@ import org.apache.logging.log4j.Logger;
  * If both of them fail, the request will be rejected.
  */
 @ChannelHandler.Sharable
-public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
+public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> implements VeniceGrpcHandler {
   private static final Logger LOGGER = LogManager.getLogger(ServerAclHandler.class);
 
   public static final AttributeKey<Boolean> SERVER_ACL_APPROVED_ATTRIBUTE_KEY =
@@ -76,5 +78,15 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
       }
       NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
     }
+  }
+
+  @Override
+  public void grpcRead(GrpcHandlerContext ctx) {
+
+  }
+
+  @Override
+  public void grpcWrite(GrpcHandlerContext ctx) {
+
   }
 }

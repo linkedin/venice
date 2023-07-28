@@ -1,6 +1,8 @@
 package com.linkedin.venice.fastclient.transport;
 
 import com.google.protobuf.ByteString;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -12,6 +14,7 @@ import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -137,7 +140,7 @@ public class GrpcTransportClient extends InternalTransportClient {
         @Override
         public void onError(Throwable t) {
           LOGGER.error("Error in gRPC request", t);
-          valueFuture.completeExceptionally(t);
+          handleError(t);
         }
 
         @Override
@@ -156,18 +159,19 @@ public class GrpcTransportClient extends InternalTransportClient {
       clientStub.batchGet(request, new StreamObserver<VeniceServerResponse>() {
         @Override
         public void onNext(VeniceServerResponse value) {
+          LOGGER.debug("Performing BatchGet in gRPC");
+
           valueFuture.complete(
               new TransportClientResponse(
                   value.getSchemaId(),
                   CompressionStrategy.valueOf(value.getCompressionStrategy()),
                   value.getData().toByteArray()));
-          LOGGER.debug("Performing BatchGet in gRPC");
         }
 
         @Override
         public void onError(Throwable t) {
           LOGGER.error("Error in gRPC request", t);
-          valueFuture.completeExceptionally(t);
+          handleError(t);
         }
 
         @Override
@@ -177,6 +181,25 @@ public class GrpcTransportClient extends InternalTransportClient {
       });
 
       return valueFuture;
+    }
+
+    private void handleError(Throwable t) {
+      Status status = Status.fromThrowable(t);
+
+      Exception exception;
+      switch (status.getCode()) {
+        case UNKNOWN:
+          valueFuture.complete(null);
+        case RESOURCE_EXHAUSTED:
+          exception = new VeniceClientRateExceededException(status.getDescription());
+          break;
+        default:
+          assert status.getDescription() != null;
+          exception = new VeniceClientHttpException(status.getDescription(), status.getCode().value());
+          break;
+      }
+
+      valueFuture.completeExceptionally(exception);
     }
   }
 }

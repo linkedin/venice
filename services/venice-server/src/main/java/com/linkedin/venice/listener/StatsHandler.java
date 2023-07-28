@@ -4,6 +4,8 @@ import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
@@ -19,7 +21,7 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import it.unimi.dsi.fastutil.ints.IntList;
 
 
-public class StatsHandler extends ChannelDuplexHandler {
+public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHandler {
   private long startTimeInNS;
   private HttpResponseStatus responseStatus;
   private String storeName = null;
@@ -242,6 +244,68 @@ public class StatsHandler extends ChannelDuplexHandler {
       ctx.fireChannelRead(msg);
       secondPartLatency = LatencyUtils.getLatencyInMS(startTimeOfPart2InNS);
       ++requestPartCount;
+    }
+  }
+
+  @Override
+  public void grpcRead(GrpcHandlerContext ctx) {
+    if (newRequest) {
+      storeName = null;
+      startTimeInNS = System.nanoTime();
+      partsInvokeDelayLatency = -1;
+      secondPartLatency = -1;
+      requestPartCount = 1;
+      isHealthCheck = false;
+      responseStatus = null;
+      statCallbackExecuted = false;
+      databaseLookupLatency = -1;
+      storageExecutionSubmissionWaitTime = -1;
+      storageExecutionQueueLen = -1;
+      requestKeyCount = -1;
+      successRequestKeyCount = -1;
+      requestSizeInBytes = -1;
+      multiChunkLargeValueCount = -1;
+      readComputeLatency = -1;
+      readComputeDeserializationLatency = -1;
+      readComputeSerializationLatency = -1;
+      dotProductCount = 0;
+      cosineSimilarityCount = 0;
+      hadamardProductCount = 0;
+      isRequestTerminatedEarly = false;
+
+      newRequest = false;
+      firstPartLatency = LatencyUtils.getLatencyInMS(startTimeInNS);
+    } else {
+      long startTimeOfPart2InNS = System.nanoTime();
+      partsInvokeDelayLatency = LatencyUtils.convertLatencyFromNSToMS(startTimeOfPart2InNS - startTimeInNS);
+      secondPartLatency = LatencyUtils.getLatencyInMS(startTimeOfPart2InNS);
+      ++requestPartCount;
+    }
+  }
+
+  @Override
+  public void grpcWrite(GrpcHandlerContext ctx) {
+    newRequest = true;
+
+    if (responseStatus == null) {
+      throw new VeniceException("request status could not be null");
+    }
+
+    if (isHealthCheck) {
+      return;
+    }
+
+    if (!statCallbackExecuted) {
+      ServerHttpRequestStats serverHttpRequestStats = currentStats.getStoreStats(storeName);
+      recordBasicMetrics(serverHttpRequestStats);
+
+      double elapsedTime = LatencyUtils.getLatencyInMS(startTimeInNS);
+
+      if (responseStatus.equals(OK) || responseStatus.equals(NOT_FOUND)) {
+        successRequest(serverHttpRequestStats, elapsedTime);
+      } else {
+        errorRequest(serverHttpRequestStats, elapsedTime);
+      }
     }
   }
 

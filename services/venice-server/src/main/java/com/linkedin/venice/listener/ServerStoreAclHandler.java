@@ -3,6 +3,8 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.handler.StoreAclHandler;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.SslUtils;
@@ -23,7 +25,7 @@ import javax.net.ssl.SSLPeerUnverifiedException;
  *
  * If both of them fail, the request will be rejected.
  */
-public class ServerStoreAclHandler extends StoreAclHandler {
+public class ServerStoreAclHandler extends StoreAclHandler implements VeniceGrpcHandler {
   public ServerStoreAclHandler(DynamicAccessController accessController, ReadOnlyStoreRepository metadataRepository) {
     super(accessController, metadataRepository);
   }
@@ -47,6 +49,16 @@ public class ServerStoreAclHandler extends StoreAclHandler {
     } else {
       super.channelRead0(ctx, req);
     }
+  }
+
+  @Override
+  public void grpcRead(GrpcHandlerContext ctx) {
+
+  }
+
+  @Override
+  public void grpcWrite(GrpcHandlerContext ctx) {
+
   }
 
   @Override

@@ -1,6 +1,8 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -11,6 +13,8 @@ import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.protocols.VeniceClientRequest;
+import com.linkedin.venice.request.RequestHelper;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -19,7 +23,6 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
-import java.net.URI;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -34,7 +37,8 @@ import java.util.stream.Collectors;
  * {@link FullHttpRequest} for each request.
  * The downstream handler is not expected to use this object any more.
  */
-public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest>
+    implements VeniceGrpcHandler {
   private final StatsHandler statsHandler;
   private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
 
@@ -126,6 +130,22 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
     }
   }
 
+  @Override
+  public void grpcRead(GrpcHandlerContext ctx) {
+    VeniceClientRequest clientRequest = ctx.getVeniceClientRequest();
+    RouterRequest routerRequest = clientRequest.getIsBatchRequest()
+        ? MultiGetRouterRequestWrapper.parseMultiGetGrpcRequest(clientRequest)
+        : GetRouterRequest.grpcGetRouterRequest(clientRequest);
+
+    statsHandler.setRequestInfo(routerRequest);
+    ctx.setRouterRequest(routerRequest);
+  }
+
+  @Override
+  public void grpcWrite(GrpcHandlerContext ctx) {
+
+  }
+
   /**
    * This function is used to support http keep-alive.
    * For now, the connection will keep open if the idle time is less than the configured
@@ -151,7 +171,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   static QueryAction getQueryActionFromRequest(HttpRequest req) {
     // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
     // Generating a URI lets us always take just the path.
-    String[] requestParts = URI.create(req.uri()).getPath().split("/");
+    String[] requestParts = RequestHelper.getRequestParts(req.uri());
     HttpMethod reqMethod = req.method();
     if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) || requestParts.length < 2) {
       String actions =

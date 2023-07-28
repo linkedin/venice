@@ -13,13 +13,18 @@ import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import io.grpc.stub.StreamObserver;
 import io.netty.buffer.ByteBuf;
+import java.util.Iterator;
+import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(VeniceReadServiceImpl.class);
-  StorageReadRequestHandler storageReadRequestHandler;
+
+  private List<VeniceGrpcHandler> inboundHandlers;
+  private List<VeniceGrpcHandler> outboundHandlers;
+  private StorageReadRequestHandler storageReadRequestHandler;
 
   public VeniceReadServiceImpl() {
     LOGGER.info("Created gRPC Server for VeniceReadService");
@@ -30,19 +35,45 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     this.storageReadRequestHandler = storageReadRequestHandler;
   }
 
+  public VeniceReadServiceImpl(List<VeniceGrpcHandler> inboundHandlers, List<VeniceGrpcHandler> outboundHandlers) {
+    this.inboundHandlers = inboundHandlers;
+    this.outboundHandlers = outboundHandlers;
+  }
+
   @Override
   public void get(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
-    VeniceServerResponse grpcResponse = handleSingleGetRequest(request);
-
-    responseObserver.onNext(grpcResponse);
-    responseObserver.onCompleted();
+    handleRequest(request, responseObserver);
   }
 
   @Override
   public void batchGet(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
-    VeniceServerResponse grpcBatchGetResponse = handleMultiGetRequest(request);
+    handleRequest(request, responseObserver);
+  }
 
-    responseObserver.onNext(grpcBatchGetResponse);
+  private void handleRequest(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
+    VeniceServerResponse.Builder responseBuilder = VeniceServerResponse.newBuilder();
+    GrpcHandlerContext ctx = new GrpcHandlerContext(request, responseBuilder, responseObserver);
+    Iterator<VeniceGrpcHandler> inboundHandlerIterator = inboundHandlers.iterator();
+
+    while (inboundHandlerIterator.hasNext() && !ctx.isCompleted()) {
+      VeniceGrpcHandler inboundHandler = inboundHandlerIterator.next();
+      inboundHandler.grpcRead(ctx);
+    }
+
+    if (ctx.isCompleted()) {
+      // received an error and had to finish execution early.
+      return;
+    }
+
+    // for (VeniceGrpcHandler inboundHandler : inboundHandlers) {
+    // inboundHandler.grpcRead(ctx);
+    // }
+
+    for (VeniceGrpcHandler outboundHandler: outboundHandlers) {
+      outboundHandler.grpcWrite(ctx);
+    }
+
+    responseObserver.onNext(ctx.getVeniceServerResponseBuilder().build());
     responseObserver.onCompleted();
   }
 
