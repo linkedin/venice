@@ -93,6 +93,32 @@ public class VenicePushJobTest {
   private static final String DISCOVERY_URL = "d2://d2Clusters/venice-discovery";
   private static final String PARENT_REGION_NAME = "dc-parent";
 
+  // Happy path
+  @Test
+  public void testRepushTTLConfig() throws Exception {
+    Properties repushProps = getRepushReadyProps();
+
+    ControllerClient client = getClient(storeInfo -> {
+      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
+      storeInfo.setWriteComputationEnabled(true);
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
+      storeInfo.setColoToCurrentVersions(new HashMap<String, Integer>() {
+        {
+          // the initial version for all regions is 1, otherwise the topic name would mismatch
+          put("dc-0", 1);
+          put("dc-1", 1);
+        }
+      });
+    });
+    VenicePushJob pushJob = getSpyVenicePushJob(repushProps, client);
+    doReturn("/tmp/test").when(pushJob).getRmdSchemaPath();
+    doNothing().when(pushJob).pollStatusUntilComplete(any(), any(), any(), any(), eq(null), anyBoolean());
+    skipVPJValidation(pushJob);
+
+    pushJob.run();
+  }
+
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")
   public void testRepushTTLJobWithNonKafkaInput() {
     Properties repushProps = new Properties();

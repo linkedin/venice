@@ -1041,26 +1041,7 @@ public class VenicePushJob implements AutoCloseable {
           }
           if (pushJobSetting.repushTTLEnabled) {
             pushJobSetting.repushTTLInSeconds = storeSetting.storeRewindTimeInSeconds;
-            // make the base directory TEMP_DIR_PREFIX with 777 permissions
-            Path baseSchemaDir = new Path(TEMP_DIR_PREFIX);
-            FileSystem fs = FileSystem.get(new Configuration());
-            if (!fs.exists(baseSchemaDir)) {
-              fs.mkdirs(baseSchemaDir);
-              fs.setPermission(baseSchemaDir, new FsPermission("777"));
-            }
-
-            // build the full path for HDFSRmdSchemaSource: the schema path will be suffixed
-            // by the store name and time like: <TEMP_DIR_PREFIX>/<store_name>/<timestamp>
-            StringBuilder schemaDirBuilder = new StringBuilder();
-            schemaDirBuilder.append(TEMP_DIR_PREFIX)
-                .append(pushJobSetting.storeName)
-                .append("/")
-                .append(System.currentTimeMillis());
-            try (HDFSRmdSchemaSource rmdSchemaSource =
-                new HDFSRmdSchemaSource(schemaDirBuilder.toString(), pushJobSetting.storeName)) {
-              rmdSchemaSource.loadRmdSchemasOnDisk(controllerClient);
-              pushJobSetting.rmdSchemaDir = rmdSchemaSource.getPath();
-            }
+            pushJobSetting.rmdSchemaDir = getRmdSchemaPath();
           }
         }
         // Create new store version, topic and fetch Kafka url from backend
@@ -1219,6 +1200,34 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSetting.rmdSchemaDir != null) {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
+    }
+  }
+
+  /**
+   * Create and return the directory for storing RMD schema files of this store.
+   * @return
+   * @throws IOException
+   */
+  String getRmdSchemaPath() throws IOException {
+    // make the base directory TEMP_DIR_PREFIX with 777 permissions
+    Path baseSchemaDir = new Path(TEMP_DIR_PREFIX);
+    FileSystem fs = FileSystem.get(new Configuration());
+    if (!fs.exists(baseSchemaDir)) {
+      fs.mkdirs(baseSchemaDir);
+      fs.setPermission(baseSchemaDir, new FsPermission("777"));
+    }
+
+    // build the full path for HDFSRmdSchemaSource: the schema path will be suffixed
+    // by the store name and time like: <TEMP_DIR_PREFIX>/<store_name>/<timestamp>
+    StringBuilder schemaDirBuilder = new StringBuilder();
+    schemaDirBuilder.append(TEMP_DIR_PREFIX)
+        .append(pushJobSetting.storeName)
+        .append("/")
+        .append(System.currentTimeMillis());
+    try (HDFSRmdSchemaSource rmdSchemaSource =
+        new HDFSRmdSchemaSource(schemaDirBuilder.toString(), pushJobSetting.storeName)) {
+      rmdSchemaSource.loadRmdSchemasOnDisk(controllerClient);
+      return rmdSchemaSource.getPath();
     }
   }
 
