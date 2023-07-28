@@ -126,7 +126,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }
       // Specify the system store cluster name
-      Properties extraProperties = options.getVeniceProperties().toProperties();
+      Properties extraProperties = options.getExtraProperties();
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
       extraProperties.putAll(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       pubBrokerDetails.forEach((key, value) -> extraProperties.putIfAbsent(key, value));

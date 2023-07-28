@@ -17,7 +17,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -56,7 +55,7 @@ public class AdminToolBackfillTest {
         2,
         2,
         1,
-        Optional.of(new VeniceProperties(parentControllerProperties)),
+        Optional.of(parentControllerProperties),
         Optional.empty(),
         Optional.empty(),
         false);

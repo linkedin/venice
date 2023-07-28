@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.controller.SchemaConstants.BAD_VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2;
@@ -26,6 +25,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGeneratorWithCustomProp;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -38,6 +38,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -49,6 +50,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -69,73 +71,56 @@ import org.testng.annotations.Test;
 
 public class VeniceParentHelixAdminTest {
   private static final long DEFAULT_TEST_TIMEOUT_MS = 60000;
-  VeniceClusterWrapper venice;
-  ZkServerWrapper zkServerWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  private VeniceClusterWrapper venice;
+  private String clusterName;
 
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
-    Properties properties = new Properties();
-    // Disable topic deletion
-    properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
-    venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 100000, false, false, properties);
-    zkServerWrapper = ServiceFactory.getZkServer();
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(1, 1, 1, 1, 1, 1);
+    clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
+    venice = multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(clusterName);
   }
 
   @AfterClass
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(venice);
-    Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
   public void testTerminalStateTopicChecker() {
-    Properties properties = new Properties();
-    properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
-    properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
-    try (
-        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(
-                venice.getClusterName(),
-                zkServerWrapper,
-                venice.getPubSubBrokerWrapper())
-                    .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                    .extraProperties(properties)
-                    .build());
-        ControllerClient parentControllerClient =
-            new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
+    try (ControllerClient parentControllerClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
       String storeName = Utils.getUniqueString("testStore");
       assertFalse(
           parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
           "Failed to create test store");
       // Empty push without checking its push status
-      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test-push", 1000);
+      ControllerResponse response =
+          parentControllerClient.sendEmptyPushAndWait(storeName, "test-push", 1000, 30 * Time.MS_PER_SECOND);
       assertFalse(response.isError(), "Failed to perform empty push on test store");
-      // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
-      // the TerminalStateTopicCheckerForParentController.
-      waitForNonDeterministicAssertion(
-          30,
-          TimeUnit.SECONDS,
-          true,
-          () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
+      String versionTopic = null;
+      if (response instanceof VersionCreationResponse) {
+        versionTopic = ((VersionCreationResponse) response).getKafkaTopic();
+      } else if (response instanceof JobStatusQueryResponse) {
+        versionTopic = Version.composeKafkaTopic(storeName, ((JobStatusQueryResponse) response).getVersion());
+      }
+
+      if (versionTopic != null) {
+        assertTrue(
+            multiRegionMultiClusterWrapper.getParentControllers()
+                .get(0)
+                .getVeniceAdmin()
+                .isTopicTruncated(versionTopic));
+      }
     }
   }
 
   @Test(timeOut = 2 * DEFAULT_TEST_TIMEOUT_MS)
   public void testAddVersion() {
-    Properties properties = new Properties();
-    properties.setProperty(REPLICATION_METADATA_VERSION, String.valueOf(1));
-    try (
-        VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(
-                venice.getClusterName(),
-                zkServerWrapper,
-                venice.getPubSubBrokerWrapper())
-                    .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                    .extraProperties(properties)
-                    .build());
-        ControllerClient parentControllerClient =
-            new ControllerClient(venice.getClusterName(), parentControllerWrapper.getControllerUrl())) {
+    try (ControllerClient parentControllerClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
       // Adding store
       String storeName = Utils.getUniqueString("test_store");
       String owner = "test_owner";
@@ -241,6 +226,7 @@ public class VeniceParentHelixAdminTest {
   @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS * 2)
   public void testResourceCleanupCheckForStoreRecreation() {
     Properties properties = new Properties();
+    // Disable topic deletion
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
     // Recreation of the same store will fail due to lingering system store resources
@@ -248,17 +234,23 @@ public class VeniceParentHelixAdminTest {
     // cleaned up.
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
+
     try (
-        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(
-                venice.getClusterName(),
-                zkServerWrapper,
-                venice.getPubSubBrokerWrapper())
-                    .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                    .extraProperties(properties)
-                    .build());
-        ControllerClient parentControllerClient =
-            new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
+        VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper =
+            ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                Optional.of(properties),
+                Optional.of(properties),
+                Optional.empty());
+        ControllerClient parentControllerClient = new ControllerClient(
+            twoLayerMultiRegionMultiClusterWrapper.getClusterNames()[0],
+            twoLayerMultiRegionMultiClusterWrapper.getControllerConnectString())) {
       String storeName = Utils.getUniqueString("testStore");
       assertFalse(
           parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
@@ -268,16 +260,24 @@ public class VeniceParentHelixAdminTest {
           parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"").isError(),
           "Trying to create an existing store should fail");
       // Empty push without checking its push status
-      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test-push", 1000);
+      ControllerResponse response =
+          parentControllerClient.sendEmptyPushAndWait(storeName, "test-push", 1000, 30 * Time.MS_PER_SECOND);
       assertFalse(response.isError(), "Failed to perform empty push on test store");
+      String versionTopic = null;
+      if (response instanceof VersionCreationResponse) {
+        versionTopic = ((VersionCreationResponse) response).getKafkaTopic();
+      } else if (response instanceof JobStatusQueryResponse) {
+        versionTopic = Version.composeKafkaTopic(storeName, ((JobStatusQueryResponse) response).getVersion());
+      }
 
-      // The empty push should eventually complete and have its version topic truncated by job status polling invoked by
-      // the TerminalStateTopicCheckerForParentController.
-      waitForNonDeterministicAssertion(
-          30,
-          TimeUnit.SECONDS,
-          true,
-          () -> assertTrue(parentController.getVeniceAdmin().isTopicTruncated(response.getKafkaTopic())));
+      if (versionTopic != null) {
+        assertTrue(
+            multiRegionMultiClusterWrapper.getParentControllers()
+                .get(0)
+                .getVeniceAdmin()
+                .isTopicTruncated(versionTopic));
+      }
+
       assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
 
       ControllerResponse controllerResponse =
@@ -302,7 +302,7 @@ public class VeniceParentHelixAdminTest {
 
       // Delete the store and try re-creation.
       assertFalse(parentControllerClient.disableAndDeleteStore(storeName).isError(), "Delete store shouldn't fail");
-      // re-create the same store right away will fail because of lingering system store resources
+      // Re-create the same store right away will fail because of lingering system store resources
       controllerResponse = parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
       assertTrue(
           controllerResponse.isError(),
@@ -312,98 +312,88 @@ public class VeniceParentHelixAdminTest {
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
   public void testHybridAndETLStoreConfig() {
-    try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(
-            venice.getClusterName(),
-            zkServerWrapper,
-            venice.getPubSubBrokerWrapper())
-                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                .build())) {
-      String controllerUrl = parentControllerWrapper.getControllerUrl();
+    // Adding store
+    String storeName = "test_store";
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String proxyUser = "test_user";
+    Schema valueSchema = generateSchema(false);
+    try (ControllerClient controllerClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
+      assertCommand(controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString()));
 
-      // Adding store
-      String storeName = "test_store";
-      String owner = "test_owner";
-      String keySchemaStr = "\"long\"";
-      String proxyUser = "test_user";
-      Schema valueSchema = generateSchema(false);
-      try (ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), controllerUrl)) {
-        assertCommand(controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString()));
+      // Configure the store to hybrid
+      UpdateStoreQueryParams params =
+          new UpdateStoreQueryParams().setHybridRewindSeconds(600).setHybridOffsetLagThreshold(10000);
+      assertCommand(controllerClient.updateStore(storeName, params));
+      HybridStoreConfig hybridStoreConfig =
+          assertCommand(controllerClient.getStore(storeName)).getStore().getHybridStoreConfig();
+      Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
+      Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
 
-        // Configure the store to hybrid
-        UpdateStoreQueryParams params =
-            new UpdateStoreQueryParams().setHybridRewindSeconds(600).setHybridOffsetLagThreshold(10000);
-        assertCommand(controllerClient.updateStore(storeName, params));
-        HybridStoreConfig hybridStoreConfig =
-            assertCommand(controllerClient.getStore(storeName)).getStore().getHybridStoreConfig();
-        Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
-        Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
+      // Try to update the hybrid store with different hybrid configs
+      params = new UpdateStoreQueryParams().setHybridRewindSeconds(172800);
+      assertCommand(controllerClient.updateStore(storeName, params));
+      hybridStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getHybridStoreConfig();
+      Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 172800);
+      Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
 
-        // Try to update the hybrid store with different hybrid configs
-        params = new UpdateStoreQueryParams().setHybridRewindSeconds(172800);
-        assertCommand(controllerClient.updateStore(storeName, params));
-        hybridStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getHybridStoreConfig();
-        Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 172800);
-        Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
+      // test enabling ETL without etl proxy account, expected failure
+      params = new UpdateStoreQueryParams();
+      params.setRegularVersionETLEnabled(true);
+      params.setFutureVersionETLEnabled(true);
+      ControllerResponse controllerResponse = controllerClient.updateStore(storeName, params);
+      ETLStoreConfig etlStoreConfig =
+          assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
+      Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
+      Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
+      Assert.assertTrue(
+          controllerResponse.getError()
+              .contains("Cannot enable ETL for this store " + "because etled user proxy account is not set"));
 
-        // test enabling ETL without etl proxy account, expected failure
-        params = new UpdateStoreQueryParams();
-        params.setRegularVersionETLEnabled(true);
-        params.setFutureVersionETLEnabled(true);
-        ControllerResponse controllerResponse = controllerClient.updateStore(storeName, params);
-        ETLStoreConfig etlStoreConfig =
-            assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
-        Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
-        Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
-        Assert.assertTrue(
-            controllerResponse.getError()
-                .contains("Cannot enable ETL for this store " + "because etled user proxy account is not set"));
+      // test enabling ETL with empty proxy account, expected failure
+      params = new UpdateStoreQueryParams();
+      params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount("");
+      params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount("");
+      controllerResponse = controllerClient.updateStore(storeName, params);
+      etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
+      Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
+      Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
+      Assert.assertTrue(
+          controllerResponse.getError()
+              .contains("Cannot enable ETL for this store " + "because etled user proxy account is not set"));
 
-        // test enabling ETL with empty proxy account, expected failure
-        params = new UpdateStoreQueryParams();
-        params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount("");
-        params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount("");
-        controllerResponse = controllerClient.updateStore(storeName, params);
-        etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
-        Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
-        Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
-        Assert.assertTrue(
-            controllerResponse.getError()
-                .contains("Cannot enable ETL for this store " + "because etled user proxy account is not set"));
+      // test enabling ETL with etl proxy account, expected success
+      params = new UpdateStoreQueryParams();
+      params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
+      params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
+      controllerClient.updateStore(storeName, params);
+      etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
+      Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
+      Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
 
-        // test enabling ETL with etl proxy account, expected success
-        params = new UpdateStoreQueryParams();
-        params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
-        params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
-        controllerClient.updateStore(storeName, params);
-        etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
-        Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
-        Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
+      // set the ETL back to false
+      params = new UpdateStoreQueryParams();
+      params.setRegularVersionETLEnabled(false);
+      params.setFutureVersionETLEnabled(false);
+      controllerClient.updateStore(storeName, params);
+      etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
+      Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
+      Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
 
-        // set the ETL back to false
-        params = new UpdateStoreQueryParams();
-        params.setRegularVersionETLEnabled(false);
-        params.setFutureVersionETLEnabled(false);
-        controllerClient.updateStore(storeName, params);
-        etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
-        Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
-        Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
-
-        // test enabling ETL again without etl proxy account, expected success
-        params = new UpdateStoreQueryParams();
-        params.setRegularVersionETLEnabled(true);
-        params.setFutureVersionETLEnabled(true);
-        controllerClient.updateStore(storeName, params);
-        etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
-        Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
-        Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
-      }
+      // test enabling ETL again without etl proxy account, expected success
+      params = new UpdateStoreQueryParams();
+      params.setRegularVersionETLEnabled(true);
+      params.setFutureVersionETLEnabled(true);
+      controllerClient.updateStore(storeName, params);
+      etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
+      Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
+      Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
     }
   }
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
   public void testSupersetSchemaWithCustomSupersetSchemaGenerator() throws IOException {
-    String clusterName = Utils.getUniqueString("testSupersetSchemaWithCustomSupersetSchemaGenerator");
     final String CUSTOM_PROP = "custom_prop";
     // Contains f0, f1
     Schema valueSchemaV1 =
@@ -422,23 +412,27 @@ public class VeniceParentHelixAdminTest {
     properties
         .put(VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR, new SupersetSchemaGeneratorWithCustomProp(CUSTOM_PROP));
 
-    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
-            new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer)
-                .setRegionName(DEFAULT_PARENT_DATA_CENTER_REGION_NAME)
-                .build());
-        VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
-                .regionName(CHILD_REGION_NAME_PREFIX + "0")
-                .build());
-        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-        VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, pubSubBrokerWrapper)
-                .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
-                .extraProperties(properties)
-                .build())) {
-      String parentControllerUrl = parentControllerWrapper.getControllerUrl();
-      try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl)) {
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            1,
+            Optional.of(properties),
+            Optional.empty(),
+            Optional.empty())) {
+      String parentControllerUrl = twoLayerMultiRegionMultiClusterWrapper.getControllerConnectString();
+      try (ControllerClient parentControllerClient =
+          new ControllerClient(twoLayerMultiRegionMultiClusterWrapper.getClusterNames()[0], parentControllerUrl)) {
+        TestUtils.waitForNonDeterministicAssertion(
+            30,
+            TimeUnit.SECONDS,
+            false,
+            true,
+            () -> parentControllerClient.getLeaderControllerUrl());
         // Create a new store
         String storeName = Utils.getUniqueString("test_store_");
         String owner = "test_owner";
@@ -565,7 +559,6 @@ public class VeniceParentHelixAdminTest {
   public void testStoreMetaDataUpdateFromParentToChildController(
       boolean isControllerSslEnabled,
       boolean isSupersetSchemaGeneratorEnabled) throws IOException {
-    String clusterName = Utils.getUniqueString("testStoreMetadataUpdate");
     Properties properties = new Properties();
     // This cluster setup don't have server, we cannot perform push here.
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
@@ -1009,7 +1002,7 @@ public class VeniceParentHelixAdminTest {
     // Validate that the controller generates the correct schema.
     Assert.assertEquals(registeredWriteComputeSchema.get(0).getSchemaStr(), expectedWriteComputeSchema.toString());
 
-    // Step 4. Add more value schemas and expect to get their corresponding write compute schemas.
+    // Step 4. Add more value schemas and expect to get their corresponding write-compute schemas.
     parentControllerClient.addValueSchema(storeName, BAD_VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2); // This won't generate any
                                                                                              // derived schema
     parentControllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3);

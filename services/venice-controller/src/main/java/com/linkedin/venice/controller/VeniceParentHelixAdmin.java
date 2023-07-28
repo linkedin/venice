@@ -53,6 +53,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COM
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -75,6 +77,8 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.authorization.SystemStoreAclSynchronizationTask;
+import com.linkedin.venice.controller.init.DelegatingClusterLeaderInitializationRoutine;
+import com.linkedin.venice.controller.init.SharedInternalRTStoreInitializationRoutine;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
@@ -191,8 +195,6 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -265,12 +267,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceParentHelixAdmin implements Admin {
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
-  private static final long SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS = 3000;
-  private static final int MAX_ASYNC_SETUP_RETRY_COUNT = 10;
   private static final Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdmin.class);
-  private static final String VENICE_INTERNAL_STORE_OWNER = "venice-internal";
-  private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
-  private static final String BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR = "batch job liveness heartbeat store: ";
   // Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   static final int STORE_VERSION_RETENTION_COUNT = 5;
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
@@ -284,8 +281,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private final byte[] emptyKeyByteArr = new byte[0];
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
-  private final Map<String, Map<String, Lock>> perStoreAdminLocks = new ConcurrentHashMap<>();
-  private final Map<String, Lock> perClusterAdminLocks = new ConcurrentHashMap<>();
+  private final Map<String, Map<String, ReentrantLock>> perStoreAdminLocks = new ConcurrentHashMap<>();
+  private final Map<String, ReentrantLock> perClusterAdminLocks = new ConcurrentHashMap<>();
   private final Map<String, AdminCommandExecutionTracker> adminCommandExecutionTrackers;
   private final Set<String> executionIdValidatedClusters = new HashSet<>();
   // Only used for setup work which are intended to be short lived and is bounded by the number of venice clusters.
@@ -321,8 +318,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final int waitingTimeForConsumptionMs;
 
-  private final boolean batchJobHeartbeatEnabled;
-
   private Optional<DynamicAccessController> accessController;
 
   private final Optional<AuthorizerService> authorizerService;
@@ -348,6 +343,7 @@ public class VeniceParentHelixAdmin implements Admin {
     this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty(), Optional.empty());
   }
 
+  // Visible for testing
   public VeniceParentHelixAdmin(
       VeniceHelixAdmin veniceHelixAdmin,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -364,6 +360,7 @@ public class VeniceParentHelixAdmin implements Admin {
         new DefaultLingeringStoreVersionChecker());
   }
 
+  // Visible for testing
   public VeniceParentHelixAdmin(
       VeniceHelixAdmin veniceHelixAdmin,
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -382,7 +379,9 @@ public class VeniceParentHelixAdmin implements Admin {
         lingeringStoreVersionChecker,
         WriteComputeSchemaConverter.getInstance(), // TODO: make it an input param
         Optional.empty(),
-        new PubSubTopicRepository());
+        new PubSubTopicRepository(),
+        null,
+        null);
   }
 
   public VeniceParentHelixAdmin(
@@ -395,13 +394,14 @@ public class VeniceParentHelixAdmin implements Admin {
       LingeringStoreVersionChecker lingeringStoreVersionChecker,
       WriteComputeSchemaConverter writeComputeSchemaConverter,
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore,
+      DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore) {
     Validate.notNull(lingeringStoreVersionChecker);
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
     this.waitingTimeForConsumptionMs = this.multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
-    this.batchJobHeartbeatEnabled = this.multiClusterConfigs.getBatchJobHeartbeatEnabled();
     this.veniceWriterMap = new ConcurrentHashMap<>();
     this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(
         this.veniceHelixAdmin.getZkClient(),
@@ -464,6 +464,48 @@ public class VeniceParentHelixAdmin implements Admin {
     Class<IdentityParser> identityParserClass =
         ReflectUtils.loadClass(multiClusterConfigs.getCommonConfig().getIdentityParserClassName());
     this.identityParser = ReflectUtils.callConstructor(identityParserClass, new Class[0], new Object[0]);
+
+    String pushJobDetailsStoreClusterName = getMultiClusterConfigs().getPushJobStatusStoreClusterName();
+    boolean initializePushJobDetailsStore = !StringUtils.isEmpty(pushJobDetailsStoreClusterName);
+    if (initRoutineForPushJobDetailsSystemStore != null) {
+      if (initializePushJobDetailsStore) {
+        // TODO: When we plan to enable active-active push details store in future, we need to enable it by default.
+        UpdateStoreQueryParams updateStoreQueryParamsForPushJobDetails =
+            new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
+        initRoutineForPushJobDetailsSystemStore.setDelegate(
+            new SharedInternalRTStoreInitializationRoutine(
+                pushJobDetailsStoreClusterName,
+                VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
+                PUSH_JOB_DETAILS,
+                multiClusterConfigs,
+                this,
+                PushJobStatusRecordKey.getClassSchema(),
+                updateStoreQueryParamsForPushJobDetails));
+      } else {
+        initRoutineForPushJobDetailsSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+      }
+    }
+
+    String batchJobHeartbeatStoreClusterName = getMultiClusterConfigs().getBatchJobHeartbeatStoreCluster();
+    boolean initializeBatchJobHeartbeatStore = !StringUtils.isEmpty(batchJobHeartbeatStoreClusterName);
+    if (initRoutineForHeartbeatSystemStore != null) {
+      if (initializeBatchJobHeartbeatStore) {
+        UpdateStoreQueryParams updateStoreQueryParamsForHeartbeatSystemStore =
+            new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE)
+                .setActiveActiveReplicationEnabled(true);
+        initRoutineForHeartbeatSystemStore.setDelegate(
+            new SharedInternalRTStoreInitializationRoutine(
+                batchJobHeartbeatStoreClusterName,
+                BATCH_JOB_HEARTBEAT.getSystemStoreName(),
+                BATCH_JOB_HEARTBEAT,
+                multiClusterConfigs,
+                this,
+                BatchJobHeartbeatKey.getClassSchema(),
+                updateStoreQueryParamsForHeartbeatSystemStore));
+      } else {
+        initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+      }
+    }
   }
 
   // For testing purpose.
@@ -482,7 +524,6 @@ public class VeniceParentHelixAdmin implements Admin {
    *  <li> waiting resource's (partial) partition to appear in the external view.</li>
    *  <li> making sure admin Kafka topics is created.</li>
    *  <li> creating a Venice writer for the cluster.</li>
-   *  <li> setting up venice RT store for push-job-status records as well as batch-job liveness heartbeat if not yet done.</li>
    * </ul>
    * @param clusterName Venice cluster name.
    */
@@ -528,204 +569,6 @@ public class VeniceParentHelixAdmin implements Admin {
               .setPartitionCount(AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC)
               .build());
     });
-
-    if (!getMultiClusterConfigs().getPushJobStatusStoreClusterName().isEmpty()
-        && clusterName.equals(getMultiClusterConfigs().getPushJobStatusStoreClusterName())) {
-      // TODO: When we plan to enable active-active push details store in future, we need to enable it by default.
-      UpdateStoreQueryParams updateStoreQueryParams =
-          new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
-      asyncSetupForInternalRTStore(
-          getMultiClusterConfigs().getPushJobStatusStoreClusterName(),
-          VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
-          PUSH_JOB_DETAILS_STORE_DESCRIPTOR + VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
-          PushJobStatusRecordKey.getClassSchema().toString(),
-          PushJobDetails.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(clusterName).getMinNumberOfPartitions(),
-          updateStoreQueryParams);
-    }
-
-    maybeSetupBatchJobLivenessHeartbeatStore(clusterName);
-  }
-
-  private void maybeSetupBatchJobLivenessHeartbeatStore(String currClusterName) {
-    final String batchJobHeartbeatStoreCluster = getMultiClusterConfigs().getBatchJobHeartbeatStoreCluster();
-    final String batchJobHeartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
-
-    if (Objects.equals(currClusterName, batchJobHeartbeatStoreCluster)) {
-      UpdateStoreQueryParams updateStoreQueryParams =
-          new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE)
-              .setActiveActiveReplicationEnabled(true);
-      asyncSetupForInternalRTStore(
-          currClusterName,
-          batchJobHeartbeatStoreName,
-          BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR + batchJobHeartbeatStoreName,
-          BatchJobHeartbeatKey.getClassSchema().toString(),
-          BatchJobHeartbeatValue.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(currClusterName).getMinNumberOfPartitions(),
-          updateStoreQueryParams);
-    } else {
-      LOGGER.info(
-          "Skip creating the batch job liveness heartbeat store: {} in cluster: {} since the designated cluster is: {}",
-          batchJobHeartbeatStoreName,
-          currClusterName,
-          batchJobHeartbeatStoreCluster);
-    }
-  }
-
-  /**
-   * Setup the venice RT store used internally for hosting push job status records or participant messages.
-   * If the store already exists and is in the correct state then only verification is performed.
-   * TODO replace this with {@link com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine}
-   */
-  private void asyncSetupForInternalRTStore(
-      String clusterName,
-      String storeName,
-      String storeDescriptor,
-      String keySchema,
-      String valueSchema,
-      int partitionCount,
-      UpdateStoreQueryParams updateStoreQueryParams) {
-
-    asyncSetupExecutor.submit(() -> {
-      int retryCount = 0;
-      boolean isStoreReady = false;
-      while (!isStoreReady && asyncSetupEnabledMap.get(clusterName) && retryCount < MAX_ASYNC_SETUP_RETRY_COUNT) {
-        try {
-          if (retryCount > 0) {
-            timer.sleep(SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS);
-          }
-          isStoreReady = createOrVerifyInternalStore(
-              clusterName,
-              storeName,
-              storeDescriptor,
-              keySchema,
-              valueSchema,
-              partitionCount,
-              updateStoreQueryParams);
-        } catch (VeniceException e) {
-          // Verification attempts (i.e. a controller running this routine but is not the leader of the cluster) do not
-          // count towards the retry count.
-          LOGGER.warn(
-              "VeniceException occurred during {} setup with store: {} in cluster: {}",
-              storeDescriptor,
-              storeName,
-              clusterName,
-              e);
-          LOGGER.info("Async setup for {} attempts: {}/{}", storeDescriptor, retryCount, MAX_ASYNC_SETUP_RETRY_COUNT);
-        } catch (Exception e) {
-          LOGGER.error(
-              "Exception occurred aborting {} setup with store: {} in cluster: {}",
-              storeDescriptor,
-              storeName,
-              clusterName,
-              e);
-          break;
-        } finally {
-          retryCount++;
-        }
-      }
-      if (isStoreReady) {
-        LOGGER
-            .info("{} has been successfully created or it already exists in cluster: {}", storeDescriptor, clusterName);
-      } else {
-        LOGGER.error("Unable to create or verify the {} in cluster: {}", storeDescriptor, clusterName);
-      }
-    });
-  }
-
-  /**
-   * Verify the state of the system store. The leader controller will also create and configure the store if the
-   * desired state is not met.
-   * @param clusterName the name of the cluster that push status store belongs to.
-   * @param storeName the name of the push status store.
-   * @return {@code true} if the store is ready, {@code false} otherwise.
-   */
-  private boolean createOrVerifyInternalStore(
-      String clusterName,
-      String storeName,
-      String storeDescriptor,
-      String keySchema,
-      String valueSchema,
-      int partitionCount,
-      UpdateStoreQueryParams updateStoreQueryParams) {
-    boolean storeReady = false;
-    if (isLeaderControllerFor(clusterName)) {
-      // We should only perform the store validation if the current controller is the leader controller of the requested
-      // cluster.
-      Store store = getStore(clusterName, storeName);
-      if (store == null) {
-        createStore(clusterName, storeName, VENICE_INTERNAL_STORE_OWNER, keySchema, valueSchema, true);
-        store = getStore(clusterName, storeName);
-        if (store == null) {
-          throw new VeniceException("Unable to create or fetch the " + storeDescriptor);
-        }
-      } else {
-        LOGGER.info("Internal store: {} already exists in cluster: {}", storeName, clusterName);
-      }
-
-      if (!store.isHybrid()) {
-        // Make sure we do not override hybrid configs passed in.
-        if (!updateStoreQueryParams.getHybridOffsetLagThreshold().isPresent()) {
-          updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
-        }
-        if (!updateStoreQueryParams.getHybridRewindSeconds().isPresent()) {
-          updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
-        }
-        if (!updateStoreQueryParams.getPartitionCount().isPresent()) {
-          updateStoreQueryParams.setPartitionCount(partitionCount);
-        }
-        updateStore(clusterName, storeName, updateStoreQueryParams);
-        store = getStore(clusterName, storeName);
-        if (!store.isHybrid()) {
-          throw new VeniceException("Unable to update the " + storeDescriptor + " to a hybrid store");
-        }
-        LOGGER.info("Enabled hybrid for internal store: {} in cluster: {}", storeName, clusterName);
-      }
-
-      if (store.getVersions().isEmpty()) {
-        int replicationFactor = getReplicationFactor(clusterName, storeName);
-        Version version = incrementVersionIdempotent(
-            clusterName,
-            storeName,
-            Version.guidBasedDummyPushId(),
-            partitionCount,
-            replicationFactor);
-        writeEndOfPush(clusterName, storeName, version.getNumber(), true);
-        store = getStore(clusterName, storeName);
-        if (store.getVersions().isEmpty()) {
-          throw new VeniceException("Unable to initialize a version for the " + storeDescriptor);
-        }
-        LOGGER.info("Created a version for internal store: {} in cluster: {}", storeName, clusterName);
-      }
-
-      final String existingRtTopic = getRealTimeTopic(clusterName, storeName);
-      if (!existingRtTopic.equals(Version.composeRealTimeTopic(storeName))) {
-        throw new VeniceException("Unexpected real time topic name for the " + storeDescriptor);
-      }
-      storeReady = true;
-    } else {
-      // Verify that the store is indeed created by another controller. This is to prevent if the initial leader fails
-      // or when the cluster happens to be leaderless for a bit.
-      try (ControllerClient controllerClient = ControllerClient
-          .constructClusterControllerClient(clusterName, getLeaderController(clusterName).getUrl(false), sslFactory)) {
-        StoreResponse storeResponse = controllerClient.getStore(storeName);
-        if (storeResponse.isError()) {
-          LOGGER.warn(
-              "Failed to verify if {} exists from the controller with URL: {}",
-              storeDescriptor,
-              controllerClient.getControllerDiscoveryUrls());
-          return false;
-        }
-        StoreInfo storeInfo = storeResponse.getStore();
-        PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
-        if (storeInfo.getHybridStoreConfig() != null && !storeInfo.getVersions().isEmpty()
-            && storeInfo.getVersion(storeInfo.getLargestUsedVersionNumber()).get().getPartitionCount() == partitionCount
-            && getTopicManager().containsTopicAndAllPartitionsAreOnline(realTimeTopic)) {
-          storeReady = true;
-        }
-      }
-    }
-    return storeReady;
   }
 
   /**
@@ -737,17 +580,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public boolean isClusterValid(String clusterName) {
     return getVeniceHelixAdmin().isClusterValid(clusterName);
-  }
-
-  /**
-   * Test if batch-job heartbeat is enabled.
-   * @return <code>true</code> if batch-job heartbeat is enabled;
-   *         <code>false</code> otherwise.
-   * @see BatchJobHeartbeatConfigs#HEARTBEAT_ENABLED_CONFIG
-   */
-  @Override
-  public boolean isBatchJobHeartbeatEnabled() {
-    return batchJobHeartbeatEnabled;
   }
 
   private void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
@@ -950,10 +782,15 @@ public class VeniceParentHelixAdmin implements Admin {
               clusterName);
         }
       }
-      if (!isStoreMigrating) {
+      // Don't materialize system stores for system stores.
+      if (!isStoreMigrating && !isSystemStore) {
         for (VeniceSystemStoreType systemStoreType: getSystemStoreLifeCycleHelper()
-            .maybeMaterializeSystemStoresForUserStore(clusterName, storeName)) {
-          LOGGER.info("Materializing system store: {} in cluster: {}", systemStoreType, clusterName);
+            .materializeSystemStoresForUserStore(clusterName, storeName)) {
+          LOGGER.info(
+              "Materializing system store: {} for store: {} in cluster: {}",
+              systemStoreType,
+              storeName,
+              clusterName);
           sendUserSystemStoreCreationValidationAdminMessage(clusterName, storeName, systemStoreType);
         }
       }
@@ -2846,9 +2683,6 @@ public class VeniceParentHelixAdmin implements Admin {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
-      // TODO: Enable the following check for all new schema registration.
-      // AvroSchemaUtils.validateTopLevelFieldDefaultsValueRecordSchema(newValueSchema);
       final int newValueSchemaId = getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName,
           storeName,
@@ -2865,80 +2699,7 @@ public class VeniceParentHelixAdmin implements Admin {
             newValueSchemaStr);
       }
 
-      final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
-      Schema existingValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
-
-      final boolean doUpdateSupersetSchemaID;
-      if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
-        SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
-        Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
-        String newSuperSetSchemaStr = newSuperSetSchema.toString();
-
-        if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, newValueSchema)) {
-          doUpdateSupersetSchemaID = true;
-
-        } else if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, existingValueSchema)) {
-          doUpdateSupersetSchemaID = false;
-
-        } else if (store.isSystemStore()) {
-          /**
-           * Do not register superset schema for system store for now. Because some system stores specify the schema ID
-           * explicitly, which may conflict with the superset schema generated internally, the new value schema registration
-           * could fail.
-           *
-           * TODO: Design a long-term plan.
-           */
-          doUpdateSupersetSchemaID = false;
-
-        } else {
-          // Register superset schema only if it does not match with existing or new schema.
-
-          // validate compatibility of the new superset schema
-          getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-              clusterName,
-              storeName,
-              newSuperSetSchemaStr,
-              expectedCompatibilityType);
-          // Check if the superset schema already exists or not. If exists use the same ID, else bump the value ID by
-          // one.
-          int supersetSchemaId = getVeniceHelixAdmin().getValueSchemaIdIgnoreFieldOrder(
-              clusterName,
-              storeName,
-              newSuperSetSchemaStr,
-              (s1, s2) -> supersetSchemaGenerator.compareSchema(s1, s2) ? 0 : 1);
-          if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-            supersetSchemaId = newValueSchemaId + 1;
-          }
-          return addValueAndSupersetSchemaEntries(
-              clusterName,
-              storeName,
-              new SchemaEntry(newValueSchemaId, newValueSchema),
-              new SchemaEntry(supersetSchemaId, newSuperSetSchema),
-              store.isWriteComputationEnabled());
-        }
-      } else {
-        doUpdateSupersetSchemaID = false;
-      }
-
-      SchemaEntry addedSchemaEntry =
-          addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, newValueSchemaId, doUpdateSupersetSchemaID);
-
-      /**
-       * if active-active replication is enabled for the store then generate and register the new Replication metadata schema
-       * for this newly added value schema.
-       */
-      if (store.isActiveActiveReplicationEnabled()) {
-        Schema latestValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
-        final int valueSchemaId = getValueSchemaId(clusterName, storeName, latestValueSchema.toString());
-        updateReplicationMetadataSchema(clusterName, storeName, latestValueSchema, valueSchemaId);
-      }
-      if (store.isWriteComputationEnabled()) {
-        Schema newWriteComputeSchema =
-            writeComputeSchemaConverter.convertFromValueRecordSchema(addedSchemaEntry.getSchema());
-        addDerivedSchema(clusterName, storeName, addedSchemaEntry.getId(), newWriteComputeSchema.toString());
-      }
-
-      return addedSchemaEntry;
+      return addValueSchema(clusterName, storeName, newValueSchemaStr, newValueSchemaId, expectedCompatibilityType);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
@@ -3083,20 +2844,97 @@ public class VeniceParentHelixAdmin implements Admin {
       int valueSchemaId,
       String supersetSchemaStr,
       int supersetSchemaId) {
-    throw new VeniceUnsupportedOperationException("addValueSchema");
+    throw new VeniceUnsupportedOperationException("addSupersetSchema");
   }
 
-  /**
-   * Unsupported operation in the parent controller.
-   */
   @Override
   public SchemaEntry addValueSchema(
       String clusterName,
       String storeName,
-      String valueSchemaStr,
+      String newValueSchemaStr,
       int schemaId,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    throw new VeniceUnsupportedOperationException("addValueSchema");
+    acquireAdminMessageLock(clusterName, storeName);
+    try {
+      Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
+
+      final Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
+      Schema existingValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
+
+      final boolean doUpdateSupersetSchemaID;
+      if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
+        SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
+        Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
+        String newSuperSetSchemaStr = newSuperSetSchema.toString();
+
+        if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, newValueSchema)) {
+          doUpdateSupersetSchemaID = true;
+
+        } else if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, existingValueSchema)) {
+          doUpdateSupersetSchemaID = false;
+
+        } else if (store.isSystemStore()) {
+          /**
+           * Do not register superset schema for system store for now. Because some system stores specify the schema ID
+           * explicitly, which may conflict with the superset schema generated internally, the new value schema registration
+           * could fail.
+           *
+           * TODO: Design a long-term plan.
+           */
+          doUpdateSupersetSchemaID = false;
+
+        } else {
+          // Register superset schema only if it does not match with existing or new schema.
+
+          // validate compatibility of the new superset schema
+          getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+              clusterName,
+              storeName,
+              newSuperSetSchemaStr,
+              expectedCompatibilityType);
+          // Check if the superset schema already exists or not. If exists use the same ID, else bump the value ID by
+          // one.
+          int supersetSchemaId = getVeniceHelixAdmin().getValueSchemaIdIgnoreFieldOrder(
+              clusterName,
+              storeName,
+              newSuperSetSchemaStr,
+              (s1, s2) -> supersetSchemaGenerator.compareSchema(s1, s2) ? 0 : 1);
+          if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+            supersetSchemaId = schemaId + 1;
+          }
+          return addValueAndSupersetSchemaEntries(
+              clusterName,
+              storeName,
+              new SchemaEntry(schemaId, newValueSchema),
+              new SchemaEntry(supersetSchemaId, newSuperSetSchema),
+              store.isWriteComputationEnabled());
+        }
+      } else {
+        doUpdateSupersetSchemaID = false;
+      }
+
+      SchemaEntry addedSchemaEntry =
+          addValueSchemaEntry(clusterName, storeName, newValueSchemaStr, schemaId, doUpdateSupersetSchemaID);
+
+      /**
+       * if active-active replication is enabled for the store then generate and register the new Replication metadata schema
+       * for this newly added value schema.
+       */
+      if (store.isActiveActiveReplicationEnabled()) {
+        Schema latestValueSchema = getVeniceHelixAdmin().getSupersetOrLatestValueSchema(clusterName, store);
+        final int valueSchemaId = getValueSchemaId(clusterName, storeName, latestValueSchema.toString());
+        updateReplicationMetadataSchema(clusterName, storeName, latestValueSchema, valueSchemaId);
+      }
+      if (store.isWriteComputationEnabled()) {
+        Schema newWriteComputeSchema =
+            writeComputeSchemaConverter.convertFromValueRecordSchema(addedSchemaEntry.getSchema());
+        addDerivedSchema(clusterName, storeName, addedSchemaEntry.getId(), newWriteComputeSchema.toString());
+      }
+
+      return addedSchemaEntry;
+    } finally {
+      releaseAdminMessageLock(clusterName, storeName);
+    }
   }
 
   /**

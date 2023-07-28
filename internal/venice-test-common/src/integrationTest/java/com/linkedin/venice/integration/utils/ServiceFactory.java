@@ -426,9 +426,9 @@ public class ServiceFactory {
       int numberOfServers,
       int numberOfRouters,
       int replicationFactor,
-      Optional<VeniceProperties> parentControllerProps,
+      Optional<Properties> parentControllerProps,
       Optional<Properties> childControllerProperties,
-      Optional<VeniceProperties> serverProps) {
+      Optional<Properties> serverProps) {
     return getService(
         VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
@@ -453,9 +453,9 @@ public class ServiceFactory {
       int numberOfServers,
       int numberOfRouters,
       int replicationFactor,
-      Optional<VeniceProperties> parentControllerProps,
+      Optional<Properties> parentControllerProps,
       Optional<Properties> childControllerProperties,
-      Optional<VeniceProperties> serverProps,
+      Optional<Properties> serverProps,
       boolean forkServer) {
     return getService(
         VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,

@@ -15,7 +15,6 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -63,13 +62,7 @@ public class UserSystemStoreLifeCycleHelper {
     }
   }
 
-  public List<VeniceSystemStoreType> maybeMaterializeSystemStoresForUserStore(
-      String clusterName,
-      String userStoreName) {
-    if (VeniceSystemStoreType.getSystemStoreType(userStoreName) != null) {
-      // Don't materialize system stores for system stores.
-      return Collections.emptyList();
-    }
+  public List<VeniceSystemStoreType> materializeSystemStoresForUserStore(String clusterName, String userStoreName) {
     List<VeniceSystemStoreType> createdSystemStoreTypes = new ArrayList<>();
     Set<VeniceSystemStoreType> autoCreateEnabledSystemStores =
         clusterToAutoCreateEnabledSystemStoresMap.get(clusterName);
