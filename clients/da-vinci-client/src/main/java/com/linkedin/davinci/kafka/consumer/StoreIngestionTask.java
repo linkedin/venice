@@ -3243,7 +3243,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Properties localConsumerProps,
       String remoteKafkaSourceAddress,
       boolean consumeRemotely) {
-    Properties newConsumerProps = new Properties();
+    Properties newConsumerProps = serverConfig.getClusterProperties().getPropertiesCopy();
     newConsumerProps.putAll(localConsumerProps);
     newConsumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
     VeniceProperties customizedConsumerConfigs = consumeRemotely

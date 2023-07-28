@@ -52,6 +52,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -247,7 +248,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       }
 
       // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
-      Map<String, String> brokerDetails = pubSubBrokerWrapper.getAdditionalConfig();
+      Map<String, String> brokerDetails =
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper));
       for (Map.Entry<String, String> entry: brokerDetails.entrySet()) {
         if (clusterProps.containsKey(entry.getKey())) {
           // skip if the key is already present in cluster.properties

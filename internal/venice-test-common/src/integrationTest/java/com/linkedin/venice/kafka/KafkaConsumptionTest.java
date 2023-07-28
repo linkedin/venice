@@ -276,7 +276,7 @@ public class KafkaConsumptionTest {
       PubSubBrokerWrapper pubSubBrokerWrapper) throws ExecutionException, InterruptedException {
     PubSubProducerAdapter producerAdapter = pubSubBrokerWrapper.getPubSubClientsFactory()
         .getProducerAdapterFactory()
-        .create(new VeniceProperties(new Properties()), "test-producer", pubSubBrokerWrapper.getAddress());
+        .create(VeniceProperties.empty(), "test-producer", pubSubBrokerWrapper.getAddress());
 
     final byte[] randomBytes = new byte[] { 0, 1 };
 

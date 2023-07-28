@@ -20,7 +20,7 @@ public class ApacheKafkaAdminConfig {
   private final String brokerAddress;
 
   public ApacheKafkaAdminConfig(VeniceProperties veniceProperties) {
-    this.brokerAddress = ApacheKafkaProducerConfig.getPubsubBrokerAddress(veniceProperties);
+    this.brokerAddress = veniceProperties.getString(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS);
     this.adminProperties =
         veniceProperties.clipAndFilterNamespace(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX).toProperties();
     this.adminProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
