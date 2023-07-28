@@ -30,4 +30,14 @@ public class RequestHelperTest {
     Assert.assertEquals(requestParts[1], action);
     Assert.assertEquals(requestParts[2], storeName + "?" + query);
   }
+
+  @Test
+  public void testSplitRequestPath() {
+    String input = "protocol//hostname:port/action/resource/partition/key";
+    String[] expected = { "protocol", "", "hostname:port", "action", "resource", "partition", "key" };
+
+    String[] actual = RequestHelper.splitRequestPath(input);
+
+    Assert.assertEquals(actual, expected);
+  }
 }
