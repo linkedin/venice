@@ -230,6 +230,9 @@ public enum Arg {
   EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
   ENABLE_DISABLED_REPLICA("enable-disabled-replicas", "edr", true, "Reenable disabled replicas"),
   NON_INTERACTIVE("non-interactive", "nita", false, "non-interactive mode"),
+  MIN_COMPACTION_LAG_SECONDS(
+      "min-compaction-lag-seconds", "mcls", true, "Min compaction lag seconds for version topic of hybrid stores"
+  ),
   INTERVAL(
       "interval", "itv", true,
       "monitor data recovery progress at seconds close to the number specified by the interval parameter until tasks are finished"

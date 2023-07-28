@@ -3209,7 +3209,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if ((store.isHybrid() && clusterConfig.isKafkaLogCompactionForHybridStoresEnabled())
         || (store.isIncrementalPushEnabled() && clusterConfig.isKafkaLogCompactionForIncrementalPushStoresEnabled())) {
       PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, versionNumber));
-      getTopicManager().updateTopicCompactionPolicy(versionTopic, true);
+      long minCompactionLagSeconds = store.getMinCompactionLagSeconds();
+      long expectedMinCompactionLagMs =
+          minCompactionLagSeconds > 0 ? minCompactionLagSeconds * Time.MS_PER_SECOND : minCompactionLagSeconds;
+      getTopicManager().updateTopicCompactionPolicy(versionTopic, true, expectedMinCompactionLagMs);
     }
   }
 
@@ -4131,6 +4134,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Map<String, String>> storeViews = params.getStoreViews();
     Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
+    Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4392,6 +4396,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (latestSupersetSchemaId.isPresent()) {
         setLatestSupersetSchemaId(clusterName, storeName, latestSupersetSchemaId.get());
+      }
+
+      if (minCompactionLagSeconds.isPresent()) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+          store.setMinCompactionLagSeconds(minCompactionLagSeconds.get());
+          return store;
+        });
       }
 
       storageNodeReadQuotaEnabled

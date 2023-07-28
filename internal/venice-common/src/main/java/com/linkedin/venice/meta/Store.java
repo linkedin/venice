@@ -291,4 +291,8 @@ public interface Store {
   boolean isStorageNodeReadQuotaEnabled();
 
   void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled);
+
+  long getMinCompactionLagSeconds();
+
+  void setMinCompactionLagSeconds(long minCompactionLagSeconds);
 }
