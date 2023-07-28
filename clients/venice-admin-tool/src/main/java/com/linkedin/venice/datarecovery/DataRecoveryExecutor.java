@@ -1,7 +1,6 @@
 package com.linkedin.venice.datarecovery;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
@@ -13,11 +12,9 @@ import org.apache.logging.log4j.Logger;
  */
 public class DataRecoveryExecutor extends DataRecoveryWorker {
   private final Logger LOGGER = LogManager.getLogger(DataRecoveryExecutor.class);
-  private Set<String> skippedStores;
 
   public DataRecoveryExecutor() {
     super();
-    this.skippedStores = new HashSet<>();
   }
 
   @Override
@@ -32,12 +29,6 @@ public class DataRecoveryExecutor extends DataRecoveryWorker {
       tasks.add(new DataRecoveryTask(new StoreRepushCommand(p), taskParams));
     }
     return tasks;
-  }
-
-  // for testing
-
-  public Set<String> getSkippedStores() {
-    return skippedStores;
   }
 
   @Override
