@@ -9,7 +9,6 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
-import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -52,7 +51,7 @@ public class GrpcTransportClient extends InternalTransportClient {
 
   @Override
   public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
-    String[] requestParts = RequestHelper.splitRequestPath(requestPath);
+    String[] requestParts = requestPath.split("/");
     if (!requestParts[3].equals(STORAGE_ACTION)) {
       LOGGER.debug(
           "performing unsupported gRPC transport client action ({}), passing request to R2 client",
@@ -80,7 +79,7 @@ public class GrpcTransportClient extends InternalTransportClient {
       String requestPath,
       Map<String, String> headers,
       byte[] requestBody) {
-    String[] requestParts = RequestHelper.splitRequestPath(requestPath);
+    String[] requestParts = requestPath.split("/");
     if (!requestParts[2].equals(STORAGE_ACTION)) {
       LOGGER.debug(
           "performing unsupported gRPC transport client action ({}), passing request to R2 client",

@@ -21,18 +21,4 @@ public class RequestHelper {
     }
     return path.split("/");
   }
-
-  public static String[] splitRequestPath(String requestPath) {
-    /**
-     * In the context of STORAGE requests,
-     * 0: protocol
-     * 1: ""
-     * 2: host:port
-     * 3: action
-     * 4: resourceName
-     * 5: partition     (SINGLE-GET)
-     * 6: keyString     (SINGLE-GET)
-     */
-    return requestPath.split("/");
-  }
 }
