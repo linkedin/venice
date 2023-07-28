@@ -727,6 +727,7 @@ ext.createDiffFile = { ->
         ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',
         ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/OnlineProducerFactory.java',
         ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/ProducerTool.java',
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceControllerService.java',
 
         // Other files that have tests but are not executed in the regular unit test task
         ':!internal/alpini/*'

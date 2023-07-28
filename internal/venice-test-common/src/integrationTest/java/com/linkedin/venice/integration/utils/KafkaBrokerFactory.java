@@ -154,7 +154,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
         TestMockTime mockTime,
         VeniceTlsConfiguration tlsConfiguration,
         int sslPort) {
-      super(SERVICE_NAME, dataDirectory);
+      super(SERVICE_NAME + "-" + regionName, dataDirectory);
       this.kafkaConfig = kafkaConfig;
       this.kafkaServer = kafkaServer;
       this.mockTime = mockTime;

@@ -49,7 +49,6 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -108,9 +107,9 @@ public class DataRecoveryTest {
         2,
         1,
         2,
-        Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(controllerProps),
+        Optional.of(serverProperties),
         false);
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();

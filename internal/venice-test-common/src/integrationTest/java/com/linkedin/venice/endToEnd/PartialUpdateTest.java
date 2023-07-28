@@ -76,7 +76,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.ByteArrayOutputStream;
@@ -139,9 +138,9 @@ public class PartialUpdateTest {
         2,
         1,
         2,
-        Optional.of(new VeniceProperties(controllerProps)),
-        Optional.of(new Properties(controllerProps)),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(controllerProps),
+        Optional.of(controllerProps),
+        Optional.of(serverProperties),
         false);
     this.childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();

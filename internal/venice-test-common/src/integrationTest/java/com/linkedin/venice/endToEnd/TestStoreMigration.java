@@ -110,9 +110,9 @@ public class TestStoreMigration {
         2,
         1,
         2,
-        Optional.of(new VeniceProperties(parentControllerProperties)),
+        Optional.of(parentControllerProperties),
         Optional.empty(),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(serverProperties),
         false);
 
     multiClusterWrapper = twoLayerMultiRegionMultiClusterWrapper.getChildRegions().get(0);
