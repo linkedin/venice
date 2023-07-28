@@ -100,14 +100,6 @@ public class ConfigKeys {
   public static final String KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES = "kafka.log.compaction.for.hybrid.stores";
 
   /**
-   * Whether to turn on Kafka's log compaction for the store-version topics of incremental push stores.
-   *
-   * Will take effect at topic creation time, and when the incremental push config for the store is turned on.
-   */
-  public static final String KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES =
-      "kafka.log.compaction.for.incremental.push.stores";
-
-  /**
    * For log compaction enabled topics, this config will define the minimum time a message will remain uncompacted in the log.
    */
   public static final String KAFKA_MIN_LOG_COMPACTION_LAG_MS = "kafka.min.log.compaction.lag.ms";
@@ -154,12 +146,6 @@ public class ConfigKeys {
   public static final String ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY = "enable.native.replication.for.batch.only";
 
   /**
-   * Cluster-level config to enable native replication for all incremental push stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH =
-      "enable.native.replication.for.incremental.push";
-
-  /**
    * Cluster-level config to enable native replication for all hybrid stores.
    */
   public static final String ENABLE_NATIVE_REPLICATION_FOR_HYBRID = "enable.native.replication.for.hybrid";
@@ -169,12 +155,6 @@ public class ConfigKeys {
    */
   public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY =
       "enable.native.replication.as.default.for.batch.only";
-
-  /**
-   * Cluster-level config to enable native replication for new incremental push stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH =
-      "enable.native.replication.as.default.for.incremental.push";
 
   /**
    * Cluster-level config to enable native replication for new hybrid stores.
@@ -193,12 +173,6 @@ public class ConfigKeys {
    */
   public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE =
       "enable.active.active.replication.as.default.for.hybrid.store";
-
-  /**
-   * Cluster-level config to enable active-active replication for new incremental push stores.
-   */
-  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE =
-      "enable.active.active.replication.as.default.for.incremental.push.store";
 
   /**
    * Sets the default for whether or not do schema validation for all stores
@@ -1136,10 +1110,12 @@ public class ConfigKeys {
       "native.replication.source.fabric.as.default.for.hybrid.stores";
 
   /**
-   * The default source fabric used for native replication for incremental push stores.
+   * We will use this config to determine whether we should enable incremental push for hybrid active-active user stores.
+   * If this config is set to true, we will enable incremental push for hybrid active-active user stores.
    */
-  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES =
-      "native.replication.source.fabric.as.default.for.incremental.push.stores";
+  public static final String ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
+      "enable.incremental.push.for.hybrid.active.active.user.stores";
+
   /**
    * The highest priority source fabric selection config, specified in parent controller.
    */
