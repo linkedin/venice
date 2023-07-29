@@ -37,7 +37,7 @@ public class GrpcTransportClient extends InternalTransportClient {
 
   protected ManagedChannel getChannel(String serverAddress) {
     if (!nettyAddressToGrpcAddressMap.containsKey(serverAddress)) {
-      throw new VeniceException("No grpc server found for port: " + serverAddress);
+      throw new VeniceException("No grpc server found for address: " + serverAddress);
     }
 
     return serverGrpcChannels.computeIfAbsent(

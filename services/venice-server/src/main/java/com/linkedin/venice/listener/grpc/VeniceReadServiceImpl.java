@@ -19,7 +19,7 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(VeniceReadServiceImpl.class);
-  StorageReadRequestHandler storageReadRequestHandler;
+  private StorageReadRequestHandler storageReadRequestHandler;
 
   public VeniceReadServiceImpl() {
     LOGGER.info("Created gRPC Server for VeniceReadService");
