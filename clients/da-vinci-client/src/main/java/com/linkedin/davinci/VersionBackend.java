@@ -234,7 +234,6 @@ public class VersionBackend {
         compressor.get());
 
     return ComputeUtils.computeResult(
-        computeRequestWrapper.getComputeRequestVersion(),
         computeRequestWrapper.getOperations(),
         computeRequestWrapper.getOperationResultFields(),
         sharedContext,
@@ -259,7 +258,6 @@ public class VersionBackend {
           @Override
           public void onRecordReceived(GenericRecord key, GenericRecord value) {
             GenericRecord computeResult = ComputeUtils.computeResult(
-                computeRequestWrapper.getComputeRequestVersion(),
                 computeRequestWrapper.getOperations(),
                 computeRequestWrapper.getOperationResultFields(),
                 sharedContext,

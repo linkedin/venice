@@ -14,7 +14,6 @@ import org.apache.avro.generic.GenericRecord;
 public class CosineSimilarityOperator implements ReadComputeOperator {
   @Override
   public void compute(
-      int computeRequestVersion,
       ComputeOperation op,
       Schema.Field operatorInputField,
       Schema.Field resultField,
