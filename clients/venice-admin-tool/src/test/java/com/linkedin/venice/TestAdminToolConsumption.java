@@ -19,6 +19,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -27,6 +28,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +41,7 @@ public class TestAdminToolConsumption {
   public void testAdminToolConsumption() {
     String schemaStr = "\"string\"";
     String storeName = "test_store";
-    String topic = storeName + "_rt";
+    String topic = Version.composeRealTimeTopic(storeName);
     ControllerClient controllerClient = mock(ControllerClient.class);
     SchemaResponse schemaResponse = mock(SchemaResponse.class);
     when(schemaResponse.getSchemaStr()).thenReturn(schemaStr);
@@ -107,7 +109,7 @@ public class TestAdminToolConsumption {
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messagesMap = new HashMap<>();
     messagesMap.put(pubSubTopicPartition, pubSubMessageList);
     ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
-    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, new HashMap<>());
+    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
     long startTimestamp = 10;
     long endTimestamp = 20;
     when(apacheKafkaConsumer.offsetForTime(pubSubTopicPartition, startTimestamp)).thenReturn(startOffset);

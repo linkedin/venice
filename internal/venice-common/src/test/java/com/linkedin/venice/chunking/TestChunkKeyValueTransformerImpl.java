@@ -1,7 +1,4 @@
-package com.linkedin.venice.hadoop.input.kafka.chunk;
-
-import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.createChunkBytes;
-import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.createChunkedKeySuffix;
+package com.linkedin.venice.chunking;
 
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;
@@ -19,7 +16,7 @@ public class TestChunkKeyValueTransformerImpl {
 
   @Test
   public void testSplitCompositeKeyWithNonChunkValue() {
-    byte[] firstPartBytes = createChunkBytes(5, 1213);
+    byte[] firstPartBytes = TestChunkingUtils.createChunkBytes(5, 1213);
     byte[] secondPartBytes = serialize(KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX);
     byte[] compositeKey = combineParts(firstPartBytes, secondPartBytes);
     ChunkKeyValueTransformer chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(ChunkedKeySuffix.SCHEMA$);
@@ -44,11 +41,11 @@ public class TestChunkKeyValueTransformerImpl {
     ChunkKeyValueTransformer chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(ChunkedKeySuffix.SCHEMA$);
     List<ChunkedKeySuffix> firstParts = new ArrayList<>();
     firstParts.add(KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX);
-    firstParts.add(createChunkedKeySuffix(12, 123, 12));
-    firstParts.add(createChunkedKeySuffix(1212, 12331, 121213));
-    firstParts.add(createChunkedKeySuffix(0, 0, 0));
-    firstParts.add(createChunkedKeySuffix(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE));
-    firstParts.add(createChunkedKeySuffix(Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE));
+    firstParts.add(TestChunkingUtils.createChunkedKeySuffix(12, 123, 12));
+    firstParts.add(TestChunkingUtils.createChunkedKeySuffix(1212, 12331, 121213));
+    firstParts.add(TestChunkingUtils.createChunkedKeySuffix(0, 0, 0));
+    firstParts.add(TestChunkingUtils.createChunkedKeySuffix(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE));
+    firstParts.add(TestChunkingUtils.createChunkedKeySuffix(Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE));
     List<ChunkedKeySuffix> secondParts = new ArrayList<>(firstParts);
 
     for (int i = 0; i < firstParts.size(); i++) {
