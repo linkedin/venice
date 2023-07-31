@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka.chunk;
 
-import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.createChunkBytes;
-import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.createChunkedKeySuffix;
+import static com.linkedin.venice.chunking.TestChunkingUtils.createChunkBytes;
+import static com.linkedin.venice.chunking.TestChunkingUtils.createChunkedKeySuffix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
@@ -457,8 +457,6 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
-    chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
     ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
@@ -719,8 +717,6 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
-    chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
     ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);

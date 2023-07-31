@@ -98,7 +98,7 @@ public enum Arg {
   KAFKA_TOPIC_NAME("kafka-topic-name", "ktn", true, "Kafka topic name"),
   KAFKA_TOPIC_PARTITION("kafka-topic-partition", "ktp", true, "Kafka topic partition number"),
   KAFKA_CONSUMER_CONFIG_FILE(
-      "kafka-conumer-config-file", "kcc", true, "Configuration file for SSL (optional, if plain-text is available)"
+      "kafka-consumer-config-file", "kcc", true, "Configuration file for SSL (optional, if plain-text is available)"
   ),
   KAFKA_OPERATION_TIMEOUT(
       "kafka-operation-timeout", "kot", true, "Timeout in seconds for Kafka operations (default: 30 sec)"
@@ -166,7 +166,7 @@ public enum Arg {
   SOURCE_FABRIC("source-fabric", "sf", true, "The fabric where metadata/data copy over starts from"),
   DEST_FABRIC("dest-fabric", "df", true, "The fabric where metadata/data gets copy over into"),
   ACL_PERMS("acl-perms", "ap", true, "Acl permissions for the store"),
-  LOG_METADATA("log-metedata", "lm", false, "Only log the metadata for each kafka message on console"),
+  LOG_METADATA("log-metadata", "lm", false, "Only log the metadata for each kafka message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC(
       "native-replication-source-fabric", "nrsf", true,
       "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."
