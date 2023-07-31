@@ -27,6 +27,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -91,6 +92,7 @@ public class TestStoreMigration {
 
   @BeforeClass
   public void setUp() {
+    Utils.thisIsLocalhost();
     Properties parentControllerProperties = new Properties();
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
     parentControllerProperties
@@ -347,6 +349,75 @@ public class TestStoreMigration {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVersionConfigsRemainSameAfterStoreMigration() throws Exception {
+    String storeName = Utils.getUniqueString("test");
+    createAndPushStore(srcClusterName, storeName);
+
+    // Get the source current version config
+    StoreInfo sourceStoreInfo = getStoreConfig(childControllerUrl0, srcClusterName, storeName);
+    Optional<Version> sourceCurrentVersion = sourceStoreInfo.getVersion(sourceStoreInfo.getCurrentVersion());
+    Assert.assertTrue(sourceCurrentVersion.isPresent());
+    final Version expectedVersionConfig = sourceCurrentVersion.get();
+
+    // Update some version level configs like compression strategy, chunking, etc.
+    final boolean expectedChunkingEnabledValue = sourceStoreInfo.isChunkingEnabled();
+    // Will update the store config in the source cluster to the unexpected value; after store migration, the current
+    // version
+    // config in the destination cluster should match the expected value instead of the unexpected value.
+    final boolean unexpectedChunkingEnabledValue = !expectedChunkingEnabledValue;
+
+    final CompressionStrategy expectedCompressionStrategy = sourceStoreInfo.getCompressionStrategy();
+    final CompressionStrategy unexpectedCompressionStrategy = expectedCompressionStrategy == CompressionStrategy.NO_OP
+        ? CompressionStrategy.ZSTD_WITH_DICT
+        : CompressionStrategy.NO_OP;
+
+    // Update the store config in the source cluster to the unexpected values
+    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl)) {
+      UpdateStoreQueryParams updateStoreQueryParams =
+          new UpdateStoreQueryParams().setChunkingEnabled(unexpectedChunkingEnabledValue)
+              .setCompressionStrategy(unexpectedCompressionStrategy);
+      ControllerResponse updateStoreResponse = srcParentControllerClient.updateStore(storeName, updateStoreQueryParams);
+      Assert.assertFalse(updateStoreResponse.isError());
+    }
+
+    String srcD2ServiceName = multiClusterWrapper.getClusterToD2().get(srcClusterName);
+    String destD2ServiceName = multiClusterWrapper.getClusterToD2().get(destClusterName);
+    D2Client d2Client =
+        D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
+    ClientConfig clientConfig =
+        ClientConfig.defaultGenericClientConfig(storeName).setD2ServiceName(srcD2ServiceName).setD2Client(d2Client);
+
+    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
+      readFromStore(client);
+      startMigration(parentControllerUrl, storeName);
+      completeMigration(parentControllerUrl, storeName);
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        // StoreConfig in router might not be up-to-date. Keep reading from the store. Finally, router will find that
+        // cluster discovery changes and redirect the request to dest store. Client's d2ServiceName will be updated.
+        readFromStore(client);
+        AbstractAvroStoreClient<String, Object> castClient =
+            (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client)
+                .getInnerStoreClient();
+        Assert.assertTrue(castClient.toString().contains(destD2ServiceName));
+      });
+    }
+
+    // Test current version config in the destination cluster is the same as the version config from the source cluster,
+    // and they don't match any of the unexpected values.
+    StoreInfo destStoreInfo = getStoreConfig(childControllerUrl0, destClusterName, storeName);
+    Optional<Version> destCurrentVersion = destStoreInfo.getVersion(destStoreInfo.getCurrentVersion());
+    Assert.assertTrue(destCurrentVersion.isPresent());
+    final Version destVersionConfig = destCurrentVersion.get();
+    Assert.assertEquals(destVersionConfig, expectedVersionConfig);
+    // Check chunking config at version level shouldn't change
+    Assert.assertEquals(destVersionConfig.isChunkingEnabled(), expectedChunkingEnabledValue);
+    Assert.assertNotEquals(destVersionConfig.isChunkingEnabled(), unexpectedChunkingEnabledValue);
+    // Check compression strategy at version level shouldn't change
+    Assert.assertEquals(destVersionConfig.getCompressionStrategy(), expectedCompressionStrategy);
+    Assert.assertNotEquals(destVersionConfig.getCompressionStrategy(), unexpectedCompressionStrategy);
+  }
+
   private Properties createAndPushStore(String clusterName, String storeName) throws Exception {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
@@ -463,5 +534,17 @@ public class TestStoreMigration {
     Assert.assertNull(storeResponse.getStore());
     ControllerResponse discoveryResponse = destControllerClient.discoverCluster(storeName);
     Assert.assertEquals(discoveryResponse.getCluster(), srcClusterName);
+  }
+
+  private StoreInfo getStoreConfig(String controllerUrl, String clusterName, String storeName) {
+    try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl)) {
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      if (storeResponse.isError()) {
+        throw new VeniceException(
+            "Failed to get store configs for store " + storeName + " from cluster " + clusterName + ". Error: "
+                + storeResponse.getError());
+      }
+      return storeResponse.getStore();
+    }
   }
 }
