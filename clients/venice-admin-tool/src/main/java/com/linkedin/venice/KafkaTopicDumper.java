@@ -26,7 +26,6 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkId;
@@ -69,10 +68,10 @@ public class KafkaTopicDumper implements AutoCloseable {
   private static final String VENICE_ETL_PRODUCER_TIMESTAMP_FIELD = "producerTimestamp";
   private static final String VENICE_ETL_PARTITION_FIELD = "partition";
 
-  private final String storeName;
   private final String topicName;
   private final int partition;
   private final String keySchemaStr;
+  private final Schema keySchema;
   private final String latestValueSchemaStr;
   private final Schema[] allValueSchemas;
   private final boolean isChunkingEnabled;
@@ -84,7 +83,6 @@ public class KafkaTopicDumper implements AutoCloseable {
   private final boolean logMetadataOnly;
 
   private final ChunkKeyValueTransformer chunkKeyValueTransformer;
-  private final SpecificDatumReader<ChunkedKeySuffix> specificDatumReader;
   private final AvroSpecificDeserializer<ChunkedKeySuffix> chunkedKeySuffixDeserializer;
   private final ChunkedValueManifestSerializer manifestSerializer;
 
@@ -107,25 +105,25 @@ public class KafkaTopicDumper implements AutoCloseable {
       boolean logMetadataOnly) {
     this.consumer = consumer;
     this.maxConsumeAttempts = maxConsumeAttempts;
+    String storeName;
     if (Version.isVersionTopic(topic)) {
-      this.storeName = Version.parseStoreFromKafkaTopicName(topic);
+      storeName = Version.parseStoreFromKafkaTopicName(topic);
       int version = Version.parseVersionFromVersionTopicName(topic);
       this.isChunkingEnabled =
           controllerClient.getStore(storeName).getStore().getVersion(version).get().isChunkingEnabled();
     } else {
-      this.storeName = Version.parseStoreFromRealTimeTopic(topic);
+      storeName = Version.parseStoreFromRealTimeTopic(topic);
       this.isChunkingEnabled = false;
     }
     this.keySchemaStr = controllerClient.getKeySchema(storeName).getSchemaStr();
+    this.keySchema = AvroCompatibilityHelper.parse(keySchemaStr);
 
     if (isChunkingEnabled) {
-      chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(AvroCompatibilityHelper.parse(keySchemaStr));
-      specificDatumReader = new SpecificDatumReader<>(ChunkedKeySuffix.class);
-      chunkedKeySuffixDeserializer = new AvroSpecificDeserializer<>(specificDatumReader);
+      chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(keySchema);
+      chunkedKeySuffixDeserializer = new AvroSpecificDeserializer<>(new SpecificDatumReader<>(ChunkedKeySuffix.class));
       manifestSerializer = new ChunkedValueManifestSerializer(true);
     } else {
       chunkKeyValueTransformer = null;
-      specificDatumReader = null;
       chunkedKeySuffixDeserializer = null;
       manifestSerializer = null;
     }
@@ -236,7 +234,6 @@ public class KafkaTopicDumper implements AutoCloseable {
     }
 
     // build key/value reader
-    Schema keySchema = Schema.parse(keySchemaStr);
     keyReader = new GenericDatumReader<>(keySchema, keySchema);
 
     int valueSchemaNum = allValueSchemas.length;
@@ -399,9 +396,9 @@ public class KafkaTopicDumper implements AutoCloseable {
       case WITH_VALUE_CHUNK:
         return chunkedKeySuffix.chunkId;
       case WITH_CHUNK_MANIFEST:
-        ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
-            ByteUtils.extractByteArray(((Put) kafkaMessageEnvelope.payloadUnion).putValue),
-            AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+        Put putMessage = (Put) kafkaMessageEnvelope.payloadUnion;
+        ChunkedValueManifest chunkedValueManifest =
+            manifestSerializer.deserialize(ByteUtils.extractByteArray(putMessage.putValue), putMessage.schemaId);
 
         ByteBuffer firstChunkKeyWithChunkIdSuffix = chunkedValueManifest.keysWithChunkIdSuffix.get(0);
         final RawKeyBytesAndChunkedKeySuffix firstChunkRawKeyBytesAndChunkedKeySuffix = chunkKeyValueTransformer
