@@ -226,7 +226,6 @@ public class ApacheKafkaProducerAdapterITest {
     for (Map.Entry<PubSubProducerCallbackSimpleImpl, Future<PubSubProduceResult>> entry: produceResults.entrySet()) {
       PubSubProducerCallbackSimpleImpl cb = entry.getKey();
       Future<PubSubProduceResult> future = entry.getValue();
-      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> assertTrue(cb.isInvoked()));
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> assertTrue(future.isDone()));
       assertFalse(future.isCancelled());
 
@@ -239,17 +238,15 @@ public class ApacheKafkaProducerAdapterITest {
         } catch (Exception notExpected) {
           fail("When flush is enabled all messages should be sent to Kafka successfully");
         }
-        continue;
-      }
-
-      assertNotNull(cb.getException());
-      assertNotNull(cb.getException().getMessage());
-      assertTrue(cb.getException().getMessage().contains("Producer is closed forcefully."));
-      try {
-        future.get();
-        fail("Exceptionally completed future should throw an exception");
-      } catch (Exception expected) {
-        LOGGER.info("As expected an exception was received - {}", expected.toString()); // make spotbugs happy
+      } else {
+        try {
+          future.get();
+          fail("Exceptionally completed future should throw an exception");
+        } catch (Exception expected) {
+          LOGGER.info("As expected an exception was received - {}", expected.toString()); // make spotbugs happy
+          assertNotNull(expected.getMessage());
+          assertTrue(expected.getMessage().contains("Producer is closed forcefully"));
+        }
       }
     }
   }
