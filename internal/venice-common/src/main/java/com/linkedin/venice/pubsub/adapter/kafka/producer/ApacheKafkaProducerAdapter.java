@@ -32,6 +32,7 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
 
   private KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
   private final ApacheKafkaProducerConfig producerConfig;
+  private boolean forceClosed = false;
 
   /**
    * @param producerConfig contains producer configs
@@ -81,7 +82,7 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
         key,
         value,
         ApacheKafkaUtils.convertToKafkaSpecificHeaders(pubsubMessageHeaders));
-    ApacheKafkaProducerCallback kafkaCallback = new ApacheKafkaProducerCallback(pubsubProducerCallback);
+    ApacheKafkaProducerCallback kafkaCallback = new ApacheKafkaProducerCallback(pubsubProducerCallback, this);
     try {
       producer.send(record, kafkaCallback);
       return kafkaCallback.getProduceResultFuture();
@@ -116,6 +117,9 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
       producer.flush(closeTimeOutMs, TimeUnit.MILLISECONDS);
       LOGGER.info("Flushed all the messages in producer before closing");
     }
+    if (closeTimeOutMs == 0) {
+      forceClosed = true;
+    }
     producer.close(Duration.ofMillis(closeTimeOutMs));
     // Recycle the internal buffer allocated by KafkaProducer ASAP.
     producer = null;
@@ -146,5 +150,9 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
   @Override
   public String getBrokerAddress() {
     return producerConfig.getBrokerAddress();
+  }
+
+  boolean isForceClosed() {
+    return forceClosed;
   }
 }

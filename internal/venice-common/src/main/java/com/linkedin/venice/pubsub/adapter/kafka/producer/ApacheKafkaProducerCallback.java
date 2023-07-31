@@ -6,17 +6,25 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * A Kafka specific callback which wraps generic {@link PubSubProducerCallback}
  */
 public class ApacheKafkaProducerCallback implements Callback {
+  private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaProducerCallback.class);
+
   private final PubSubProducerCallback pubsubProducerCallback;
   private final CompletableFuture<PubSubProduceResult> produceResultFuture = new CompletableFuture<>();
+  private final ApacheKafkaProducerAdapter producerAdapter;
 
-  public ApacheKafkaProducerCallback(PubSubProducerCallback pubsubProducerCallback) {
+  public ApacheKafkaProducerCallback(
+      PubSubProducerCallback pubsubProducerCallback,
+      ApacheKafkaProducerAdapter producerAdapter) {
     this.pubsubProducerCallback = pubsubProducerCallback;
+    this.producerAdapter = producerAdapter;
   }
 
   /**
@@ -53,6 +61,14 @@ public class ApacheKafkaProducerCallback implements Callback {
       produceResult = new ApacheKafkaProduceResult(metadata);
       produceResultFuture.complete(produceResult);
     }
+
+    // This is a special case where the producer is closed forcefully. We can skip the callback processing
+    if (exception != null && exception.getMessage() != null && producerAdapter.isForceClosed()
+        && exception.getMessage().contains("Producer is closed forcefully")) {
+      LOGGER.debug("Producer is closed forcefully. Skipping the callback processing.");
+      return;
+    }
+
     if (pubsubProducerCallback != null) {
       pubsubProducerCallback.onCompletion(produceResult, exception);
     }
