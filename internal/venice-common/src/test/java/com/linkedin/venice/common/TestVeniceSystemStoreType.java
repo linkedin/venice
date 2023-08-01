@@ -45,4 +45,17 @@ public class TestVeniceSystemStoreType {
     Assert.assertTrue(systemStoreSet.contains(VeniceSystemStoreType.META_STORE));
     Assert.assertTrue(systemStoreSet.contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE));
   }
+
+  @Test
+  public void testExtractSystemStoreName() {
+    String dvcpushStatusStore = "venice_system_store_davinci_push_status_store_abc";
+    String metaStore = "venice_system_store_meta_store_abc";
+    String userStore = "userStore";
+    Assert.assertEquals(
+        VeniceSystemStoreUtils.extractSystemStoreType(dvcpushStatusStore),
+        VeniceSystemStoreUtils.DAVINCI_PUSH_STATUS_STORE_STR);
+    Assert
+        .assertEquals(VeniceSystemStoreUtils.extractSystemStoreType(metaStore), VeniceSystemStoreUtils.META_STORE_STR);
+    Assert.assertNull(VeniceSystemStoreUtils.extractSystemStoreType(userStore));
+  }
 }
