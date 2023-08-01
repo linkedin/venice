@@ -126,7 +126,7 @@ public class StoreWriteComputeProcessor {
     }
 
     /**
-     * TODO: why do we need to preserve the map-order since this class is only used by {@link LeaderFollowerStoreIngestionTask}.
+     * It is not necessary to preserve the map-order since this class is only used by {@link LeaderFollowerStoreIngestionTask}.
      * We are not supposed to run DCR validation workflow against non-AA store.
      */
     // Map in write compute needs to have consistent ordering. On the sender side, users may not care about ordering
@@ -142,7 +142,7 @@ public class StoreWriteComputeProcessor {
   RecordSerializer<GenericRecord> generateValueSerializer(int valueSchemaId) {
     Schema valueSchema = getValueSchema(valueSchemaId);
     /**
-     * TODO: why do we need to preserve the map-order since this class is only used by {@link LeaderFollowerStoreIngestionTask}.
+     * It is not necessary to preserve the map-order since this class is only used by {@link LeaderFollowerStoreIngestionTask}.
      * We are not supposed to run DCR validation workflow against non-AA store.
      */
     if (fastAvroEnabled) {
