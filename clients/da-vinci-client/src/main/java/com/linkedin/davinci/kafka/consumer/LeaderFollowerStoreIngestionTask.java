@@ -198,7 +198,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     }
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
-    this.storeWriteComputeHandler = new StoreWriteComputeProcessor(storeName, schemaRepository, mergeRecordHelper);
+    this.storeWriteComputeHandler = new StoreWriteComputeProcessor(
+        storeName,
+        schemaRepository,
+        mergeRecordHelper,
+        serverConfig.isComputeFastAvroEnabled());
     this.isNativeReplicationEnabled = version.isNativeReplicationEnabled();
 
     /**
