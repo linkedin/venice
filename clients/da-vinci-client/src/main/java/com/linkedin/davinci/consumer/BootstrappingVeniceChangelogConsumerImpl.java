@@ -42,6 +42,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -136,6 +137,7 @@ public class BootstrappingVeniceChangelogConsumerImpl<K, V> extends VeniceChange
         // Clean up all local data and seek existing
         this.storageService.cleanupAllStores(this.configLoader);
         storageMetadataService.clearStoreVersionState(LOCAL_STATE_TOPIC_NAME);
+        seekToBeginningOfPush(Collections.singleton(pubSubTopicPartition.getPartitionNumber()));
       }
     }
 
