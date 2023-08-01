@@ -350,6 +350,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setStatsDumpPeriodSec(0);
     options.setStatsPersistPeriodSec(0);
 
+    options.setKeepLogFileNum(rocksDBServerConfig.getMaxLogFileNum());
+    options.setMaxLogFileSize(rocksDBServerConfig.getMaxLogFileSize());
+
     aggStatistics.ifPresent(options::setStatistics);
 
     if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
