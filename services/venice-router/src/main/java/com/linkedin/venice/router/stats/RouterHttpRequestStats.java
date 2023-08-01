@@ -78,8 +78,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
     if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
-      MetricsRepository dummyMetricRepo = new MetricsRepository();
-      this.systemStoreSensor = dummyMetricRepo.sensor("dummy_system_store_sensor");
+      String systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
+      if (!systemStoreName.isEmpty()) {
+        this.systemStoreSensor = metricsRepository.sensor(systemStoreName);
+      }
     }
     Rate requestRate = new OccurrenceRate();
     Rate healthyRequestRate = new OccurrenceRate();
