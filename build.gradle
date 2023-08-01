@@ -515,7 +515,7 @@ subprojects {
         }
 
         violationRules {
-          minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.33
+          minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.40
           failOnViolation = true
         }
       }
