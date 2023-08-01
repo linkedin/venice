@@ -67,7 +67,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor multiGetFallbackSensor;
   private final Sensor metaStoreShadowReadSensor;
   private Sensor keySizeSensor;
-  private Sensor systemStoreSensor = null;
+  private final String systemStoreName;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -77,12 +77,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       ScatterGatherStats scatterGatherStats,
       boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
-    if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
-      String systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
-      if (!systemStoreName.isEmpty()) {
-        this.systemStoreSensor = metricsRepository.sensor(systemStoreName);
-      }
-    }
+    this.systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
     Rate requestRate = new OccurrenceRate();
     Rate healthyRequestRate = new OccurrenceRate();
     Rate tardyRequestRate = new OccurrenceRate();
@@ -373,9 +368,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   @Override
   protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
-    if (systemStoreSensor != null) {
-      return systemStoreSensor;
-    }
-    return super.registerSensor(getFullMetricName(sensorName), null, stats);
+    return super.registerSensor(systemStoreName == null ? sensorName : systemStoreName, null, stats);
   }
 }

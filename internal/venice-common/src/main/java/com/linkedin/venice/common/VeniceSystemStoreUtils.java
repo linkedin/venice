@@ -1,6 +1,5 @@
 package com.linkedin.venice.common;
 
-import com.linkedin.avroutil1.compatibility.StringUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.meta.Store;
 import java.util.concurrent.TimeUnit;
@@ -63,7 +62,6 @@ public class VeniceSystemStoreUtils {
     } else if (systemStoreName.startsWith(META_STORE_STR)) {
       return META_STORE_STR;
     }
-    return StringUtils.EMPTY_STRING;
+    return null;
   }
-
 }
