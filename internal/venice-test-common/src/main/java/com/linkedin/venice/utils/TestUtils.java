@@ -264,7 +264,8 @@ public class TestUtils {
       String keySchema,
       String valueSchema,
       Stream<Map.Entry> batchData,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     return createVersionWithBatchData(
         controllerClient,
         storeName,
@@ -272,7 +273,8 @@ public class TestUtils {
         valueSchema,
         batchData,
         HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
-        pubSubProducerAdapterFactory);
+        pubSubProducerAdapterFactory,
+        additionalProperties);
   }
 
   public static VersionCreationResponse createVersionWithBatchData(
@@ -282,7 +284,8 @@ public class TestUtils {
       String valueSchema,
       Stream<Map.Entry> batchData,
       int valueSchemaId,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     VersionCreationResponse response = TestUtils.assertCommand(
         controllerClient.requestTopicForWrites(
             storeName,
@@ -297,7 +300,14 @@ public class TestUtils {
             Optional.empty(),
             false,
             -1));
-    writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId, pubSubProducerAdapterFactory);
+    writeBatchData(
+        response,
+        keySchema,
+        valueSchema,
+        batchData,
+        valueSchemaId,
+        pubSubProducerAdapterFactory,
+        additionalProperties);
     return response;
   }
 
@@ -307,7 +317,8 @@ public class TestUtils {
       String valueSchema,
       Stream<Map.Entry> batchData,
       int valueSchemaId,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     writeBatchData(
         response,
         keySchema,
@@ -316,7 +327,8 @@ public class TestUtils {
         valueSchemaId,
         CompressionStrategy.NO_OP,
         null,
-        pubSubProducerAdapterFactory);
+        pubSubProducerAdapterFactory,
+        additionalProperties);
   }
 
   public static void writeBatchData(
@@ -327,11 +339,13 @@ public class TestUtils {
       int valueSchemaId,
       CompressionStrategy compressionStrategy,
       Function<String, ByteBuffer> compressionDictionaryGenerator,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
     props.putAll(response.getPartitionerParams());
+    props.putAll(additionalProperties);
     props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
     VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props, pubSubProducerAdapterFactory);
 

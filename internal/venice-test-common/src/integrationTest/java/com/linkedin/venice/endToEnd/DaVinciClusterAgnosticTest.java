@@ -20,7 +20,9 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
@@ -37,6 +39,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -119,6 +122,13 @@ public class DaVinciClusterAgnosticTest {
     int initialKeyCount = 10;
     List<String> stores = new ArrayList<>();
     // Create a new store in each cluster and setup their corresponding meta system store.
+    List<PubSubBrokerWrapper> pubSubBrokerWrappers = multiClusterVenice.getClusters()
+        .values()
+        .stream()
+        .map(VeniceClusterWrapper::getPubSubBrokerWrapper)
+        .collect(Collectors.toList());
+    Map<String, String> additionalPubSubProperties =
+        PubSubBrokerWrapper.getBrokerDetailsForClients(pubSubBrokerWrappers);
     for (int index = 0; index < clusterNames.length; index++) {
       final int value = index;
       String cluster = clusterNames[index];
@@ -140,7 +150,8 @@ public class DaVinciClusterAgnosticTest {
             INT_KEY_SCHEMA,
             INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, value)),
-            pubSubProducerAdapterFactory);
+            pubSubProducerAdapterFactory,
+            additionalPubSubProperties);
         // Verify the data can be ingested by classical Venice before proceeding.
         TestUtils.waitForNonDeterministicPushCompletion(
             response.getKafkaTopic(),
@@ -189,7 +200,8 @@ public class DaVinciClusterAgnosticTest {
             INT_KEY_SCHEMA,
             INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newValue)),
-            pubSubProducerAdapterFactory);
+            pubSubProducerAdapterFactory,
+            additionalPubSubProperties);
         TestUtils.waitForNonDeterministicPushCompletion(
             versionCreationResponse.getKafkaTopic(),
             parentControllerClient,
@@ -221,7 +233,8 @@ public class DaVinciClusterAgnosticTest {
             INT_KEY_SCHEMA,
             INT_VALUE_SCHEMA,
             IntStream.range(0, initialKeyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newMigratedStoreValue)),
-            pubSubProducerAdapterFactory);
+            pubSubProducerAdapterFactory,
+            additionalPubSubProperties);
         TestUtils.waitForNonDeterministicPushCompletion(
             versionCreationResponse.getKafkaTopic(),
             parentControllerClient,
@@ -278,6 +291,13 @@ public class DaVinciClusterAgnosticTest {
       assertFalse(
           parentControllerClient.createNewStore(storeName, "venice-test", INT_KEY_SCHEMA, RECORD_VALUE_SCHEMA)
               .isError());
+      List<PubSubBrokerWrapper> pubSubBrokerWrappers = multiClusterVenice.getClusters()
+          .values()
+          .stream()
+          .map(VeniceClusterWrapper::getPubSubBrokerWrapper)
+          .collect(Collectors.toList());
+      Map<String, String> additionalPubSubProperties =
+          PubSubBrokerWrapper.getBrokerDetailsForClients(pubSubBrokerWrappers);
       VersionCreationResponse response = TestUtils.createVersionWithBatchData(
           parentControllerClient,
           storeName,
@@ -285,7 +305,8 @@ public class DaVinciClusterAgnosticTest {
           RECORD_VALUE_SCHEMA,
           IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record1)),
           1,
-          pubSubProducerAdapterFactory);
+          pubSubProducerAdapterFactory,
+          additionalPubSubProperties);
       // Verify the data can be ingested by classical Venice before proceeding.
       TestUtils.waitForNonDeterministicPushCompletion(
           response.getKafkaTopic(),
@@ -329,7 +350,8 @@ public class DaVinciClusterAgnosticTest {
             NEW_RECORD_VALUE_SCHEMA,
             IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record2)),
             2,
-            pubSubProducerAdapterFactory);
+            pubSubProducerAdapterFactory,
+            additionalPubSubProperties);
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
           for (int k = 0; k < keyCount; k++) {

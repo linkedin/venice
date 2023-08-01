@@ -192,6 +192,8 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, "invalid_parent_d2_service");
     samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
+    samzaConfig.putAll(
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
     return samzaConfig;
   }
 
@@ -368,6 +370,7 @@ public class IntegrationTestPushUtils {
       PubSubTopicRepository pubSubTopicRepository) {
     Properties properties = new Properties();
     String pubSubBootstrapServers = pubSubBrokerWrapper.getAddress();
+    properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     return TopicManagerRepository.builder()
         .setPubSubProperties(k -> new VeniceProperties(properties))

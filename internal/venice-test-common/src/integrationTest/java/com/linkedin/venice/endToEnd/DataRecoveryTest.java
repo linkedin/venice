@@ -38,6 +38,7 @@ import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -58,6 +59,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
@@ -256,13 +258,18 @@ public class DataRecoveryTest {
       Assert.assertFalse(versionCreationResponse.isError());
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           childDatacenters.get(0).getKafkaBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+
+      List<PubSubBrokerWrapper> pubSubBrokerWrappers =
+          childDatacenters.stream().map(VeniceMultiClusterWrapper::getKafkaBrokerWrapper).collect(Collectors.toList());
+      Map<String, String> additionalConfigs = PubSubBrokerWrapper.getBrokerDetailsForClients(pubSubBrokerWrappers);
       TestUtils.writeBatchData(
           versionCreationResponse,
           STRING_SCHEMA,
           STRING_SCHEMA,
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
           HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
-          pubSubProducerAdapterFactory);
+          pubSubProducerAdapterFactory,
+          additionalConfigs);
       TestUtils.waitForNonDeterministicPushCompletion(
           versionCreationResponse.getKafkaTopic(),
           parentControllerClient,
