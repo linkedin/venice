@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -17,9 +18,11 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.meta.ClientRoutingStrategyType;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadata;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
+import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
@@ -28,7 +31,8 @@ import java.util.concurrent.CompletableFuture;
 
 public class RequestBasedMetadataTestUtils {
   private static final int CURRENT_VERSION = 1;
-  private static final String REPLICA_NAME = "host1";
+  public static final String REPLICA_NAME = "host1";
+  public static final String NEW_REPLICA_NAME = "host2";
   public static final String KEY_SCHEMA = "\"string\"";
   public static final String VALUE_SCHEMA = "\"string\"";
   private static final byte[] DICTIONARY = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
@@ -40,6 +44,7 @@ public class RequestBasedMetadataTestUtils {
     doReturn(storeName).when(clientConfig).getStoreName();
     doReturn(clusterStats).when(clientConfig).getClusterStats();
     doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
+    doReturn(mock(FastClientStats.class)).when(clientConfig).getStats(RequestType.SINGLE_GET);
     return clientConfig;
   }
 
@@ -64,18 +69,23 @@ public class RequestBasedMetadataTestUtils {
 
     byte[] metadataBody = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
+    metadataResponse.setRoutingInfo(Collections.singletonMap("0", Collections.singletonList(NEW_REPLICA_NAME)));
+    byte[] newMetadataBody = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
+        .serialize(metadataResponse);
     TransportClientResponse transportClientMetadataResponse =
         new TransportClientResponse(0, CompressionStrategy.NO_OP, metadataBody);
     CompletableFuture<TransportClientResponse> completableMetadataFuture =
         CompletableFuture.completedFuture(transportClientMetadataResponse);
+    CompletableFuture<TransportClientResponse> completableMetadataFuture2 =
+        CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, newMetadataBody));
 
     TransportClientResponse transportClientDictionaryResponse =
         new TransportClientResponse(0, CompressionStrategy.NO_OP, DICTIONARY);
     CompletableFuture<TransportClientResponse> completableDictionaryFuture =
         CompletableFuture.completedFuture(transportClientDictionaryResponse);
 
-    doReturn(completableMetadataFuture).when(d2TransportClient)
-        .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+    when(d2TransportClient.get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName)))
+        .thenReturn(completableMetadataFuture, completableMetadataFuture2);
     doReturn(completableDictionaryFuture).when(d2TransportClient)
         .get(eq(QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION));
 

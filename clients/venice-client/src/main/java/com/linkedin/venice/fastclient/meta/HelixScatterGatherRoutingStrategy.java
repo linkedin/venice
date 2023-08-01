@@ -1,11 +1,10 @@
 package com.linkedin.venice.fastclient.meta;
 
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicReference;
 
 
 /**
@@ -14,30 +13,32 @@ import java.util.stream.Collectors;
  * found for a given partition, the instance with the next group in the assigned ordering will be used
  */
 public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy {
-  private Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
-  private List<Integer> groupIds = new ArrayList<>();
+  private AtomicReference<HelixGroupInfo> helixGroupInfoAtomicReference = new AtomicReference<>();
   private final InstanceHealthMonitor instanceHealthMonitor;
 
   public HelixScatterGatherRoutingStrategy(InstanceHealthMonitor instanceHealthMonitor) {
     this.instanceHealthMonitor = instanceHealthMonitor;
+    helixGroupInfoAtomicReference.set(new HelixGroupInfo(Collections.emptyMap()));
   }
 
   @Override
   public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
-    if (replicas.isEmpty() || helixGroupInfo.isEmpty()) {
+    HelixGroupInfo helixGroupInfo = helixGroupInfoAtomicReference.get();
+    if (replicas.isEmpty() || helixGroupInfo.getHelixGroupInfoMap().isEmpty()) {
       return Collections.emptyList();
     }
     // select replicas from the selected group, going down the groups if more replicas are needed
-    int groupCnt = groupIds.size();
+    int groupCnt = helixGroupInfo.getGroupIds().size();
     int startPos = (int) requestId % groupCnt;
     List<String> selectedReplicas = new ArrayList<>();
     for (int i = 0; i < groupCnt; i++) {
-      int groupId = groupIds.get((i + startPos) % groupCnt);
+      int groupId = helixGroupInfo.getGroupIds().get((i + startPos) % groupCnt);
       for (String replica: replicas) {
         if (selectedReplicas.size() == requiredReplicaCount) {
           return selectedReplicas;
         }
-        if (helixGroupInfo.get(replica) == groupId && !instanceHealthMonitor.isInstanceBlocked(replica)) {
+        if (helixGroupInfo.getHelixGroupInfoMap().get(replica) == groupId
+            && !instanceHealthMonitor.isInstanceBlocked(replica)) {
           selectedReplicas.add(replica);
         }
       }
@@ -46,8 +47,7 @@ public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy 
     return selectedReplicas;
   }
 
-  public void updateHelixGroupInfo(Map<String, Integer> helixGroupInfo) {
-    this.helixGroupInfo = helixGroupInfo;
-    this.groupIds = helixGroupInfo.values().stream().distinct().sorted().collect(Collectors.toList());
+  public void updateHelixGroupInfo(Map<String, Integer> helixGroupInfoMap) {
+    helixGroupInfoAtomicReference.set(new HelixGroupInfo(helixGroupInfoMap));
   }
 }

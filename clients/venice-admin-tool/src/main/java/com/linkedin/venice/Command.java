@@ -462,6 +462,10 @@ public enum Command {
       "monitor-data-recovery",
       "Monitor data recovery progress for a group of stores. ('--stores' overwrites '--cluster' value)",
       new Arg[] { URL, DEST_FABRIC, DATETIME }, new Arg[] { STORES, CLUSTER, INTERVAL }
+  ),
+  REQUEST_BASED_METADATA(
+      "request-based-metadata", "Get the store's metadata using the Venice server metadata endpoint via a d2 client",
+      new Arg[] { URL, CLUSTER, STORE }
   );
 
   private final String commandName;

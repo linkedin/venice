@@ -194,4 +194,18 @@ public class TestAdminTool {
       Assert.fail("Unexpected exception happens in data recovery APIs: ", err);
     }
   }
+
+  @Test
+  public void testAdminToolRequestBasedMetadata() {
+    String storeName = "test-store1";
+    String[] getMetadataArgs =
+        { "--request-based-metadata", "--url", "http://localhost:7036", "--store", storeName, "--cluster", "venice-1" };
+    try {
+      AdminTool.main(getMetadataArgs);
+    } catch (VeniceException ve) {
+      // Expected;
+    } catch (Exception e) {
+      Assert.fail("Unexpected exception while invoking get request based metadata API: ", e);
+    }
+  }
 }
