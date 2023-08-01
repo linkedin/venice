@@ -105,7 +105,7 @@ public class GrpcTransportClient extends InternalTransportClient {
   @Override
   public void close() {
     for (Map.Entry<String, ManagedChannel> entry: serverGrpcChannels.entrySet()) {
-      entry.getValue().shutdown();
+      entry.getValue().shutdownNow();
     }
   }
 
@@ -184,12 +184,17 @@ public class GrpcTransportClient extends InternalTransportClient {
     }
 
     private void handleError(Throwable t) {
+      // TODO: DO NOT HANDLE ERRORS LIKE THIS
+      // Create new field in .proto for error codes :slight_smile:
       Status status = Status.fromThrowable(t);
 
       Exception exception;
       switch (status.getCode()) {
         case UNKNOWN:
-          valueFuture.complete(null);
+          exception = new VeniceException("grpc error occurred", t);
+          break;
+
+        // valueFuture.complete(null);
         case RESOURCE_EXHAUSTED:
           exception = new VeniceClientRateExceededException(status.getDescription());
           break;

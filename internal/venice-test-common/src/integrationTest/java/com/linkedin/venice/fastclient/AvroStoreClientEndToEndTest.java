@@ -228,12 +228,13 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Five-Boolean-A-Number-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
   public void testFastClientGet(
       boolean dualRead,
       boolean speculativeQueryEnabled,
       boolean batchGet,
       boolean useStreamingBatchGetAsDefault,
+      boolean enableGrpc,
       int batchGetKeySize,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
@@ -249,6 +250,10 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
           .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
           .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+    }
+
+    if (enableGrpc) {
+      clientConfigBuilder.setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap()).setUseGrpc(true);
     }
 
     // dualRead needs thinClient

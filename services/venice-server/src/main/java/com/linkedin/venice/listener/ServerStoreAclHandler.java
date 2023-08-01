@@ -26,6 +26,9 @@ import javax.net.ssl.SSLPeerUnverifiedException;
  * If both of them fail, the request will be rejected.
  */
 public class ServerStoreAclHandler extends StoreAclHandler implements VeniceGrpcHandler {
+  private VeniceGrpcHandler nextInboundHandler;
+  private VeniceGrpcHandler nextOutboundHandler;
+
   public ServerStoreAclHandler(DynamicAccessController accessController, ReadOnlyStoreRepository metadataRepository) {
     super(accessController, metadataRepository);
   }
@@ -52,16 +55,6 @@ public class ServerStoreAclHandler extends StoreAclHandler implements VeniceGrpc
   }
 
   @Override
-  public void grpcRead(GrpcHandlerContext ctx) {
-
-  }
-
-  @Override
-  public void grpcWrite(GrpcHandlerContext ctx) {
-
-  }
-
-  @Override
   protected X509Certificate extractClientCert(ChannelHandlerContext ctx) throws SSLPeerUnverifiedException {
     SslHandler sslHandler = ServerHandlerUtils.extractSslHandler(ctx);
     if (sslHandler != null) {
@@ -74,5 +67,25 @@ public class ServerStoreAclHandler extends StoreAclHandler implements VeniceGrpc
   protected static boolean checkWhetherAccessHasAlreadyApproved(ChannelHandlerContext ctx) {
     Attribute<Boolean> serverAclApprovedAttr = ctx.channel().attr(ServerAclHandler.SERVER_ACL_APPROVED_ATTRIBUTE_KEY);
     return Boolean.TRUE.equals(serverAclApprovedAttr.get());
+  }
+
+  @Override
+  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
+    this.nextInboundHandler = nextInboundHandler;
+  }
+
+  @Override
+  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
+    this.nextOutboundHandler = nextOutboundHandler;
+  }
+
+  @Override
+  public void grpcRead(GrpcHandlerContext ctx) {
+    nextInboundHandler.grpcRead(ctx);
+  }
+
+  @Override
+  public void grpcWrite(GrpcHandlerContext ctx) {
+    nextOutboundHandler.grpcWrite(ctx);
   }
 }

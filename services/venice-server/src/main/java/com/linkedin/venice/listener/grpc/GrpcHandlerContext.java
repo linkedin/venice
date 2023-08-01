@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener.grpc;
 
 import com.linkedin.davinci.listener.response.ReadResponse;
+import com.linkedin.venice.listener.GrpcStatsContext;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceServerResponse;
@@ -15,6 +16,8 @@ public class GrpcHandlerContext {
   private boolean isCompleted = false;
   private RouterRequest routerRequest;
   private ReadResponse readResponse;
+  private boolean isNewRequest = true;
+  private GrpcStatsContext grpcStatsContext;
 
   public GrpcHandlerContext(
       VeniceClientRequest veniceClientRequest,
@@ -23,6 +26,14 @@ public class GrpcHandlerContext {
     this.veniceClientRequest = veniceClientRequest;
     this.veniceServerResponseBuilder = veniceServerResponseBuilder;
     this.responseObserver = responseObserver;
+  }
+
+  public void setGrpcStatsContext(GrpcStatsContext grpcStatsContext) {
+    this.grpcStatsContext = grpcStatsContext;
+  }
+
+  public GrpcStatsContext getGrpcStatsContext() {
+    return grpcStatsContext;
   }
 
   public VeniceClientRequest getVeniceClientRequest() {

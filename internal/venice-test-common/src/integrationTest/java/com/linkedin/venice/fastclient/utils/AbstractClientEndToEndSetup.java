@@ -83,6 +83,7 @@ public abstract class AbstractClientEndToEndSetup {
   protected String storeVersionName;
   protected int valueSchemaId;
   protected String storeName;
+  protected String altStoreName; // alternate store name for testing grpc client
   protected String dataPath;
 
   protected VeniceKafkaSerializer keySerializer;
@@ -125,12 +126,13 @@ public abstract class AbstractClientEndToEndSetup {
    */
   protected static final ImmutableList<Object> BATCH_GET_KEY_SIZE = ImmutableList.of(2, recordCnt);
 
-  @DataProvider(name = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode")
-  public Object[][] fourBooleanANumberStoreMetadataFetchMode() {
+  @DataProvider(name = "FastClient-Five-Boolean-A-Number-Store-Metadata-Fetch-Mode")
+  public Object[][] fiveBooleanANumberStoreMetadataFetchMode() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean batchGet = (boolean) permutation[2];
       boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
-      int batchGetKeySize = (int) permutation[4];
+      int batchGetKeySize = (int) permutation[5];
+      // boolean enableGrpc = (boolean) permutation[5];
       if (!batchGet) {
         if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
@@ -144,9 +146,12 @@ public abstract class AbstractClientEndToEndSetup {
         DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
         DataProviderUtils.BOOLEAN, // batchGet
         DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
+        DataProviderUtils.BOOLEAN, // enableGrpc
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
+
+  // @DataProvider(name = "FastClient-Four-Boolean-A-")
 
   @DataProvider(name = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode")
   public Object[][] twoBooleanStoreMetadataFetchMode() {
@@ -215,6 +220,7 @@ public abstract class AbstractClientEndToEndSetup {
     props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
     VeniceClusterCreateOptions createOptions = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
+        .enableGrpc(true)
         .numberOfRouters(1)
         .replicationFactor(2)
         .partitionSize(100)
@@ -394,6 +400,12 @@ public abstract class AbstractClientEndToEndSetup {
     clientConfig = clientConfigBuilder.build();
 
     return ClientFactory.getAndStartSpecificStoreClient(clientConfig);
+  }
+
+  protected void setUpGrpcFastClient(ClientConfig.ClientConfigBuilder clientConfigBuilder) {
+    clientConfigBuilder.setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap()).setUseGrpc(true);
+
+    return;
   }
 
   protected void setupStoreMetadata(

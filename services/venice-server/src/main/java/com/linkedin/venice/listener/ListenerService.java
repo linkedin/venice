@@ -11,7 +11,6 @@ import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -29,7 +28,6 @@ import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -159,12 +157,9 @@ public class ListenerService extends AbstractVeniceService {
         .childOption(ChannelOption.TCP_NODELAY, true);
 
     if (isGrpcEnabled && grpcServer == null) {
-      channelInitializer.initGrpcHandlers();
-      List<VeniceGrpcHandler> inboundHandlers = channelInitializer.getInboundHandlers();
-      List<VeniceGrpcHandler> outboundHandlers = channelInitializer.getOutboundHandlers();
       grpcServer = new VeniceGrpcServer(
           new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
-              .setService(new VeniceReadServiceImpl(inboundHandlers, outboundHandlers))
+              .setService(new VeniceReadServiceImpl(channelInitializer))
               .build());
     }
   }

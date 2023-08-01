@@ -66,6 +66,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   // TODO make these configurable
   private final int enforcementIntervalSeconds = 10; // TokenBucket refill interval
   private final int enforcementCapacityMultiple = 5; // Token bucket capacity is refill amount times this multiplier
+  private VeniceGrpcHandler nextInboundHandler;
+  private VeniceGrpcHandler nextOutboundHandler;
 
   public ReadQuotaEnforcementHandler(
       long storageNodeRcuCapacity,
@@ -196,10 +198,19 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   }
 
   @Override
+  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
+    this.nextInboundHandler = nextInboundHandler;
+  }
+
+  @Override
+  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
+    this.nextOutboundHandler = nextOutboundHandler;
+  }
+
+  @Override
   public void grpcRead(GrpcHandlerContext ctx) {
     RouterRequest request = ctx.getRouterRequest();
     StreamObserver<VeniceServerResponse> responseObserver = ctx.getResponseObserver();
-
     String storeName = request.getStoreName();
     Store store = storeRepository.getStore(storeName);
 
@@ -215,6 +226,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     if (!isInitialized() || !store.isStorageNodeReadQuotaEnabled()) {
       ReferenceCountUtil.retain(request);
       // no quota limit is enforced
+      nextInboundHandler.grpcRead(ctx);
       return;
     }
 
@@ -262,13 +274,14 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
 
     ReferenceCountUtil.retain(request);
+    nextInboundHandler.grpcRead(ctx);
     stats.recordAllowed(storeName, rcu);
     stats.recordReadQuotaUsage(storeName, storageNodeBucket.getStaleUsageRatio());
   }
 
   @Override
   public void grpcWrite(GrpcHandlerContext ctx) {
-
+    nextOutboundHandler.grpcWrite(ctx);
   }
 
   /**

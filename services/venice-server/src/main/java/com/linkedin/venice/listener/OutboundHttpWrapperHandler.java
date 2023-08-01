@@ -36,6 +36,8 @@ import java.nio.charset.StandardCharsets;
 
 public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter implements VeniceGrpcHandler {
   private final StatsHandler statsHandler;
+  private VeniceGrpcHandler nextInboundHandler;
+  private VeniceGrpcHandler nextOutboundHandler;
 
   public OutboundHttpWrapperHandler(StatsHandler handler) {
     super();
@@ -149,9 +151,6 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter im
       statsHandler.setResponseStatus(responseStatus);
     }
 
-    if (responseStatus.code() == 429) {
-      System.out.println("responseStatus.code() == 429");
-    }
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
@@ -172,39 +171,90 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter im
 
   @Override
   public void grpcRead(GrpcHandlerContext ctx) {
-
+    nextInboundHandler.grpcRead(ctx);
   }
 
   @Override
+  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
+    this.nextInboundHandler = nextInboundHandler;
+  }
+
+  @Override
+  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
+    this.nextOutboundHandler = nextOutboundHandler;
+  }
+
+  // @Override
+  // public void grpcWrite(GrpcHandlerContext ctx) {
+  // ReadResponse obj = ctx.getReadResponse();
+  // VeniceServerResponse.Builder veniceServerResponseBuilder = ctx.getVeniceServerResponseBuilder();
+  // GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
+  // CompressionStrategy compressionStrategy = obj.getCompressionStrategy();
+  // statsContext.setDatabaseLookupLatency(obj.getDatabaseLookupLatency());
+  // statsContext.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
+  // statsContext.setStorageExecutionQueueLen(obj.getStorageExecutionQueueLen());
+  // statsContext.setSuccessRequestKeyCount(obj.getRecordCount());
+  // statsContext.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
+  // statsContext.setReadComputeLatency(obj.getReadComputeLatency());
+  // statsContext.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
+  // statsContext.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
+  // statsContext.setDotProductCount(obj.getDotProductCount());
+  // statsContext.setCosineSimilarityCount(obj.getCosineSimilarityCount());
+  // statsContext.setHadamardProductCount(obj.getHadamardProductCount());
+  // statsContext.setCountOperatorCount(obj.getCountOperatorCount());
+  // statsContext.setKeySizeList(obj.getKeySizeList());
+  // statsContext.setValueSizeList(obj.getValueSizeList());
+  // statsContext.setResponseStatus(OK);
+  //
+  // veniceServerResponseBuilder.setCompressionStrategy(compressionStrategy.getValue());
+  // veniceServerResponseBuilder.setSchemaId(obj.getResponseSchemaIdHeader());
+  // veniceServerResponseBuilder.setResponseRCU(obj.getRCU());
+  // veniceServerResponseBuilder.setIsStreamingResponse(obj.isStreamingResponse());
+  //
+  // ByteBuf data = obj.getResponseBody();
+  // byte[] array = new byte[data.readableBytes()];
+  // data.getBytes(data.readerIndex(), array);
+  // veniceServerResponseBuilder.setData(ByteString.copyFrom(array)); // double copy D:
+  // }
+
+  @Override
   public void grpcWrite(GrpcHandlerContext ctx) {
+    ByteBuf body;
+    CompressionStrategy compressionStrategy;
+
     ReadResponse obj = ctx.getReadResponse();
+    GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
     VeniceServerResponse.Builder veniceServerResponseBuilder = ctx.getVeniceServerResponseBuilder();
 
-    CompressionStrategy compressionStrategy = obj.getCompressionStrategy();
-    statsHandler.setDatabaseLookupLatency(obj.getDatabaseLookupLatency());
-    statsHandler.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
-    statsHandler.setStorageExecutionQueueLen(obj.getStorageExecutionQueueLen());
-    statsHandler.setSuccessRequestKeyCount(obj.getRecordCount());
-    statsHandler.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
-    statsHandler.setReadComputeLatency(obj.getReadComputeLatency());
-    statsHandler.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
-    statsHandler.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
-    statsHandler.setDotProductCount(obj.getDotProductCount());
-    statsHandler.setCosineSimilarityCount(obj.getCosineSimilarityCount());
-    statsHandler.setHadamardProductCount(obj.getHadamardProductCount());
-    statsHandler.setCountOperatorCount(obj.getCountOperatorCount());
-    statsHandler.setKeySizeList(obj.getKeySizeList());
-    statsHandler.setValueSizeList(obj.getValueSizeList());
-    statsHandler.setResponseStatus(OK);
+    compressionStrategy = obj.getCompressionStrategy();
+
+    statsContext.setDatabaseLookupLatency(obj.getDatabaseLookupLatency());
+    statsContext.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
+    statsContext.setStorageExecutionQueueLen(obj.getStorageExecutionQueueLen());
+    statsContext.setSuccessRequestKeyCount(obj.getRecordCount());
+    statsContext.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
+    statsContext.setReadComputeLatency(obj.getReadComputeLatency());
+    statsContext.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
+    statsContext.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
+    statsContext.setDotProductCount(obj.getDotProductCount());
+    statsContext.setCosineSimilarityCount(obj.getCosineSimilarityCount());
+    statsContext.setHadamardProductCount(obj.getHadamardProductCount());
+    statsContext.setCountOperatorCount(obj.getCountOperatorCount());
+    statsContext.setKeySizeList(obj.getKeySizeList());
+    statsContext.setValueSizeList(obj.getValueSizeList());
+    statsContext.setResponseStatus(OK);
 
     veniceServerResponseBuilder.setCompressionStrategy(compressionStrategy.getValue());
     veniceServerResponseBuilder.setSchemaId(obj.getResponseSchemaIdHeader());
     veniceServerResponseBuilder.setResponseRCU(obj.getRCU());
     veniceServerResponseBuilder.setIsStreamingResponse(obj.isStreamingResponse());
 
-    ByteBuf data = obj.getResponseBody();
-    byte[] array = new byte[data.readableBytes()];
-    data.getBytes(data.readerIndex(), array);
+    body = obj.getResponseBody();
+    byte[] array = new byte[body.readableBytes()];
+    body.getBytes(body.readerIndex(), array);
     veniceServerResponseBuilder.setData(ByteString.copyFrom(array)); // double copy D:
+
+    if (nextOutboundHandler != null)
+      nextOutboundHandler.grpcWrite(ctx);
   }
 }

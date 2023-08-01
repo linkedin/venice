@@ -31,6 +31,8 @@ import org.apache.logging.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> implements VeniceGrpcHandler {
+  private VeniceGrpcHandler nextInboundHandler;
+  private VeniceGrpcHandler nextOutboundHandler;
   private static final Logger LOGGER = LogManager.getLogger(ServerAclHandler.class);
 
   public static final AttributeKey<Boolean> SERVER_ACL_APPROVED_ATTRIBUTE_KEY =
@@ -81,12 +83,22 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
   }
 
   @Override
-  public void grpcRead(GrpcHandlerContext ctx) {
+  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
+    this.nextInboundHandler = nextInboundHandler;
+  }
 
+  @Override
+  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
+    this.nextOutboundHandler = nextOutboundHandler;
+  }
+
+  @Override
+  public void grpcRead(GrpcHandlerContext ctx) {
+    nextInboundHandler.grpcRead(ctx);
   }
 
   @Override
   public void grpcWrite(GrpcHandlerContext ctx) {
-
+    nextOutboundHandler.grpcWrite(ctx);
   }
 }

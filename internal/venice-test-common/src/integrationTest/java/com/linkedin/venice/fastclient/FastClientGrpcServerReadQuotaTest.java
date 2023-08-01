@@ -17,13 +17,20 @@ import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.Test;
 
 
-public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
+public class FastClientGrpcServerReadQuotaTest extends AbstractClientEndToEndSetup {
+  /**
+   * test is copied from {@link FastClientServerReadQuotaTest}, we need to reset server-side stats before each test class
+   * @throws Exception
+   */
   @Test(timeOut = TIME_OUT)
-  public void testServerReadQuota() throws Exception {
+  public void testGrpcServerReadQuota() throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
+            .setUseGrpc(true)
+            .setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
             .setSpeculativeQueryEnabled(false);
+
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = getGenericFastClient(
         clientConfigBuilder,
         new MetricsRepository(),
@@ -33,7 +40,6 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
       TestUtils
           .assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(1000)));
     });
-
     for (int j = 0; j < 5; j++) {
       for (int i = 0; i < recordCnt; i++) {
         String key = keyPrefix + i;
@@ -90,6 +96,6 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
       }
     }
     assertTrue(readQuotaRejected);
-    genericFastClient.close();
   }
+
 }

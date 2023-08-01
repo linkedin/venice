@@ -1,29 +1,19 @@
 package com.linkedin.venice.listener;
 
-import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
-import static io.netty.handler.codec.http.HttpResponseStatus.OK;
-
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
-import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.utils.LatencyUtils;
-import io.netty.channel.ChannelDuplexHandler;
-import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
 import it.unimi.dsi.fastutil.ints.IntList;
 
 
-public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHandler {
-  private VeniceGrpcHandler nextInboundHandler;
-  private VeniceGrpcHandler nextOutboundHandler;
+public class GrpcStatsContext {
   private long startTimeInNS;
   private HttpResponseStatus responseStatus;
   private String storeName = null;
@@ -91,8 +81,75 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
   private double partsInvokeDelayLatency = -1;
   private int requestPartCount = -1;
 
+  public double getSecondPartLatency() {
+    return secondPartLatency;
+  }
+
+  public void setSecondPartLatency(double secondPartLatency) {
+    this.secondPartLatency = secondPartLatency;
+  }
+
+  public double getPartsInvokeDelayLatency() {
+    return partsInvokeDelayLatency;
+  }
+
+  public void setPartsInvokeDelayLatency(double partsInvokeDelayLatency) {
+    this.partsInvokeDelayLatency = partsInvokeDelayLatency;
+  }
+
+  public int getRequestPartCount() {
+    return requestPartCount;
+  }
+
+  public void setRequestPartCount(int requestPartCount) {
+    this.requestPartCount = requestPartCount;
+  }
+
+  public void incrementRequestPartCount() {
+    this.requestPartCount++;
+  }
+
+  public GrpcStatsContext(
+      AggServerHttpRequestStats singleGetStats,
+      AggServerHttpRequestStats multiGetStats,
+      AggServerHttpRequestStats computeStats) {
+    this.singleGetStats = singleGetStats;
+    this.multiGetStats = multiGetStats;
+    this.computeStats = computeStats;
+
+    storeName = null;
+    startTimeInNS = System.nanoTime();
+    partsInvokeDelayLatency = -1;
+    secondPartLatency = -1;
+    requestPartCount = 1;
+    isHealthCheck = false;
+    responseStatus = null;
+    statCallbackExecuted = false;
+    databaseLookupLatency = -1;
+    storageExecutionSubmissionWaitTime = -1;
+    storageExecutionQueueLen = -1;
+    requestKeyCount = -1;
+    successRequestKeyCount = -1;
+    requestSizeInBytes = -1;
+    multiChunkLargeValueCount = -1;
+    readComputeLatency = -1;
+    readComputeDeserializationLatency = -1;
+    readComputeSerializationLatency = -1;
+    dotProductCount = 0;
+    cosineSimilarityCount = 0;
+    hadamardProductCount = 0;
+    isRequestTerminatedEarly = false;
+
+    newRequest = false;
+    firstPartLatency = LatencyUtils.getLatencyInMS(startTimeInNS);
+  }
+
   public void setResponseStatus(HttpResponseStatus status) {
     this.responseStatus = status;
+  }
+
+  public String getStoreName() {
+    return storeName;
   }
 
   public void setStoreName(String name) {
@@ -105,6 +162,10 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
 
   public void setRequestTerminatedEarly() {
     this.isRequestTerminatedEarly = true;
+  }
+
+  public HttpResponseStatus getResponseStatus() {
+    return responseStatus;
   }
 
   public void setRequestType(RequestType requestType) {
@@ -122,6 +183,10 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
 
   public void setRequestKeyCount(int keyCount) {
     this.requestKeyCount = keyCount;
+  }
+
+  public AggServerHttpRequestStats getCurrentStats() {
+    return currentStats;
   }
 
   public void setRequestInfo(RouterRequest request) {
@@ -194,157 +259,11 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
     this.valueSizeList = valueSizeList;
   }
 
-  public StatsHandler(
-      AggServerHttpRequestStats singleGetStats,
-      AggServerHttpRequestStats multiGetStats,
-      AggServerHttpRequestStats computeStats) {
-    this.singleGetStats = singleGetStats;
-    this.multiGetStats = multiGetStats;
-    this.computeStats = computeStats;
-    // default to use single-get
-    this.currentStats = singleGetStats;
-  }
-
-  @Override
-  public void channelRead(ChannelHandlerContext ctx, Object msg) {
-    if (newRequest) {
-      // Reset for every request
-      storeName = null;
-      startTimeInNS = System.nanoTime();
-      partsInvokeDelayLatency = -1;
-      secondPartLatency = -1;
-      requestPartCount = 1;
-      isHealthCheck = false;
-      responseStatus = null;
-      statCallbackExecuted = false;
-      databaseLookupLatency = -1;
-      storageExecutionSubmissionWaitTime = -1;
-      storageExecutionQueueLen = -1;
-      requestKeyCount = -1;
-      successRequestKeyCount = -1;
-      requestSizeInBytes = -1;
-      multiChunkLargeValueCount = -1;
-      readComputeLatency = -1;
-      readComputeDeserializationLatency = -1;
-      readComputeSerializationLatency = -1;
-      dotProductCount = 0;
-      cosineSimilarityCount = 0;
-      hadamardProductCount = 0;
-      isRequestTerminatedEarly = false;
-
-      /**
-       * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
-       * registered by the pipeline to be executed in the same thread.
-       */
-      newRequest = false;
-      ctx.fireChannelRead(msg);
-      firstPartLatency = LatencyUtils.getLatencyInMS(startTimeInNS);
-    } else {
-      // Only works for multi-get request.
-      long startTimeOfPart2InNS = System.nanoTime();
-      partsInvokeDelayLatency = LatencyUtils.convertLatencyFromNSToMS(startTimeOfPart2InNS - startTimeInNS);
-      ctx.fireChannelRead(msg);
-      secondPartLatency = LatencyUtils.getLatencyInMS(startTimeOfPart2InNS);
-      ++requestPartCount;
-    }
-  }
-
-  @Override
-  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
-    this.nextInboundHandler = nextInboundHandler;
-  }
-
-  @Override
-  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
-    this.nextOutboundHandler = nextOutboundHandler;
-  }
-
-  @Override
-  public void grpcRead(GrpcHandlerContext ctx) {
-    if (ctx.getGrpcStatsContext() == null) {
-      // new request
-      GrpcStatsContext statsContext = new GrpcStatsContext(singleGetStats, multiGetStats, computeStats);
-
-      ctx.setGrpcStatsContext(statsContext);
-      nextInboundHandler.grpcRead(ctx);
-    } else {
-
-      GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
-      long startTimeOfPart2InNS = System.nanoTime();
-      statsContext
-          .setPartsInvokeDelayLatency(LatencyUtils.convertLatencyFromNSToMS(startTimeOfPart2InNS - startTimeInNS));
-      statsContext.setSecondPartLatency(LatencyUtils.getLatencyInMS(startTimeOfPart2InNS));
-      nextInboundHandler.grpcRead(ctx);
-      statsContext.incrementRequestPartCount();
-    }
-  }
-
-  @Override
-  public void grpcWrite(GrpcHandlerContext ctx) {
-    GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
-
-    if (statsContext.getResponseStatus() == null) {
-      throw new VeniceException("request status could not be null");
-    }
-
-    ServerHttpRequestStats serverHttpRequestStats =
-        statsContext.getCurrentStats().getStoreStats(statsContext.getStoreName());
-    statsContext.recordBasicMetrics(serverHttpRequestStats);
-
-    double elapsedTime = LatencyUtils.getLatencyInMS(statsContext.getRequestStartTimeInNS());
-
-    if (statsContext.getResponseStatus().equals(OK) || statsContext.getResponseStatus().equals(NOT_FOUND)) {
-      statsContext.successRequest(serverHttpRequestStats, elapsedTime);
-    } else {
-      statsContext.errorRequest(serverHttpRequestStats, elapsedTime);
-    }
-
-    nextOutboundHandler.grpcWrite(ctx);
-  }
-
   public long getRequestStartTimeInNS() {
     return this.startTimeInNS;
   }
 
-  @Override
-  public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws VeniceException {
-    ChannelFuture future = ctx.writeAndFlush(msg);
-    future.addListener((result) -> {
-      // reset the StatsHandler for the new request. This is necessary since instances are channel-based
-      // and channels are ready for the future requests as soon as the current has been handled.
-      newRequest = true;
-
-      if (responseStatus == null) {
-        throw new VeniceException("request status could not be null");
-      }
-
-      // we don't record if it is a health check request
-      if (isHealthCheck) {
-        return;
-      }
-
-      /**
-       * TODO: Need to do more investigation to figure out why this callback could be triggered
-       * multiple times for a single request
-       */
-      if (!statCallbackExecuted) {
-        ServerHttpRequestStats serverHttpRequestStats = currentStats.getStoreStats(storeName);
-        recordBasicMetrics(serverHttpRequestStats);
-
-        double elapsedTime = LatencyUtils.getLatencyInMS(startTimeInNS);
-        // if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
-        // records a successRequest in stats. Otherwise, records a errorRequest in stats;
-        if (result.isSuccess() && (responseStatus.equals(OK) || responseStatus.equals(NOT_FOUND))) {
-          successRequest(serverHttpRequestStats, elapsedTime);
-        } else {
-          errorRequest(serverHttpRequestStats, elapsedTime);
-        }
-        statCallbackExecuted = true;
-      }
-    });
-  }
-
-  private void recordBasicMetrics(ServerHttpRequestStats serverHttpRequestStats) {
+  public void recordBasicMetrics(ServerHttpRequestStats serverHttpRequestStats) {
     if (storeName != null) {
       if (databaseLookupLatency >= 0) {
         serverHttpRequestStats.recordDatabaseLookupLatency(databaseLookupLatency, isAssembledMultiChunkLargeValue());
@@ -426,7 +345,7 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
 
   // This method does not have to be synchronized since operations in Tehuti are already synchronized.
   // Please re-consider the race condition if new logic is added.
-  private void successRequest(ServerHttpRequestStats stats, double elapsedTime) {
+  public void successRequest(ServerHttpRequestStats stats, double elapsedTime) {
     if (storeName != null) {
       stats.recordSuccessRequest();
       stats.recordSuccessRequestLatency(elapsedTime);
@@ -435,7 +354,7 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
     }
   }
 
-  private void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
+  public void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
     if (storeName == null) {
       currentStats.recordErrorRequest();
       currentStats.recordErrorRequestLatency(elapsedTime);
@@ -452,4 +371,5 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
   public void setReadComputeOutputSize(int size) {
     this.readComputeOutputSize = size;
   }
+
 }

@@ -20,6 +20,7 @@ public class VeniceGrpcServer {
     this.config = config;
     server = Grpc.newServerBuilderForPort(config.getPort(), config.getCredentials())
         .addService(ServerInterceptors.intercept(config.getService(), config.getInterceptors()))
+        // .executor(...) TODO: experiment with custom executor
         .build();
 
   }

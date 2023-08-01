@@ -40,6 +40,8 @@ import java.util.stream.Collectors;
 public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest>
     implements VeniceGrpcHandler {
   private final StatsHandler statsHandler;
+  private VeniceGrpcHandler nextInboundHandler;
+  private VeniceGrpcHandler nextOutboundHandler;
   private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
 
   public RouterRequestHttpHandler(StatsHandler handler, Map<String, Integer> storeToEarlyTerminationThresholdMSMap) {
@@ -131,19 +133,32 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   }
 
   @Override
+  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
+    this.nextInboundHandler = nextInboundHandler;
+  }
+
+  @Override
+  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
+    this.nextOutboundHandler = nextOutboundHandler;
+  }
+
+  @Override
   public void grpcRead(GrpcHandlerContext ctx) {
     VeniceClientRequest clientRequest = ctx.getVeniceClientRequest();
+    GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
     RouterRequest routerRequest = clientRequest.getIsBatchRequest()
         ? MultiGetRouterRequestWrapper.parseMultiGetGrpcRequest(clientRequest)
         : GetRouterRequest.grpcGetRouterRequest(clientRequest);
 
-    statsHandler.setRequestInfo(routerRequest);
+    statsContext.setRequestInfo(routerRequest);
+
     ctx.setRouterRequest(routerRequest);
+    nextInboundHandler.grpcRead(ctx);
   }
 
   @Override
   public void grpcWrite(GrpcHandlerContext ctx) {
-
+    nextOutboundHandler.grpcWrite(ctx);
   }
 
   /**

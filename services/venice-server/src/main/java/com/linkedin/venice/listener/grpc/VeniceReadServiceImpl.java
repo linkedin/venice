@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.listener.HttpChannelInitializer;
 import com.linkedin.venice.listener.StorageReadRequestHandler;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
@@ -13,7 +14,6 @@ import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import io.grpc.stub.StreamObserver;
 import io.netty.buffer.ByteBuf;
-import java.util.Iterator;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,8 +22,11 @@ import org.apache.logging.log4j.Logger;
 public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(VeniceReadServiceImpl.class);
 
-  private List<VeniceGrpcHandler> inboundHandlers;
-  private List<VeniceGrpcHandler> outboundHandlers;
+  private List<VeniceGrpcHandler> inboundHandlerList;
+  private List<VeniceGrpcHandler> outboundHandlerList;
+  private VeniceGrpcHandler inboundHandlerHead;
+  private VeniceGrpcHandler outboundHandlerHead;
+
   private StorageReadRequestHandler storageReadRequestHandler;
 
   public VeniceReadServiceImpl() {
@@ -36,8 +39,34 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
   }
 
   public VeniceReadServiceImpl(List<VeniceGrpcHandler> inboundHandlers, List<VeniceGrpcHandler> outboundHandlers) {
-    this.inboundHandlers = inboundHandlers;
-    this.outboundHandlers = outboundHandlers;
+    LOGGER.info("Created gRPC Server for VeniceReadService");
+    // this.inboundHandlers = inboundHandlers;
+    // this.outboundHandlers = outboundHandlers;
+  }
+
+  public VeniceReadServiceImpl(HttpChannelInitializer channelInitializer) {
+    channelInitializer.initGrpcHandlers();
+    // this.inboundHandlers = channelInitializer.getInboundHandlers();
+    // this.outboundHandlers = channelInitializer.getOutboundHandlers();
+
+    List<VeniceGrpcHandler> channelInboundHandlers = channelInitializer.getInboundHandlers();
+    List<VeniceGrpcHandler> channelOutboundHandlers = channelInitializer.getOutboundHandlers();
+
+    inboundHandlerHead = channelInboundHandlers.get(0);
+    for (int i = 0; i < channelInboundHandlers.size() - 1; i++) {
+      channelInboundHandlers.get(i).setNextInboundHandler(channelInboundHandlers.get(i + 1));
+    }
+
+    outboundHandlerHead = channelOutboundHandlers.get(0);
+    for (int i = 0; i < channelInboundHandlers.size() - 1; i++) {
+      channelOutboundHandlers.get(i).setNextOutboundHandler(channelOutboundHandlers.get(i + 1));
+    }
+
+    channelOutboundHandlers.get(channelOutboundHandlers.size() - 1).setNextOutboundHandler(new GrpcHandlerDelegate());
+    GrpcHandlerDelegate delegate = new GrpcHandlerDelegate();
+    delegate.setNextOutboundHandler(outboundHandlerHead);
+    channelInboundHandlers.get(channelInboundHandlers.size() - 1).setNextInboundHandler(delegate);
+
   }
 
   @Override
@@ -53,25 +82,11 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
   private void handleRequest(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
     VeniceServerResponse.Builder responseBuilder = VeniceServerResponse.newBuilder();
     GrpcHandlerContext ctx = new GrpcHandlerContext(request, responseBuilder, responseObserver);
-    Iterator<VeniceGrpcHandler> inboundHandlerIterator = inboundHandlers.iterator();
+    // Iterator<VeniceGrpcHandler> inboundHandlerIterator = inboundHandlers.iterator();
 
-    while (inboundHandlerIterator.hasNext() && !ctx.isCompleted()) {
-      VeniceGrpcHandler inboundHandler = inboundHandlerIterator.next();
-      inboundHandler.grpcRead(ctx);
-    }
+    inboundHandlerHead.grpcRead(ctx);
 
-    if (ctx.isCompleted()) {
-      // received an error and had to finish execution early.
-      return;
-    }
-
-    // for (VeniceGrpcHandler inboundHandler : inboundHandlers) {
-    // inboundHandler.grpcRead(ctx);
-    // }
-
-    for (VeniceGrpcHandler outboundHandler: outboundHandlers) {
-      outboundHandler.grpcWrite(ctx);
-    }
+    // outboundHandlerHead.grpcWrite(ctx);
 
     responseObserver.onNext(ctx.getVeniceServerResponseBuilder().build());
     responseObserver.onCompleted();

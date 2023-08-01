@@ -129,6 +129,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           "we require a mapping of netty server addresses to grpc server addresses to use a gRPC enabled client");
     }
 
+    if (useGrpc && nettyServerToGrpcAddressMap.size() == 0) {
+      throw new UnsupportedOperationException(
+          "netty server to grpc server address map cannot be empty when using a gRPC enabled client");
+    }
+
     if (useGrpc && r2Client == null) {
       throw new UnsupportedOperationException(
           "we require a r2Client to handle unsupported requests when using a gRPC enabled client");
