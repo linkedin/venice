@@ -127,4 +127,12 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
     int id = Integer.parseInt(pair[0]), valueSchemaId = Integer.parseInt(pair[1]);
     return new RmdVersionId(valueSchemaId, id);
   }
+
+  public void HelloWorld(Path path) {
+    if (path != null) {
+      System.out.println("Hello World! " + path.toString());
+    } else {
+      System.out.println("Hello World! " + schemaDir.toString());
+    }
+  }
 }
