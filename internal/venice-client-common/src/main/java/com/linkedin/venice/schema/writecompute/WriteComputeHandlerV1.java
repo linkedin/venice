@@ -41,7 +41,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     }
 
     final GenericRecord updatedValue = currValue == null ? SchemaUtils.createGenericRecord(valueSchema) : currValue;
-    for (Schema.Field valueField: valueSchema.getFields()) {
+    for (Schema.Field valueField: updatedValue.getSchema().getFields()) {
       final String valueFieldName = valueField.name();
       Object writeComputeFieldValue = writeComputeRecord.get(valueFieldName);
       if (isNoOpField(writeComputeFieldValue)) {
@@ -49,8 +49,8 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
 
       } else {
         Object updatedFieldObject =
-            updateFieldValue(valueField.schema(), updatedValue.get(valueFieldName), writeComputeFieldValue);
-        updatedValue.put(valueFieldName, updatedFieldObject);
+            updateFieldValue(valueField.schema(), updatedValue.get(valueField.pos()), writeComputeFieldValue);
+        updatedValue.put(valueField.pos(), updatedFieldObject);
       }
     }
     return updatedValue;
