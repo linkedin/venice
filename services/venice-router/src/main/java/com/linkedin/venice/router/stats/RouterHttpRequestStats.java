@@ -3,10 +3,12 @@ package com.linkedin.venice.router.stats;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.*;
 
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
+import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -65,6 +67,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor multiGetFallbackSensor;
   private final Sensor metaStoreShadowReadSensor;
   private Sensor keySizeSensor;
+  private final String systemStoreName;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -74,7 +77,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       ScatterGatherStats scatterGatherStats,
       boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
-
+    this.systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
     Rate requestRate = new OccurrenceRate();
     Rate healthyRequestRate = new OccurrenceRate();
     Rate tardyRequestRate = new OccurrenceRate();
@@ -361,5 +364,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordMetaStoreShadowRead() {
     metaStoreShadowReadSensor.record();
+  }
+
+  @Override
+  protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
+    return super.registerSensor(systemStoreName == null ? sensorName : systemStoreName, null, stats);
   }
 }

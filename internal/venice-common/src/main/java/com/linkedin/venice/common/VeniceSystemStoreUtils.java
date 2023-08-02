@@ -8,6 +8,9 @@ import java.util.concurrent.TimeUnit;
 public class VeniceSystemStoreUtils {
   public static final String PARTICIPANT_STORE = "participant_store";
   public static final String PUSH_JOB_DETAILS_STORE = "push_job_details_store";
+  public static final String DAVINCI_PUSH_STATUS_STORE_STR =
+      String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store");
+  public static final String META_STORE_STR = String.format(Store.SYSTEM_STORE_FORMAT, "meta_store");
 
   private static final String PARTICIPANT_STORE_PREFIX = String.format(Store.SYSTEM_STORE_FORMAT, PARTICIPANT_STORE);
   private static final String PARTICIPANT_STORE_FORMAT = PARTICIPANT_STORE_PREFIX + "_cluster_%s";
@@ -51,5 +54,14 @@ public class VeniceSystemStoreUtils {
   public static boolean isUserSystemStore(String storeName) {
     VeniceSystemStoreType veniceSystemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     return veniceSystemStoreType != null && veniceSystemStoreType.isStoreZkShared();
+  }
+
+  public static String extractSystemStoreType(String systemStoreName) {
+    if (systemStoreName.startsWith(DAVINCI_PUSH_STATUS_STORE_STR)) {
+      return DAVINCI_PUSH_STATUS_STORE_STR;
+    } else if (systemStoreName.startsWith(META_STORE_STR)) {
+      return META_STORE_STR;
+    }
+    return null;
   }
 }
