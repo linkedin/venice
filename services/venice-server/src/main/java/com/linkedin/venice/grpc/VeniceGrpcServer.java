@@ -19,6 +19,7 @@ public class VeniceGrpcServer {
     port = config.getPort();
     this.config = config;
     server = Grpc.newServerBuilderForPort(config.getPort(), config.getCredentials())
+        // .executor(...) TODO: experiment with server config w.r.t. custom executor for optimizing performance
         .addService(ServerInterceptors.intercept(config.getService(), config.getInterceptors()))
         .build();
 

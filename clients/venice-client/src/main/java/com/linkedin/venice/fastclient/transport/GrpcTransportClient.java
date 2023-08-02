@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.apache.logging.log4j.LogManager;
@@ -51,27 +52,7 @@ public class GrpcTransportClient extends InternalTransportClient {
 
   @Override
   public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
-    String[] requestParts = requestPath.split("/");
-    if (!requestParts[3].equals(STORAGE_ACTION)) {
-      LOGGER.debug(
-          "performing unsupported gRPC transport client action ({}), passing request to R2 client",
-          requestParts[3]);
-      return r2TransportClient.get(requestPath, headers);
-    }
-
-    ManagedChannel channel = getChannel(requestParts[2]);
-
-    VeniceClientRequest request = VeniceClientRequest.newBuilder()
-        .setResourceName(requestParts[4])
-        .setPartition(Integer.parseInt(requestParts[5]))
-        .setKeyString(requestParts[6])
-        .setIsBatchRequest(false)
-        .build();
-
-    VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = getStub(channel);
-    GrpcTransportClientCallback callback = new GrpcTransportClientCallback(clientStub, request);
-
-    return callback.get();
+    return handleRequest(requestPath, headers, null, true);
   }
 
   @Override
@@ -79,31 +60,50 @@ public class GrpcTransportClient extends InternalTransportClient {
       String requestPath,
       Map<String, String> headers,
       byte[] requestBody) {
-    String[] requestParts = requestPath.split("/");
-    if (!requestParts[2].equals(STORAGE_ACTION)) {
-      LOGGER.debug(
-          "performing unsupported gRPC transport client action ({}), passing request to R2 client",
-          requestParts[2]);
-      return r2TransportClient.post(requestPath, headers, requestBody);
-    }
-
-    ManagedChannel channel = getChannel(requestParts[2]);
-    VeniceClientRequest request = VeniceClientRequest.newBuilder()
-        .setResourceName(requestParts[4])
-        .setKeyBytes(ByteString.copyFrom(requestBody))
-        .setIsBatchRequest(true)
-        .build();
-
-    VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = getStub(channel);
-    GrpcTransportClientCallback callback = new GrpcTransportClientCallback(clientStub, request);
-    return callback.post();
+    return handleRequest(requestPath, headers, requestBody, false);
   }
 
   @Override
-  public void close() {
+  public void close() throws IOException {
     for (Map.Entry<String, ManagedChannel> entry: serverGrpcChannels.entrySet()) {
       entry.getValue().shutdown();
     }
+
+    r2TransportClient.close();
+  }
+
+  public CompletableFuture<TransportClientResponse> handleRequest(
+      String requestPath,
+      Map<String, String> headers,
+      byte[] requestBody,
+      boolean isSingleGet) {
+    String[] requestParts = requestPath.split("/");
+    // https://localhost:1234/storage/store_v1/0/keyString
+    // ["https:", "", "localhost:1234", "storage", "store_v1", "0", "keyString"]
+
+    if (!requestParts[3].equals(STORAGE_ACTION)) {
+      LOGGER.debug(
+          "performing unsupported gRPC transport client action ({}), passing request to R2 client",
+          requestParts[3]);
+      return isSingleGet
+          ? r2TransportClient.get(requestPath, headers)
+          : r2TransportClient.post(requestPath, headers, requestBody);
+    }
+    ManagedChannel channel = getChannel(requestParts[2]);
+    VeniceClientRequest.Builder requestBuilder =
+        VeniceClientRequest.newBuilder().setResourceName(requestParts[4]).setIsBatchRequest(!isSingleGet);
+
+    if (isSingleGet) {
+      requestBuilder.setKeyString(requestParts[6]);
+      requestBuilder.setPartition(Integer.parseInt(requestParts[5]));
+    } else {
+      requestBuilder.setKeyBytes(ByteString.copyFrom(requestBody));
+    }
+
+    VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = getStub(channel);
+    GrpcTransportClientCallback callback = new GrpcTransportClientCallback(clientStub, requestBuilder.build());
+
+    return isSingleGet ? callback.get() : callback.post();
   }
 
   private static class GrpcTransportClientCallback {
@@ -136,7 +136,6 @@ public class GrpcTransportClient extends InternalTransportClient {
 
         @Override
         public void onError(Throwable t) {
-          LOGGER.error("Error in gRPC request", t);
           valueFuture.completeExceptionally(t);
         }
 
@@ -166,7 +165,6 @@ public class GrpcTransportClient extends InternalTransportClient {
 
         @Override
         public void onError(Throwable t) {
-          LOGGER.error("Error in gRPC request", t);
           valueFuture.completeExceptionally(t);
         }
 
