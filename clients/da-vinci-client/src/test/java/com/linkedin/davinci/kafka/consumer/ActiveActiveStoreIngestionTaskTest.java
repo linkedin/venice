@@ -270,7 +270,14 @@ public class ActiveActiveStoreIngestionTaskTest {
     LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
         .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
 
+    PartitionConsumptionState.TransientRecord transientRecord =
+        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);
+
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
+    when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    when(consumerRecord.getKey()).thenReturn(kafkaKey);
+    when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
     ingestionTask.produceToLocalKafka(
         consumerRecord,
         partitionConsumptionState,
@@ -287,6 +294,11 @@ public class ActiveActiveStoreIngestionTaskTest {
         kafkaUrl,
         kafkaClusterId,
         beforeProcessingRecordTimestamp);
+
+    // RMD chunking not enabled in this case...
+    Assert.assertNotNull(transientRecord.getValueManifest());
+    Assert.assertNull(transientRecord.getRmdManifest());
+    Assert.assertEquals(transientRecord.getValueManifest().getKeysWithChunkIdSuffix().size(), 2);
 
     // Send 1 SOS, 2 Chunks, 1 Manifest.
     verify(mockedProducer, times(4)).sendMessage(any(), any(), any(), any(), any(), any());
