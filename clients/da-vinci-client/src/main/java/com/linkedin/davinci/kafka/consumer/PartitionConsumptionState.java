@@ -503,6 +503,7 @@ public class PartitionConsumptionState {
     if (replicationMetadataRecord != null) {
       transientRecord.setReplicationMetadataRecord(replicationMetadataRecord);
     }
+
     transientRecordMap.put(ByteArrayKey.wrap(key), transientRecord);
   }
 
@@ -603,8 +604,16 @@ public class PartitionConsumptionState {
       return rmdManifest;
     }
 
+    public void setRmdManifest(ChunkedValueManifest rmdManifest) {
+      this.rmdManifest = rmdManifest;
+    }
+
     public ChunkedValueManifest getValueManifest() {
       return valueManifest;
+    }
+
+    public void setValueManifest(ChunkedValueManifest valueManifest) {
+      this.valueManifest = valueManifest;
     }
 
     public void setReplicationMetadataRecord(GenericRecord replicationMetadataRecord) {

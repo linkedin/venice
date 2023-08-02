@@ -595,6 +595,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           RawBytesStoreDeserializerCache.getInstance(),
           compressor.get(),
           valueManifestContainer);
+      LOGGER.info("DEBUGGING GET OLD MANIFEST FROM STORAGE: {}", valueManifestContainer.getManifest());
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
           LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
           currentTimeForMetricsMs);
@@ -605,6 +606,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         if (valueManifestContainer != null) {
           valueManifestContainer.setManifest(transientRecord.getValueManifest());
         }
+        LOGGER.info(
+            "DEBUGGING GET OLD MANIFEST FROM CACHE: {} OLD VALUE LENGTH{}",
+            transientRecord.getValueManifest(),
+            transientRecord.getValueLen());
         originalValue = ByteBuffer
             .wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
       }

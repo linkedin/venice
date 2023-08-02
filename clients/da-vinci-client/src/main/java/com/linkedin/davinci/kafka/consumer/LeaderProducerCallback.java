@@ -249,6 +249,16 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     this.rmdChunks = rmdChunks;
     this.oldValueManifest = oldValueManifest;
     this.oldRmdManifest = oldRmdManifest;
+    if (partitionConsumptionState == null) {
+      return;
+    }
+    // TransientRecord map is indexed by non-chunked key.
+    PartitionConsumptionState.TransientRecord record =
+        partitionConsumptionState.getTransientRecord(sourceConsumerRecord.getKey().getKey());
+    if (record != null) {
+      record.setValueManifest(chunkedValueManifest);
+      record.setRmdManifest(chunkedRmdManifest);
+    }
   }
 
   private void recordProducerStats(int producedRecordSize, int producedRecordNum) {
