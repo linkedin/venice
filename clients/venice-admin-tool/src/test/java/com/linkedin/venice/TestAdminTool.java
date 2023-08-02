@@ -4,7 +4,10 @@ import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECON
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
@@ -12,16 +15,23 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.metadata.response.VersionProperties;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.ParseException;
@@ -196,7 +206,8 @@ public class TestAdminTool {
   }
 
   @Test
-  public void testAdminToolRequestBasedMetadata() {
+  public void testAdminToolRequestBasedMetadata()
+      throws ExecutionException, InterruptedException, JsonProcessingException {
     String storeName = "test-store1";
     String[] getMetadataArgs =
         { "--request-based-metadata", "--url", "http://localhost:7036", "--store", storeName, "--cluster", "venice-1" };
@@ -207,5 +218,32 @@ public class TestAdminTool {
     } catch (Exception e) {
       Assert.fail("Unexpected exception while invoking get request based metadata API: ", e);
     }
+
+    TransportClient transportClient = mock(TransportClient.class);
+    CompletableFuture<TransportClientResponse> completableFuture = mock(CompletableFuture.class);
+    TransportClientResponse response = mock(TransportClientResponse.class);
+    RecordSerializer<MetadataResponseRecord> metadataResponseSerializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MetadataResponseRecord.SCHEMA$);
+    MetadataResponseRecord record = new MetadataResponseRecord();
+    record.setRoutingInfo(Collections.singletonMap("0", Collections.singletonList("host1")));
+    record.setVersions(Collections.singletonList(1));
+    record.setHelixGroupInfo(Collections.emptyMap());
+    VersionProperties versionProperties = new VersionProperties();
+    versionProperties.setCurrentVersion(1);
+    versionProperties.setAmplificationFactor(1);
+    versionProperties.setCompressionStrategy(1);
+    versionProperties.setPartitionCount(1);
+    versionProperties.setPartitionerClass("com.linkedin.venice.partitioner.DefaultVenicePartitioner");
+    versionProperties.setPartitionerParams(Collections.emptyMap());
+    record.setVersionMetadata(versionProperties);
+    record.setKeySchema(Collections.singletonMap("1", "\"string\""));
+    record.setValueSchemas(Collections.singletonMap("1", "\"string\""));
+    record.setLatestSuperSetValueSchemaId(1);
+    byte[] responseByte = metadataResponseSerializer.serialize(record);
+    doReturn(responseByte).when(response).getBody();
+    doReturn(response).when(completableFuture).get();
+    String requestBasedMetadataURL = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    doReturn(completableFuture).when(transportClient).get(requestBasedMetadataURL);
+    AdminTool.getAndPrintRequestBasedMetadata(transportClient, "http://localhost:7036", storeName);
   }
 }

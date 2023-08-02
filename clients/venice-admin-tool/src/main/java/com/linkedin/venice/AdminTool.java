@@ -2831,6 +2831,11 @@ public class AdminTool {
       clientConfig.setSslFactory(sslFactory.get());
     }
     TransportClient transportClient = ClientFactory.getTransportClient(clientConfig);
+    getAndPrintRequestBasedMetadata(transportClient, url, storeName);
+  }
+
+  static void getAndPrintRequestBasedMetadata(TransportClient transportClient, String url, String storeName)
+      throws JsonProcessingException {
     String requestBasedMetadataURL = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     byte[] body;
     try {
