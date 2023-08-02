@@ -2667,8 +2667,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               putValue.position(),
               putValue.remaining(),
               put.schemaId,
-              null,
-              null, // Since we did not perform read, it is not possible to delete old value chunks here.
               null);
         }
 
@@ -2737,8 +2735,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
          */
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
-          partitionConsumptionState
-              .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null, null, null);
+          partitionConsumptionState.setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null);
         }
         leaderProducedRecordContext =
             LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, null);
@@ -2863,8 +2860,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           0,
           updatedValueBytes.length,
           readerValueSchemaId,
-          null,
-          oldValueManifest,
           null);
 
       ByteBuffer updateValueWithSchemaId =
