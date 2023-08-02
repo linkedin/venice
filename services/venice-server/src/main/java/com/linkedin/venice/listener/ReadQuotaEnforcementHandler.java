@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -198,17 +199,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   }
 
   @Override
-  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
-    this.nextInboundHandler = nextInboundHandler;
-  }
-
-  @Override
-  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
-    this.nextOutboundHandler = nextOutboundHandler;
-  }
-
-  @Override
-  public void grpcRead(GrpcHandlerContext ctx) {
+  public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
     RouterRequest request = ctx.getRouterRequest();
     StreamObserver<VeniceServerResponse> responseObserver = ctx.getResponseObserver();
     String storeName = request.getStoreName();
@@ -226,7 +217,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     if (!isInitialized() || !store.isStorageNodeReadQuotaEnabled()) {
       ReferenceCountUtil.retain(request);
       // no quota limit is enforced
-      nextInboundHandler.grpcRead(ctx);
+      pipeline.processResponse(ctx);
       return;
     }
 
@@ -274,14 +265,15 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
 
     ReferenceCountUtil.retain(request);
-    nextInboundHandler.grpcRead(ctx);
     stats.recordAllowed(storeName, rcu);
     stats.recordReadQuotaUsage(storeName, storageNodeBucket.getStaleUsageRatio());
+
+    pipeline.processRequest(ctx);
   }
 
   @Override
-  public void grpcWrite(GrpcHandlerContext ctx) {
-    nextOutboundHandler.grpcWrite(ctx);
+  public void grpcWrite(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
+    pipeline.processResponse(ctx);
   }
 
   /**

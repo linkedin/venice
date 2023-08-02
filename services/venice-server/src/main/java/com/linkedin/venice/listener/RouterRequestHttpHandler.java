@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
@@ -40,8 +41,6 @@ import java.util.stream.Collectors;
 public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest>
     implements VeniceGrpcHandler {
   private final StatsHandler statsHandler;
-  private VeniceGrpcHandler nextInboundHandler;
-  private VeniceGrpcHandler nextOutboundHandler;
   private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
 
   public RouterRequestHttpHandler(StatsHandler handler, Map<String, Integer> storeToEarlyTerminationThresholdMSMap) {
@@ -133,17 +132,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   }
 
   @Override
-  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
-    this.nextInboundHandler = nextInboundHandler;
-  }
-
-  @Override
-  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
-    this.nextOutboundHandler = nextOutboundHandler;
-  }
-
-  @Override
-  public void grpcRead(GrpcHandlerContext ctx) {
+  public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
     VeniceClientRequest clientRequest = ctx.getVeniceClientRequest();
     GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
     RouterRequest routerRequest = clientRequest.getIsBatchRequest()
@@ -153,12 +142,12 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
     statsContext.setRequestInfo(routerRequest);
 
     ctx.setRouterRequest(routerRequest);
-    nextInboundHandler.grpcRead(ctx);
+    pipeline.processRequest(ctx);
   }
 
   @Override
-  public void grpcWrite(GrpcHandlerContext ctx) {
-    nextOutboundHandler.grpcWrite(ctx);
+  public void grpcWrite(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
+    pipeline.processResponse(ctx);
   }
 
   /**

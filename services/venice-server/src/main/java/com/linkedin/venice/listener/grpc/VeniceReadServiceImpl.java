@@ -22,10 +22,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServiceImplBase {
   private static final Logger LOGGER = LogManager.getLogger(VeniceReadServiceImpl.class);
 
-  private List<VeniceGrpcHandler> inboundHandlerList;
-  private List<VeniceGrpcHandler> outboundHandlerList;
-  private VeniceGrpcHandler inboundHandlerHead;
-  private VeniceGrpcHandler outboundHandlerHead;
+  private GrpcHandlerPipeline handlerPipeline;
 
   private StorageReadRequestHandler storageReadRequestHandler;
 
@@ -45,28 +42,9 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
   }
 
   public VeniceReadServiceImpl(HttpChannelInitializer channelInitializer) {
-    channelInitializer.initGrpcHandlers();
     // this.inboundHandlers = channelInitializer.getInboundHandlers();
     // this.outboundHandlers = channelInitializer.getOutboundHandlers();
-
-    List<VeniceGrpcHandler> channelInboundHandlers = channelInitializer.getInboundHandlers();
-    List<VeniceGrpcHandler> channelOutboundHandlers = channelInitializer.getOutboundHandlers();
-
-    inboundHandlerHead = channelInboundHandlers.get(0);
-    for (int i = 0; i < channelInboundHandlers.size() - 1; i++) {
-      channelInboundHandlers.get(i).setNextInboundHandler(channelInboundHandlers.get(i + 1));
-    }
-
-    outboundHandlerHead = channelOutboundHandlers.get(0);
-    for (int i = 0; i < channelInboundHandlers.size() - 1; i++) {
-      channelOutboundHandlers.get(i).setNextOutboundHandler(channelOutboundHandlers.get(i + 1));
-    }
-
-    channelOutboundHandlers.get(channelOutboundHandlers.size() - 1).setNextOutboundHandler(new GrpcHandlerDelegate());
-    GrpcHandlerDelegate delegate = new GrpcHandlerDelegate();
-    delegate.setNextOutboundHandler(outboundHandlerHead);
-    channelInboundHandlers.get(channelInboundHandlers.size() - 1).setNextInboundHandler(delegate);
-
+    this.handlerPipeline = channelInitializer.initGrpcHandlers();
   }
 
   @Override
@@ -84,9 +62,8 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     GrpcHandlerContext ctx = new GrpcHandlerContext(request, responseBuilder, responseObserver);
     // Iterator<VeniceGrpcHandler> inboundHandlerIterator = inboundHandlers.iterator();
 
-    inboundHandlerHead.grpcRead(ctx);
-
-    // outboundHandlerHead.grpcWrite(ctx);
+    handlerPipeline.processRequest(ctx);
+    handlerPipeline.processResponse(ctx);
 
     responseObserver.onNext(ctx.getVeniceServerResponseBuilder().build());
     responseObserver.onCompleted();

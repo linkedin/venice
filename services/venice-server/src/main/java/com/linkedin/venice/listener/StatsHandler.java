@@ -5,6 +5,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.read.RequestType;
@@ -250,23 +251,13 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
   }
 
   @Override
-  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
-    this.nextInboundHandler = nextInboundHandler;
-  }
-
-  @Override
-  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
-    this.nextOutboundHandler = nextOutboundHandler;
-  }
-
-  @Override
-  public void grpcRead(GrpcHandlerContext ctx) {
+  public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
     if (ctx.getGrpcStatsContext() == null) {
       // new request
       GrpcStatsContext statsContext = new GrpcStatsContext(singleGetStats, multiGetStats, computeStats);
 
       ctx.setGrpcStatsContext(statsContext);
-      nextInboundHandler.grpcRead(ctx);
+      pipeline.processRequest(ctx);
     } else {
 
       GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
@@ -274,13 +265,13 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
       statsContext
           .setPartsInvokeDelayLatency(LatencyUtils.convertLatencyFromNSToMS(startTimeOfPart2InNS - startTimeInNS));
       statsContext.setSecondPartLatency(LatencyUtils.getLatencyInMS(startTimeOfPart2InNS));
-      nextInboundHandler.grpcRead(ctx);
+      pipeline.processRequest(ctx);
       statsContext.incrementRequestPartCount();
     }
   }
 
   @Override
-  public void grpcWrite(GrpcHandlerContext ctx) {
+  public void grpcWrite(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
     GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
 
     if (statsContext.getResponseStatus() == null) {
@@ -299,7 +290,7 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
       statsContext.errorRequest(serverHttpRequestStats, elapsedTime);
     }
 
-    nextOutboundHandler.grpcWrite(ctx);
+    pipeline.processResponse(ctx);
   }
 
   public long getRequestStartTimeInNS() {

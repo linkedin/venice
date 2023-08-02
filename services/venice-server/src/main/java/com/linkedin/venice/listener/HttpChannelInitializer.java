@@ -8,6 +8,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -216,42 +217,42 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
   }
 
-  public void initGrpcHandlers() {
+  public GrpcHandlerPipeline initGrpcHandlers() {
+    GrpcHandlerPipeline pipeline = new GrpcHandlerPipeline();
     inboundHandlers = new ArrayList<>();
     outboundHandlers = new ArrayList<>();
 
     // will replicate initChannel logic
 
     StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
-    inboundHandlers.add(statsHandler);
-    outboundHandlers.add(0, statsHandler);
+    pipeline.addHandler(statsHandler);
 
     OutboundHttpWrapperHandler outboundHttpWrapperHandler = new OutboundHttpWrapperHandler(statsHandler);
-    outboundHandlers.add(0, outboundHttpWrapperHandler);
+    pipeline.addHandler(outboundHttpWrapperHandler);
 
     if (sslFactory.isPresent()) { // set acls
       if (aclHandler.isPresent()) {
-        inboundHandlers.add(aclHandler.get());
-        outboundHandlers.add(0, aclHandler.get());
+        pipeline.addHandler(aclHandler.get());
       }
 
       if (storeAclHandler.isPresent()) {
-        inboundHandlers.add(storeAclHandler.get());
-        outboundHandlers.add(0, storeAclHandler.get());
+        pipeline.addHandler(storeAclHandler.get());
       }
     }
 
     RouterRequestHttpHandler grpcRouterRequestHandler =
         new RouterRequestHttpHandler(statsHandler, serverConfig.getStoreToEarlyTerminationThresholdMSMap());
-    inboundHandlers.add(grpcRouterRequestHandler);
-    outboundHandlers.add(0, grpcRouterRequestHandler);
+    pipeline.addHandler(grpcRouterRequestHandler);
 
     if (quotaEnforcer != null) {
       inboundHandlers.add(quotaEnforcer);
       outboundHandlers.add(0, quotaEnforcer);
+      pipeline.addHandler(quotaEnforcer);
     }
 
-    inboundHandlers.add(requestHandler);
+    pipeline.addHandler(requestHandler);
+
+    return pipeline;
   }
 
   public List<VeniceGrpcHandler> getInboundHandlers() {

@@ -14,6 +14,7 @@ import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -170,18 +171,8 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter im
   }
 
   @Override
-  public void grpcRead(GrpcHandlerContext ctx) {
-    nextInboundHandler.grpcRead(ctx);
-  }
-
-  @Override
-  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
-    this.nextInboundHandler = nextInboundHandler;
-  }
-
-  @Override
-  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
-    this.nextOutboundHandler = nextOutboundHandler;
+  public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
+    pipeline.processRequest(ctx);
   }
 
   // @Override
@@ -218,7 +209,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter im
   // }
 
   @Override
-  public void grpcWrite(GrpcHandlerContext ctx) {
+  public void grpcWrite(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
     ByteBuf body;
     CompressionStrategy compressionStrategy;
 
@@ -254,7 +245,6 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter im
     body.getBytes(body.readerIndex(), array);
     veniceServerResponseBuilder.setData(ByteString.copyFrom(array)); // double copy D:
 
-    if (nextOutboundHandler != null)
-      nextOutboundHandler.grpcWrite(ctx);
+    pipeline.processResponse(ctx);
   }
 }

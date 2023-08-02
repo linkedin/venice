@@ -4,6 +4,7 @@ import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.utils.NettyUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -83,22 +84,12 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
   }
 
   @Override
-  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
-    this.nextInboundHandler = nextInboundHandler;
+  public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
+    pipeline.processRequest(ctx);
   }
 
   @Override
-  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
-    this.nextOutboundHandler = nextOutboundHandler;
-  }
-
-  @Override
-  public void grpcRead(GrpcHandlerContext ctx) {
-    nextInboundHandler.grpcRead(ctx);
-  }
-
-  @Override
-  public void grpcWrite(GrpcHandlerContext ctx) {
-    nextOutboundHandler.grpcWrite(ctx);
+  public void grpcWrite(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
+    pipeline.processResponse(ctx);
   }
 }

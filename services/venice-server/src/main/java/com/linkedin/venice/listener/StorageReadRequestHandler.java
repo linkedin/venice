@@ -25,6 +25,7 @@ import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
@@ -353,7 +354,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
   }
 
   @Override
-  public void grpcRead(GrpcHandlerContext ctx) {
+  public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
     RouterRequest request = ctx.getRouterRequest();
     final long preSubmissionTimeNs = System.nanoTime();
 
@@ -385,7 +386,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
       }
 
       ctx.setReadResponse(response);
-      nextInboundHandler.grpcRead(ctx);
+      pipeline.processResponse(ctx);
 
     } catch (VeniceNoStoreException e) {
       throw new VeniceException("No storage exists for: " + e.getStoreName());
@@ -395,23 +396,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
       LOGGER.error("Exception thrown for {}", request.getResourceName(), e);
       throw new VeniceException(e.getMessage());
     }
-    // });
-
   }
 
   @Override
-  public void grpcWrite(GrpcHandlerContext ctx) {
-    nextOutboundHandler.grpcWrite(ctx);
-  }
-
-  @Override
-  public void setNextInboundHandler(VeniceGrpcHandler nextInboundHandler) {
-    this.nextInboundHandler = nextInboundHandler;
-  }
-
-  @Override
-  public void setNextOutboundHandler(VeniceGrpcHandler nextOutboundHandler) {
-    this.nextOutboundHandler = nextOutboundHandler;
+  public void grpcWrite(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
+    pipeline.processResponse(ctx);
   }
 
   private ThreadPoolExecutor getExecutor(RequestType requestType) {
