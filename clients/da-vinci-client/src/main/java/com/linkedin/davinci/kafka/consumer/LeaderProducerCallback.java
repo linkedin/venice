@@ -250,6 +250,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     this.oldValueManifest = oldValueManifest;
     this.oldRmdManifest = oldRmdManifest;
     if (getPartitionConsumptionState() == null) {
+      LOGGER.error("PartitionConsumptionState is missing in chunk producer callback");
       return;
     }
     // TransientRecord map is indexed by non-chunked key.
@@ -258,6 +259,8 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     if (record != null) {
       record.setValueManifest(chunkedValueManifest);
       record.setRmdManifest(chunkedRmdManifest);
+    } else {
+      LOGGER.error("Transient record is missing when trying to update value/RMD manifest.");
     }
   }
 
