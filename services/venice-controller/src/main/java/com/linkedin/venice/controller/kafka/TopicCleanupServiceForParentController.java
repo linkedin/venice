@@ -48,7 +48,7 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
         if (getAdmin().isTopicTruncatedBasedOnRetention(retention)) {
           // Topic may be deleted after delay
           int remainingFactor = storeToCountdownForDeletion.merge(
-              topic.getName() + "_" + topicManager.getKafkaBootstrapServers(),
+              topic.getName() + "_" + topicManager.getPubSubBootstrapServers(),
               delayFactor,
               (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
@@ -62,7 +62,7 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
                 "Retention policy for topic: {} is: {} ms, and it is deprecated, will delete it now.",
                 topic,
                 retention);
-            storeToCountdownForDeletion.remove(topic + "_" + topicManager.getKafkaBootstrapServers());
+            storeToCountdownForDeletion.remove(topic + "_" + topicManager.getPubSubBootstrapServers());
             try {
               topicManager.ensureTopicIsDeletedAndBlockWithRetry(topic);
             } catch (ExecutionException e) {

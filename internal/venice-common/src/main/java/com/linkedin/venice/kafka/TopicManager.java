@@ -10,7 +10,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.InstrumentedApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.InstrumentedPubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -84,8 +84,9 @@ public class TopicManager implements Closeable {
   private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
   private final PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
-  private final Lazy<PubSubAdminAdapter> kafkaWriteOnlyAdmin;
-  private final Lazy<PubSubAdminAdapter> kafkaReadOnlyAdmin;
+  // TODO: Use single PubSubAdminAdapter for both read and write operations
+  private final Lazy<PubSubAdminAdapter> pubSubWriteOnlyAdminAdapter;
+  private final Lazy<PubSubAdminAdapter> pubSubReadOnlyAdminAdapter;
   private final PartitionOffsetFetcher partitionOffsetFetcher;
 
   // It's expensive to grab the topic config over and over again, and it changes infrequently. So we temporarily cache
@@ -106,41 +107,41 @@ public class TopicManager implements Closeable {
 
     Optional<MetricsRepository> optionalMetricsRepository = Optional.ofNullable(builder.getMetricsRepository());
 
-    this.kafkaReadOnlyAdmin = Lazy.of(() -> {
-      PubSubAdminAdapter kafkaReadOnlyAdmin =
+    this.pubSubReadOnlyAdminAdapter = Lazy.of(() -> {
+      PubSubAdminAdapter pubSubReadOnlyAdmin =
           pubSubAdminAdapterFactory.create(pubSubProperties.get(pubSubBootstrapServers), pubSubTopicRepository);
-      kafkaReadOnlyAdmin = createInstrumentedPubSubAdmin(
+      pubSubReadOnlyAdmin = createInstrumentedPubSubAdmin(
           optionalMetricsRepository,
           "ReadOnlyKafkaAdminStats",
-          kafkaReadOnlyAdmin,
+          pubSubReadOnlyAdmin,
           pubSubBootstrapServers);
       logger.info(
-          "{} is using kafka read-only admin client of class: {}",
+          "{} is using read-only pubsub admin client of class: {}",
           this.getClass().getSimpleName(),
-          kafkaReadOnlyAdmin.getClassName());
-      return kafkaReadOnlyAdmin;
+          pubSubReadOnlyAdmin.getClassName());
+      return pubSubReadOnlyAdmin;
     });
 
-    this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
-      PubSubAdminAdapter kafkaWriteOnlyAdmin =
+    this.pubSubWriteOnlyAdminAdapter = Lazy.of(() -> {
+      PubSubAdminAdapter pubSubWriteOnlyAdmin =
           pubSubAdminAdapterFactory.create(pubSubProperties.get(pubSubBootstrapServers), pubSubTopicRepository);
-      kafkaWriteOnlyAdmin = createInstrumentedPubSubAdmin(
+      pubSubWriteOnlyAdmin = createInstrumentedPubSubAdmin(
           optionalMetricsRepository,
           "WriteOnlyKafkaAdminStats",
-          kafkaWriteOnlyAdmin,
+          pubSubWriteOnlyAdmin,
           pubSubBootstrapServers);
       logger.info(
-          "{} is using kafka write-only admin client of class: {}",
+          "{} is using write-only pubsub admin client of class: {}",
           this.getClass().getSimpleName(),
-          kafkaWriteOnlyAdmin.getClassName());
-      return kafkaWriteOnlyAdmin;
+          pubSubWriteOnlyAdmin.getClassName());
+      return pubSubWriteOnlyAdmin;
     });
 
     this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
         builder.getPubSubConsumerAdapterFactory(),
         pubSubProperties.get(pubSubBootstrapServers),
         pubSubBootstrapServers,
-        kafkaReadOnlyAdmin,
+        pubSubReadOnlyAdminAdapter,
         kafkaOperationTimeoutMs,
         optionalMetricsRepository);
   }
@@ -152,19 +153,19 @@ public class TopicManager implements Closeable {
       String pubSubBootstrapServers) {
     if (optionalMetricsRepository.isPresent()) {
       // Use pub sub bootstrap server to identify which pub sub admin client stats it is
-      final String kafkaAdminStatsName =
+      final String pubSubAdminStatsName =
           String.format("%s_%s_%s", statsNamePrefix, pubSubAdmin.getClassName(), pubSubBootstrapServers);
-      PubSubAdminAdapter instrumentedKafkaAdmin =
-          new InstrumentedApacheKafkaAdminAdapter(pubSubAdmin, optionalMetricsRepository.get(), kafkaAdminStatsName);
+      PubSubAdminAdapter instrumentedPubSubAdminAdapter =
+          new InstrumentedPubSubAdminAdapter(pubSubAdmin, optionalMetricsRepository.get(), pubSubAdminStatsName);
       logger.info(
-          "Created instrumented Kafka admin client for Kafka cluster with bootstrap "
-              + "server {} and has stats name prefix {}",
+          "Created instrumented pubsub admin client for pubsub cluster with bootstrap "
+              + "servers: {} and with stat name prefix: {}",
           pubSubBootstrapServers,
           statsNamePrefix);
-      return instrumentedKafkaAdmin;
+      return instrumentedPubSubAdminAdapter;
     } else {
       logger.info(
-          "Created non-instrumented Kafka admin client for Kafka cluster with bootstrap server {}",
+          "Created non-instrumented pubsub admin client for pubsub cluster with bootstrap servers: {}",
           pubSubBootstrapServers);
       return pubSubAdmin;
     }
@@ -266,7 +267,8 @@ public class TopicManager implements Closeable {
 
     try {
       RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-          () -> kafkaWriteOnlyAdmin.get().createTopic(topicName, numPartitions, replication, pubSubTopicConfiguration),
+          () -> pubSubWriteOnlyAdminAdapter.get()
+              .createTopic(topicName, numPartitions, replication, pubSubTopicConfiguration),
           10,
           Duration.ofMillis(200),
           Duration.ofSeconds(1),
@@ -311,7 +313,7 @@ public class TopicManager implements Closeable {
   private Future<Void> ensureTopicIsDeletedAsync(PubSubTopic topicName) {
     // TODO: Stop using Kafka APIs which depend on ZK.
     logger.info("Deleting topic: {}", topicName);
-    return kafkaWriteOnlyAdmin.get().deleteTopic(topicName);
+    return pubSubWriteOnlyAdminAdapter.get().deleteTopic(topicName);
   }
 
   /**
@@ -340,7 +342,7 @@ public class TopicManager implements Closeable {
     Optional<Long> retentionTimeMs = pubSubTopicConfiguration.retentionInMs();
     if (!retentionTimeMs.isPresent() || expectedRetentionInMs != retentionTimeMs.get()) {
       pubSubTopicConfiguration.setRetentionInMs(Optional.of(expectedRetentionInMs));
-      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, pubSubTopicConfiguration);
+      pubSubWriteOnlyAdminAdapter.get().setTopicConfig(topicName, pubSubTopicConfiguration);
       logger.info(
           "Updated topic: {} with retention.ms: {} in cluster [{}]",
           topicName,
@@ -384,7 +386,7 @@ public class TopicManager implements Closeable {
         || expectedLogCompacted && expectedMinLogCompactionLagMs != currentMinLogCompactionLagMs) {
       pubSubTopicConfiguration.setLogCompacted(expectedLogCompacted);
       pubSubTopicConfiguration.setMinLogCompactionLagMs(expectedMinLogCompactionLagMs);
-      kafkaWriteOnlyAdmin.get().setTopicConfig(topic, pubSubTopicConfiguration);
+      pubSubWriteOnlyAdminAdapter.get().setTopicConfig(topic, pubSubTopicConfiguration);
       logger.info(
           "Kafka compaction policy for topic: {} has been updated from {} to {}, min compaction lag updated from {} to {}",
           topic,
@@ -411,7 +413,7 @@ public class TopicManager implements Closeable {
     // config doesn't exist config is different
     if (!currentMinISR.isPresent() || !currentMinISR.get().equals(minISR)) {
       pubSubTopicConfiguration.setMinInSyncReplicas(Optional.of(minISR));
-      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, pubSubTopicConfiguration);
+      pubSubWriteOnlyAdminAdapter.get().setTopicConfig(topicName, pubSubTopicConfiguration);
       logger.info("Updated topic: {} with min.insync.replicas: {}", topicName, minISR);
       return true;
     }
@@ -420,7 +422,7 @@ public class TopicManager implements Closeable {
   }
 
   public Map<PubSubTopic, Long> getAllTopicRetentions() {
-    return kafkaReadOnlyAdmin.get().getAllTopicRetentions();
+    return pubSubReadOnlyAdminAdapter.get().getAllTopicRetentions();
   }
 
   /**
@@ -461,14 +463,15 @@ public class TopicManager implements Closeable {
    * This operation is a little heavy, since it will pull the configs for all the topics.
    */
   public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
-    final PubSubTopicConfiguration pubSubTopicConfiguration = kafkaReadOnlyAdmin.get().getTopicConfig(topicName);
+    final PubSubTopicConfiguration pubSubTopicConfiguration =
+        pubSubReadOnlyAdminAdapter.get().getTopicConfig(topicName);
     topicConfigCache.put(topicName, pubSubTopicConfiguration);
     return pubSubTopicConfiguration;
   }
 
   public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName) {
     final PubSubTopicConfiguration pubSubTopicConfiguration =
-        kafkaReadOnlyAdmin.get().getTopicConfigWithRetry(topicName);
+        pubSubReadOnlyAdminAdapter.get().getTopicConfigWithRetry(topicName);
     topicConfigCache.put(topicName, pubSubTopicConfiguration);
     return pubSubTopicConfiguration;
   }
@@ -487,7 +490,7 @@ public class TopicManager implements Closeable {
 
   public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
     final Map<PubSubTopic, PubSubTopicConfiguration> topicConfigs =
-        kafkaReadOnlyAdmin.get().getSomeTopicConfigs(topicNames);
+        pubSubReadOnlyAdminAdapter.get().getSomeTopicConfigs(topicNames);
     for (Map.Entry<PubSubTopic, PubSubTopicConfiguration> topicConfig: topicConfigs.entrySet()) {
       topicConfigCache.put(topicConfig.getKey(), topicConfig.getValue());
     }
@@ -611,14 +614,14 @@ public class TopicManager implements Closeable {
   }
 
   public synchronized Set<PubSubTopic> listTopics() {
-    return kafkaReadOnlyAdmin.get().listAllTopics();
+    return pubSubReadOnlyAdminAdapter.get().listAllTopics();
   }
 
   /**
    * A quick check to see whether the topic exists.
    */
   public boolean containsTopic(PubSubTopic topic) {
-    return kafkaReadOnlyAdmin.get().containsTopic(topic);
+    return pubSubReadOnlyAdminAdapter.get().containsTopic(topic);
   }
 
   /**
@@ -629,7 +632,7 @@ public class TopicManager implements Closeable {
       PubSubTopic topic,
       int maxAttempts,
       final boolean expectedResult) {
-    return kafkaReadOnlyAdmin.get().containsTopicWithExpectationAndRetry(topic, maxAttempts, expectedResult);
+    return pubSubReadOnlyAdminAdapter.get().containsTopicWithExpectationAndRetry(topic, maxAttempts, expectedResult);
   }
 
   public boolean containsTopicWithExpectationAndRetry(
@@ -639,7 +642,7 @@ public class TopicManager implements Closeable {
       Duration initialBackoff,
       Duration maxBackoff,
       Duration maxDuration) {
-    return kafkaReadOnlyAdmin.get()
+    return pubSubReadOnlyAdminAdapter.get()
         .containsTopicWithExpectationAndRetry(
             topic,
             maxAttempts,
@@ -736,15 +739,15 @@ public class TopicManager implements Closeable {
     return partitionOffsetFetcher.partitionsFor(topic);
   }
 
-  public String getKafkaBootstrapServers() {
+  public String getPubSubBootstrapServers() {
     return this.pubSubBootstrapServers;
   }
 
   @Override
   public synchronized void close() {
     Utils.closeQuietlyWithErrorLogged(partitionOffsetFetcher);
-    kafkaReadOnlyAdmin.ifPresent(Utils::closeQuietlyWithErrorLogged);
-    kafkaWriteOnlyAdmin.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    pubSubReadOnlyAdminAdapter.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    pubSubWriteOnlyAdminAdapter.ifPresent(Utils::closeQuietlyWithErrorLogged);
   }
 
   // For testing only

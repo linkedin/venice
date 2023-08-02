@@ -50,10 +50,10 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
 
     admin = mock(Admin.class);
     topicManager1 = mock(TopicManager.class);
-    doReturn(kafkaClusterServerUrl1).when(topicManager1).getKafkaBootstrapServers();
+    doReturn(kafkaClusterServerUrl1).when(topicManager1).getPubSubBootstrapServers();
     doReturn(topicManager1).when(admin).getTopicManager(kafkaClusterServerUrl1);
     topicManager2 = mock(TopicManager.class);
-    doReturn(kafkaClusterServerUrl2).when(topicManager2).getKafkaBootstrapServers();
+    doReturn(kafkaClusterServerUrl2).when(topicManager2).getPubSubBootstrapServers();
     doReturn(topicManager2).when(admin).getTopicManager(kafkaClusterServerUrl2);
 
     topicCleanupService = new TopicCleanupServiceForParentController(admin, config, pubSubTopicRepository);

@@ -3406,12 +3406,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER.info(
           "Topic {} does not exist in Kafka cluster {}, will skip the truncation",
           kafkaTopicName,
-          topicManager.getKafkaBootstrapServers());
+          topicManager.getPubSubBootstrapServers());
     } catch (Exception e) {
       LOGGER.warn(
           "Unable to update the retention for topic {} in Kafka cluster {}, will skip the truncation",
           kafkaTopicName,
-          topicManager.getKafkaBootstrapServers(),
+          topicManager.getPubSubBootstrapServers(),
           e);
     }
     return false;
