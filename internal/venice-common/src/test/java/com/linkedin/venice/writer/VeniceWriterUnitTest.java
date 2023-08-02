@@ -7,10 +7,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.kafka.consumer.LeaderProducerCallback;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -18,6 +21,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -167,11 +171,23 @@ public class VeniceWriterUnitTest {
     }
     String valueString = stringBuilder.toString();
 
+    LeaderProducerCallback leaderProducerCallback = mock(LeaderProducerCallback.class);
+    PartitionConsumptionState.TransientRecord transientRecord =
+        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);
+    PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
+    when(leaderProducerCallback.getPartitionConsumptionState()).thenReturn(partitionConsumptionState);
+    when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = mock(PubSubMessage.class);
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    when(record.getKey()).thenReturn(kafkaKey);
+    when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
+    when(leaderProducerCallback.getSourceConsumerRecord()).thenReturn(record);
+    doCallRealMethod().when(leaderProducerCallback).setChunkingInfo(any(), any(), any(), any(), any(), any(), any());
     writer.put(
         Integer.toString(1),
         valueString,
         1,
-        null,
+        leaderProducerCallback,
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
         APP_DEFAULT_LOGICAL_TS,
         putMetadata);
@@ -179,6 +195,12 @@ public class VeniceWriterUnitTest {
     ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
     verify(mockedProducer, atLeast(2))
         .sendMessage(any(), any(), keyArgumentCaptor.capture(), kmeArgumentCaptor.capture(), any(), any());
+
+    Assert.assertNotNull(transientRecord.getValueManifest());
+    Assert.assertNotNull(transientRecord.getRmdManifest());
+    Assert.assertEquals(transientRecord.getValueManifest().getKeysWithChunkIdSuffix().size(), 2);
+    Assert.assertEquals(transientRecord.getRmdManifest().getKeysWithChunkIdSuffix().size(), 1);
+
     KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
     byte[] serializedKey = serializer.serialize(testTopic, Integer.toString(1));
     byte[] serializedValue = serializer.serialize(testTopic, valueString);

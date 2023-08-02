@@ -650,14 +650,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (updatedValueBytes == null) {
       hostLevelIngestionStats.recordTombstoneCreatedDCR();
       aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-      partitionConsumptionState.setTransientRecord(
-          kafkaClusterId,
-          consumerRecord.getOffset(),
-          key,
-          valueSchemaId,
-          rmdRecord,
-          oldValueManifest,
-          oldRmdManifest);
+      partitionConsumptionState
+          .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), key, valueSchemaId, rmdRecord);
       Delete deletePayload = new Delete();
       deletePayload.schemaId = valueSchemaId;
       deletePayload.replicationMetadataVersionId = rmdProtocolVersionID;
@@ -693,9 +687,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           updatedValueBytes.position(),
           valueLen,
           valueSchemaId,
-          rmdRecord,
-          oldValueManifest,
-          oldRmdManifest);
+          rmdRecord);
 
       Put updatedPut = new Put();
       updatedPut.putValue = ByteUtils

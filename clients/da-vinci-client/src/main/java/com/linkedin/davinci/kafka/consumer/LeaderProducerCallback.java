@@ -23,7 +23,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-class LeaderProducerCallback implements ChunkAwareCallback {
+public class LeaderProducerCallback implements ChunkAwareCallback {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -249,6 +249,19 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     this.rmdChunks = rmdChunks;
     this.oldValueManifest = oldValueManifest;
     this.oldRmdManifest = oldRmdManifest;
+    if (getPartitionConsumptionState() == null) {
+      LOGGER.error("PartitionConsumptionState is missing in chunk producer callback");
+      return;
+    }
+    // TransientRecord map is indexed by non-chunked key.
+    PartitionConsumptionState.TransientRecord record =
+        getPartitionConsumptionState().getTransientRecord(getSourceConsumerRecord().getKey().getKey());
+    if (record != null) {
+      record.setValueManifest(chunkedValueManifest);
+      record.setRmdManifest(chunkedRmdManifest);
+    } else {
+      LOGGER.error("Transient record is missing when trying to update value/RMD manifest.");
+    }
   }
 
   private void recordProducerStats(int producedRecordSize, int producedRecordNum) {
@@ -329,5 +342,14 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           beforeProcessingRecordTimestampNs,
           currentTimeForMetricsMs);
     }
+  }
+
+  // Visible for VeniceWriter unit test.
+  public PartitionConsumptionState getPartitionConsumptionState() {
+    return partitionConsumptionState;
+  }
+
+  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getSourceConsumerRecord() {
+    return sourceConsumerRecord;
   }
 }

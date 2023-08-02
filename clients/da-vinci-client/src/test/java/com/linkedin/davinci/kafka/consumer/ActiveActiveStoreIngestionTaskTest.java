@@ -244,6 +244,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         new VeniceWriterOptions.Builder(testTopic).setPartitioner(new DefaultVenicePartitioner())
             .setTime(SystemTime.INSTANCE)
             .setChunkingEnabled(true)
+            .setRmdChunkingEnabled(true)
             .build();
     VeniceWriter<byte[], byte[], byte[]> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
@@ -270,7 +271,14 @@ public class ActiveActiveStoreIngestionTaskTest {
     LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
         .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
 
+    PartitionConsumptionState.TransientRecord transientRecord =
+        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);
+
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
+    when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    when(consumerRecord.getKey()).thenReturn(kafkaKey);
+    when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
     ingestionTask.produceToLocalKafka(
         consumerRecord,
         partitionConsumptionState,
@@ -288,11 +296,17 @@ public class ActiveActiveStoreIngestionTaskTest {
         kafkaClusterId,
         beforeProcessingRecordTimestamp);
 
-    // Send 1 SOS, 2 Chunks, 1 Manifest.
-    verify(mockedProducer, times(4)).sendMessage(any(), any(), any(), any(), any(), any());
+    // RMD chunking not enabled in this case...
+    Assert.assertNotNull(transientRecord.getValueManifest());
+    Assert.assertNotNull(transientRecord.getRmdManifest());
+    Assert.assertEquals(transientRecord.getValueManifest().getKeysWithChunkIdSuffix().size(), 2);
+    Assert.assertEquals(transientRecord.getRmdManifest().getKeysWithChunkIdSuffix().size(), 1);
+
+    // Send 1 SOS, 2 Value Chunks, 1 RMD Chunk, 1 Manifest.
+    verify(mockedProducer, times(5)).sendMessage(any(), any(), any(), any(), any(), any());
     ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
         ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
-    verify(ingestionTask, times(3)).produceToStoreBufferService(
+    verify(ingestionTask, times(4)).produceToStoreBufferService(
         any(),
         leaderProducedRecordContextArgumentCaptor.capture(),
         anyInt(),
@@ -319,6 +333,9 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(2).getKeyBytes(),
         kafkaKeyArgumentCaptor.getAllValues().get(3).getKey());
+    Assert.assertEquals(
+        leaderProducedRecordContextArgumentCaptor.getAllValues().get(3).getKeyBytes(),
+        kafkaKeyArgumentCaptor.getAllValues().get(4).getKey());
   }
 
   @Test
