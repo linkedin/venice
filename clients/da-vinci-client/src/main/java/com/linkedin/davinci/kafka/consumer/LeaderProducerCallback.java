@@ -23,7 +23,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-class LeaderProducerCallback implements ChunkAwareCallback {
+public class LeaderProducerCallback implements ChunkAwareCallback {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -249,12 +249,12 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     this.rmdChunks = rmdChunks;
     this.oldValueManifest = oldValueManifest;
     this.oldRmdManifest = oldRmdManifest;
-    if (partitionConsumptionState == null) {
+    if (getPartitionConsumptionState() == null) {
       return;
     }
     // TransientRecord map is indexed by non-chunked key.
     PartitionConsumptionState.TransientRecord record =
-        partitionConsumptionState.getTransientRecord(sourceConsumerRecord.getKey().getKey());
+        getPartitionConsumptionState().getTransientRecord(getSourceConsumerRecord().getKey().getKey());
     if (record != null) {
       record.setValueManifest(chunkedValueManifest);
       record.setRmdManifest(chunkedRmdManifest);
@@ -339,5 +339,14 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           beforeProcessingRecordTimestampNs,
           currentTimeForMetricsMs);
     }
+  }
+
+  // Visible for VeniceWriter unit test.
+  public PartitionConsumptionState getPartitionConsumptionState() {
+    return partitionConsumptionState;
+  }
+
+  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getSourceConsumerRecord() {
+    return sourceConsumerRecord;
   }
 }

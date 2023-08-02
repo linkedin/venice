@@ -1350,7 +1350,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           "This message cannot be chunked, because even its manifest is too big to go through. "
               + "Please reconsider your life choices. " + reportSizeGenerator.get());
     }
-
     if (callback instanceof ChunkAwareCallback) {
       /** We leave a handle to the key, chunks and manifests so that the {@link ChunkAwareCallback} can act on them */
       ((ChunkAwareCallback) callback).setChunkingInfo(

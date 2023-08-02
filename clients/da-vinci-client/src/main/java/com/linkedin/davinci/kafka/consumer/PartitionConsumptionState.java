@@ -568,7 +568,7 @@ public class PartitionConsumptionState {
     private ChunkedValueManifest valueManifest;
     private ChunkedValueManifest rmdManifest;
 
-    TransientRecord(
+    public TransientRecord(
         byte[] value,
         int valueOffset,
         int valueLen,
