@@ -8,13 +8,13 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -130,6 +130,8 @@ public class GrpcTransportClient extends InternalTransportClient {
       clientStub.get(request, new StreamObserver<VeniceServerResponse>() {
         @Override
         public void onNext(VeniceServerResponse value) {
+          if (value.getErrorCode() != GrpcErrorCodes.OK)
+            handleError(value);
           valueFuture.complete(
               new TransportClientResponse(
                   value.getSchemaId(),
@@ -140,7 +142,7 @@ public class GrpcTransportClient extends InternalTransportClient {
         @Override
         public void onError(Throwable t) {
           LOGGER.error("Error in gRPC request", t);
-          handleError(t);
+          valueFuture.completeExceptionally(t);
         }
 
         @Override
@@ -160,7 +162,8 @@ public class GrpcTransportClient extends InternalTransportClient {
         @Override
         public void onNext(VeniceServerResponse value) {
           LOGGER.debug("Performing BatchGet in gRPC");
-
+          if (value.getErrorCode() != GrpcErrorCodes.OK)
+            handleError(value);
           valueFuture.complete(
               new TransportClientResponse(
                   value.getSchemaId(),
@@ -171,7 +174,7 @@ public class GrpcTransportClient extends InternalTransportClient {
         @Override
         public void onError(Throwable t) {
           LOGGER.error("Error in gRPC request", t);
-          handleError(t);
+          valueFuture.completeExceptionally(t);
         }
 
         @Override
@@ -183,28 +186,44 @@ public class GrpcTransportClient extends InternalTransportClient {
       return valueFuture;
     }
 
-    private void handleError(Throwable t) {
+    private void handleError(VeniceServerResponse response) {
       // TODO: DO NOT HANDLE ERRORS LIKE THIS
       // Create new field in .proto for error codes :slight_smile:
-      Status status = Status.fromThrowable(t);
-
+      int statusCode = response.getErrorCode();
+      String errorMessage = response.getErrorMessage();
       Exception exception;
-      switch (status.getCode()) {
-        case UNKNOWN:
-          exception = new VeniceException("grpc error occurred", t);
+      switch (statusCode) {
+        case GrpcErrorCodes.BAD_REQUEST:
+          exception = new VeniceClientHttpException(errorMessage, statusCode);
           break;
-
-        // valueFuture.complete(null);
-        case RESOURCE_EXHAUSTED:
-          exception = new VeniceClientRateExceededException(status.getDescription());
+        case GrpcErrorCodes.TOO_MANY_REQUESTS:
+          exception = new VeniceClientRateExceededException(errorMessage);
           break;
         default:
-          assert status.getDescription() != null;
-          exception = new VeniceClientHttpException(status.getDescription(), status.getCode().value());
+          exception = new VeniceException("grpc error occurred");
           break;
       }
 
       valueFuture.completeExceptionally(exception);
+      // Status status = Status.fromThrowable(t);
+      //
+      // Exception exception;
+      // switch (status.getCode()) {
+      // case UNKNOWN:
+      // exception = new VeniceException("grpc error occurred", t);
+      // break;
+      //
+      // // valueFuture.complete(null);
+      // case RESOURCE_EXHAUSTED:
+      // exception = new VeniceClientRateExceededException(status.getDescription());
+      // break;
+      // default:
+      // assert status.getDescription() != null;
+      // exception = new VeniceClientHttpException(status.getDescription(), status.getCode().value());
+      // break;
+      // }
+      //
+      // valueFuture.completeExceptionally(exception);
     }
   }
 }

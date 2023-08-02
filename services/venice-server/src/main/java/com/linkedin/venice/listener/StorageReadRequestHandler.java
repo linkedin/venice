@@ -101,8 +101,6 @@ import org.apache.logging.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter implements VeniceGrpcHandler {
-  private VeniceGrpcHandler nextInboundHandler;
-  private VeniceGrpcHandler nextOutboundHandler;
   private static final Logger LOGGER = LogManager.getLogger(StorageReadRequestHandler.class);
 
   private final DiskHealthCheckService diskHealthCheckService;
@@ -357,17 +355,14 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
   public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
     RouterRequest request = ctx.getRouterRequest();
     final long preSubmissionTimeNs = System.nanoTime();
+    ReadResponse response;
 
-    final ThreadPoolExecutor executor = getExecutor(request.getRequestType());
-    //
-    // executor.submit(() -> {
     try {
       if (request.shouldRequestBeTerminatedEarly()) {
         throw new VeniceRequestEarlyTerminationException(request.getStoreName());
       }
       double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
       int queueLen = executor.getQueue().size();
-      ReadResponse response;
       switch (request.getRequestType()) {
         case SINGLE_GET:
           response = handleSingleGetRequest((GetRouterRequest) request);
@@ -414,39 +409,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
         throw new VeniceException("Request type " + requestType + " is not supported.");
     }
   }
-
-  // private ReadResponse handleGrpcRequest(RouterRequest request) {
-  // final long preSubmissionTimeNs = System.nanoTime();
-  //
-  // if (request.shouldRequestBeTerminatedEarly()) {
-  // throw new VeniceRequestEarlyTerminationException(request.getStoreName());
-  // }
-  //
-  // double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
-  // ReadResponse response;
-  // switch (request.getRequestType()) {
-  // case SINGLE_GET:
-  // response = handleSingleGetRequest((GetRouterRequest) request);
-  // break;
-  // case MULTI_GET:
-  // response = handleMultiGetRequest((MultiGetRouterRequestWrapper) request);
-  // break;
-  // default:
-  // throw new VeniceException("Unknown request type: " + request.getRequestType());
-  // }
-  //
-  // response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
-  // // will not set queue length for grpc, no custom executor exists for gRPC implementation yet
-  // response.setRCU(ReadQuotaEnforcementHandler.getRcu(request));
-  // if (request.isStreamingRequest()) {
-  // response.setStreamingResponse();
-  // }
-  //
-  // return response;
-  // }
-
-  // private ReadResponse handleGrpcRequest(RouterRequest request) {
-  // }
 
   private int getSubPartitionId(int userPartition, byte[] keyBytes, PerStoreVersionState perStoreVersionState) {
     int ampFactor = perStoreVersionState.partitionerConfig.getAmplificationFactor();

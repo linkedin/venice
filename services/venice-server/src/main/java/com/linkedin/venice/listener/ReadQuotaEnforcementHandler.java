@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.grpc.GrpcErrorCodes.*;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -27,7 +28,6 @@ import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.utils.ExpiringSet;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -67,8 +67,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   // TODO make these configurable
   private final int enforcementIntervalSeconds = 10; // TokenBucket refill interval
   private final int enforcementCapacityMultiple = 5; // Token bucket capacity is refill amount times this multiplier
-  private VeniceGrpcHandler nextInboundHandler;
-  private VeniceGrpcHandler nextOutboundHandler;
 
   public ReadQuotaEnforcementHandler(
       long storageNodeRcuCapacity,
@@ -206,18 +204,17 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     Store store = storeRepository.getStore(storeName);
 
     if (store == null) {
-      String error = "Invalid Request Resource";
-
-      StatusRuntimeException statusRuntimeException =
-          new StatusRuntimeException(io.grpc.Status.INVALID_ARGUMENT.withDescription(error));
-      ctx.setCompleted();
-      responseObserver.onError(statusRuntimeException);
+      String error = "Invalid request resource " + request.getResourceName();
+      LOGGER.error(error);
+      ctx.getVeniceServerResponseBuilder().setErrorCode(BAD_REQUEST).setErrorMessage(error);
+      pipeline.onError(ctx);
+      return;
     }
 
     if (!isInitialized() || !store.isStorageNodeReadQuotaEnabled()) {
       ReferenceCountUtil.retain(request);
       // no quota limit is enforced
-      pipeline.processResponse(ctx);
+      pipeline.processRequest(ctx);
       return;
     }
 
@@ -236,11 +233,11 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
               "Total quota for store " + storeName + " is " + storeQuota + " RCU per second. Storage Node " + thisNodeId
                   + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
 
-          StatusRuntimeException statusRuntimeException =
-              new StatusRuntimeException(io.grpc.Status.RESOURCE_EXHAUSTED.withDescription(errorMessage));
+          LOGGER.error(errorMessage);
 
-          ctx.setCompleted();
-          responseObserver.onError(statusRuntimeException);
+          ctx.getVeniceServerResponseBuilder().setErrorCode(TOO_MANY_REQUESTS).setErrorMessage(errorMessage);
+          pipeline.onError(ctx);
+          return;
         }
       }
     } else if (enforcing && !noBucketStores.contains(request.getResourceName())) {
@@ -255,12 +252,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       stats.recordRejected(storeName, rcu);
       if (enforcing) {
         LOGGER.error("Server over capacity when performing gRPC request");
-
-        StatusRuntimeException statusRuntimeException =
-            new StatusRuntimeException(io.grpc.Status.UNAVAILABLE.withDescription("Server over capacity"));
-
-        ctx.setCompleted();
-        responseObserver.onError(statusRuntimeException);
+        String errorMessage = "Server over capacity";
+        ctx.getVeniceServerResponseBuilder().setErrorCode(SERVICE_UNAVAILABLE).setErrorMessage(errorMessage);
+        pipeline.onError(ctx);
+        return;
       }
     }
 

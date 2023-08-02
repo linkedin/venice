@@ -16,7 +16,6 @@ public class GrpcHandlerContext {
   private boolean isCompleted = false;
   private RouterRequest routerRequest;
   private ReadResponse readResponse;
-  private boolean isNewRequest = true;
   private GrpcStatsContext grpcStatsContext;
 
   public GrpcHandlerContext(

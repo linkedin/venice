@@ -14,7 +14,6 @@ import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import io.grpc.stub.StreamObserver;
 import io.netty.buffer.ByteBuf;
-import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -35,12 +34,6 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     this.storageReadRequestHandler = storageReadRequestHandler;
   }
 
-  public VeniceReadServiceImpl(List<VeniceGrpcHandler> inboundHandlers, List<VeniceGrpcHandler> outboundHandlers) {
-    LOGGER.info("Created gRPC Server for VeniceReadService");
-    // this.inboundHandlers = inboundHandlers;
-    // this.outboundHandlers = outboundHandlers;
-  }
-
   public VeniceReadServiceImpl(HttpChannelInitializer channelInitializer) {
     // this.inboundHandlers = channelInitializer.getInboundHandlers();
     // this.outboundHandlers = channelInitializer.getOutboundHandlers();
@@ -58,12 +51,19 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
   }
 
   private void handleRequest(VeniceClientRequest request, StreamObserver<VeniceServerResponse> responseObserver) {
-    VeniceServerResponse.Builder responseBuilder = VeniceServerResponse.newBuilder();
+    VeniceServerResponse.Builder responseBuilder = VeniceServerResponse.newBuilder().setErrorCode(200);
     GrpcHandlerContext ctx = new GrpcHandlerContext(request, responseBuilder, responseObserver);
     // Iterator<VeniceGrpcHandler> inboundHandlerIterator = inboundHandlers.iterator();
+    GrpcHandlerPipeline requestPipeline = handlerPipeline.getNewPipeline();
 
-    handlerPipeline.processRequest(ctx);
-    handlerPipeline.processResponse(ctx);
+    requestPipeline.processRequest(ctx);
+    if (requestPipeline.hasError()) {
+      return;
+    }
+    requestPipeline.processResponse(ctx);
+    if (requestPipeline.hasError()) {
+      return;
+    }
 
     responseObserver.onNext(ctx.getVeniceServerResponseBuilder().build());
     responseObserver.onCompleted();

@@ -17,6 +17,7 @@ message VeniceClientRequest {
   string storeName = 6;
   bool   isStreamingRequest = 7;
   bool   isRetryRequest = 8;
+
   bool   isBatchRequest = 9;
 }
 
@@ -26,4 +27,7 @@ message VeniceServerResponse {
   uint32 compressionStrategy = 3;
   uint32 responseRCU = 4;
   bool   isStreamingResponse = 5;
+
+  uint32 errorCode = 6;
+  string errorMessage = 7;
 }

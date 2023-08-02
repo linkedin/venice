@@ -23,8 +23,6 @@ import it.unimi.dsi.fastutil.ints.IntList;
 
 
 public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHandler {
-  private VeniceGrpcHandler nextInboundHandler;
-  private VeniceGrpcHandler nextOutboundHandler;
   private long startTimeInNS;
   private HttpResponseStatus responseStatus;
   private String storeName = null;
@@ -259,14 +257,8 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
       ctx.setGrpcStatsContext(statsContext);
       pipeline.processRequest(ctx);
     } else {
-
-      GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
-      long startTimeOfPart2InNS = System.nanoTime();
-      statsContext
-          .setPartsInvokeDelayLatency(LatencyUtils.convertLatencyFromNSToMS(startTimeOfPart2InNS - startTimeInNS));
-      statsContext.setSecondPartLatency(LatencyUtils.getLatencyInMS(startTimeOfPart2InNS));
+      // existing request
       pipeline.processRequest(ctx);
-      statsContext.incrementRequestPartCount();
     }
   }
 

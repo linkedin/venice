@@ -6,14 +6,17 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.utils.LatencyUtils;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.HttpServerCodec;
 import it.unimi.dsi.fastutil.ints.IntList;
 
 
 public class GrpcStatsContext {
+  /**
+   * We need to maintain stats for gRPC requests --> current StatsHandler for Netty Pipeline maintains instance
+   * variables per channel, which guarantee that each request will be handled by a single thread, thus we cannot
+   * use the same StatsHandler for gRPC requests, so we create a new StatsContext for each gRPC request so we can
+   * maintain per request stats which will be aggregated by StatsHandler.
+   */
   private long startTimeInNS;
   private HttpResponseStatus responseStatus;
   private String storeName = null;
@@ -43,39 +46,10 @@ public class GrpcStatsContext {
   private final AggServerHttpRequestStats computeStats;
   private AggServerHttpRequestStats currentStats;
 
-  // a flag that indicates if this is a new HttpRequest. Netty is TCP-based, so a HttpRequest is chunked into packages.
-  // Set the startTimeInNS in ChannelRead if it is the first package within a HttpRequest.
   private boolean newRequest = true;
-  /**
-   * To indicate whether the stat callback has been triggered or not for a given request.
-   * This is mostly to bypass the issue that stat callback could be triggered multiple times for one single request.
-   */
   private boolean statCallbackExecuted = false;
   private double storageExecutionSubmissionWaitTime;
   private int storageExecutionQueueLen;
-
-  /**
-   * Normally, one multi-get request will be split into two parts, and it means
-   * {@link StatsHandler#channelRead(ChannelHandlerContext, Object)} will be invoked twice.
-   *
-   * 'firstPartLatency' will measure the time took by:
-   * {@link StatsHandler}
-   * {@link HttpServerCodec}
-   * {@link HttpObjectAggregator}
-   *
-   * 'partsInvokeDelayLatency' will measure the delay between the invocation of part1
-   * and the invocation of part2;
-   *
-   * 'secondPartLatency' will measure the time took by:
-   * {@link StatsHandler}
-   * {@link HttpServerCodec}
-   * {@link HttpObjectAggregator}
-   * {@link VerifySslHandler}
-   * {@link ServerAclHandler}
-   * {@link RouterRequestHttpHandler}
-   * {@link StorageReadRequestHandler}
-   *
-   */
   private double firstPartLatency = -1;
   private double secondPartLatency = -1;
   private double partsInvokeDelayLatency = -1;
@@ -142,6 +116,8 @@ public class GrpcStatsContext {
 
     newRequest = false;
     firstPartLatency = LatencyUtils.getLatencyInMS(startTimeInNS);
+    secondPartLatency = 0;
+    partsInvokeDelayLatency = 0;
   }
 
   public void setResponseStatus(HttpResponseStatus status) {

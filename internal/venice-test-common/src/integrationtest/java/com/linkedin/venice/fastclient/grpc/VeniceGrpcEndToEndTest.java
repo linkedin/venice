@@ -345,54 +345,6 @@ public class VeniceGrpcEndToEndTest {
     }
   }
 
-  // @Test
-  // public void serverWithMultipleStores() throws Exception {
-  // String storeA = writeData("store-a");
-  // String storeB = writeData("store-b");
-  //
-  // Client r2ClientA = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT);
-  // D2Client d2ClientA = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
-  //
-  // Client r2ClientB = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT);
-  // D2Client d2ClientB = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
-  //
-  // ClientConfigBuilder<Object, Object, SpecificRecord> grpcA =
-  // new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeB)
-  // .setUseGrpc(true)
-  // .setR2Client(r2ClientA)
-  // .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
-  // .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
-  // .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
-  // .setSpeculativeQueryEnabled(false)
-  // .setUseStreamingBatchGetAsDefault(true);
-  //
-  // ClientConfigBuilder<Object, Object, SpecificRecord> grpcB =
-  // new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeB)
-  // .setUseGrpc(true)
-  // .setR2Client(r2ClientB)
-  // .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
-  // .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
-  // .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
-  // .setSpeculativeQueryEnabled(false)
-  // .setUseStreamingBatchGetAsDefault(true);
-  //
-  // AvroGenericStoreClient<String, GenericRecord> grpcFastClientA = getGenericFastClient(grpcA, new
-  // MetricsRepository(), d2ClientA);
-  // AvroGenericStoreClient<String, GenericRecord> grpcFastClientB = getGenericFastClient(grpcB, new
-  // MetricsRepository(), d2ClientB);
-  //
-  // for (int i = 4; i <= recordCnt; ++i) {
-  // String key = Integer.toString(i);
-  // String valueA = ((Utf8) grpcFastClientA.get(key).get()).toString();
-  // String valueB = ((Utf8) grpcFastClientB.get(key).get()).toString();
-  // Assert.assertEquals(valueA, valueB);
-  //
-  // LOGGER.info("key: {}, valueA: {}", key, valueA);
-  // LOGGER.info("key: {}, valueB: {}", key, valueB);
-  // }
-  //
-  // }
-
   private Set<Set<String>> getKeySets() {
     Set<Set<String>> keySets = new HashSet<>();
     int numSets = recordCnt / maxAllowedKeys;
