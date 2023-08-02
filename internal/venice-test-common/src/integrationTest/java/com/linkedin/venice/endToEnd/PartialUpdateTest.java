@@ -100,7 +100,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
-import org.apache.logging.log4j.LogManager;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -215,7 +214,6 @@ public class PartialUpdateTest {
           try {
             GenericRecord value = (GenericRecord) storeReader.get(keyRecord).get();
             assertNotNull(value, "key " + keyRecord + " should not be missing!");
-            LogManager.getLogger().info("DEBUGGING: " + value);
           } catch (Exception e) {
             throw new VeniceException(e);
           }
