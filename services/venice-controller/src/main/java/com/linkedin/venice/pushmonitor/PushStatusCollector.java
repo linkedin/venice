@@ -143,7 +143,7 @@ public class PushStatusCollector {
       try {
         pushStatus = future.get();
       } catch (Exception e) {
-        LOGGER.error("Caught exception when getting future result of push status.", e);
+        LOGGER.error("Caught exception when getting future result of push status : " + e.getMessage());
         continue;
       }
       ExecutionStatusWithDetails daVinciStatus = pushStatus.getDaVinciStatus();
