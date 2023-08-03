@@ -2413,8 +2413,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               : Optional.empty();
           if (sourceVersion.isPresent()) {
             // Adding an existing version to the destination cluster whose version level resources are already created,
-            // including Kafka topics with data ready, and Helix resource, so skip the steps of recreating these
-            // resources.
+            // including Kafka topics with data ready, so skip the steps of recreating these resources.
             version = sourceVersion.get().cloneVersion();
             // Reset version statue; do not make any other config update, version configs are immutable and the version
             // Configs from the source clusters are source of truth
