@@ -5,6 +5,8 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 
@@ -100,6 +102,31 @@ public class ClientConfigTest {
     }
 
     clientConfigBuilder.setUseStreamingBatchGetAsDefault(true);
+    clientConfigBuilder.build();
+  }
+
+  @Test(expectedExceptions = UnsupportedOperationException.class)
+  public void testConfigWithGrpcEnabledNoMapping() {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+    clientConfigBuilder.setUseGrpc(true);
+    clientConfigBuilder.build();
+  }
+
+  @Test(expectedExceptions = UnsupportedOperationException.class)
+  public void testConfigWithGrpcEnabledWithMapping() {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+    clientConfigBuilder.setUseGrpc(true);
+    clientConfigBuilder.setNettyServerToGrpcAddressMap(new HashMap<>());
+    clientConfigBuilder.build();
+  }
+
+  @Test
+  public void testConfigWithGrpcEnabled() {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+    clientConfigBuilder.setUseGrpc(true);
+    Map<String, String> nettyServerToGrpcAddressMap = new HashMap<>();
+    nettyServerToGrpcAddressMap.put("localhost:1234", "localhost:1235");
+    clientConfigBuilder.setNettyServerToGrpcAddressMap(nettyServerToGrpcAddressMap);
     clientConfigBuilder.build();
   }
 }

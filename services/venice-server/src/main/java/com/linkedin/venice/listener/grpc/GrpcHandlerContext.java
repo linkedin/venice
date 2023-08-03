@@ -1,7 +1,6 @@
 package com.linkedin.venice.listener.grpc;
 
 import com.linkedin.davinci.listener.response.ReadResponse;
-import com.linkedin.venice.listener.GrpcStatsContext;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceServerResponse;

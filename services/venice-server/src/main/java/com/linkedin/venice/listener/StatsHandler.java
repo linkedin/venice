@@ -6,6 +6,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
 import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
+import com.linkedin.venice.listener.grpc.GrpcStatsContext;
 import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.read.RequestType;

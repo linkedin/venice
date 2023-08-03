@@ -1,4 +1,4 @@
-package com.linkedin.venice.listener;
+package com.linkedin.venice.listener.grpc;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -116,7 +116,7 @@ public class GrpcStatsContext {
 
     newRequest = false;
     firstPartLatency = LatencyUtils.getLatencyInMS(startTimeInNS);
-    secondPartLatency = 0;
+    secondPartLatency = LatencyUtils.getLatencyInMS(startTimeInNS);
     partsInvokeDelayLatency = 0;
   }
 
@@ -346,6 +346,10 @@ public class GrpcStatsContext {
 
   public void setReadComputeOutputSize(int size) {
     this.readComputeOutputSize = size;
+  }
+
+  public int getRequestKeyCount() {
+    return requestKeyCount;
   }
 
 }
