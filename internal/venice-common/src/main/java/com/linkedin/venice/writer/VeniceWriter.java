@@ -7,8 +7,8 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
-import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -37,6 +37,8 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -67,8 +69,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.specific.FixedSize;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.Validate;
-import org.apache.kafka.common.errors.TopicAuthorizationException;
-import org.apache.kafka.common.protocol.Errors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -1238,8 +1238,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             getHeaders(kafkaValue.getProducerMetadata()),
             messageCallback);
       } catch (Exception e) {
-        if (ExceptionUtils.recursiveClassEquals(e, TopicAuthorizationException.class)) {
-          throw new TopicAuthorizationVeniceException(
+        if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
+          throw new VeniceResourceAccessException(
               "You do not have permission to write to this store. Please check that ACLs are set correctly.",
               e);
         } else {
@@ -1551,7 +1551,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
               VENICE_DEFAULT_LOGICAL_TS).get();
           return;
         } catch (InterruptedException | ExecutionException e) {
-          if (e.getMessage() != null && e.getMessage().contains(Errors.UNKNOWN_TOPIC_OR_PARTITION.message())) {
+          if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicDoesNotExistException.class)) {
             /**
              * Not a super clean way to match the exception, but unfortunately, since it is wrapped inside of an
              * {@link ExecutionException}, there may be no other way.
@@ -1565,8 +1565,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             } else {
               throw new VeniceException(errorMessage + ", will bubble up.");
             }
-          } else if (e.getCause() != null && e.getCause().getClass().equals(TopicAuthorizationException.class)) {
-            throw new TopicAuthorizationVeniceException(
+          } else if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
+            throw new VeniceResourceAccessException(
                 "You do not have permission to write to this store. Please check that ACLs are set correctly.",
                 e);
           } else {
