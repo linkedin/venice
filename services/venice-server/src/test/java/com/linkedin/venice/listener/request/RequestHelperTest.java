@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener.request;
 
+import com.linkedin.venice.request.RequestHelper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
