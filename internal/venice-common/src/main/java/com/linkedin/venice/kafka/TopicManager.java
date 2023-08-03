@@ -10,10 +10,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.InstrumentedPubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubInstrumentedAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -156,7 +156,7 @@ public class TopicManager implements Closeable {
       final String pubSubAdminStatsName =
           String.format("%s_%s_%s", statsNamePrefix, pubSubAdmin.getClassName(), pubSubBootstrapServers);
       PubSubAdminAdapter instrumentedPubSubAdminAdapter =
-          new InstrumentedPubSubAdminAdapter(pubSubAdmin, optionalMetricsRepository.get(), pubSubAdminStatsName);
+          new PubSubInstrumentedAdminAdapter(pubSubAdmin, optionalMetricsRepository.get(), pubSubAdminStatsName);
       logger.info(
           "Created instrumented pubsub admin client for pubsub cluster with bootstrap "
               + "servers: {} and with stat name prefix: {}",

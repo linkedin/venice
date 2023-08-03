@@ -1,4 +1,4 @@
-package com.linkedin.venice.pubsub.adapter.kafka.admin;
+package com.linkedin.venice.pubsub.api;
 
 import static com.linkedin.venice.stats.PubSubAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CLOSE;
 import static com.linkedin.venice.stats.PubSubAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CONTAINS_TOPIC;
@@ -14,9 +14,6 @@ import static com.linkedin.venice.stats.PubSubAdminWrapperStats.OCCURRENCE_LATEN
 
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.stats.PubSubAdminWrapperStats;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -36,19 +33,19 @@ import org.apache.commons.lang.Validate;
  * This class delegates another {@link PubSubAdminAdapter} instance and keeps track of the invocation rate of methods
  * on the delegated instance
  */
-public class InstrumentedPubSubAdminAdapter implements PubSubAdminAdapter {
+public class PubSubInstrumentedAdminAdapter implements PubSubAdminAdapter {
   private final PubSubAdminAdapter pubSubAdminAdapter;
   private final PubSubAdminWrapperStats pubSubAdminWrapperStats;
   private final Time time;
 
-  public InstrumentedPubSubAdminAdapter(
+  public PubSubInstrumentedAdminAdapter(
       PubSubAdminAdapter pubSubAdminAdapter,
       MetricsRepository metricsRepository,
       String statsName) {
     this(pubSubAdminAdapter, metricsRepository, statsName, new SystemTime());
   }
 
-  public InstrumentedPubSubAdminAdapter(
+  public PubSubInstrumentedAdminAdapter(
       @Nonnull PubSubAdminAdapter pubSubAdminAdapter,
       @Nonnull MetricsRepository metricsRepository,
       @Nonnull String statsName,
@@ -151,7 +148,7 @@ public class InstrumentedPubSubAdminAdapter implements PubSubAdminAdapter {
     return String.format(
         "%s delegated by %s",
         pubSubAdminAdapter.getClassName(),
-        InstrumentedPubSubAdminAdapter.class.getName());
+        PubSubInstrumentedAdminAdapter.class.getName());
   }
 
   private <T> T instrument(
