@@ -54,6 +54,7 @@ public class GrpcStatsContext {
   private double secondPartLatency = -1;
   private double partsInvokeDelayLatency = -1;
   private int requestPartCount = -1;
+  private boolean isComplete;
 
   public double getSecondPartLatency() {
     return secondPartLatency;
@@ -322,6 +323,7 @@ public class GrpcStatsContext {
   // This method does not have to be synchronized since operations in Tehuti are already synchronized.
   // Please re-consider the race condition if new logic is added.
   public void successRequest(ServerHttpRequestStats stats, double elapsedTime) {
+    isComplete = true;
     if (storeName != null) {
       stats.recordSuccessRequest();
       stats.recordSuccessRequestLatency(elapsedTime);
@@ -331,6 +333,7 @@ public class GrpcStatsContext {
   }
 
   public void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
+    isComplete = true;
     if (storeName == null) {
       currentStats.recordErrorRequest();
       currentStats.recordErrorRequestLatency(elapsedTime);
@@ -352,4 +355,7 @@ public class GrpcStatsContext {
     return requestKeyCount;
   }
 
+  public boolean isComplete() {
+    return isComplete;
+  }
 }

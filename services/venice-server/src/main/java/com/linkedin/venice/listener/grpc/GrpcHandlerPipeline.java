@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener.grpc;
 
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.utils.LatencyUtils;
 import io.grpc.stub.StreamObserver;
 import java.util.ArrayList;
 import org.apache.logging.log4j.LogManager;
@@ -71,6 +72,12 @@ public class GrpcHandlerPipeline {
 
   public void onError(GrpcHandlerContext ctx) {
     hasError = true;
+    if (ctx.getGrpcStatsContext() != null && ctx.getGrpcStatsContext().getStoreName() != null
+        && !ctx.getGrpcStatsContext().isComplete()) {
+      GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
+      double elapsedTime = LatencyUtils.getElapsedTimeInMs(statsContext.getRequestStartTimeInNS());
+      statsContext.errorRequest(statsContext.getCurrentStats().getStoreStats(statsContext.getStoreName()), elapsedTime);
+    }
     StreamObserver<VeniceServerResponse> responseObserver = ctx.getResponseObserver();
     responseObserver.onNext(ctx.getVeniceServerResponseBuilder().build());
     responseObserver.onCompleted();
