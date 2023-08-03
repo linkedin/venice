@@ -172,7 +172,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final Map<Integer, AtomicInteger> partitionToPendingConsumerActionCountMap;
   protected final StorageMetadataService storageMetadataService;
   protected final TopicManagerRepository topicManagerRepository;
-  protected final CachedKafkaMetadataGetter cachedKafkaMetadataGetter;
+  protected final CachedPubSubMetadataGetter cachedPubSubMetadataGetter;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   protected final AbstractStoreBufferService storeBufferService;
@@ -341,7 +341,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         builder.getServerConfig().getDivProducerStateMaxAgeMs());
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
-    this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(storeConfig.getTopicOffsetCheckIntervalMs());
+    this.cachedPubSubMetadataGetter = new CachedPubSubMetadataGetter(storeConfig.getTopicOffsetCheckIntervalMs());
 
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
     this.versionedDIVStats = builder.getVersionedDIVStats();
@@ -720,7 +720,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * TODO: find a better solution
        */
       final long versionTopicPartitionOffset =
-          cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partitionId);
+          cachedPubSubMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partitionId);
       isLagAcceptable =
           versionTopicPartitionOffset <= partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset()
               + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
@@ -817,7 +817,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             // the latest producer timestamp in RT. Only use the latest producer time in local RT.
             final String lagMeasurementKafkaUrl = isDaVinciClient ? localKafkaServer : realTimeTopicKafkaURL;
 
-            if (!cachedKafkaMetadataGetter.containsTopic(getTopicManager(lagMeasurementKafkaUrl), realTimeTopic)) {
+            if (!cachedPubSubMetadataGetter.containsTopic(getTopicManager(lagMeasurementKafkaUrl), realTimeTopic)) {
               timestampLagIsAcceptable = true;
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
                 LOGGER.info(
@@ -826,7 +826,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                     lagMeasurementTopic);
               }
             } else {
-              long latestProducerTimestampInTopic = cachedKafkaMetadataGetter
+              long latestProducerTimestampInTopic = cachedPubSubMetadataGetter
                   .getProducerTimestampOfLastDataMessage(getTopicManager(lagMeasurementKafkaUrl), pubSubTopicPartition);
               if (latestProducerTimestampInTopic < 0
                   || latestProducerTimestampInTopic <= latestConsumedProducerTimestamp) {
@@ -1818,10 +1818,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * The returned end offset is the last successfully replicated message plus one. If the partition has never been
      * written to, the end offset is 0.
-     * @see CachedKafkaMetadataGetter#getOffset(TopicManager, String, int)
+     * @see CachedPubSubMetadataGetter#getOffset(TopicManager, String, int)
      * TODO: Refactor this using PubSubTopicPartition.
      */
-    return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), versionTopic, partition);
+    return cachedPubSubMetadataGetter.getOffset(getTopicManager(kafkaUrl), versionTopic, partition);
   }
 
   protected long getPartitionOffsetLag(String kafkaSourceAddress, PubSubTopic topic, int partition) {
