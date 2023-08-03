@@ -66,7 +66,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.Mockito;
@@ -519,7 +518,8 @@ public class TopicManagerTest {
     doReturn(true).when(mockPubSubAdminAdapter)
         .containsTopicWithPartitionCheckExpectationAndRetry(eq(pubSubTopicPartition), anyInt(), eq(true));
     PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
-    doThrow(new TimeoutException()).when(mockPubSubConsumer).endOffsets(any(), any());
+    doThrow(new PubSubOpTimeoutException("Timed out while fetching end offsets")).when(mockPubSubConsumer)
+        .endOffsets(any(), any());
     // Throw Kafka TimeoutException when trying to get max offset
     String localPubSubBrokerAddress = "localhost:1234";
 
