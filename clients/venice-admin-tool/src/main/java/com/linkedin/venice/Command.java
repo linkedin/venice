@@ -464,7 +464,8 @@ public enum Command {
       new Arg[] { URL, DEST_FABRIC, DATETIME }, new Arg[] { STORES, CLUSTER, INTERVAL }
   ),
   REQUEST_BASED_METADATA(
-      "request-based-metadata", "Get the store's metadata using the Venice server metadata endpoint via a d2 client",
+      "request-based-metadata",
+      "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
       new Arg[] { URL, CLUSTER, STORE }
   );
 

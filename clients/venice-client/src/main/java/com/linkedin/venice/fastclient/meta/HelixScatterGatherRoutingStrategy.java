@@ -47,7 +47,7 @@ public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy 
     return selectedReplicas;
   }
 
-  public void updateHelixGroupInfo(Map<String, Integer> helixGroupInfoMap) {
-    helixGroupInfoAtomicReference.set(new HelixGroupInfo(helixGroupInfoMap));
+  public void updateHelixGroupInfo(Map<String, Integer> instanceToHelixGroupIdMap) {
+    helixGroupInfoAtomicReference.set(new HelixGroupInfo(Collections.unmodifiableMap(instanceToHelixGroupIdMap)));
   }
 }

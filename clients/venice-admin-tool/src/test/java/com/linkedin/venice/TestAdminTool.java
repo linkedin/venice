@@ -219,6 +219,16 @@ public class TestAdminTool {
       Assert.fail("Unexpected exception while invoking get request based metadata API: ", e);
     }
 
+    String[] getMetadataArgsSSL = { "--request-based-metadata", "--url", "https://localhost:7036", "--store", storeName,
+        "--cluster", "venice-1" };
+    try {
+      AdminTool.main(getMetadataArgs);
+    } catch (VeniceException ve) {
+      // Expected;
+    } catch (Exception e) {
+      Assert.fail("Unexpected exception while invoking get request based metadata API with https: ", e);
+    }
+
     TransportClient transportClient = mock(TransportClient.class);
     CompletableFuture<TransportClientResponse> completableFuture = mock(CompletableFuture.class);
     TransportClientResponse response = mock(TransportClientResponse.class);

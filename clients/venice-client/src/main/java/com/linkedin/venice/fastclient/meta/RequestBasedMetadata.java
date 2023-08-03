@@ -154,7 +154,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    */
   private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
     boolean updateComplete = true;
-    boolean newVersion = false;
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {

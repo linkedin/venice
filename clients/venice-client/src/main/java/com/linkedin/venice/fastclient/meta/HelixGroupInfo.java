@@ -6,16 +6,16 @@ import java.util.stream.Collectors;
 
 
 public class HelixGroupInfo {
-  private final Map<String, Integer> helixGroupInfo;
+  private final Map<String, Integer> instanceToHelixGroupIdMap;
   private final List<Integer> groupIds;
 
-  public HelixGroupInfo(Map<String, Integer> helixGroupInfo) {
-    this.helixGroupInfo = helixGroupInfo;
-    this.groupIds = helixGroupInfo.values().stream().distinct().sorted().collect(Collectors.toList());
+  public HelixGroupInfo(Map<String, Integer> instanceToHelixGroupIdMap) {
+    this.instanceToHelixGroupIdMap = instanceToHelixGroupIdMap;
+    this.groupIds = instanceToHelixGroupIdMap.values().stream().distinct().sorted().collect(Collectors.toList());
   }
 
   public Map<String, Integer> getHelixGroupInfoMap() {
-    return helixGroupInfo;
+    return instanceToHelixGroupIdMap;
   }
 
   public List<Integer> getGroupIds() {
