@@ -5,9 +5,11 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOT
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
+import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.FAST_AVRO_FIELD_LIMIT_PER_METHOD;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
+import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
@@ -160,6 +162,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public static final int MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER = 3;
 
   private final int listenerPort;
+  private final int grpcPort;
+  private final boolean isGrpcEnabled;
   private final String listenerHostname;
   private final String dataBasePath;
   private final RocksDBServerConfig rocksDBServerConfig;
@@ -429,6 +433,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     listenerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
+    isGrpcEnabled = serverProperties.getBoolean(ENABLE_GRPC_READ_SERVER, false);
+    grpcPort = isGrpcEnabled ? serverProperties.getInt(GRPC_READ_SERVER_PORT) : -1;
+
     dataBasePath = serverProperties.getString(
         DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
@@ -759,6 +766,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getListenerPort() {
     return listenerPort;
+  }
+
+  public int getGrpcPort() {
+    return grpcPort;
+  }
+
+  public boolean isGrpcEnabled() {
+    return isGrpcEnabled;
   }
 
   public String getListenerHostname() {

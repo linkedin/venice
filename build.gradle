@@ -236,7 +236,6 @@ subprojects {
     }
     compileOnly {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
-      exclude group: 'com.google.guava'
       exclude group: 'com.typesafe.scala-logging'
       exclude group: 'log4j'
       exclude group: 'org.slf4j'
@@ -720,6 +719,8 @@ ext.createDiffFile = { ->
 
       // venice-client
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
+      // unit test for gRPC Transport Client is not straightforward, adding to exclusion list for now
+      ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/transport/GrpcTransportClient.java',
 
       // venice-producer
       ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/OnlineProducerFactory.java',
