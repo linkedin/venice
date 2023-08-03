@@ -70,8 +70,11 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
           int minSchemaIdInUse = Collections.min(usedSchemaSet);
           Set<Integer> schemasToDelete = new HashSet<>();
 
-          // assumes `getValueSchemas` returns ascending schema ids
+          // assumes `getValueSchemas` returns ascending schema ids so that the older schemas are deleted first
           for (SchemaEntry schemaEntry: allSchemas) {
+            if (schemaEntry.getId() == store.getLatestSuperSetValueSchemaId()) {
+              continue;
+            }
 
             // delete only if its not used and less than minimum of used schema id
             if (!usedSchemaSet.contains(schemaEntry.getId()) && schemaEntry.getId() < minSchemaIdInUse) {

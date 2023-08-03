@@ -281,26 +281,6 @@ public class MetaStoreWriter implements Closeable {
     });
   }
 
-  public void deleteInUseValueSchema(String storeName, int versionNumber, int valueSchemaId) {
-    update(storeName, MetaStoreDataType.VALUE_SCHEMAS_WRITTEN_PER_STORE_VERSION, () -> {
-      Map<String, String> map = new HashMap<>(2);
-      map.put(KEY_STRING_STORE_NAME, storeName);
-      map.put(KEY_STRING_VERSION_NUMBER, Integer.toString(versionNumber));
-      return map;
-    }, () -> {
-      // Construct an update
-      StoreMetaValueWriteOpRecord writeOpRecord = new StoreMetaValueWriteOpRecord();
-      writeOpRecord.timestamp = System.currentTimeMillis();
-      List<Integer> list = new ArrayList<>();
-      list.add(valueSchemaId);
-      storeValueSchemaIdsWrittenPerStoreVersionListOps listOps = new storeValueSchemaIdsWrittenPerStoreVersionListOps();
-      listOps.setUnion = Collections.emptyList();
-      listOps.setDiff = list;
-      writeOpRecord.storeValueSchemaIdsWrittenPerStoreVersion = listOps;
-      return writeOpRecord;
-    });
-  }
-
   /**
    * Write {@link com.linkedin.venice.meta.StoreConfig} equivalent to the meta system store. This is still only invoked
    * by child controllers only.

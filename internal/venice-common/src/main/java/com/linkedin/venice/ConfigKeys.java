@@ -446,6 +446,10 @@ public class ConfigKeys {
    */
   public static final String ROUTER_ENABLE_SSL = "router.enable.ssl";
 
+  /**
+   * Enable automatic removal of old unused schemas. Do not enable unless its baked enough,
+   * use admin command to delete old schemas.
+   */
   public static final String CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED =
       "controller.unused.value.schema.cleanup.enabled";
 

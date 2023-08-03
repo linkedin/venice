@@ -552,6 +552,8 @@ public class AdminTool {
         case RECOVER_STORE_METADATA:
           recoverStoreMetadata(cmd);
           break;
+        case DELETE_VALUE_SCHEMA:
+          deleteValueSchema(cmd);
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -725,6 +727,14 @@ public class AdminTool {
 
       printObject(String.format("TOTAL RECOVERY TIME FOR ALL STORES = %02d:%02d:%02d", hours, minutes, seconds));
     }
+  }
+
+  private static void deleteValueSchema(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String valueSchemaId = getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID);
+    ControllerResponse controllerResponse =
+        controllerClient.deleteValueSchemas(storeName, Collections.singletonList(valueSchemaId));
+    printObject(controllerResponse);
   }
 
   private static void monitorDataRecovery(CommandLine cmd) {
