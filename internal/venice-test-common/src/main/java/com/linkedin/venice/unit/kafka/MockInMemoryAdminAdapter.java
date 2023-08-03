@@ -4,13 +4,15 @@ import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -23,7 +25,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-import org.apache.kafka.common.errors.TimeoutException;
 
 
 public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
@@ -72,9 +73,9 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
 
   @Override
   public void setTopicConfig(PubSubTopic topicName, PubSubTopicConfiguration topicPubSubTopicConfiguration)
-      throws TopicDoesNotExistException {
+      throws PubSubTopicDoesNotExistException {
     if (!topicPubSubTopicConfigurationMap.containsKey(topicName)) {
-      throw new TopicDoesNotExistException("Topic " + topicName + " does not exist");
+      throw new PubSubTopicDoesNotExistException("Topic " + topicName + " does not exist");
     }
     topicPubSubTopicConfigurationMap.put(topicName, topicPubSubTopicConfiguration);
   }
@@ -95,11 +96,11 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topic) throws TopicDoesNotExistException {
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topic) throws PubSubTopicDoesNotExistException {
     if (topicPubSubTopicConfigurationMap.containsKey(topic)) {
       return topicPubSubTopicConfigurationMap.get(topic);
     }
-    throw new TopicDoesNotExistException("Topic " + topic + " does not exist");
+    throw new PubSubTopicDoesNotExistException("Topic " + topic + " does not exist");
   }
 
   @Override
@@ -138,7 +139,11 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
 
   @Override
   public List<Class<? extends Throwable>> getRetriableExceptions() {
-    return Collections.unmodifiableList(Arrays.asList(VeniceRetriableException.class, TimeoutException.class));
+    return Collections.unmodifiableList(
+        Arrays.asList(
+            VeniceRetriableException.class,
+            PubSubOpTimeoutException.class,
+            PubSubClientRetriableException.class));
   }
 
   @Override

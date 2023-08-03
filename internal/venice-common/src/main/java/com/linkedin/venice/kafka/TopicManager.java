@@ -16,6 +16,10 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubInstrumentedAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Time;
@@ -36,9 +40,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.kafka.common.errors.InvalidReplicationFactorException;
-import org.apache.kafka.common.errors.TopicExistsException;
-import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -72,10 +73,8 @@ public class TopicManager implements Closeable {
    */
   public static final long DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS = 24 * Time.MS_PER_HOUR;
 
-  private static final List<Class<? extends Throwable>> CREATE_TOPIC_RETRIABLE_EXCEPTIONS =
-      Collections.unmodifiableList(
-          Arrays
-              .asList(InvalidReplicationFactorException.class, org.apache.kafka.common.errors.TimeoutException.class));
+  private static final List<Class<? extends Throwable>> CREATE_TOPIC_RETRIABLE_EXCEPTIONS = Collections
+      .unmodifiableList(Arrays.asList(PubSubInvalidReplicationFactorException.class, PubSubOpTimeoutException.class));
 
   // Immutable state
   private final Logger logger;
@@ -275,14 +274,14 @@ public class TopicManager implements Closeable {
           Duration.ofMillis(useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs),
           CREATE_TOPIC_RETRIABLE_EXCEPTIONS);
     } catch (Exception e) {
-      if (ExceptionUtils.recursiveClassEquals(e, TopicExistsException.class)) {
+      if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicExistsException.class)) {
         logger.info("Topic: {} already exists, will update retention policy.", topicName);
         waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
         updateTopicRetention(topicName, retentionTimeMs);
         logger.info("Updated retention policy to be {}ms for topic: {}", retentionTimeMs, topicName);
         return;
       } else {
-        throw new VeniceOperationAgainstKafkaTimedOut(
+        throw new PubSubOpTimeoutException(
             "Timeout while creating topic: " + topicName + ". Topic still does not exist after "
                 + (deadlineMs - startTime) + "ms.",
             e);
@@ -297,7 +296,7 @@ public class TopicManager implements Closeable {
     long startTime = System.currentTimeMillis();
     while (!containsTopicAndAllPartitionsAreOnline(topicName, partitionCount)) {
       if (System.currentTimeMillis() > deadlineMs) {
-        throw new VeniceOperationAgainstKafkaTimedOut(
+        throw new PubSubOpTimeoutException(
             "Timeout while creating topic: " + topicName + ".  Topic still did not pass all the checks after "
                 + (deadlineMs - startTime) + "ms.");
       }
@@ -318,12 +317,13 @@ public class TopicManager implements Closeable {
 
   /**
    * Update retention for the given topic.
-   * If the topic doesn't exist, this operation will throw {@link TopicDoesNotExistException}
+   * If the topic doesn't exist, this operation will throw {@link PubSubTopicDoesNotExistException}
    * @param topicName
    * @param retentionInMS
    * @return true if the retention time config of the input topic gets updated; return false if nothing gets updated
    */
-  public boolean updateTopicRetention(PubSubTopic topicName, long retentionInMS) throws TopicDoesNotExistException {
+  public boolean updateTopicRetention(PubSubTopic topicName, long retentionInMS)
+      throws PubSubTopicDoesNotExistException {
     PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topicName);
     return updateTopicRetention(topicName, retentionInMS, pubSubTopicConfiguration);
   }
@@ -338,7 +338,7 @@ public class TopicManager implements Closeable {
   public boolean updateTopicRetention(
       PubSubTopic topicName,
       long expectedRetentionInMs,
-      PubSubTopicConfiguration pubSubTopicConfiguration) throws TopicDoesNotExistException {
+      PubSubTopicConfiguration pubSubTopicConfiguration) throws PubSubTopicDoesNotExistException {
     Optional<Long> retentionTimeMs = pubSubTopicConfiguration.retentionInMs();
     if (!retentionTimeMs.isPresent() || expectedRetentionInMs != retentionTimeMs.get()) {
       pubSubTopicConfiguration.setRetentionInMs(Optional.of(expectedRetentionInMs));
@@ -364,12 +364,12 @@ public class TopicManager implements Closeable {
    * @param expectedLogCompacted
    * @param minLogCompactionLagMs the overrode min log compaction lag. If this is specified and a valid number (> 0), it will
    *                              override the default config
-   * @throws TopicDoesNotExistException, if the topic doesn't exist
+   * @throws PubSubTopicDoesNotExistException, if the topic doesn't exist
    */
   public synchronized void updateTopicCompactionPolicy(
       PubSubTopic topic,
       boolean expectedLogCompacted,
-      long minLogCompactionLagMs) throws TopicDoesNotExistException {
+      long minLogCompactionLagMs) throws PubSubTopicDoesNotExistException {
     long expectedMinLogCompactionLagMs = 0l;
     if (expectedLogCompacted) {
       if (minLogCompactionLagMs > 0) {
@@ -407,7 +407,8 @@ public class TopicManager implements Closeable {
     return topicProperties.minLogCompactionLagMs();
   }
 
-  public boolean updateTopicMinInSyncReplica(PubSubTopic topicName, int minISR) throws TopicDoesNotExistException {
+  public boolean updateTopicMinInSyncReplica(PubSubTopic topicName, int minISR)
+      throws PubSubTopicDoesNotExistException {
     PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topicName);
     Optional<Integer> currentMinISR = pubSubTopicConfiguration.minInSyncReplicas();
     // config doesn't exist config is different
@@ -428,7 +429,7 @@ public class TopicManager implements Closeable {
   /**
    * Return topic retention time in MS.
    */
-  public long getTopicRetention(PubSubTopic topicName) throws TopicDoesNotExistException {
+  public long getTopicRetention(PubSubTopic topicName) throws PubSubTopicDoesNotExistException {
     PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topicName);
     return getTopicRetention(pubSubTopicConfiguration);
   }
@@ -450,7 +451,7 @@ public class TopicManager implements Closeable {
   public boolean isTopicTruncated(PubSubTopic topicName, long truncatedTopicMaxRetentionMs) {
     try {
       return isRetentionBelowTruncatedThreshold(getTopicRetention(topicName), truncatedTopicMaxRetentionMs);
-    } catch (TopicDoesNotExistException e) {
+    } catch (PubSubTopicDoesNotExistException e) {
       return true;
     }
   }
@@ -462,7 +463,7 @@ public class TopicManager implements Closeable {
   /**
    * This operation is a little heavy, since it will pull the configs for all the topics.
    */
-  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws PubSubTopicDoesNotExistException {
     final PubSubTopicConfiguration pubSubTopicConfiguration =
         pubSubReadOnlyAdminAdapter.get().getTopicConfig(topicName);
     topicConfigCache.put(topicName, pubSubTopicConfiguration);
@@ -532,13 +533,13 @@ public class TopicManager implements Closeable {
       } catch (InterruptedException e) {
         throw new VeniceException("Thread interrupted while waiting to delete topic: " + topicName);
       } catch (ExecutionException e) {
-        if (e.getCause() instanceof UnknownTopicOrPartitionException) {
+        if (e.getCause() instanceof PubSubTopicDoesNotExistException) {
           // No-op. Topic is deleted already, consider this as a successful deletion.
         } else {
           throw e;
         }
       } catch (TimeoutException e) {
-        throw new VeniceOperationAgainstKafkaTimedOut(
+        throw new PubSubOpTimeoutException(
             "Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs);
       }
       logger.info("Topic: {} has been deleted", topicName);
@@ -574,7 +575,7 @@ public class TopicManager implements Closeable {
         }
       }
     }
-    throw new VeniceOperationAgainstKafkaTimedOut(
+    throw new PubSubOpTimeoutException(
         "Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs + " ms (" + current
             + " attempts).");
   }
@@ -587,7 +588,7 @@ public class TopicManager implements Closeable {
       try {
         ensureTopicIsDeletedAndBlock(topicName);
         return;
-      } catch (VeniceOperationAgainstKafkaTimedOut e) {
+      } catch (PubSubOpTimeoutException e) {
         attempts++;
         logger.warn(
             "Topic deletion for topic {} timed out!  Retry attempt {} / {}",

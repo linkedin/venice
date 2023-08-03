@@ -12,8 +12,8 @@ import static com.linkedin.venice.stats.PubSubAdminWrapperStats.OCCURRENCE_LATEN
 import static com.linkedin.venice.stats.PubSubAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.LIST_ALL_TOPICS;
 import static com.linkedin.venice.stats.PubSubAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.SET_TOPIC_CONFIG;
 
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.stats.PubSubAdminWrapperStats;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -99,7 +99,7 @@ public class PubSubInstrumentedAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws PubSubTopicDoesNotExistException {
     return instrument(GET_TOPIC_CONFIG, () -> pubSubAdminAdapter.getTopicConfig(topicName));
   }
 

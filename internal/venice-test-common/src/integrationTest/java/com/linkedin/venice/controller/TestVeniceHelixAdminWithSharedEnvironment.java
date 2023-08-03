@@ -27,7 +27,6 @@ import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
-import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -47,6 +46,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
@@ -558,7 +558,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();
 
     TopicManager mockedTopicManager = mock(TopicManager.class);
-    doThrow(new VeniceOperationAgainstKafkaTimedOut("mock timeout")).when(mockedTopicManager)
+    doThrow(new PubSubOpTimeoutException("mock timeout")).when(mockedTopicManager)
         .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), eq(true));
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
@@ -571,7 +571,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     for (int i = 0; i < 5; i++) {
       // Mimic the retry behavior by the admin consumption task.
       Assert.assertThrows(
-          VeniceOperationAgainstKafkaTimedOut.class,
+          PubSubOpTimeoutException.class,
           () -> veniceAdmin.addVersionAndStartIngestion(
               clusterName,
               storeName,

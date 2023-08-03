@@ -1,8 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
-import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -14,6 +12,9 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.Header;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -165,7 +167,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     String topic = pubSubTopicPartition.getPubSubTopic().getName();
     int partition = pubSubTopicPartition.getPartitionNumber();
     if (!hasSubscription(pubSubTopicPartition)) {
-      throw new UnsubscribedTopicPartitionException(pubSubTopicPartition);
+      throw new PubSubUnsubscribedTopicPartitionException(pubSubTopicPartition);
     }
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
@@ -210,9 +212,10 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
             Thread.sleep(consumerPollRetryBackoffMs);
           }
         } catch (InterruptedException ie) {
+          Thread.currentThread().interrupt();
           // Here will still throw the actual exception thrown by internal consumer to make sure the stacktrace is
           // meaningful.
-          throw new VeniceException("Consumer poll retry back off sleep got interrupted", e);
+          throw new PubSubClientException("Consumer poll retry back off sleep got interrupted", e);
         }
       } finally {
         attemptCount++;
@@ -348,13 +351,19 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
               pubSubTopicPartition.getPartitionNumber()),
           pubSubTopicPartition);
     }
-    Map<PubSubTopicPartition, Long> pubSubTopicPartitionOffsetMap = new HashMap<>(partitions.size());
-    Map<TopicPartition, Long> topicPartitionOffsetMap =
-        this.kafkaConsumer.endOffsets(pubSubTopicPartitionMapping.keySet(), timeout);
-    for (Map.Entry<TopicPartition, Long> entry: topicPartitionOffsetMap.entrySet()) {
-      pubSubTopicPartitionOffsetMap.put(pubSubTopicPartitionMapping.get(entry.getKey()), entry.getValue());
+    try {
+      Map<TopicPartition, Long> topicPartitionOffsetMap =
+          this.kafkaConsumer.endOffsets(pubSubTopicPartitionMapping.keySet(), timeout);
+      Map<PubSubTopicPartition, Long> pubSubTopicPartitionOffsetMap = new HashMap<>(topicPartitionOffsetMap.size());
+      for (Map.Entry<TopicPartition, Long> entry: topicPartitionOffsetMap.entrySet()) {
+        pubSubTopicPartitionOffsetMap.put(pubSubTopicPartitionMapping.get(entry.getKey()), entry.getValue());
+      }
+      return pubSubTopicPartitionOffsetMap;
+    } catch (TimeoutException e) {
+      throw new PubSubOpTimeoutException("Timed out while fetching end offsets for " + partitions, e);
+    } catch (Exception e) {
+      throw new PubSubClientException("Failed to fetch end offsets for " + partitions, e);
     }
-    return pubSubTopicPartitionOffsetMap;
   }
 
   @Override

@@ -103,10 +103,8 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
-import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -154,6 +152,8 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConf
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatusWithDetails;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
@@ -2670,7 +2670,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return new Pair<>(true, version);
 
     } catch (Throwable e) {
-      if (useFastKafkaOperationTimeout && e instanceof VeniceOperationAgainstKafkaTimedOut) {
+      if (useFastKafkaOperationTimeout && e instanceof PubSubOpTimeoutException) {
         // Expected and retriable exception skip error handling within VeniceHelixAdmin and let the caller to
         // handle the exception.
         throw e;
@@ -3402,7 +3402,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .updateTopicRetention(pubSubTopicRepository.getTopic(kafkaTopicName), deprecatedJobTopicRetentionMs)) {
         return true;
       }
-    } catch (TopicDoesNotExistException e) {
+    } catch (PubSubTopicDoesNotExistException e) {
       LOGGER.info(
           "Topic {} does not exist in Kafka cluster {}, will skip the truncation",
           kafkaTopicName,
@@ -4144,7 +4144,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       try {
         PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
         getTopicManager().updateTopicCompactionPolicy(rtTopic, false);
-      } catch (TopicDoesNotExistException e) {
+      } catch (PubSubTopicDoesNotExistException e) {
         LOGGER.error("Could not find realtime topic for hybrid store {}", storeName);
       }
     }

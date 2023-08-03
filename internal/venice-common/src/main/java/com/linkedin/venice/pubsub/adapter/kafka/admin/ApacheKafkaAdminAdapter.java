@@ -3,15 +3,18 @@ package com.linkedin.venice.pubsub.adapter.kafka.admin;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.time.Duration;
@@ -81,14 +84,14 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       getKafkaAdminClient().createTopics(newTopics).all().get();
     } catch (ExecutionException e) {
       if (e.getCause() instanceof InvalidReplicationFactorException) {
-        throw (InvalidReplicationFactorException) e.getCause();
+        throw new PubSubInvalidReplicationFactorException(topic.getName(), replication, e.getCause());
       } else if (e.getCause() instanceof TopicExistsException) {
-        throw (TopicExistsException) e.getCause();
+        throw new PubSubTopicExistsException(topic.getName());
       } else {
-        throw new VeniceException("Failed to create topic: " + topic + " due to ExecutionException", e);
+        throw new PubSubClientException("Failed to create topic: " + topic + " due to ExecutionException", e);
       }
     } catch (Exception e) {
-      throw new VeniceException("Failed to create topic: " + topic + "due to Exception", e);
+      throw new PubSubClientException("Failed to create topic: " + topic + "due to Exception", e);
     }
   }
 
@@ -102,7 +105,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
           .map(t -> pubSubTopicRepository.getTopic(t))
           .collect(Collectors.toSet());
     } catch (Exception e) {
-      throw new VeniceException("Failed to list all topics due to exception: ", e);
+      throw new PubSubClientException("Failed to list all topics due to exception: ", e);
     }
   }
 
@@ -115,7 +118,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
 
   @Override
   public void setTopicConfig(PubSubTopic topic, PubSubTopicConfiguration pubSubTopicConfiguration)
-      throws TopicDoesNotExistException {
+      throws PubSubTopicDoesNotExistException {
     Properties topicProperties = unmarshallProperties(pubSubTopicConfiguration);
     Collection<ConfigEntry> entries = new ArrayList<>(topicProperties.stringPropertyNames().size());
     topicProperties.stringPropertyNames()
@@ -124,13 +127,16 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
         Collections.singletonMap(new ConfigResource(ConfigResource.Type.TOPIC, topic.getName()), new Config(entries));
     try {
       getKafkaAdminClient().alterConfigs(configs).all().get();
-    } catch (ExecutionException | InterruptedException e) {
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PubSubClientException("Interrupted while setting topic config for topic: " + topic, e);
+    } catch (ExecutionException e) {
       if (!containsTopicWithExpectationAndRetry(topic, 3, true)) {
         // We assume the exception was caused by a non-existent topic.
-        throw new TopicDoesNotExistException("Topic " + topic + " does not exist");
+        throw new PubSubTopicDoesNotExistException("Topic " + topic + " does not exist", e);
       }
       // Topic exists. So not sure what caused the exception.
-      throw new VeniceException(e);
+      throw new PubSubClientException("Topic: " + topic + " exists but failed to set config due to exception: ", e);
     }
   }
 
@@ -146,7 +152,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topic) throws TopicDoesNotExistException {
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topic) throws PubSubTopicDoesNotExistException {
     ConfigResource resource = new ConfigResource(ConfigResource.Type.TOPIC, topic.getName());
     Collection<ConfigResource> configResources = Collections.singleton(resource);
     DescribeConfigsResult result = getKafkaAdminClient().describeConfigs(configResources);
@@ -155,9 +161,9 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       return marshallProperties(config);
     } catch (Exception e) {
       if (e.getCause() instanceof UnknownTopicOrPartitionException) {
-        throw new TopicDoesNotExistException("Topic: " + topic + " doesn't exist");
+        throw new PubSubTopicDoesNotExistException("Topic: " + topic + " doesn't exist", e);
       }
-      throw new VeniceException("Failed to get topic configs for: " + topic, e);
+      throw new PubSubClientException("Failed to get topic configs for: " + topic, e);
     }
   }
 
@@ -165,20 +171,20 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topic) {
     long accumWaitTime = 0;
     long sleepIntervalInMs = 100;
-    VeniceException veniceException = null;
+    Exception exception = null;
     while (accumWaitTime < this.maxRetryInMs) {
       try {
         return getTopicConfig(topic);
-      } catch (VeniceException e) {
-        veniceException = e;
+      } catch (PubSubClientRetriableException | PubSubClientException e) {
+        exception = e;
         Utils.sleep(sleepIntervalInMs);
         accumWaitTime += sleepIntervalInMs;
         sleepIntervalInMs = Math.min(5 * MS_PER_SECOND, sleepIntervalInMs * 2);
       }
     }
-    throw new VeniceException(
+    throw new PubSubClientException(
         "After retrying for " + accumWaitTime + "ms, failed to get topic configs for: " + topic,
-        veniceException);
+        exception);
   }
 
   @Override
@@ -201,10 +207,10 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
         // Topic doesn't exist...
         return false;
       } else {
-        throw new VeniceException("Failed to check if '" + topic + " exists!", e);
+        throw new PubSubClientRetriableException("Failed to check if '" + topic + " exists!", e);
       }
     } catch (Exception e) {
-      throw new VeniceException("Failed to check if '" + topic + " exists!", e);
+      throw new PubSubClientException("Failed to check if '" + topic + " exists!", e);
     }
   }
 
@@ -235,13 +241,18 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
         return false;
       }
       return true;
-    } catch (Exception e) {
+    } catch (ExecutionException e) {
       if (e.getCause() instanceof UnknownTopicOrPartitionException || e.getCause() instanceof InvalidTopicException) {
         // Topic doesn't exist...
         return false;
       } else {
-        throw new VeniceException("Failed to check if '" + pubSubTopic + " exists!", e);
+        throw new PubSubClientRetriableException("Failed to check if '" + pubSubTopic + " exists!", e);
       }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PubSubClientException("Interrupted while checking if '" + pubSubTopic + " exists!", e);
+    } catch (Exception e) {
+      throw new PubSubClientException("Failed to check if '" + pubSubTopic + " exists!", e);
     }
   }
 
@@ -327,8 +338,13 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
           .map(t -> pubSubTopicRepository.getTopic(t))
           .collect(Collectors.toSet());
       return getSomethingForSomeTopics(pubSubTopics, configTransformer, content);
+    } catch (ExecutionException e) {
+      throw new PubSubClientRetriableException("Failed to get " + content + " for all topics", e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PubSubClientException("Interrupted while getting " + content + " for all topics", e);
     } catch (Exception e) {
-      throw new VeniceException("Failed to get " + content + " for all topics", e);
+      throw new PubSubClientException("Failed to get " + content + " for all topics", e);
     }
   }
 
@@ -355,10 +371,15 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
                   configTransformer.apply(config)));
 
       return topicToSomething;
-    } catch (Exception e) {
+    } catch (ExecutionException e) {
       int numberOfTopic = pubSubTopics.size();
       String numberOfTopicString = numberOfTopic + " topic" + (numberOfTopic > 1 ? "s" : "");
-      throw new VeniceException("Failed to get " + content + " for " + numberOfTopicString, e);
+      throw new PubSubClientRetriableException("Failed to get " + content + " for " + numberOfTopicString, e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PubSubClientException("Interrupted while getting " + content + " for some topics", e);
+    } catch (Exception e) {
+      throw new PubSubClientException("Failed to get " + content + " for some topics", e);
     }
   }
 }

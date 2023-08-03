@@ -69,7 +69,6 @@ import com.linkedin.venice.helix.HelixSchemaAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
-import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -82,6 +81,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFac
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
@@ -1398,7 +1398,7 @@ public class AdminTool {
         topicManager.ensureTopicIsDeletedAndBlock(PUB_SUB_TOPIC_REPOSITORY.getTopic(topicName));
         long runTime = System.currentTimeMillis() - startTime;
         printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
-      } catch (VeniceOperationAgainstKafkaTimedOut e) {
+      } catch (PubSubOpTimeoutException e) {
         printErrAndThrow(e, "Topic deletion timed out for: '" + topicName + "' after " + kafkaTimeOut + " ms.", null);
       } catch (ExecutionException e) {
         printErrAndThrow(e, "Topic deletion failed due to ExecutionException", null);

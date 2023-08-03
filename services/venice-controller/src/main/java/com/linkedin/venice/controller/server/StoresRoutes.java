@@ -81,7 +81,6 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Store;
@@ -92,6 +91,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -802,7 +802,7 @@ public class StoresRoutes extends AbstractRoute {
                   pubSubTopicRepository.getTopic(request.queryParams(TOPIC)),
                   Boolean.getBoolean(request.queryParams(TOPIC_COMPACTION_POLICY)));
           veniceResponse.setName(request.queryParams(TOPIC));
-        } catch (TopicDoesNotExistException e) {
+        } catch (PubSubTopicDoesNotExistException e) {
           veniceResponse.setError("Topic does not exist!! Message: " + e.getMessage());
         }
       }

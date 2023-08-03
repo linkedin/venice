@@ -2,11 +2,11 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -51,7 +51,7 @@ class CachedPubSubMetadataGetter {
           new PubSubMetadataCacheKey(sourcePubSubServer, pubSubTopicPartition),
           offsetCache,
           () -> topicManager.getPartitionLatestOffsetAndRetry(pubSubTopicPartition, DEFAULT_MAX_RETRY));
-    } catch (TopicDoesNotExistException e) {
+    } catch (PubSubTopicDoesNotExistException e) {
       // It's observed in production that with java based admin client the topic may not be found temporarily, return
       // error code
       LOGGER.error("Failed to get offset for topic partition {}", pubSubTopicPartition, e);
@@ -66,7 +66,7 @@ class CachedPubSubMetadataGetter {
           new PubSubMetadataCacheKey(sourcePubSubServer, pubSubTopicPartition),
           offsetCache,
           () -> topicManager.getPartitionEarliestOffsetAndRetry(pubSubTopicPartition, DEFAULT_MAX_RETRY));
-    } catch (TopicDoesNotExistException e) {
+    } catch (PubSubTopicDoesNotExistException e) {
       // It's observed in production that with java based admin client the topic may not be found temporarily, return
       // error code
       LOGGER.error("Failed to get offset for topic partition {}", pubSubTopicPartition, e);
@@ -80,7 +80,7 @@ class CachedPubSubMetadataGetter {
           new PubSubMetadataCacheKey(topicManager.getPubSubBootstrapServers(), pubSubTopicPartition),
           lastProducerTimestampCache,
           () -> topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, DEFAULT_MAX_RETRY));
-    } catch (TopicDoesNotExistException e) {
+    } catch (PubSubTopicDoesNotExistException e) {
       // It's observed in production that with java based admin client the topic may not be found temporarily, return
       // error code
       return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;

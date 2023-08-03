@@ -1,8 +1,8 @@
 package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.exceptions.VeniceRetriableException;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.utils.RetryUtils;
 import java.io.Closeable;
 import java.time.Duration;
@@ -27,11 +27,11 @@ public interface PubSubAdminAdapter extends Closeable {
   Set<PubSubTopic> listAllTopics();
 
   void setTopicConfig(PubSubTopic topicName, PubSubTopicConfiguration pubSubTopicConfiguration)
-      throws TopicDoesNotExistException;
+      throws PubSubTopicDoesNotExistException;
 
   Map<PubSubTopic, Long> getAllTopicRetentions();
 
-  PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException;
+  PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws PubSubTopicDoesNotExistException;
 
   PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName);
 

@@ -31,7 +31,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
-import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
@@ -73,6 +72,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -1755,7 +1755,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       try {
         consumerResetOffset(topicPartition.getPubSubTopic(), partitionConsumptionState);
         LOGGER.info("{} Reset OffSet : {}", consumerTaskId, topicPartition);
-      } catch (UnsubscribedTopicPartitionException e) {
+      } catch (PubSubUnsubscribedTopicPartitionException e) {
         LOGGER.error(
             "{} Kafka consumer should have subscribed to the partition already but it fails "
                 + "on resetting offset for: {}",
