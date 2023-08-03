@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.time.Duration;
@@ -86,14 +87,15 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     try {
       getKafkaAdminClient().createTopics(newTopics).all().get();
     } catch (ExecutionException e) {
-      if (e.getCause() instanceof InvalidReplicationFactorException) {
+      if (ExceptionUtils.recursiveClassEquals(e, InvalidReplicationFactorException.class)) {
         throw new PubSubInvalidReplicationFactorException(topic.getName(), replication, e.getCause());
-      } else if (e.getCause() instanceof TopicExistsException) {
+      } else if (ExceptionUtils.recursiveClassEquals(e, TopicExistsException.class)) {
         throw new PubSubTopicExistsException(topic.getName());
       } else {
         throw new PubSubClientException("Failed to create topic: " + topic + " due to ExecutionException", e);
       }
-    } catch (Exception e) {
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
       throw new PubSubClientException("Failed to create topic: " + topic + "due to Exception", e);
     }
   }

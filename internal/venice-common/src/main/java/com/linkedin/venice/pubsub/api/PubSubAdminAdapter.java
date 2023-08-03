@@ -13,9 +13,18 @@ import java.util.concurrent.Future;
 
 
 /**
- * In addition to the APIs below, implementers of this interface are expected to provide a public no-args constructor.
+ * An adapter for PubSubAdmin to create/delete/list/update topics.
  */
 public interface PubSubAdminAdapter extends Closeable {
+  /**
+   * Create a topic with the given number of partitions and replication factor.
+   * @param topicName topic name
+   * @param numPartitions number of partitions for the topic
+   * @param replication replication factor for the topic
+   * @param pubSubTopicConfiguration topic configuration
+   *
+   *
+   */
   void createTopic(
       PubSubTopic topicName,
       int numPartitions,
