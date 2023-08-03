@@ -2,7 +2,10 @@ package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import com.linkedin.venice.utils.RetryUtils;
 import java.io.Closeable;
 import java.time.Duration;
@@ -17,13 +20,22 @@ import java.util.concurrent.Future;
  */
 public interface PubSubAdminAdapter extends Closeable {
   /**
-   * Create a topic with the given number of partitions and replication factor.
-   * @param topicName topic name
-   * @param numPartitions number of partitions for the topic
-   * @param replication replication factor for the topic
-   * @param pubSubTopicConfiguration topic configuration
+   * Creates a new topic in the PubSub system with the given parameters.
    *
+   * @param topicName The name of the topic to be created.
+   * @param numPartitions The number of partitions to be created for the topic.
+   * @param replication The number of replicas for each partition.
+   * @param pubSubTopicConfiguration Additional topic configuration such as retention, compaction policy, etc.
+   * @throws IllegalArgumentException If the replication factor is greater than Short.MAX_VALUE.
+   * @throws PubSubInvalidReplicationFactorException If the provided replication factor is invalid according to broker constraints, or if the number of brokers available is less than the provided replication factor.
+   * @throws PubSubTopicExistsException If a topic with the same name already exists.
+   * @throws PubSubClientException For all other issues related to the PubSub client.
    *
+   * @see PubSubTopic
+   * @see PubSubTopicConfiguration
+   * @see PubSubInvalidReplicationFactorException
+   * @see PubSubTopicExistsException
+   * @see PubSubClientException
    */
   void createTopic(
       PubSubTopic topicName,
