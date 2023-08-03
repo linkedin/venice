@@ -102,6 +102,11 @@ public abstract class AbstractStore implements Store {
   }
 
   @Override
+  public void addVersion(Version version, boolean isClonedVersion) {
+    addVersion(version, true, isClonedVersion);
+  }
+
+  @Override
   public void forceAddVersion(Version version, boolean isClonedVersion) {
     addVersion(version, false, isClonedVersion);
   }
