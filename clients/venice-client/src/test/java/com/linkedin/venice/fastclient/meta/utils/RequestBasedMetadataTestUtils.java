@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
@@ -23,6 +24,7 @@ import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
@@ -110,11 +112,20 @@ public class RequestBasedMetadataTestUtils {
         .createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, resourceName, DICTIONARY);
   }
 
+  public static RouterBackedSchemaReader getMockRouterBackedSchemaReader() {
+    RouterBackedSchemaReader metadataResponseSchemaReader = mock(RouterBackedSchemaReader.class);
+    int latestSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
+    doReturn(latestSchemaId).when(metadataResponseSchemaReader).getLatestValueSchemaId();
+    doReturn(MetadataResponseRecord.SCHEMA$).when(metadataResponseSchemaReader).getValueSchema(latestSchemaId);
+    return metadataResponseSchemaReader;
+  }
+
   public static RequestBasedMetadata getMockMetaData(ClientConfig clientConfig, String storeName) {
     D2TransportClient d2TransportClient = RequestBasedMetadataTestUtils.getMockD2TransportClient(storeName);
     D2ServiceDiscovery d2ServiceDiscovery =
         RequestBasedMetadataTestUtils.getMockD2ServiceDiscovery(d2TransportClient, storeName);
-    RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient);
+    RequestBasedMetadata requestBasedMetadata =
+        new RequestBasedMetadata(clientConfig, d2TransportClient, getMockRouterBackedSchemaReader());
     requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
     requestBasedMetadata.start();
     return requestBasedMetadata;

@@ -211,23 +211,13 @@ public class TestAdminTool {
     String storeName = "test-store1";
     String[] getMetadataArgs =
         { "--request-based-metadata", "--url", "http://localhost:7036", "--store", storeName, "--cluster", "venice-1" };
-    try {
-      AdminTool.main(getMetadataArgs);
-    } catch (VeniceException ve) {
-      // Expected;
-    } catch (Exception e) {
-      Assert.fail("Unexpected exception while invoking get request based metadata API: ", e);
-    }
-
+    VeniceException requestException =
+        Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgs));
+    Assert.assertTrue(requestException.getMessage().contains("exception while trying to send metadata request"));
     String[] getMetadataArgsSSL = { "--request-based-metadata", "--url", "https://localhost:7036", "--store", storeName,
         "--cluster", "venice-1" };
-    try {
-      AdminTool.main(getMetadataArgs);
-    } catch (VeniceException ve) {
-      // Expected;
-    } catch (Exception e) {
-      Assert.fail("Unexpected exception while invoking get request based metadata API with https: ", e);
-    }
+    VeniceException sslException = Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgsSSL));
+    Assert.assertTrue(sslException.getMessage().contains("requires admin tool to be executed with cert"));
 
     TransportClient transportClient = mock(TransportClient.class);
     CompletableFuture<TransportClientResponse> completableFuture = mock(CompletableFuture.class);

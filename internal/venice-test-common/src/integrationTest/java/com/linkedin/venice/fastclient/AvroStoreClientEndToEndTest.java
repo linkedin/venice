@@ -79,10 +79,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
     try {
-      genericFastClient =
-          getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, storeMetadataFetchMode);
-
       if (storeMetadataFetchMode == StoreMetadataFetchMode.SERVER_BASED_METADATA) {
+        // Validate and configure the metadata response schema forward compat support setup
         veniceCluster.useControllerClient(controllerClient -> {
           String schemaStoreName = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName();
           MultiSchemaResponse multiSchemaResponse = controllerClient.getAllValueSchema(schemaStoreName);
@@ -91,7 +89,15 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
               AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion(),
               multiSchemaResponse.getSchemas().length);
         });
+
+        clientConfigBuilder.setMetadataResponseSchemaStoreClient(
+            getGenericThinClient(
+                new MetricsRepository(),
+                AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
       }
+
+      genericFastClient =
+          getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, storeMetadataFetchMode);
 
       // Construct a Vson store client
       genericFastVsonClient = getGenericFastVsonClient(
@@ -274,7 +280,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
 
     try {
       if (dualRead) {
-        genericThinClient = getGenericThinClient(thinClientMetricsRepository);
+        genericThinClient = getGenericThinClient(thinClientMetricsRepository, storeName);
         clientConfigBuilder.setGenericThinClient(genericThinClient);
         specificThinClient = getSpecificThinClient();
         clientConfigBuilder.setSpecificThinClient(specificThinClient);
@@ -356,7 +362,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
 
     try {
       if (dualRead) {
-        genericThinClient = getGenericThinClient(thinClientMetricsRepository);
+        genericThinClient = getGenericThinClient(thinClientMetricsRepository, storeName);
         clientConfigBuilder.setGenericThinClient(genericThinClient);
         specificThinClient = getSpecificThinClient();
         clientConfigBuilder.setSpecificThinClient(specificThinClient);

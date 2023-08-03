@@ -1,11 +1,15 @@
 package com.linkedin.venice.fastclient.meta;
 
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
+import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD;
 import static org.testng.Assert.*;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -23,14 +27,17 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
@@ -54,6 +61,7 @@ public class RequestBasedMetadataIntegrationTest {
   private Client r2Client;
   private D2Client d2Client;
   private ClientConfig clientConfig;
+  private RouterBackedSchemaReader metadataResponseSchemaReader;
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -75,11 +83,26 @@ public class RequestBasedMetadataIntegrationTest {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+    AvroGenericStoreClient genericStoreClient =
+        com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
+            com.linkedin.venice.client.store.ClientConfig
+                .defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName())
+                .setVeniceURL(veniceCluster.getRandomRouterSslURL())
+                .setSslFactory(SslUtils.getVeniceLocalSslFactory())
+                .setMetricsRepository(new MetricsRepository()));
+    clientConfigBuilder.setMetadataResponseSchemaStoreClient(genericStoreClient);
     clientConfig = clientConfigBuilder.build();
+    metadataResponseSchemaReader = new RouterBackedSchemaReader(
+        (InternalAvroStoreClient) clientConfig.getMetadataResponseSchemaStoreClient(),
+        Optional.empty(),
+        Optional.empty(),
+        DEFAULT_SCHEMA_REFRESH_PERIOD,
+        null);
 
     requestBasedMetadata = new RequestBasedMetadata(
         clientConfig,
-        new D2TransportClient(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, d2Client));
+        new D2TransportClient(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, d2Client),
+        metadataResponseSchemaReader);
     requestBasedMetadata.start();
   }
 
@@ -139,7 +162,8 @@ public class RequestBasedMetadataIntegrationTest {
 
     RequestBasedMetadata zstdRequestBasedMetadata = new RequestBasedMetadata(
         zstdClientConfig,
-        new D2TransportClient(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, d2Client));
+        new D2TransportClient(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, d2Client),
+        metadataResponseSchemaReader);
     zstdRequestBasedMetadata.start();
 
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();

@@ -1,7 +1,11 @@
 package com.linkedin.venice.fastclient.factory;
 
+import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD;
+
+import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.ClientConfig;
@@ -19,6 +23,7 @@ import com.linkedin.venice.fastclient.meta.RequestBasedMetadata;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.meta.ThinClientBasedMetadata;
 import java.util.Objects;
+import java.util.Optional;
 import org.apache.avro.specific.SpecificRecord;
 
 
@@ -58,7 +63,13 @@ public class ClientFactory {
         Objects.requireNonNull(clientConfig.getD2Client());
         return new RequestBasedMetadata(
             clientConfig,
-            new D2TransportClient(clientConfig.getClusterDiscoveryD2Service(), clientConfig.getD2Client()));
+            new D2TransportClient(clientConfig.getClusterDiscoveryD2Service(), clientConfig.getD2Client()),
+            new RouterBackedSchemaReader(
+                (InternalAvroStoreClient) clientConfig.getMetadataResponseSchemaStoreClient(),
+                Optional.empty(),
+                Optional.empty(),
+                DEFAULT_SCHEMA_REFRESH_PERIOD,
+                null));
       case DA_VINCI_CLIENT_BASED_METADATA:
         Objects.requireNonNull(clientConfig.getDaVinciClientForMetaStore());
         return new DaVinciClientBasedMetadata(clientConfig, clientConfig.getDaVinciClientForMetaStore());

@@ -70,6 +70,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final StoreMetadataFetchMode storeMetadataFetchMode;
   private final D2Client d2Client;
   private final String clusterDiscoveryD2Service;
+  private final AvroGenericStoreClient<K, V> metadataResponseSchemaStoreClient;
   /**
    * The choice of implementation for batch get: single get or streamingBatchget. The first version of batchGet in
    * FC used single get in a loop to support a customer request for two-key batch-get. This config allows switching
@@ -117,7 +118,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       String clusterDiscoveryD2Service,
       boolean useStreamingBatchGetAsDefault,
       boolean useGrpc,
-      Map<String, String> nettyServerToGrpcAddressMap) {
+      Map<String, String> nettyServerToGrpcAddressMap,
+      AvroGenericStoreClient<K, V> metadataResponseSchemaStoreClient) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -221,10 +223,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.storeMetadataFetchMode = storeMetadataFetchMode;
     this.d2Client = d2Client;
     this.clusterDiscoveryD2Service = clusterDiscoveryD2Service;
+    this.metadataResponseSchemaStoreClient = metadataResponseSchemaStoreClient;
     if (this.storeMetadataFetchMode == StoreMetadataFetchMode.SERVER_BASED_METADATA) {
       if (this.d2Client == null || this.clusterDiscoveryD2Service == null) {
         throw new VeniceClientException(
-            "Both param: d2Client and param: clusterDiscoveryD2Service must be specified when request based metadata is enabled");
+            "Both param: d2Client and param: clusterDiscoveryD2Service must be set for request based metadata");
+      }
+      if (this.metadataResponseSchemaStoreClient == null) {
+        throw new VeniceClientException("metadataResponseSchemaStoreClient must be set for request based metadata");
       }
     }
     if (clientRoutingStrategyType == ClientRoutingStrategyType.HELIX_ASSISTED
@@ -371,6 +377,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return nettyServerToGrpcAddressMap;
   }
 
+  public AvroGenericStoreClient<K, V> getMetadataResponseSchemaStoreClient() {
+    return this.metadataResponseSchemaStoreClient;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -420,6 +430,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean useStreamingBatchGetAsDefault = false;
     private boolean useGrpc = false;
     private Map<String, String> nettyServerToGrpcAddressMap = null;
+    private AvroGenericStoreClient<K, V> metadataResponseSchemaStoreClient;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -588,6 +599,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setMetadataResponseSchemaStoreClient(
+        AvroGenericStoreClient<K, V> metadataResponseSchemaStoreClient) {
+      this.metadataResponseSchemaStoreClient = metadataResponseSchemaStoreClient;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -619,7 +636,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
           .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
           .setUseGrpc(useGrpc)
-          .setNettyServerToGrpcAddressMap(nettyServerToGrpcAddressMap);
+          .setNettyServerToGrpcAddressMap(nettyServerToGrpcAddressMap)
+          .setMetadataResponseSchemaStoreClient(metadataResponseSchemaStoreClient);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -654,7 +672,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           clusterDiscoveryD2Service,
           useStreamingBatchGetAsDefault,
           useGrpc,
-          nettyServerToGrpcAddressMap);
+          nettyServerToGrpcAddressMap,
+          metadataResponseSchemaStoreClient);
     }
   }
 }

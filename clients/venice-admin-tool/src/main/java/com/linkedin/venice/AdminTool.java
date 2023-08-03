@@ -192,24 +192,16 @@ public class AdminTool {
         LogConfigurator.disableLog();
       }
 
+      /**
+       * Initialize SSL config if provided.
+       */
+      buildSslFactory(cmd);
+
       if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.URL)
           && Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER)) {
         veniceUrl = getRequiredArgument(cmd, Arg.URL);
         clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-
-        /**
-         * SSL config file is not mandatory now; build the controller with SSL config if provided.
-         */
-        buildSslFactory(cmd);
         controllerClient = ControllerClient.constructClusterControllerClient(clusterName, veniceUrl, sslFactory);
-      }
-
-      if (Arrays.asList(foundCommand.getRequiredArgs()).contains(Arg.CLUSTER_SRC)) {
-        /**
-         * Build SSL factory for store migration commands if SSL config is provided.
-         * SSL factory will be used when constructing src/dest parent/child controller clients.
-         */
-        buildSslFactory(cmd);
       }
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())) {

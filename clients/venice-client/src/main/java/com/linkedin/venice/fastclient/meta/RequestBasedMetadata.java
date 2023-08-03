@@ -1,12 +1,16 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static com.linkedin.venice.schema.SchemaData.INVALID_VALUE_SCHEMA_ID;
+
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
@@ -72,10 +76,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
+  private final RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
   private volatile boolean isReady;
+  private Schema metadataResponseSchema = null;
+  private int metadataResponseSchemaId = INVALID_VALUE_SCHEMA_ID;
 
-  public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
+  public RequestBasedMetadata(
+      ClientConfig clientConfig,
+      D2TransportClient transportClient,
+      RouterBackedSchemaReader metadataResponseSchemaReader) {
     super(clientConfig);
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
@@ -86,6 +96,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
     this.clientStats = clientConfig.getStats(RequestType.SINGLE_GET);
+    this.metadataResponseSchemaReader = metadataResponseSchemaReader;
   }
 
   @Override
@@ -153,13 +164,26 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @return if the fetched metadata was an updated version
    */
   private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
-    boolean updateComplete = true;
+    boolean updateComplete = false;
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
-      byte[] body = fetchMetadata().get().getBody();
+      TransportClientResponse transportClientResponse = fetchMetadata().get();
+      // Metadata response schema forward compatibility check
+      if (transportClientResponse.getSchemaId() > metadataResponseSchemaId) {
+        int newSchemaId = transportClientResponse.getSchemaId();
+        Schema newMetadataResponseSchema = metadataResponseSchemaReader.getValueSchema(newSchemaId);
+        if (newMetadataResponseSchema == null) {
+          throw new VeniceException(
+              "Failed to fetch new metadata response schema id: " + newSchemaId + ". Local schema id: "
+                  + metadataResponseSchemaId);
+        }
+        metadataResponseSchemaId = newSchemaId;
+        metadataResponseSchema = newMetadataResponseSchema;
+      }
+      byte[] body = transportClientResponse.getBody();
       RecordDeserializer<MetadataResponseRecord> metadataResponseDeserializer = FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(MetadataResponseRecord.SCHEMA$, MetadataResponseRecord.class);
+          .getFastAvroSpecificDeserializer(metadataResponseSchema, MetadataResponseRecord.class);
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
 
@@ -217,23 +241,21 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         helixGroupInfo.put(entry.getKey().toString(), entry.getValue());
       }
 
+      currentVersion.set(fetchedVersion);
+      clusterStats.updateCurrentVersion(getCurrentStoreVersion());
+      latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
       // Wait for dictionary fetch to finish if there is one
       try {
         if (dictionaryFetchFuture != null) {
           dictionaryFetchFuture.get(ZSTD_DICT_FETCH_TIMEOUT, TimeUnit.SECONDS);
         }
-        currentVersion.set(fetchedVersion);
-        clusterStats.updateCurrentVersion(getCurrentStoreVersion());
-        latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
+        updateComplete = true;
       } catch (ExecutionException | TimeoutException e) {
         LOGGER.warn(
             "Dictionary fetch operation could not complete in time for some of the versions. "
                 + "Will be retried on next refresh",
             e);
-        clusterStats.recordVersionUpdateFailure();
-        updateComplete = false;
       }
-
       // Evict entries from inactive versions
       Set<Integer> activeVersions = new HashSet<>(metadataResponse.getVersions());
       readyToServeInstancesMap.entrySet()
@@ -255,6 +277,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         updateCache(true);
       } else {
         // pass the error along if the on demand refresh also fails
+        clusterStats.recordVersionUpdateFailure();
         throw new VeniceClientException("Metadata fetch retry has failed", e.getCause());
       }
     }
@@ -287,6 +310,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     }
     readyToServeInstancesMap.clear();
     versionPartitionerMap.clear();
+    Utils.closeQuietlyWithErrorLogged(metadataResponseSchemaReader);
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
@@ -347,7 +371,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public int getValueSchemaId(Schema schema) {
-    SchemaEntry schemaEntry = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, schema);
+    SchemaEntry schemaEntry = new SchemaEntry(INVALID_VALUE_SCHEMA_ID, schema);
     return schemas.get().getSchemaID(schemaEntry);
   }
 
@@ -359,7 +383,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   @Override
   public Integer getLatestValueSchemaId() {
     int latestValueSchemaId = latestSuperSetValueSchemaId.get();
-    if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+    if (latestValueSchemaId == INVALID_VALUE_SCHEMA_ID) {
       latestValueSchemaId = schemas.get().getMaxValueSchemaId();
     }
     return latestValueSchemaId;

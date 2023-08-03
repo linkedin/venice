@@ -460,7 +460,9 @@ public abstract class AbstractClientEndToEndSetup {
     }
   }
 
-  protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient(MetricsRepository metricsRepository) {
+  protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient(
+      MetricsRepository metricsRepository,
+      String storeName) {
     return com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
         com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(veniceCluster.getRandomRouterSslURL())
