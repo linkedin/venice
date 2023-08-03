@@ -1,10 +1,12 @@
 package com.linkedin.venice.grpc;
 
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.HttpChannelInitializer;
 import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
 import com.linkedin.venice.utils.TestUtils;
 import io.grpc.InsecureServerCredentials;
@@ -15,12 +17,14 @@ import org.testng.annotations.Test;
 public class VeniceGrpcServerTest {
   private VeniceGrpcServer grpcServer;
   private VeniceGrpcServerConfig serverConfig;
+  private HttpChannelInitializer initializer;
 
   @BeforeTest
   void setUp() {
+    initializer = mock(HttpChannelInitializer.class);
     serverConfig = new VeniceGrpcServerConfig.Builder().setPort(TestUtils.getFreePort())
         .setCredentials(InsecureServerCredentials.create())
-        .setService(new VeniceReadServiceImpl())
+        .setService(new VeniceReadServiceImpl(initializer))
         .build();
   }
 

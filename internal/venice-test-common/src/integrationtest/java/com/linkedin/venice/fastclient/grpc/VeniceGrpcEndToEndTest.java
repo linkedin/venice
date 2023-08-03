@@ -11,7 +11,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder;
@@ -91,7 +90,7 @@ public class VeniceGrpcEndToEndTest {
 
   public String writeData(String storeName) throws IOException {
     // 1. Create a new store in Venice
-    NewStoreResponse response = cluster.getNewStore(storeName);
+    cluster.getNewStore(storeName);
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA);
 
     ControllerResponse updateStoreResponse = cluster.updateStore(storeName, params);

@@ -1,77 +1,78 @@
 package com.linkedin.venice.grpc;
 
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertNotNull;
 
-import com.linkedin.davinci.listener.response.ReadResponse;
-import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.venice.listener.StorageReadRequestHandler;
+import com.linkedin.venice.listener.HttpChannelInitializer;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
-import com.linkedin.venice.listener.request.GetRouterRequest;
-import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
-import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
-import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import io.grpc.stub.StreamObserver;
-import io.netty.buffer.Unpooled;
-import java.nio.charset.StandardCharsets;
-import org.mockito.Mockito;
-import org.testng.annotations.BeforeTest;
+import org.mockito.InOrder;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class VeniceReadServiceImplTest {
-  private StorageReadRequestHandler mockStorageReadRequestsHandler;
-  private StreamObserver<VeniceServerResponse> mockResponseObserver;
+  private HttpChannelInitializer initializer;
 
-  private VeniceReadServiceImpl veniceReadService;
-
-  @BeforeTest
+  @BeforeMethod
   public void setUp() {
-    mockStorageReadRequestsHandler = mock(StorageReadRequestHandler.class);
-    mockResponseObserver = mock(StreamObserver.class);
-    veniceReadService = new VeniceReadServiceImpl(mockStorageReadRequestsHandler);
+    initializer = mock(HttpChannelInitializer.class);
+    GrpcHandlerPipeline handlerPipeline = mock(GrpcHandlerPipeline.class);
+
+    when(initializer.initGrpcHandlers()).thenReturn(handlerPipeline);
+    when(handlerPipeline.getNewPipeline()).then(invocation -> new GrpcHandlerPipeline());
+  }
+
+  private StreamObserver<VeniceServerResponse> getDummyStreamObserver() {
+    return new StreamObserver<VeniceServerResponse>() {
+      @Override
+      public void onNext(VeniceServerResponse value) {
+
+      }
+
+      @Override
+      public void onError(Throwable t) {
+
+      }
+
+      @Override
+      public void onCompleted() {
+
+      }
+    };
   }
 
   @Test
-  public void testGet() {
-    VeniceClientRequest request = VeniceClientRequest.newBuilder().setResourceName("test_v1").setPartition(1).build();
+  public void testHandleRequest() {
+    // not much to test here, just make sure the request is passed to the pipeline
+    // main gRPC request handling logic is within respective Handlers in venice-server/listener
+    VeniceClientRequest request = VeniceClientRequest.newBuilder().build();
+    StreamObserver<VeniceServerResponse> observer = spy(getDummyStreamObserver());
 
-    StorageResponseObject storageResponse = new StorageResponseObject();
-    ValueRecord valueRecord = ValueRecord.create(1, Unpooled.copiedBuffer("test_name_1", StandardCharsets.UTF_8));
-    storageResponse.setValueRecord(valueRecord);
+    VeniceReadServiceImpl service = new VeniceReadServiceImpl(initializer);
 
-    when(mockStorageReadRequestsHandler.handleSingleGetGrpcRequest(any(GetRouterRequest.class)))
-        .thenReturn(storageResponse);
+    service.get(request, observer);
 
-    veniceReadService.get(request, mockResponseObserver);
+    InOrder orderGet = inOrder(observer);
+    orderGet.verify(observer).onNext(any());
+    orderGet.verify(observer).onCompleted();
 
-    verify(mockResponseObserver, times(1)).onNext(any(VeniceServerResponse.class));
-    verify(mockResponseObserver, times(1)).onCompleted();
-
-    Mockito.clearInvocations(mockResponseObserver);
+    service.batchGet(request, observer);
+    InOrder orderBatch = inOrder(observer);
+    orderBatch.verify(observer).onNext(any());
+    orderBatch.verify(observer).onCompleted();
   }
 
   @Test
-  public void testBatchGet() {
-    veniceReadService = new VeniceReadServiceImpl(mockStorageReadRequestsHandler);
-
-    VeniceClientRequest request = VeniceClientRequest.newBuilder().setResourceName("test_v1").build();
-
-    ReadResponse readResponse = new MultiGetResponseWrapper(10);
-
-    when(mockStorageReadRequestsHandler.handleMultiGetGrpcRequest(any(MultiGetRouterRequestWrapper.class)))
-        .thenReturn(readResponse);
-
-    veniceReadService.batchGet(request, mockResponseObserver);
-
-    verify(mockResponseObserver, times(1)).onNext(any(VeniceServerResponse.class));
-    verify(mockResponseObserver, times(1)).onCompleted();
-
-    Mockito.clearInvocations(mockResponseObserver);
+  public void testToString() {
+    VeniceReadServiceImpl service = new VeniceReadServiceImpl(initializer);
+    assertNotNull(service.toString());
   }
 }

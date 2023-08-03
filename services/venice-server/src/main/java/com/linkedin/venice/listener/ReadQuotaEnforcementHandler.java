@@ -20,7 +20,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
@@ -28,7 +27,6 @@ import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.utils.ExpiringSet;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.grpc.stub.StreamObserver;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -199,7 +197,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   @Override
   public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
     RouterRequest request = ctx.getRouterRequest();
-    StreamObserver<VeniceServerResponse> responseObserver = ctx.getResponseObserver();
     String storeName = request.getStoreName();
     Store store = storeRepository.getStore(storeName);
 

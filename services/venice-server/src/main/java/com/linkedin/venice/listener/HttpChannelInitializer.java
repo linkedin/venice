@@ -254,12 +254,4 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     return pipeline;
   }
-
-  public List<VeniceGrpcHandler> getInboundHandlers() {
-    return inboundHandlers;
-  }
-
-  public List<VeniceGrpcHandler> getOutboundHandlers() {
-    return outboundHandlers;
-  }
 }

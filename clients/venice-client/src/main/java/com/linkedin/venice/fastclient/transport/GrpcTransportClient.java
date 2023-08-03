@@ -187,11 +187,11 @@ public class GrpcTransportClient extends InternalTransportClient {
     }
 
     private void handleError(VeniceServerResponse response) {
-      // TODO: DO NOT HANDLE ERRORS LIKE THIS
       // Create new field in .proto for error codes :slight_smile:
       int statusCode = response.getErrorCode();
       String errorMessage = response.getErrorMessage();
       Exception exception;
+
       switch (statusCode) {
         case GrpcErrorCodes.BAD_REQUEST:
           exception = new VeniceClientHttpException(errorMessage, statusCode);
@@ -199,31 +199,15 @@ public class GrpcTransportClient extends InternalTransportClient {
         case GrpcErrorCodes.TOO_MANY_REQUESTS:
           exception = new VeniceClientRateExceededException(errorMessage);
           break;
+        case GrpcErrorCodes.KEY_NOT_FOUND:
+          valueFuture.complete(null);
+          return;
         default:
           exception = new VeniceException("grpc error occurred");
           break;
       }
 
       valueFuture.completeExceptionally(exception);
-      // Status status = Status.fromThrowable(t);
-      //
-      // Exception exception;
-      // switch (status.getCode()) {
-      // case UNKNOWN:
-      // exception = new VeniceException("grpc error occurred", t);
-      // break;
-      //
-      // // valueFuture.complete(null);
-      // case RESOURCE_EXHAUSTED:
-      // exception = new VeniceClientRateExceededException(status.getDescription());
-      // break;
-      // default:
-      // assert status.getDescription() != null;
-      // exception = new VeniceClientHttpException(status.getDescription(), status.getCode().value());
-      // break;
-      // }
-      //
-      // valueFuture.completeExceptionally(exception);
     }
   }
 }

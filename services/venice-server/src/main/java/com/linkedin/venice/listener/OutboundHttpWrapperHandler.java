@@ -13,6 +13,7 @@ import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
 import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
@@ -198,14 +199,22 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter im
     statsContext.setCountOperatorCount(obj.getCountOperatorCount());
     statsContext.setKeySizeList(obj.getKeySizeList());
     statsContext.setValueSizeList(obj.getValueSizeList());
-    statsContext.setResponseStatus(OK);
 
     veniceServerResponseBuilder.setCompressionStrategy(compressionStrategy.getValue());
-    veniceServerResponseBuilder.setSchemaId(obj.getResponseSchemaIdHeader());
     veniceServerResponseBuilder.setResponseRCU(obj.getRCU());
     veniceServerResponseBuilder.setIsStreamingResponse(obj.isStreamingResponse());
 
-    body = obj.getResponseBody();
+    if (obj.isFound()) {
+      body = obj.getResponseBody();
+      veniceServerResponseBuilder.setSchemaId(obj.getResponseSchemaIdHeader());
+      statsContext.setResponseStatus(OK);
+    } else {
+      body = Unpooled.EMPTY_BUFFER;
+      statsContext.setResponseStatus(NOT_FOUND);
+      veniceServerResponseBuilder.setErrorCode(GrpcErrorCodes.KEY_NOT_FOUND);
+      veniceServerResponseBuilder.setErrorMessage("Key not found");
+    }
+
     byte[] array = new byte[body.readableBytes()];
     body.getBytes(body.readerIndex(), array);
     veniceServerResponseBuilder.setData(ByteString.copyFrom(array)); // double copy D:
