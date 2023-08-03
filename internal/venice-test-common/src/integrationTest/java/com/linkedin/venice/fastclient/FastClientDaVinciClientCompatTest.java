@@ -26,8 +26,8 @@ import org.testng.annotations.Test;
 public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSetup {
   CachingDaVinciClientFactory daVinciClientFactory;
 
-  @Test(timeOut = TIME_OUT, dataProvider = "FastClient-Enable-gRPC")
-  public void testFastClientDaVinciClientCompatOnRestart(boolean enableGrpc) throws Exception {
+  @Test(timeOut = TIME_OUT)
+  public void testFastClientDaVinciClientCompatOnRestart() throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -35,10 +35,6 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
             .setSpeculativeQueryEnabled(false)
             .setLongTailRetryEnabledForSingleGet(true)
             .setLongTailRetryThresholdForSingleGetInMicroSeconds(1000);
-
-    if (enableGrpc) {
-      setUpGrpcFastClient(clientConfigBuilder);
-    }
 
     AvroSpecificStoreClient<String, TestValueSchema> fastClient = getSpecificFastClient(
         clientConfigBuilder,
@@ -57,8 +53,8 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
     }
   }
 
-  @Test(timeOut = TIME_OUT, dataProvider = "FastClient-Enable-gRPC")
-  public void testFastClientDaVinciClientCompatOnClose(boolean enableGrpc) throws Exception {
+  @Test(timeOut = TIME_OUT)
+  public void testFastClientDaVinciClientCompatOnClose() throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)

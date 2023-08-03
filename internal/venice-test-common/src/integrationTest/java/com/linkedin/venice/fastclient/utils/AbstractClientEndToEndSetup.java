@@ -83,7 +83,6 @@ public abstract class AbstractClientEndToEndSetup {
   protected String storeVersionName;
   protected int valueSchemaId;
   protected String storeName;
-  protected String altStoreName; // alternate store name for testing grpc client
   protected String dataPath;
 
   protected VeniceKafkaSerializer keySerializer;
@@ -404,8 +403,6 @@ public abstract class AbstractClientEndToEndSetup {
 
   protected void setUpGrpcFastClient(ClientConfig.ClientConfigBuilder clientConfigBuilder) {
     clientConfigBuilder.setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap()).setUseGrpc(true);
-
-    return;
   }
 
   protected void setupStoreMetadata(

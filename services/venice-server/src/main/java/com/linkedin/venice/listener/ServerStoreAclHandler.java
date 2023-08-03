@@ -27,9 +27,6 @@ import javax.net.ssl.SSLPeerUnverifiedException;
  * If both of them fail, the request will be rejected.
  */
 public class ServerStoreAclHandler extends StoreAclHandler implements VeniceGrpcHandler {
-  private VeniceGrpcHandler nextInboundHandler;
-  private VeniceGrpcHandler nextOutboundHandler;
-
   public ServerStoreAclHandler(DynamicAccessController accessController, ReadOnlyStoreRepository metadataRepository) {
     super(accessController, metadataRepository);
   }

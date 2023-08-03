@@ -9,10 +9,12 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.*;
 
+import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.Instance;
@@ -21,6 +23,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
@@ -35,6 +38,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -68,6 +72,11 @@ public class ReadQuotaEnforcementHandlerTest {
         thisNodeId,
         stats,
         clock);
+  }
+
+  @DataProvider(name = "Test-Quota-EnforcementHandler-Enable-Grpc")
+  public Object[][] testQuotaEnforcementHandlerEnableGrpc() {
+    return new Object[][] { { true }, { false } };
   }
 
   /**
@@ -183,11 +192,33 @@ public class ReadQuotaEnforcementHandlerTest {
     assertEquals(((HttpShortcutResponse) response).getStatus(), HttpResponseStatus.BAD_REQUEST);
   }
 
+  @Test
+  public void testInvalidResourceNameGrpcEnabled() {
+    String invalidStoreName = "store_dne";
+    GrpcHandlerContext ctx = mock(GrpcHandlerContext.class);
+    GrpcHandlerPipeline pipeline = mock(GrpcHandlerPipeline.class);
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
+
+    RouterRequest request = mock(RouterRequest.class);
+    doReturn(invalidStoreName).when(request).getStoreName();
+    doReturn(request).when(ctx).getRouterRequest();
+    doReturn(builder).when(ctx).getVeniceServerResponseBuilder();
+
+    quotaEnforcer.grpcRead(ctx, pipeline);
+    assertEquals(builder.getErrorCode(), GrpcErrorCodes.BAD_REQUEST);
+    assertNotNull(builder.getErrorMessage());
+  }
+
+  @DataProvider(name = "Enable-Grpc-Test-Boolean")
+  public Object[][] enableGrpcTestBoolean() {
+    return new Object[][] { { false }, { true } };
+  }
+
   /**
    * Test enforcement of storage node read quota is only enabled for specific stores
    */
-  @Test
-  public void testStoreLevelStorageNodeReadQuotaEnabled() {
+  @Test(dataProvider = "Enable-Grpc-Test-Boolean")
+  public void testStoreLevelStorageNodeReadQuotaEnabled(boolean grpcEnabled) {
     String quotaEnabledStoreName = Utils.getUniqueString("quotaEnabled");
     String quotaDisabledStoreName = Utils.getUniqueString("quotaDisabled");
 
@@ -227,23 +258,44 @@ public class ReadQuotaEnforcementHandlerTest {
 
     RouterRequest request = mock(RouterRequest.class);
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+    GrpcHandlerContext grpcCtx = mock(GrpcHandlerContext.class);
+    GrpcHandlerPipeline pipeline = mock(GrpcHandlerPipeline.class);
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
     setUpRequestMocks(ctx, request, allowed, blocked, quotaEnabledTopic);
+    setUpGrpcMocks(grpcCtx, builder, pipeline, allowed, blocked, request);
     long capacity = storeReadQuota * 5 * 10;
     for (int i = 0; i < capacity; i++) {
-      quotaEnforcer.channelRead0(ctx, request);
+      if (!grpcEnabled) {
+        quotaEnforcer.channelRead0(ctx, request);
+      } else {
+        quotaEnforcer.grpcRead(grpcCtx, pipeline);
+      }
     }
     assertEquals(allowed.get(), capacity);
     assertEquals(blocked.get(), 0);
-    quotaEnforcer.channelRead0(ctx, request);
+    if (!grpcEnabled) {
+      quotaEnforcer.channelRead0(ctx, request);
+    } else {
+      quotaEnforcer.grpcRead(grpcCtx, pipeline);
+    }
     assertEquals(blocked.get(), 1);
 
     allowed.set(0);
     blocked.set(0);
     RouterRequest quotaDisabledRequest = mock(RouterRequest.class);
     ChannelHandlerContext quotaDisabledCtx = mock(ChannelHandlerContext.class);
+    GrpcHandlerContext grpcDisabledCtx = mock(GrpcHandlerContext.class);
+    VeniceServerResponse.Builder quotaDisabledBuilder = VeniceServerResponse.newBuilder();
     setUpRequestMocks(quotaDisabledCtx, quotaDisabledRequest, allowed, blocked, quotaDisabledTopic);
+    setUpGrpcMocks(grpcDisabledCtx, quotaDisabledBuilder, pipeline, allowed, blocked, quotaDisabledRequest);
+
     for (int i = 0; i < capacity * 2; i++) {
-      quotaEnforcer.channelRead0(quotaDisabledCtx, quotaDisabledRequest);
+      if (!grpcEnabled) {
+        quotaEnforcer.channelRead0(quotaDisabledCtx, quotaDisabledRequest);
+      } else {
+        quotaEnforcer.grpcRead(grpcDisabledCtx, pipeline);
+      }
     }
     // Store that have storage node read quota disabled should not be blocked
     assertEquals(allowed.get(), capacity * 2);
@@ -314,5 +366,24 @@ public class ReadQuotaEnforcementHandlerTest {
       allowed.incrementAndGet();
       return null;
     }).when(ctx).fireChannelRead(any());
+  }
+
+  void setUpGrpcMocks(
+      GrpcHandlerContext grpcCtx,
+      VeniceServerResponse.Builder builder,
+      GrpcHandlerPipeline pipeline,
+      AtomicInteger allowed,
+      AtomicInteger blocked,
+      RouterRequest request) {
+    doReturn(request).when(grpcCtx).getRouterRequest();
+    doReturn(builder).when(grpcCtx).getVeniceServerResponseBuilder();
+    doAnswer((a) -> {
+      allowed.incrementAndGet();
+      return null;
+    }).when(pipeline).processRequest(any());
+    doAnswer((a) -> {
+      blocked.incrementAndGet();
+      return null;
+    }).when(pipeline).onError(any());
   }
 }
