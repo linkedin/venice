@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.partitionoffset;
 import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -98,8 +99,8 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     try (AutoCloseableLock ignore = AutoCloseableLock.of(adminConsumerLock)) {
       if (!kafkaAdminWrapper.get().containsTopicWithPartitionCheckExpectationAndRetry(pubSubTopicPartition, 3, true)) {
         throw new PubSubTopicDoesNotExistException(
-            "Topic " + pubSubTopicPartition.getPubSubTopic()
-                + " does not exist or partition requested is less topic partition count!");
+            "Either topic: " + pubSubTopicPartition.getPubSubTopic() + " does not exist or partition: "
+                + pubSubTopicPartition.getPartitionNumber() + " is invalid");
       }
 
       Map<PubSubTopicPartition, Long> offsetMap = pubSubConsumer.get()
@@ -310,8 +311,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     try (AutoCloseableLock ignore = AutoCloseableLock.of(adminConsumerLock)) {
       if (!kafkaAdminWrapper.get()
           .containsTopicWithExpectationAndRetry(pubSubTopicPartition.getPubSubTopic(), 3, true)) {
-        throw new PubSubTopicDoesNotExistException(
-            "Topic " + pubSubTopicPartition.getPubSubTopic() + " does not exist!");
+        throw new PubSubTopicDoesNotExistException(pubSubTopicPartition.getPubSubTopic());
       }
       try {
         Map<PubSubTopicPartition, Long> offsetByTopicPartition = pubSubConsumer.get()
@@ -382,10 +382,9 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
             return allConsumedRecords;
           }
         }
-      } catch (org.apache.kafka.common.errors.TimeoutException ex) {
-        throw new PubSubOpTimeoutException(
-            "Timeout exception when seeking to end to get latest offset" + " for topic and partition: "
-                + pubSubTopicPartition,
+      } catch (PubSubOpTimeoutException ex) {
+        throw new VeniceTimeoutException(
+            "Timeout exception when fetching the latest offset for topic-partition: " + pubSubTopicPartition,
             ex);
       } finally {
         pubSubConsumer.get().unSubscribe(pubSubTopicPartition);
@@ -519,15 +518,10 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
           throw new VeniceException(
               "offset result returned from beginningOffsets does not contain entry: " + pubSubTopicPartition);
         }
-      } catch (Exception ex) {
-        if (ex instanceof org.apache.kafka.common.errors.TimeoutException) {
-          throw new PubSubOpTimeoutException(
-              "Timeout exception when seeking to beginning to get earliest offset" + " for topic partition: "
-                  + pubSubTopicPartition,
-              ex);
-        } else {
-          throw ex;
-        }
+      } catch (PubSubOpTimeoutException e) {
+        throw new VeniceTimeoutException(
+            "Timeout exception when fetching beginning offset for topic-partition: " + pubSubTopicPartition,
+            e);
       }
       return earliestOffset;
     }

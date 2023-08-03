@@ -480,7 +480,7 @@ public class ConfigKeys {
 
   /**
    * This config is used to control how many times Kafka consumer would retry polling during ingestion
-   * when hitting {@literal org.apache.kafka.common.errors.RetriableException}.
+   * when RetriableException happens.
    */
   public static final String SERVER_KAFKA_POLL_RETRY_TIMES = "server.kafka.poll.retry.times";
 

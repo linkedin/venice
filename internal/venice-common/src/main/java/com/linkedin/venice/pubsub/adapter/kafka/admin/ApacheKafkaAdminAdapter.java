@@ -50,6 +50,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * An implementation of {@link PubSubAdminAdapter} for Apache Kafka.
+ */
 public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaAdminAdapter.class);
   private AdminClient kafkaAdminClient;

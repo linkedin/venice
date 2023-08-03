@@ -334,11 +334,15 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
   @Override
   public Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
-    TopicPartition topicPartition =
+    TopicPartition kafkaTp =
         new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
-    Map<TopicPartition, Long> topicPartitionOffset =
-        this.kafkaConsumer.beginningOffsets(Collections.singleton(topicPartition), timeout);
-    return topicPartitionOffset.get(topicPartition);
+    try {
+      return this.kafkaConsumer.beginningOffsets(Collections.singleton(kafkaTp), timeout).get(kafkaTp);
+    } catch (TimeoutException e) {
+      throw new PubSubOpTimeoutException("Timed out while getting beginning offset for " + kafkaTp, e);
+    } catch (Exception e) {
+      throw new PubSubClientException("Exception while getting beginning offset for " + kafkaTp, e);
+    }
   }
 
   @Override

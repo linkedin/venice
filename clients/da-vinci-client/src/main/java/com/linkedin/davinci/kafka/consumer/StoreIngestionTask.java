@@ -1313,10 +1313,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // If job is not aborted, controller is open to get the subsequent message from this replica(if storage node was
       // recovered, it will send STARTED message to controller again)
 
-      if (!isRunning() && ExceptionUtils.recursiveClassEquals(
-          e,
-          InterruptedException.class,
-          org.apache.kafka.common.errors.InterruptException.class)) {
+      if (!isRunning() && ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
         // Known exceptions during graceful shutdown of storage server. Report error only if the server is still
         // running.
         LOGGER.info("{} interrupted, skipping error reporting because server is shutting down", consumerTaskId, e);
