@@ -3,7 +3,7 @@ package com.linkedin.venice.exceptions;
 import org.apache.http.HttpStatus;
 
 
-/**
+/**VeniceException
  * Base exception that all other Venice exceptions extend
  */
 public class VeniceException extends RuntimeException {
