@@ -2268,6 +2268,55 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         null);
   }
 
+  private Optional<Version> getVersionFromSourceCluster(
+      ReadWriteStoreRepository repository,
+      String destinationCluster,
+      String storeName,
+      int versionNumber) {
+    Store store = repository.getStore(storeName);
+    if (store == null) {
+      throwStoreDoesNotExist(destinationCluster, storeName);
+    }
+    if (!store.isMigrating()) {
+      return Optional.empty();
+    }
+    ZkStoreConfigAccessor storeConfigAccessor = getStoreConfigAccessor(destinationCluster);
+    StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
+    if (!destinationCluster.equals(storeConfig.getMigrationDestCluster())) {
+      // destinationCluster is passed from the add version task, so if the task is not in the destination cluster but in
+      // the source cluster, do not replicate anything from the "source" since this is the source cluster
+      return Optional.empty();
+    }
+    String migrationSourceCluster = storeConfig.getMigrationSrcCluster();
+    ControllerClient srcControllerClient = getControllerClientMap(migrationSourceCluster).get(getRegionName());
+    if (srcControllerClient == null) {
+      throw new VeniceException(
+          "Failed to constructed controller client for cluster " + migrationSourceCluster + " and region "
+              + getRegionName());
+    }
+    StoreResponse srcStoreResponse = srcControllerClient.getStore(storeName);
+    if (srcStoreResponse.isError()) {
+      throw new VeniceException(
+          "Failed to get store " + storeName + " from cluster " + migrationSourceCluster + " and region "
+              + getRegionName() + " with error " + srcStoreResponse.getError());
+    }
+    StoreInfo srcStoreInfo = srcStoreResponse.getStore();
+    // For ongoing new pushes, destination cluster does not need to replicate the exact version configs from the source
+    // cluster; destination cluster can apply its own store configs to the new version.
+    if (versionNumber > srcStoreInfo.getCurrentVersion()) {
+      LOGGER.info(
+          "Version {} is an ongoing new push for store {}, use the store configs to populate new version configs",
+          versionNumber,
+          storeName);
+      return Optional.empty();
+    }
+    LOGGER.info(
+        "During store migration, version configs from source cluster {}: {}",
+        migrationSourceCluster,
+        srcStoreResponse.getStore().getVersion(versionNumber).get());
+    return srcStoreResponse.getStore().getVersion(versionNumber);
+  }
+
   /**
    * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for.
    * Add version is a multi step process that can be broken down to three main steps:
@@ -2308,7 +2357,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Version version = null;
-    OfflinePushStrategy strategy;
+    OfflinePushStrategy offlinePushStrategy;
     int currentVersionBeforePush = -1;
     VeniceControllerClusterConfig clusterConfig = resources.getConfig();
     BackupStrategy backupStrategy;
@@ -2352,191 +2401,217 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return new Pair<>(false, null);
           }
           backupStrategy = store.getBackupStrategy();
-          int amplificationFactor = store.getPartitionerConfig().getAmplificationFactor();
-          int subPartitionCount = numberOfPartitions * amplificationFactor;
-          if (versionNumber == VERSION_ID_UNSET) {
-            // No version supplied, generate a new version. This could happen either in the parent
-            // controller or local Samza jobs.
-            version = new VersionImpl(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
-          } else {
-            if (store.containsVersion(versionNumber)) {
-              throwVersionAlreadyExists(storeName, versionNumber);
+          offlinePushStrategy = store.getOffLinePushStrategy();
+
+          // Check whether the store is migrating and whether the version is smaller or equal to the current version
+          // in the source cluster. If so, replicate the version configs from the child controllers of the source
+          // cluster;
+          // it's safest to replicate the version configs from the child controller in the same region, because parent
+          // region or other regions could have their own configs.
+          Optional<Version> sourceVersion = (store.isMigrating() && versionNumber != VERSION_ID_UNSET)
+              ? getVersionFromSourceCluster(repository, clusterName, storeName, versionNumber)
+              : Optional.empty();
+          if (sourceVersion.isPresent()) {
+            // Adding an existing version to the destination cluster whose version level resources are already created,
+            // including Kafka topics with data ready, so skip the steps of recreating these resources.
+            version = sourceVersion.get().cloneVersion();
+            // Reset version statue; do not make any other config update, version configs are immutable and the version
+            // Configs from the source clusters are source of truth
+            version.setStatus(STARTED);
+
+            if (store.containsVersion(version.getNumber())) {
+              throwVersionAlreadyExists(storeName, version.getNumber());
             }
-            version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
-          }
-
-          topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
-          createBatchTopics(
-              version,
-              pushType,
-              getTopicManager(),
-              subPartitionCount,
-              clusterConfig,
-              useFastKafkaOperationTimeout);
-
-          ByteBuffer compressionDictionaryBuffer = null;
-          if (compressionDictionary != null) {
-            compressionDictionaryBuffer = ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
-          } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
-            // We can't use dictionary compression with no dictionary, so we generate a basic one
-            // TODO: It would be smarter to query it from the previous version and pass it along. However,
-            // the 'previous' version can mean different things in different colos, and ideally we'd want
-            // a consistent compressed result in all colos so as to make sure we don't confuse our consistency
-            // checking mechanisms. So this needs some (maybe) complicated reworking.
-            compressionDictionaryBuffer = EMPTY_PUSH_ZSTD_DICTIONARY;
-          }
-
-          String sourceKafkaBootstrapServers = null;
-
-          store = repository.getStore(storeName);
-          strategy = store.getOffLinePushStrategy();
-          if (!store.containsVersion(version.getNumber())) {
-            version.setPushType(pushType);
-            store.addVersion(version);
-          }
-
-          // Apply cluster-level native replication configs
-          boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
-          if (store.isHybrid()) {
-            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+            // Update ZK with the new version
+            store.addVersion(version, true);
+            repository.updateStore(store);
           } else {
-            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
-          }
-          version.setNativeReplicationEnabled(nativeReplicationEnabled);
-
-          // Check whether native replication is enabled
-          if (version.isNativeReplicationEnabled()) {
-            if (remoteKafkaBootstrapServers != null) {
-              /**
-               * AddVersion is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask}
-               * which is processing an AddVersion message that contains remote Kafka bootstrap servers url.
-               */
-              version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
+            int amplificationFactor = store.getPartitionerConfig().getAmplificationFactor();
+            int subPartitionCount = numberOfPartitions * amplificationFactor;
+            if (versionNumber == VERSION_ID_UNSET) {
+              // No version supplied, generate a new version. This could happen either in the parent
+              // controller or local Samza jobs.
+              version = new VersionImpl(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
             } else {
-              /**
-               * AddVersion is invoked by directly querying controllers
-               */
-              String sourceFabric = getNativeReplicationSourceFabric(
-                  clusterName,
-                  store,
-                  sourceGridFabric,
-                  emergencySourceRegion,
-                  targetedRegions);
-              sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
-              if (sourceKafkaBootstrapServers == null) {
-                sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
+              if (store.containsVersion(versionNumber)) {
+                throwVersionAlreadyExists(storeName, versionNumber);
               }
-              version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
-              version.setNativeReplicationSourceFabric(sourceFabric);
+              version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
-            if (isParent() && ((store.isHybrid()
-                && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE)
-                || store.isIncrementalPushEnabled())) {
-              // Create rt topic in parent colo if the store is aggregate mode hybrid store
-              PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
-              if (!getTopicManager().containsTopic(realTimeTopic)) {
-                getTopicManager().createTopic(
-                    realTimeTopic,
-                    numberOfPartitions,
-                    clusterConfig.getKafkaReplicationFactorRTTopics(),
-                    TopicManager.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
-                    false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
-                    clusterConfig.getMinInSyncReplicasRealTimeTopics(),
-                    false);
+
+            topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
+            createBatchTopics(
+                version,
+                pushType,
+                getTopicManager(),
+                subPartitionCount,
+                clusterConfig,
+                useFastKafkaOperationTimeout);
+
+            ByteBuffer compressionDictionaryBuffer = null;
+            if (compressionDictionary != null) {
+              compressionDictionaryBuffer =
+                  ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
+            } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+              // We can't use dictionary compression with no dictionary, so we generate a basic one
+              // TODO: It would be smarter to query it from the previous version and pass it along. However,
+              // the 'previous' version can mean different things in different colos, and ideally we'd want
+              // a consistent compressed result in all colos so as to make sure we don't confuse our consistency
+              // checking mechanisms. So this needs some (maybe) complicated reworking.
+              compressionDictionaryBuffer = EMPTY_PUSH_ZSTD_DICTIONARY;
+            }
+
+            String sourceKafkaBootstrapServers = null;
+
+            store = repository.getStore(storeName);
+            if (!store.containsVersion(version.getNumber())) {
+              version.setPushType(pushType);
+              store.addVersion(version);
+            }
+
+            // Apply cluster-level native replication configs
+            boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
+            if (store.isHybrid()) {
+              nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+            } else {
+              nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
+            }
+            version.setNativeReplicationEnabled(nativeReplicationEnabled);
+
+            // Check whether native replication is enabled
+            if (version.isNativeReplicationEnabled()) {
+              if (remoteKafkaBootstrapServers != null) {
+                /**
+                 * AddVersion is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask}
+                 * which is processing an AddVersion message that contains remote Kafka bootstrap servers url.
+                 */
+                version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
               } else {
-                // If real-time topic already exists, check whether its retention time is correct.
-                PubSubTopicConfiguration pubSubTopicConfiguration =
-                    getTopicManager().getCachedTopicConfig(realTimeTopic);
-                long topicRetentionTimeInMs = getTopicManager().getTopicRetention(pubSubTopicConfiguration);
-                long expectedRetentionTimeMs =
-                    TopicManager.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig());
-                if (topicRetentionTimeInMs != expectedRetentionTimeMs) {
-                  getTopicManager()
-                      .updateTopicRetention(realTimeTopic, expectedRetentionTimeMs, pubSubTopicConfiguration);
+                /**
+                 * AddVersion is invoked by directly querying controllers
+                 */
+                String sourceFabric = getNativeReplicationSourceFabric(
+                    clusterName,
+                    store,
+                    sourceGridFabric,
+                    emergencySourceRegion,
+                    targetedRegions);
+                sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
+                if (sourceKafkaBootstrapServers == null) {
+                  sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
+                }
+                version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
+                version.setNativeReplicationSourceFabric(sourceFabric);
+              }
+              if (isParent() && ((store.isHybrid()
+                  && store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE)
+                  || store.isIncrementalPushEnabled())) {
+                // Create rt topic in parent colo if the store is aggregate mode hybrid store
+                PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+                if (!getTopicManager().containsTopic(realTimeTopic)) {
+                  getTopicManager().createTopic(
+                      realTimeTopic,
+                      numberOfPartitions,
+                      clusterConfig.getKafkaReplicationFactorRTTopics(),
+                      TopicManager.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
+                      false,
+                      // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
+                      clusterConfig.getMinInSyncReplicasRealTimeTopics(),
+                      false);
+                } else {
+                  // If real-time topic already exists, check whether its retention time is correct.
+                  PubSubTopicConfiguration pubSubTopicConfiguration =
+                      getTopicManager().getCachedTopicConfig(realTimeTopic);
+                  long topicRetentionTimeInMs = getTopicManager().getTopicRetention(pubSubTopicConfiguration);
+                  long expectedRetentionTimeMs =
+                      TopicManager.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig());
+                  if (topicRetentionTimeInMs != expectedRetentionTimeMs) {
+                    getTopicManager()
+                        .updateTopicRetention(realTimeTopic, expectedRetentionTimeMs, pubSubTopicConfiguration);
+                  }
+                }
+              }
+            }
+            /**
+             * Version-level rewind time override.
+             */
+            handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
+            store.setPersistenceType(PersistenceType.ROCKS_DB);
+
+            version.setRmdVersionId(replicationMetadataVersionId);
+
+            version.setVersionSwapDeferred(versionSwapDeferred);
+
+            version.setViewConfigs(store.getViewConfigs());
+
+            Properties veniceViewProperties = new Properties();
+            veniceViewProperties.put(SUB_PARTITION_COUNT, subPartitionCount);
+            veniceViewProperties.put(USE_FAST_KAFKA_OPERATION_TIMEOUT, useFastKafkaOperationTimeout);
+            veniceViewProperties.putAll(clusterConfig.getProps().toProperties());
+            veniceViewProperties.put(LOG_COMPACTION_ENABLED, false);
+            veniceViewProperties.put(KAFKA_REPLICATION_FACTOR, clusterConfig.getKafkaReplicationFactor());
+            veniceViewProperties.put(ETERNAL_TOPIC_RETENTION_ENABLED, true);
+
+            constructViewResources(veniceViewProperties, store, version.getNumber());
+
+            repository.updateStore(store);
+            LOGGER.info("Add version: {} for store: {}", version.getNumber(), storeName);
+
+            /**
+             *  When native replication is enabled and it's in parent controller, directly create the topic in
+             *  the specified source fabric if the source fabric is not the local fabric; the above topic creation
+             *  is still required since child controllers need to create a topic locally, and parent controller uses
+             *  local VT to determine whether there is any ongoing offline push.
+             */
+            if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()
+                && !version.getPushStreamSourceAddress().equals(getKafkaBootstrapServers(isSslToKafka()))) {
+              if (sourceKafkaBootstrapServers == null) {
+                throw new VeniceException(
+                    "Parent controller should know the source Kafka bootstrap server url for store: " + storeName
+                        + " and version: " + version.getNumber() + " in cluster: " + clusterName);
+              }
+              createBatchTopics(
+                  version,
+                  pushType,
+                  getTopicManager(sourceKafkaBootstrapServers),
+                  subPartitionCount,
+                  clusterConfig,
+                  useFastKafkaOperationTimeout);
+            }
+
+            if (sendStartOfPush) {
+              final Version finalVersion = version;
+              VeniceWriter veniceWriter = null;
+              try {
+                VeniceWriterOptions.Builder vwOptionsBuilder =
+                    new VeniceWriterOptions.Builder(finalVersion.kafkaTopicName()).setUseKafkaKeySerializer(true)
+                        .setPartitionCount(subPartitionCount);
+                if (multiClusterConfigs.isParent() && finalVersion.isNativeReplicationEnabled()) {
+                  // Produce directly into one of the child fabric
+                  vwOptionsBuilder.setBrokerAddress(finalVersion.getPushStreamSourceAddress());
+                }
+                veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build());
+                veniceWriter.broadcastStartOfPush(
+                    sorted,
+                    finalVersion.isChunkingEnabled(),
+                    finalVersion.getCompressionStrategy(),
+                    Optional.ofNullable(compressionDictionaryBuffer),
+                    Collections.emptyMap());
+                if (pushType.isStreamReprocessing()) {
+                  // Send TS message to version topic to inform leader to switch to the stream reprocessing topic
+                  veniceWriter.broadcastTopicSwitch(
+                      Collections.singletonList(getKafkaBootstrapServers(isSslToKafka())),
+                      Version.composeStreamReprocessingTopic(finalVersion.getStoreName(), finalVersion.getNumber()),
+                      -1L, // -1 indicates rewinding from the beginning of the source topic
+                      new HashMap<>());
+                }
+              } finally {
+                if (veniceWriter != null) {
+                  veniceWriter.close();
                 }
               }
             }
           }
-          /**
-           * Version-level rewind time override.
-           */
-          handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
-          store.setPersistenceType(PersistenceType.ROCKS_DB);
-
-          version.setRmdVersionId(replicationMetadataVersionId);
-
-          version.setVersionSwapDeferred(versionSwapDeferred);
-
-          version.setViewConfigs(store.getViewConfigs());
-
-          Properties veniceViewProperties = new Properties();
-          veniceViewProperties.put(SUB_PARTITION_COUNT, subPartitionCount);
-          veniceViewProperties.put(USE_FAST_KAFKA_OPERATION_TIMEOUT, useFastKafkaOperationTimeout);
-          veniceViewProperties.putAll(clusterConfig.getProps().toProperties());
-          veniceViewProperties.put(LOG_COMPACTION_ENABLED, false);
-          veniceViewProperties.put(KAFKA_REPLICATION_FACTOR, clusterConfig.getKafkaReplicationFactor());
-          veniceViewProperties.put(ETERNAL_TOPIC_RETENTION_ENABLED, true);
-
-          constructViewResources(veniceViewProperties, store, version.getNumber());
-
-          repository.updateStore(store);
-          LOGGER.info("Add version: {} for store: {}", version.getNumber(), storeName);
-
-          /**
-           *  When native replication is enabled and it's in parent controller, directly create the topic in
-           *  the specified source fabric if the source fabric is not the local fabric; the above topic creation
-           *  is still required since child controllers need to create a topic locally, and parent controller uses
-           *  local VT to determine whether there is any ongoing offline push.
-           */
-          if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()
-              && !version.getPushStreamSourceAddress().equals(getKafkaBootstrapServers(isSslToKafka()))) {
-            if (sourceKafkaBootstrapServers == null) {
-              throw new VeniceException(
-                  "Parent controller should know the source Kafka bootstrap server url for store: " + storeName
-                      + " and version: " + version.getNumber() + " in cluster: " + clusterName);
-            }
-            createBatchTopics(
-                version,
-                pushType,
-                getTopicManager(sourceKafkaBootstrapServers),
-                subPartitionCount,
-                clusterConfig,
-                useFastKafkaOperationTimeout);
-          }
-
-          if (sendStartOfPush) {
-            final Version finalVersion = version;
-            VeniceWriter veniceWriter = null;
-            try {
-              VeniceWriterOptions.Builder vwOptionsBuilder =
-                  new VeniceWriterOptions.Builder(finalVersion.kafkaTopicName()).setUseKafkaKeySerializer(true)
-                      .setPartitionCount(subPartitionCount);
-              if (multiClusterConfigs.isParent() && finalVersion.isNativeReplicationEnabled()) {
-                // Produce directly into one of the child fabric
-                vwOptionsBuilder.setBrokerAddress(finalVersion.getPushStreamSourceAddress());
-              }
-              veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build());
-              veniceWriter.broadcastStartOfPush(
-                  sorted,
-                  finalVersion.isChunkingEnabled(),
-                  finalVersion.getCompressionStrategy(),
-                  Optional.ofNullable(compressionDictionaryBuffer),
-                  Collections.emptyMap());
-              if (pushType.isStreamReprocessing()) {
-                // Send TS message to version topic to inform leader to switch to the stream reprocessing topic
-                veniceWriter.broadcastTopicSwitch(
-                    Collections.singletonList(getKafkaBootstrapServers(isSslToKafka())),
-                    Version.composeStreamReprocessingTopic(finalVersion.getStoreName(), finalVersion.getNumber()),
-                    -1L, // -1 indicates rewinding from the beginning of the source topic
-                    new HashMap<>());
-              }
-            } finally {
-              if (veniceWriter != null) {
-                veniceWriter.close();
-              }
-            }
-          }
-
           if (startIngestion) {
             // We need to prepare to monitor before creating helix resource.
             startMonitorOfflinePush(
@@ -2544,7 +2619,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 version.kafkaTopicName(),
                 numberOfPartitions,
                 replicationFactor,
-                strategy);
+                offlinePushStrategy);
             helixAdminClient.createVeniceStorageClusterResources(
                 clusterName,
                 version.kafkaTopicName(),
@@ -2577,7 +2652,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           waitUntilNodesAreAssignedForResource(
               clusterName,
               version.kafkaTopicName(),
-              strategy,
+              offlinePushStrategy,
               clusterConfig.getOffLineJobWaitTimeInMilliseconds(),
               replicationFactor);
         } catch (VeniceNoClusterException e) {

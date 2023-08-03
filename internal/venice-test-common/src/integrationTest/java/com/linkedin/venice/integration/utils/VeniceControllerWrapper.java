@@ -238,6 +238,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           // This dummy parent controller won't support such requests until we make this config configurable.
           // go/inclusivecode deferred(Reference will be removed when clients have migrated)
           fabricAllowList = extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, "");
+        } else {
+          // child controller should at least know the urls or D2 ZK address of its local region
+          fabricAllowList = options.getExtraProperties().getProperty(LOCAL_REGION_NAME, options.getRegionName());
         }
 
         /**
