@@ -159,20 +159,6 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public Set<PubSubTopic> listAllTopics() {
-    ListTopicsResult listTopicsResult = getKafkaAdminClient().listTopics();
-    try {
-      return listTopicsResult.names()
-          .get()
-          .stream()
-          .map(t -> pubSubTopicRepository.getTopic(t))
-          .collect(Collectors.toSet());
-    } catch (Exception e) {
-      throw new PubSubClientException("Failed to list all topics due to exception: ", e);
-    }
-  }
-
-  @Override
   public void deleteTopic(PubSubTopic topic, Duration timeout) {
     try {
       LOGGER.debug("Deleting kafka topic: {}", topic.getName());
@@ -197,6 +183,20 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     } catch (java.util.concurrent.TimeoutException e) {
       LOGGER.debug("Failed to delete kafka topic: {}", topic.getName(), e);
       throw new PubSubOpTimeoutException("Timed out while deleting topic: " + topic.getName(), e);
+    }
+  }
+
+  @Override
+  public Set<PubSubTopic> listAllTopics() {
+    ListTopicsResult listTopicsResult = getKafkaAdminClient().listTopics();
+    try {
+      return listTopicsResult.names()
+          .get()
+          .stream()
+          .map(t -> pubSubTopicRepository.getTopic(t))
+          .collect(Collectors.toSet());
+    } catch (Exception e) {
+      throw new PubSubClientException("Failed to list all topics due to exception: ", e);
     }
   }
 
