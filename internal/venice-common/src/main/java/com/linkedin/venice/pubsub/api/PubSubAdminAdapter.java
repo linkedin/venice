@@ -125,8 +125,14 @@ public interface PubSubAdminAdapter extends Closeable {
    */
   boolean containsTopic(PubSubTopic pubSubTopic);
 
-  Map<PubSubTopic, Long> getAllTopicRetentions();
-
+  /**
+   * Checks if a PubSub topic exists and has the given partition
+   *
+   * @param pubSubTopicPartition The PubSubTopicPartition representing th topic and partition to check.
+   * @return true if the specified topic partition exists, false otherwise.
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to check partition existence.
+   * @throws PubSubClientException If an error occurs while attempting to check partition existence or of the current thread is interrupted while attempting to check partition existence.
+   */
   boolean containsTopicWithPartitionCheck(PubSubTopicPartition pubSubTopicPartition);
 
   /**
@@ -167,8 +173,6 @@ public interface PubSubAdminAdapter extends Closeable {
         expectedResult,
         defaultAttemptDuration);
   }
-
-  List<Class<? extends Throwable>> getRetriableExceptions();
 
   default boolean containsTopicWithExpectationAndRetry(
       PubSubTopic pubSubTopic,
@@ -214,6 +218,10 @@ public interface PubSubAdminAdapter extends Closeable {
       return !expectedResult; // Eventually still not get the expected result
     }
   }
+
+  List<Class<? extends Throwable>> getRetriableExceptions();
+
+  Map<PubSubTopic, Long> getAllTopicRetentions();
 
   String getClassName();
 

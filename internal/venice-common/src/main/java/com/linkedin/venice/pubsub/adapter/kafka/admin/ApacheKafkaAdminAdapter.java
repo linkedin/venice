@@ -1,6 +1,5 @@
 package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
-import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -314,17 +313,17 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   /**
    * Checks if a Kafka topic exists.
    *
-   * @param topic The PubSubTopic to check for existence.
+   * @param pubSubTopic The PubSubTopic to check for existence.
    * @return true if the specified Kafka topic exists, false otherwise.
    * @throws PubSubClientRetriableException If a retriable error occurs while attempting to check topic existence.
    * @throws PubSubClientException If an error occurs while attempting to check topic existence.
    */
   @Override
-  public boolean containsTopic(PubSubTopic topic) {
+  public boolean containsTopic(PubSubTopic pubSubTopic) {
     try {
-      Collection<String> topicNames = Collections.singleton(topic.getName());
+      Collection<String> topicNames = Collections.singleton(pubSubTopic.getName());
       TopicDescription topicDescription =
-          getKafkaAdminClient().describeTopics(topicNames).values().get(topic.getName()).get();
+          getKafkaAdminClient().describeTopics(topicNames).values().get(pubSubTopic.getName()).get();
       if (topicDescription == null) {
         LOGGER.warn(
             "Unexpected: kafkaAdminClient.describeTopics returned null "
@@ -340,25 +339,23 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
         return false;
       }
       if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
-        throw new PubSubClientRetriableException("Failed to check if '" + topic + " exists!", e);
+        throw new PubSubClientRetriableException("Failed to check if '" + pubSubTopic + " exists!", e);
       }
-      throw new PubSubClientException("Failed to check if '" + topic + " exists!", e);
-    } catch (Exception e) {
-      throw new PubSubClientException("Failed to check if '" + topic + " exists!", e);
+      throw new PubSubClientException("Failed to check if '" + pubSubTopic + " exists!", e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PubSubClientException("Failed to check if '" + pubSubTopic + " exists!", e);
     }
   }
 
-  @Override
-  public Map<PubSubTopic, Long> getAllTopicRetentions() {
-    return getSomethingForAllTopics(
-        config -> Optional.ofNullable(config.get(TopicConfig.RETENTION_MS_CONFIG))
-            // Option A: perform a string-to-long conversion if it's present...
-            .map(configEntry -> Long.parseLong(configEntry.value()))
-            // Option B: ... or default to a sentinel value if it's missing
-            .orElse(TopicManager.UNKNOWN_TOPIC_RETENTION),
-        "retention");
-  }
-
+  /**
+   * Checks if a topic exists and has the given partition
+   *
+   * @param pubSubTopicPartition The PubSubTopicPartition representing the Kafka topic and partition to check.
+   * @return true if the specified Kafka topic partition exists, false otherwise.
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to check partition existence.
+   * @throws PubSubClientException If an error occurs while attempting to check partition existence or of the current thread is interrupted while attempting to check partition existence.
+   */
   @Override
   public boolean containsTopicWithPartitionCheck(PubSubTopicPartition pubSubTopicPartition) {
     PubSubTopic pubSubTopic = pubSubTopicPartition.getPubSubTopic();
@@ -387,23 +384,39 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       }
       return true;
     } catch (ExecutionException e) {
-      if (e.getCause() instanceof UnknownTopicOrPartitionException || e.getCause() instanceof InvalidTopicException) {
+      if (e.getCause() != null && (e.getCause() instanceof UnknownTopicOrPartitionException
+          || e.getCause() instanceof InvalidTopicException)) {
         // Topic doesn't exist...
         return false;
-      } else {
-        throw new PubSubClientRetriableException("Failed to check if '" + pubSubTopic + " exists!", e);
       }
+      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+        throw new PubSubClientRetriableException("Failed to check if '" + pubSubTopicPartition + " exists!", e);
+      }
+      throw new PubSubClientException("Failed to check if '" + pubSubTopicPartition + " exists!", e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new PubSubClientException("Interrupted while checking if '" + pubSubTopic + " exists!", e);
-    } catch (Exception e) {
-      throw new PubSubClientException("Failed to check if '" + pubSubTopic + " exists!", e);
+      throw new PubSubClientException("Failed to check if '" + pubSubTopicPartition + " exists!", e);
     }
   }
 
   @Override
+  public Map<PubSubTopic, Long> getAllTopicRetentions() {
+    return getSomethingForAllTopics(
+        config -> Optional.ofNullable(config.get(TopicConfig.RETENTION_MS_CONFIG))
+            // Option A: perform a string-to-long conversion if it's present...
+            .map(configEntry -> Long.parseLong(configEntry.value()))
+            // Option B: ... or default to a sentinel value if it's missing
+            .orElse(TopicManager.UNKNOWN_TOPIC_RETENTION),
+        "retention");
+  }
+
+  /**
+   * @return Returns a list of exceptions that are retriable for this PubSubClient.
+   */
+  @Override
   public List<Class<? extends Throwable>> getRetriableExceptions() {
-    return Collections.unmodifiableList(Arrays.asList(VeniceRetriableException.class, TimeoutException.class));
+    return Collections
+        .unmodifiableList(Arrays.asList(PubSubOpTimeoutException.class, PubSubClientRetriableException.class));
   }
 
   @Override
