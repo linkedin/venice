@@ -104,12 +104,28 @@ public interface PubSubAdminAdapter extends Closeable {
    */
   Set<PubSubTopic> listAllTopics();
 
+  /**
+   * Sets the configuration for a PubSub topic.
+   *
+   * @param pubSubTopic The PubSubTopic for which to set the configuration.
+   * @param pubSubTopicConfiguration The configuration to be set for the specified PubSub topic.
+   * @throws PubSubTopicDoesNotExistException If the specified PubSub topic does not exist.
+   * @throws PubSubClientException If an error occurs while attempting to set the topic configuration or if the current thread is interrupted while attempting to set the topic configuration.
+   */
   void setTopicConfig(PubSubTopic pubSubTopic, PubSubTopicConfiguration pubSubTopicConfiguration)
       throws PubSubTopicDoesNotExistException;
 
-  Map<PubSubTopic, Long> getAllTopicRetentions();
-
+  /**
+   * Checks if a PubSub topic exists.
+   *
+   * @param pubSubTopic The PubSubTopic to check for existence.
+   * @return true if the specified topic exists, false otherwise.
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to check topic existence.
+   * @throws PubSubClientException If an error occurs while attempting to check topic existence.
+   */
   boolean containsTopic(PubSubTopic pubSubTopic);
+
+  Map<PubSubTopic, Long> getAllTopicRetentions();
 
   boolean containsTopicWithPartitionCheck(PubSubTopicPartition pubSubTopicPartition);
 

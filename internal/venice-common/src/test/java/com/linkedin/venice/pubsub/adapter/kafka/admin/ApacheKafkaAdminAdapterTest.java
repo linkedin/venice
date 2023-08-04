@@ -42,7 +42,6 @@ import org.testng.annotations.Test;
 
 public class ApacheKafkaAdminAdapterTest {
   private AdminClient internalKafkaAdminClientMock;
-  private Long maxRetryInMs;
   private PubSubTopicRepository pubSubTopicRepository;
   private PubSubTopic testPubSubTopic;
   private ApacheKafkaAdminAdapter kafkaAdminAdapter;
@@ -56,7 +55,6 @@ public class ApacheKafkaAdminAdapterTest {
   @BeforeMethod
   public void setUp() {
     internalKafkaAdminClientMock = mock(AdminClient.class);
-    maxRetryInMs = 1000L;
     pubSubTopicRepository = new PubSubTopicRepository();
     testPubSubTopic = pubSubTopicRepository.getTopic("test-topic");
     apacheKafkaAdminConfig = mock(ApacheKafkaAdminConfig.class);

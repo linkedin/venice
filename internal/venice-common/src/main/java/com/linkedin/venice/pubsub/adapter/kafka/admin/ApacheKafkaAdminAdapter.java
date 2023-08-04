@@ -230,7 +230,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   public PubSubTopicConfiguration getTopicConfig(PubSubTopic pubSubTopic) {
     ConfigResource resource = new ConfigResource(ConfigResource.Type.TOPIC, pubSubTopic.getName());
     Collection<ConfigResource> configResources = Collections.singleton(resource);
-    DescribeConfigsResult describeConfigsResult = getKafkaAdminClient().describeConfigs(configResources);
+    DescribeConfigsResult describeConfigsResult = internalKafkaAdminClient.describeConfigs(configResources);
     try {
       Config config = describeConfigsResult.all().get().get(resource);
       return marshallProperties(config);
@@ -259,7 +259,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
    */
   @Override
   public Set<PubSubTopic> listAllTopics() {
-    ListTopicsResult listTopicsResult = getKafkaAdminClient().listTopics();
+    ListTopicsResult listTopicsResult = internalKafkaAdminClient.listTopics();
     try {
       return listTopicsResult.names()
           .get()
@@ -277,27 +277,74 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     }
   }
 
+  /**
+   * Sets the configuration for a Kafka topic.
+   *
+   * @param pubSubTopic The PubSubTopic for which to set the configuration.
+   * @param pubSubTopicConfiguration The configuration to be set for the specified Kafka topic.
+   * @throws PubSubTopicDoesNotExistException If the specified Kafka topic does not exist.
+   * @throws PubSubClientException If an error occurs while attempting to set the topic configuration or if the current thread is interrupted while attempting to set the topic configuration.
+   */
   @Override
-  public void setTopicConfig(PubSubTopic topic, PubSubTopicConfiguration pubSubTopicConfiguration)
+  public void setTopicConfig(PubSubTopic pubSubTopic, PubSubTopicConfiguration pubSubTopicConfiguration)
       throws PubSubTopicDoesNotExistException {
     Properties topicProperties = unmarshallProperties(pubSubTopicConfiguration);
     Collection<ConfigEntry> entries = new ArrayList<>(topicProperties.stringPropertyNames().size());
     topicProperties.stringPropertyNames()
         .forEach(key -> entries.add(new ConfigEntry(key, topicProperties.getProperty(key))));
-    Map<ConfigResource, Config> configs =
-        Collections.singletonMap(new ConfigResource(ConfigResource.Type.TOPIC, topic.getName()), new Config(entries));
+    Map<ConfigResource, Config> configs = Collections
+        .singletonMap(new ConfigResource(ConfigResource.Type.TOPIC, pubSubTopic.getName()), new Config(entries));
     try {
-      getKafkaAdminClient().alterConfigs(configs).all().get();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new PubSubClientException("Interrupted while setting topic config for topic: " + topic, e);
+      internalKafkaAdminClient.alterConfigs(configs).all().get();
     } catch (ExecutionException e) {
-      if (!containsTopicWithExpectationAndRetry(topic, 3, true)) {
+      if (!containsTopicWithExpectationAndRetry(pubSubTopic, 3, true)) {
         // We assume the exception was caused by a non-existent topic.
-        throw new PubSubTopicDoesNotExistException("Topic " + topic + " does not exist", e);
+        throw new PubSubTopicDoesNotExistException("Topic " + pubSubTopic + " does not exist", e);
       }
       // Topic exists. So not sure what caused the exception.
-      throw new PubSubClientException("Topic: " + topic + " exists but failed to set config due to exception: ", e);
+      throw new PubSubClientException(
+          "Topic: " + pubSubTopic + " exists but failed to set config due to exception: ",
+          e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PubSubClientException("Interrupted while setting topic config for topic: " + pubSubTopic, e);
+    }
+  }
+
+  /**
+   * Checks if a Kafka topic exists.
+   *
+   * @param topic The PubSubTopic to check for existence.
+   * @return true if the specified Kafka topic exists, false otherwise.
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to check topic existence.
+   * @throws PubSubClientException If an error occurs while attempting to check topic existence.
+   */
+  @Override
+  public boolean containsTopic(PubSubTopic topic) {
+    try {
+      Collection<String> topicNames = Collections.singleton(topic.getName());
+      TopicDescription topicDescription =
+          getKafkaAdminClient().describeTopics(topicNames).values().get(topic.getName()).get();
+      if (topicDescription == null) {
+        LOGGER.warn(
+            "Unexpected: kafkaAdminClient.describeTopics returned null "
+                + "(rather than throwing an InvalidTopicException). Will carry on assuming the topic doesn't exist.");
+        return false;
+      }
+
+      return true;
+    } catch (ExecutionException e) {
+      if (e.getCause() != null && (e.getCause() instanceof UnknownTopicOrPartitionException
+          || e.getCause() instanceof InvalidTopicException)) {
+        // Topic doesn't exist...
+        return false;
+      }
+      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+        throw new PubSubClientRetriableException("Failed to check if '" + topic + " exists!", e);
+      }
+      throw new PubSubClientException("Failed to check if '" + topic + " exists!", e);
+    } catch (Exception e) {
+      throw new PubSubClientException("Failed to check if '" + topic + " exists!", e);
     }
   }
 
@@ -310,33 +357,6 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
             // Option B: ... or default to a sentinel value if it's missing
             .orElse(TopicManager.UNKNOWN_TOPIC_RETENTION),
         "retention");
-  }
-
-  @Override
-  public boolean containsTopic(PubSubTopic topic) {
-    try {
-      Collection<String> topicNames = Collections.singleton(topic.getName());
-      TopicDescription topicDescription =
-          getKafkaAdminClient().describeTopics(topicNames).values().get(topic.getName()).get();
-
-      if (topicDescription == null) {
-        LOGGER.warn(
-            "Unexpected: kafkaAdminClient.describeTopics returned null "
-                + "(rather than throwing an InvalidTopicException). Will carry on assuming the topic doesn't exist.");
-        return false;
-      }
-
-      return true;
-    } catch (ExecutionException e) {
-      if (e.getCause() instanceof UnknownTopicOrPartitionException || e.getCause() instanceof InvalidTopicException) {
-        // Topic doesn't exist...
-        return false;
-      } else {
-        throw new PubSubClientRetriableException("Failed to check if '" + topic + " exists!", e);
-      }
-    } catch (Exception e) {
-      throw new PubSubClientException("Failed to check if '" + topic + " exists!", e);
-    }
   }
 
   @Override
