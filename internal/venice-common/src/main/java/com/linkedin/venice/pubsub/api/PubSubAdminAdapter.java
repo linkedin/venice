@@ -12,7 +12,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Future;
 
 
 /**
@@ -42,7 +41,7 @@ public interface PubSubAdminAdapter extends Closeable {
       int replication,
       PubSubTopicConfiguration pubSubTopicConfiguration);
 
-  Future<Void> deleteTopic(PubSubTopic topicName);
+  void deleteTopic(PubSubTopic topicName, Duration timeout);
 
   Set<PubSubTopic> listAllTopics();
 

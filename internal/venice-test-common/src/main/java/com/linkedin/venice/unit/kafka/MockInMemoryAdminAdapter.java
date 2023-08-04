@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -23,8 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 
 
 public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
@@ -58,12 +57,9 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public Future<Void> deleteTopic(PubSubTopic topicName) {
-    return CompletableFuture.supplyAsync(() -> {
-      topicPubSubTopicConfigurationMap.remove(topicName);
-      topicPartitionNumMap.remove(topicName);
-      return null;
-    });
+  public void deleteTopic(PubSubTopic topicName, Duration timeout) {
+    topicPubSubTopicConfigurationMap.remove(topicName);
+    topicPartitionNumMap.remove(topicName);
   }
 
   @Override

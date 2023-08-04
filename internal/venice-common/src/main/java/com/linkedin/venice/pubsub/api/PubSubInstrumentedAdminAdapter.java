@@ -20,10 +20,10 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
@@ -71,13 +71,12 @@ public class PubSubInstrumentedAdminAdapter implements PubSubAdminAdapter {
     });
   }
 
-  /**
-   * Note: This latency measurement is not accurate since this is an async API. But we measure it anyways since
-   * we record the occurrence rate at least
-   */
   @Override
-  public Future<Void> deleteTopic(PubSubTopic topicName) {
-    return instrument(DELETE_TOPIC, () -> pubSubAdminAdapter.deleteTopic(topicName));
+  public void deleteTopic(PubSubTopic topicName, Duration timeout) {
+    instrument(DELETE_TOPIC, () -> {
+      pubSubAdminAdapter.deleteTopic(topicName, timeout);
+      return null;
+    });
   }
 
   @Override

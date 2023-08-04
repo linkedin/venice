@@ -13,6 +13,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -31,12 +32,14 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.Config;
 import org.apache.kafka.clients.admin.ConfigEntry;
 import org.apache.kafka.clients.admin.CreateTopicsResult;
+import org.apache.kafka.clients.admin.DeleteTopicsResult;
 import org.apache.kafka.clients.admin.DescribeConfigsResult;
 import org.apache.kafka.clients.admin.ListTopicsResult;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -47,6 +50,7 @@ import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.TimeoutException;
+import org.apache.kafka.common.errors.TopicDeletionDisabledException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
@@ -138,7 +142,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       if (ExceptionUtils.recursiveClassEquals(e, InvalidReplicationFactorException.class)) {
         throw new PubSubInvalidReplicationFactorException(topic.getName(), replication, e);
       } else if (ExceptionUtils.recursiveClassEquals(e, TopicExistsException.class)) {
-        throw new PubSubTopicExistsException(topic.getName(), e);
+        throw new PubSubTopicExistsException(topic, e);
       } else {
         throw new PubSubClientException("Failed to create topic: " + topic + " due to ExecutionException", e);
       }
@@ -169,11 +173,35 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     }
   }
 
-  // TODO: If we decide that topic deletion is always going to be blocking then we might want to get the future here and
-  // catch/extract any expected exceptions such as UnknownTopicOrPartitionException.
   @Override
-  public KafkaFuture<Void> deleteTopic(PubSubTopic topic) {
-    return getKafkaAdminClient().deleteTopics(Collections.singleton(topic.getName())).values().get(topic.getName());
+  public void deleteTopic(PubSubTopic topic, Duration timeout) {
+    try {
+      LOGGER.debug("Deleting kafka topic: {}", topic.getName());
+      DeleteTopicsResult deleteTopicsResult =
+          internalKafkaAdminClient.deleteTopics(Collections.singleton(topic.getName()));
+      KafkaFuture<Void> topicDeletionFuture = deleteTopicsResult.all();
+      topicDeletionFuture.get(timeout.toMillis(), TimeUnit.MILLISECONDS); // block until topic deletion is complete
+      LOGGER.debug("Successfully deleted kafka topic: {}", topic.getName());
+    } catch (ExecutionException e) {
+      LOGGER.debug("Failed to delete kafka topic: {}", topic.getName(), e);
+      if (ExceptionUtils.recursiveClassEquals(e, UnknownTopicOrPartitionException.class)) {
+        throw new PubSubTopicDoesNotExistException(topic.getName(), e);
+      }
+      if (ExceptionUtils.recursiveClassEquals(e, TopicDeletionDisabledException.class)) {
+        throw new PubSubClientException("Topic deletion is disabled for topic: " + topic.getName(), e);
+      }
+      if (ExceptionUtils.recursiveClassEquals(e, TimeoutException.class)) {
+        throw new PubSubOpTimeoutException("Timed out while deleting topic: " + topic.getName(), e);
+      }
+      throw new PubSubClientException("Failed to delete topic: " + topic.getName(), e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOGGER.debug("Failed to delete kafka topic: {}", topic.getName(), e);
+      throw new PubSubClientException("Interrupted while deleting topic: " + topic.getName(), e);
+    } catch (java.util.concurrent.TimeoutException e) {
+      LOGGER.debug("Failed to delete kafka topic: {}", topic.getName(), e);
+      throw new PubSubOpTimeoutException("Timed out while deleting topic: " + topic.getName(), e);
+    }
   }
 
   @Override

@@ -31,7 +31,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
@@ -115,7 +114,7 @@ public class TestTopicRequestOnHybridDelete {
       TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
       try {
         topicManager.ensureTopicIsDeletedAndBlock(pubSubTopicRepository.getTopic(composeRealTimeTopic(storeName)));
-      } catch (ExecutionException e) {
+      } catch (VeniceException e) {
         fail("Exception during topic deletion " + e);
       }
 
