@@ -4,23 +4,19 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.DelegatingTrackingCallback;
+import com.linkedin.venice.client.store.streaming.PartialResponseCollectingStreamingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
-import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
@@ -115,37 +111,10 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   @Override
   public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
-    Map<K, V> resultMap = new VeniceConcurrentHashMap<>(keys.size());
-    Queue<K> nonExistingKeyList = new ConcurrentLinkedQueue<>();
-
-    VeniceResponseCompletableFuture<VeniceResponseMap<K, V>> resultFuture = new VeniceResponseCompletableFuture<>(
-        () -> new VeniceResponseMapImpl(resultMap, nonExistingKeyList, false),
-        keys.size(),
-        Optional.of(multiGetStreamingStats));
-    streamingBatchGet(keys, new StreamingCallback<K, V>() {
-      @Override
-      public void onRecordReceived(K key, V value) {
-        if (value != null) {
-          /**
-           * {@link java.util.concurrent.ConcurrentHashMap#put} won't take 'null' as the value.
-           */
-          resultMap.put(key, value);
-        } else {
-          nonExistingKeyList.add(key);
-        }
-      }
-
-      @Override
-      public void onCompletion(Optional<Exception> exception) {
-        if (exception.isPresent()) {
-          resultFuture.completeExceptionally(exception.get());
-        } else {
-          boolean isFullResponse = (resultMap.size() + nonExistingKeyList.size() == keys.size());
-          resultFuture.complete(new VeniceResponseMapImpl(resultMap, nonExistingKeyList, isFullResponse));
-        }
-      }
-    });
-    return resultFuture;
+    PartialResponseCollectingStreamingCallback<K, V> callback =
+        new PartialResponseCollectingStreamingCallback<>(keys, multiGetStreamingStats);
+    streamingBatchGet(keys, callback);
+    return callback.getResultFuture();
   }
 
   public void recordRetryCount(RequestType requestType) {

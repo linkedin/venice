@@ -75,7 +75,23 @@ public interface ComputeRequestBuilder<K> {
    * @return
    * @throws VeniceClientException
    */
-  CompletableFuture<Map<K, ComputeGenericRecord>> execute(Set<K> keys) throws VeniceClientException;
+  default CompletableFuture<Map<K, ComputeGenericRecord>> execute(Set<K> keys) throws VeniceClientException {
+    CompletableFuture<Map<K, ComputeGenericRecord>> resultFuture = new CompletableFuture<>();
+    CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamResultFuture = streamingExecute(keys);
+    streamResultFuture.whenComplete((response, throwable) -> {
+      if (throwable != null) {
+        resultFuture.completeExceptionally(throwable);
+      } else if (!response.isFullResponse()) {
+        resultFuture.completeExceptionally(
+            new VeniceClientException(
+                "Received partial response, returned entry count: " + response.getTotalEntryCount()
+                    + ", and key count: " + keys.size()));
+      } else {
+        resultFuture.complete(response);
+      }
+    });
+    return resultFuture;
+  }
 
   /**
    * Send compute request to Venice, and this should be the last step of the compute specification.
