@@ -2822,8 +2822,13 @@ public class AdminTool {
       }
       clientConfig.setSslFactory(sslFactory.get());
     }
-    TransportClient transportClient = ClientFactory.getTransportClient(clientConfig);
-    getAndPrintRequestBasedMetadata(transportClient, url, storeName);
+    TransportClient transportClient = null;
+    try {
+      transportClient = ClientFactory.getTransportClient(clientConfig);
+      getAndPrintRequestBasedMetadata(transportClient, url, storeName);
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
   }
 
   static void getAndPrintRequestBasedMetadata(TransportClient transportClient, String url, String storeName)

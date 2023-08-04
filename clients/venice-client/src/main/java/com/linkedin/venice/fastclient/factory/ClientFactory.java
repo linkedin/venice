@@ -66,6 +66,7 @@ public class ClientFactory {
             new D2TransportClient(clientConfig.getClusterDiscoveryD2Service(), clientConfig.getD2Client()),
             new RouterBackedSchemaReader(
                 (InternalAvroStoreClient) clientConfig.getMetadataResponseSchemaStoreClient(),
+                false,
                 Optional.empty(),
                 Optional.empty(),
                 DEFAULT_SCHEMA_REFRESH_PERIOD,

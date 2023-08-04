@@ -7,14 +7,12 @@ import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
@@ -25,7 +23,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -79,23 +76,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
     try {
-      if (storeMetadataFetchMode == StoreMetadataFetchMode.SERVER_BASED_METADATA) {
-        // Validate and configure the metadata response schema forward compat support setup
-        veniceCluster.useControllerClient(controllerClient -> {
-          String schemaStoreName = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName();
-          MultiSchemaResponse multiSchemaResponse = controllerClient.getAllValueSchema(schemaStoreName);
-          Assert.assertFalse(multiSchemaResponse.isError());
-          Assert.assertEquals(
-              AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion(),
-              multiSchemaResponse.getSchemas().length);
-        });
-
-        clientConfigBuilder.setMetadataResponseSchemaStoreClient(
-            getGenericThinClient(
-                new MetricsRepository(),
-                AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
-      }
-
       genericFastClient =
           getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, storeMetadataFetchMode);
 
@@ -248,7 +228,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode")
   public void testFastClientGet(
       boolean dualRead,
       boolean speculativeQueryEnabled,

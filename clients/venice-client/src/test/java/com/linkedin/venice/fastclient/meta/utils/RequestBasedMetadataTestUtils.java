@@ -74,12 +74,13 @@ public class RequestBasedMetadataTestUtils {
     metadataResponse.setRoutingInfo(Collections.singletonMap("0", Collections.singletonList(NEW_REPLICA_NAME)));
     byte[] newMetadataBody = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
+    int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
     TransportClientResponse transportClientMetadataResponse =
-        new TransportClientResponse(0, CompressionStrategy.NO_OP, metadataBody);
+        new TransportClientResponse(metadataResponseSchemaId, CompressionStrategy.NO_OP, metadataBody);
     CompletableFuture<TransportClientResponse> completableMetadataFuture =
         CompletableFuture.completedFuture(transportClientMetadataResponse);
-    CompletableFuture<TransportClientResponse> completableMetadataFuture2 =
-        CompletableFuture.completedFuture(new TransportClientResponse(0, CompressionStrategy.NO_OP, newMetadataBody));
+    CompletableFuture<TransportClientResponse> completableMetadataFuture2 = CompletableFuture.completedFuture(
+        new TransportClientResponse(metadataResponseSchemaId + 1, CompressionStrategy.NO_OP, newMetadataBody));
 
     TransportClientResponse transportClientDictionaryResponse =
         new TransportClientResponse(0, CompressionStrategy.NO_OP, DICTIONARY);
@@ -115,17 +116,25 @@ public class RequestBasedMetadataTestUtils {
   public static RouterBackedSchemaReader getMockRouterBackedSchemaReader() {
     RouterBackedSchemaReader metadataResponseSchemaReader = mock(RouterBackedSchemaReader.class);
     int latestSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
-    doReturn(latestSchemaId).when(metadataResponseSchemaReader).getLatestValueSchemaId();
+    when(metadataResponseSchemaReader.getLatestValueSchemaId()).thenReturn(latestSchemaId, latestSchemaId + 1);
     doReturn(MetadataResponseRecord.SCHEMA$).when(metadataResponseSchemaReader).getValueSchema(latestSchemaId);
+    doReturn(MetadataResponseRecord.SCHEMA$).when(metadataResponseSchemaReader).getValueSchema(latestSchemaId + 1);
     return metadataResponseSchemaReader;
   }
 
   public static RequestBasedMetadata getMockMetaData(ClientConfig clientConfig, String storeName) {
+    return getMockMetaData(clientConfig, storeName, getMockRouterBackedSchemaReader());
+  }
+
+  public static RequestBasedMetadata getMockMetaData(
+      ClientConfig clientConfig,
+      String storeName,
+      RouterBackedSchemaReader routerBackedSchemaReader) {
     D2TransportClient d2TransportClient = RequestBasedMetadataTestUtils.getMockD2TransportClient(storeName);
     D2ServiceDiscovery d2ServiceDiscovery =
         RequestBasedMetadataTestUtils.getMockD2ServiceDiscovery(d2TransportClient, storeName);
     RequestBasedMetadata requestBasedMetadata =
-        new RequestBasedMetadata(clientConfig, d2TransportClient, getMockRouterBackedSchemaReader());
+        new RequestBasedMetadata(clientConfig, d2TransportClient, routerBackedSchemaReader);
     requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
     requestBasedMetadata.start();
     return requestBasedMetadata;

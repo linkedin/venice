@@ -120,7 +120,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
     this(storeClient, true, readerSchema, preferredSchemaFilter, valueSchemaRefreshPeriod, icProvider);
   }
 
-  private RouterBackedSchemaReader(
+  public RouterBackedSchemaReader(
       InternalAvroStoreClient storeClient,
       boolean externalClient,
       Optional<Schema> readerSchema,
