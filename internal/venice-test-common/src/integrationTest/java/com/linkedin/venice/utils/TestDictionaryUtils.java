@@ -56,7 +56,7 @@ public class TestDictionaryUtils {
 
   private Properties getKafkaProperties() {
     Properties props = new Properties();
-    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, manager.getKafkaBootstrapServers());
+    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, manager.getPubSubBootstrapServers());
     props.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
     return props;
   }

@@ -22,16 +22,16 @@ import org.apache.logging.log4j.Logger;
  * Because get real-time topic offset, get producer timestamp, and check topic existence are expensive, so we will only
  * retrieve such information after the predefined ttlMs
  */
-class CachedKafkaMetadataGetter {
-  private static final Logger LOGGER = LogManager.getLogger(CachedKafkaMetadataGetter.class);
+class CachedPubSubMetadataGetter {
+  private static final Logger LOGGER = LogManager.getLogger(CachedPubSubMetadataGetter.class);
   private static final int DEFAULT_MAX_RETRY = 10;
 
   private final long ttlNs;
-  private final Map<KafkaMetadataCacheKey, ValueAndExpiryTime<Boolean>> topicExistenceCache;
-  private final Map<KafkaMetadataCacheKey, ValueAndExpiryTime<Long>> offsetCache;
-  private final Map<KafkaMetadataCacheKey, ValueAndExpiryTime<Long>> lastProducerTimestampCache;
+  private final Map<PubSubMetadataCacheKey, ValueAndExpiryTime<Boolean>> topicExistenceCache;
+  private final Map<PubSubMetadataCacheKey, ValueAndExpiryTime<Long>> offsetCache;
+  private final Map<PubSubMetadataCacheKey, ValueAndExpiryTime<Long>> lastProducerTimestampCache;
 
-  CachedKafkaMetadataGetter(long timeToLiveMs) {
+  CachedPubSubMetadataGetter(long timeToLiveMs) {
     this.ttlNs = MILLISECONDS.toNanos(timeToLiveMs);
     this.topicExistenceCache = new VeniceConcurrentHashMap<>();
     this.offsetCache = new VeniceConcurrentHashMap<>();
@@ -44,11 +44,11 @@ class CachedKafkaMetadataGetter {
    * the value will be 1 offset greater than what's expected.
    */
   long getOffset(TopicManager topicManager, PubSubTopic pubSubTopic, int partitionId) {
-    final String sourceKafkaServer = topicManager.getKafkaBootstrapServers();
+    final String sourcePubSubServer = topicManager.getPubSubBootstrapServers();
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partitionId);
     try {
       return fetchMetadata(
-          new KafkaMetadataCacheKey(sourceKafkaServer, pubSubTopicPartition),
+          new PubSubMetadataCacheKey(sourcePubSubServer, pubSubTopicPartition),
           offsetCache,
           () -> topicManager.getPartitionLatestOffsetAndRetry(pubSubTopicPartition, DEFAULT_MAX_RETRY));
     } catch (TopicDoesNotExistException e) {
@@ -60,10 +60,10 @@ class CachedKafkaMetadataGetter {
   }
 
   long getEarliestOffset(TopicManager topicManager, PubSubTopicPartition pubSubTopicPartition) {
-    final String sourceKafkaServer = topicManager.getKafkaBootstrapServers();
+    final String sourcePubSubServer = topicManager.getPubSubBootstrapServers();
     try {
       return fetchMetadata(
-          new KafkaMetadataCacheKey(sourceKafkaServer, pubSubTopicPartition),
+          new PubSubMetadataCacheKey(sourcePubSubServer, pubSubTopicPartition),
           offsetCache,
           () -> topicManager.getPartitionEarliestOffsetAndRetry(pubSubTopicPartition, DEFAULT_MAX_RETRY));
     } catch (TopicDoesNotExistException e) {
@@ -77,7 +77,7 @@ class CachedKafkaMetadataGetter {
   long getProducerTimestampOfLastDataMessage(TopicManager topicManager, PubSubTopicPartition pubSubTopicPartition) {
     try {
       return fetchMetadata(
-          new KafkaMetadataCacheKey(topicManager.getKafkaBootstrapServers(), pubSubTopicPartition),
+          new PubSubMetadataCacheKey(topicManager.getPubSubBootstrapServers(), pubSubTopicPartition),
           lastProducerTimestampCache,
           () -> topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, DEFAULT_MAX_RETRY));
     } catch (TopicDoesNotExistException e) {
@@ -89,24 +89,24 @@ class CachedKafkaMetadataGetter {
 
   boolean containsTopic(TopicManager topicManager, PubSubTopic pubSubTopic) {
     return fetchMetadata(
-        new KafkaMetadataCacheKey(
-            topicManager.getKafkaBootstrapServers(),
+        new PubSubMetadataCacheKey(
+            topicManager.getPubSubBootstrapServers(),
             new PubSubTopicPartitionImpl(pubSubTopic, -1)),
         topicExistenceCache,
         () -> topicManager.containsTopic(pubSubTopic));
   }
 
   /**
-   * Helper function to fetch metadata from cache or Kafka.
+   * Helper function to fetch metadata from cache or PubSub servers.
    * @param key cache key: Topic name or TopicPartition
    * @param metadataCache cache for this specific metadata
-   * @param valueSupplier function to fetch metadata from Kafka
+   * @param valueSupplier function to fetch metadata from PubSub servers
    * @param <T> type of the metadata
-   * @return the cache value or the fresh metadata from Kafka
+   * @return the cache value or the fresh metadata from PubSub servers
    */
   <T> T fetchMetadata(
-      KafkaMetadataCacheKey key,
-      Map<KafkaMetadataCacheKey, ValueAndExpiryTime<T>> metadataCache,
+      PubSubMetadataCacheKey key,
+      Map<PubSubMetadataCacheKey, ValueAndExpiryTime<T>> metadataCache,
       Supplier<T> valueSupplier) {
     final long now = System.nanoTime();
     final ValueAndExpiryTime<T> cachedValue =
@@ -126,19 +126,19 @@ class CachedKafkaMetadataGetter {
     return cachedValue.getValue();
   }
 
-  static class KafkaMetadataCacheKey {
-    private final String kafkaServer;
+  static class PubSubMetadataCacheKey {
+    private final String pubSubServer;
     private final PubSubTopicPartition pubSubTopicPartition;
 
-    KafkaMetadataCacheKey(String kafkaServer, PubSubTopicPartition pubSubTopicPartition) {
-      this.kafkaServer = kafkaServer;
+    PubSubMetadataCacheKey(String pubSubServer, PubSubTopicPartition pubSubTopicPartition) {
+      this.pubSubServer = pubSubServer;
       this.pubSubTopicPartition = pubSubTopicPartition;
     }
 
     @Override
     public int hashCode() {
       int result = 1;
-      result = 31 * result + (kafkaServer == null ? 0 : kafkaServer.hashCode());
+      result = 31 * result + (pubSubServer == null ? 0 : pubSubServer.hashCode());
       result = 31 * result + (pubSubTopicPartition == null ? 0 : pubSubTopicPartition.hashCode());
       return result;
     }
@@ -148,12 +148,13 @@ class CachedKafkaMetadataGetter {
       if (this == o) {
         return true;
       }
-      if (!(o instanceof KafkaMetadataCacheKey)) {
+      if (!(o instanceof PubSubMetadataCacheKey)) {
         return false;
       }
 
-      final KafkaMetadataCacheKey other = (KafkaMetadataCacheKey) o;
-      return pubSubTopicPartition.equals(other.pubSubTopicPartition) && Objects.equals(kafkaServer, other.kafkaServer);
+      final PubSubMetadataCacheKey other = (PubSubMetadataCacheKey) o;
+      return pubSubTopicPartition.equals(other.pubSubTopicPartition)
+          && Objects.equals(pubSubServer, other.pubSubServer);
     }
   }
 

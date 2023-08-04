@@ -17,7 +17,6 @@ message VeniceClientRequest {
   string storeName = 6;
   bool   isStreamingRequest = 7;
   bool   isRetryRequest = 8;
-
   bool   isBatchRequest = 9;
 }
 

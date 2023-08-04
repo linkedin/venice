@@ -1222,6 +1222,11 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void addVersion(Version version, boolean isClonedVersion) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public void forceAddVersion(Version version, boolean isClonedVersion) {
     throw new UnsupportedOperationException();
   }

@@ -201,7 +201,7 @@ public class VeniceGrpcEndToEndTest {
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
             .setSpeculativeQueryEnabled(false)
-            .setUseStreamingBatchGetAsDefault(false);
+            .setUseStreamingBatchGetAsDefault(true);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);

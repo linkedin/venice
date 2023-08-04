@@ -82,7 +82,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
-import java.nio.file.Paths;
 import java.security.Permission;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -542,19 +541,14 @@ public class TestUtils {
     return new VeniceControllerMultiClusterConfig(configMap);
   }
 
-  public static Properties getPropertiesForControllerConfig() throws IOException {
-    String currentPath = Paths.get("").toAbsolutePath().toString();
-    if (currentPath.endsWith("venice-controller")) {
-      currentPath += "/..";
-    } else if (currentPath.endsWith("venice-test-common")) {
-      currentPath += "/../../services";
-    }
-    VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
-    VeniceProperties baseControllerProps =
-        Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties");
+  public static Properties getPropertiesForControllerConfig() {
     Properties properties = new Properties();
-    properties.putAll(clusterProps.toProperties());
-    properties.putAll(baseControllerProps.toProperties());
+    properties.put(ConfigKeys.CLUSTER_NAME, "test-cluster");
+    properties.put(ConfigKeys.CONTROLLER_NAME, "venice-controller");
+    properties.put(ConfigKeys.DEFAULT_REPLICA_FACTOR, "1");
+    properties.put(ConfigKeys.DEFAULT_NUMBER_OF_PARTITION, "1");
+    properties.put(ConfigKeys.ADMIN_PORT, TestUtils.getFreePort());
+    properties.put(ConfigKeys.ADMIN_SECURE_PORT, TestUtils.getFreePort());
     return properties;
   }
 
