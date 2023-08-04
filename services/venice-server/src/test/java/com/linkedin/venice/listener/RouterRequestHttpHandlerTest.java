@@ -1,13 +1,20 @@
 package com.linkedin.venice.listener;
 
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
+import com.linkedin.venice.listener.grpc.GrpcStatsContext;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.protocols.VeniceClientRequest;
+import com.linkedin.venice.protocols.VeniceServerResponse;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
@@ -20,7 +27,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Collections;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -39,8 +45,8 @@ public class RouterRequestHttpHandlerTest {
   @Test
   public void respondsToHealthCheck() throws Exception {
     RouterRequestHttpHandler testHander =
-        new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class), Collections.emptyMap());
-    ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
+        new RouterRequestHttpHandler(mock(StatsHandler.class), Collections.emptyMap());
+    ChannelHandlerContext mockContext = mock(ChannelHandlerContext.class);
     ArgumentCaptor<HealthCheckRequest> argumentCaptor = ArgumentCaptor.forClass(HealthCheckRequest.class);
     HttpRequest healthMsg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/health");
     testHander.channelRead(mockContext, healthMsg);
@@ -54,8 +60,8 @@ public class RouterRequestHttpHandlerTest {
 
     // Test handler
     RouterRequestHttpHandler testHander =
-        new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class), Collections.emptyMap());
-    ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
+        new RouterRequestHttpHandler(mock(StatsHandler.class), Collections.emptyMap());
+    ChannelHandlerContext mockContext = mock(ChannelHandlerContext.class);
     ArgumentCaptor<GetRouterRequest> argumentCaptor = ArgumentCaptor.forClass(GetRouterRequest.class);
     HttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, path);
     testHander.channelRead(mockContext, msg);
@@ -89,8 +95,8 @@ public class RouterRequestHttpHandlerTest {
 
   public void testBadRequest(String path, HttpMethod method) throws Exception {
     RouterRequestHttpHandler testHander =
-        new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class), Collections.emptyMap());
-    ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
+        new RouterRequestHttpHandler(mock(StatsHandler.class), Collections.emptyMap());
+    ChannelHandlerContext mockContext = mock(ChannelHandlerContext.class);
     ArgumentCaptor<HttpShortcutResponse> argumentCaptor = ArgumentCaptor.forClass(HttpShortcutResponse.class);
     HttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, path);
     testHander.channelRead(mockContext, msg);
@@ -157,4 +163,19 @@ public class RouterRequestHttpHandlerTest {
     GetRouterRequest.verifyApiVersion(headers, "1");
   }
 
+  @Test
+  public void testGrpcRead() {
+    VeniceClientRequest request =
+        VeniceClientRequest.newBuilder().setResourceName("teststore_v1").setIsBatchRequest(true).build();
+    GrpcHandlerContext ctx = new GrpcHandlerContext(request, VeniceServerResponse.newBuilder(), null);
+    GrpcHandlerPipeline pipeline = mock(GrpcHandlerPipeline.class);
+    GrpcStatsContext statsContextMock = mock(GrpcStatsContext.class);
+    RouterRequestHttpHandler handler = new RouterRequestHttpHandler(mock(StatsHandler.class), Collections.emptyMap());
+    ctx.setGrpcStatsContext(statsContextMock);
+
+    // MultiGetRouterRequestWrapper
+    handler.grpcRead(ctx, pipeline);
+
+    verify(pipeline).processRequest(any());
+  }
 }

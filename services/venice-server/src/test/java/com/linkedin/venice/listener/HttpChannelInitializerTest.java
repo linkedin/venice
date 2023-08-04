@@ -8,6 +8,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
@@ -103,4 +104,28 @@ public class HttpChannelInitializerTest {
         requestHandler);
     initializer.initChannel(ch);
   }
+
+  @Test
+  public void initGrpcHandlers() {
+    SSLConfig sslConfig = new SSLConfig();
+    doReturn(sslConfig).when(sslFactory).getSSLConfig();
+    HttpChannelInitializer initializer = new HttpChannelInitializer(
+        storeMetadataRepository,
+        customizedViewRepository,
+        metricsRepository,
+        sslFactoryOptional,
+        sslHandshakeExecutor,
+        serverConfig,
+        accessController,
+        storeAccessController,
+        requestHandler);
+
+    GrpcHandlerPipeline pipeline = initializer.initGrpcHandlers();
+    Assert.assertNotNull(pipeline);
+    Assert.assertNotNull(pipeline.getInboundHandlers());
+    Assert.assertNotNull(pipeline.getOutboundHandlers());
+    Assert.assertEquals(pipeline.getInboundHandlers().size(), pipeline.getOutboundHandlers().size());
+    Assert.assertEquals(pipeline.getInboundHandlers().size(), 6);
+  }
+
 }

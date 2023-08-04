@@ -24,6 +24,7 @@ import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestK
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
 import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.VeniceGrpcHandler;
@@ -353,10 +354,13 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
 
   @Override
   public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
+    if (ctx.hasError()) {
+      pipeline.processRequest(ctx);
+      return;
+    }
     RouterRequest request = ctx.getRouterRequest();
     final long preSubmissionTimeNs = System.nanoTime();
     ReadResponse response;
-
     try {
       if (request.shouldRequestBeTerminatedEarly()) {
         throw new VeniceRequestEarlyTerminationException(request.getStoreName());
@@ -371,7 +375,12 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
           response = handleMultiGetRequest((MultiGetRouterRequestWrapper) request);
           break;
         default:
-          throw new VeniceException("Unknown request type: " + request.getRequestType());
+          ctx.setError();
+          ctx.getVeniceServerResponseBuilder()
+              .setErrorCode(GrpcErrorCodes.BAD_REQUEST)
+              .setErrorMessage("Unknown request type: " + request.getRequestType());
+          pipeline.processRequest(ctx);
+          return;
       }
       response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
       response.setStorageExecutionQueueLen(queueLen);
@@ -381,16 +390,20 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
       }
 
       ctx.setReadResponse(response);
-      pipeline.processResponse(ctx);
-
     } catch (VeniceNoStoreException e) {
-      throw new VeniceException("No storage exists for: " + e.getStoreName());
-    } catch (VeniceRequestEarlyTerminationException e) {
-      throw new VeniceRequestEarlyTerminationException(e.getMessage());
+      ctx.setError();
+      ctx.getVeniceServerResponseBuilder()
+          .setErrorCode(GrpcErrorCodes.BAD_REQUEST)
+          .setErrorMessage("No storage exists for: " + e.getStoreName());
+
     } catch (Exception e) {
-      LOGGER.error("Exception thrown for {}", request.getResourceName(), e);
-      throw new VeniceException(e.getMessage());
+      ctx.setError();
+      ctx.getVeniceServerResponseBuilder()
+          .setErrorCode(GrpcErrorCodes.INTERNAL_ERROR)
+          .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.toString());
     }
+
+    pipeline.processRequest(ctx);
   }
 
   @Override

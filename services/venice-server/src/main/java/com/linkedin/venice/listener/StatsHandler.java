@@ -4,6 +4,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
 import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.grpc.GrpcStatsContext;
@@ -251,6 +252,11 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
 
   @Override
   public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
+    if (ctx.hasError()) {
+      pipeline.processRequest(ctx);
+      return;
+    }
+
     if (ctx.getGrpcStatsContext() == null) {
       // new request
       GrpcStatsContext statsContext = new GrpcStatsContext(singleGetStats, multiGetStats, computeStats);
@@ -265,19 +271,33 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
 
   @Override
   public void grpcWrite(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
+    // do not exit early if there is an error, we want to record stats for error cases as well
     GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
-
+    HttpResponseStatus responseStatus = statsContext.getResponseStatus();
     if (statsContext.getResponseStatus() == null) {
-      throw new VeniceException("request status could not be null");
+      ctx.setError();
+      ctx.getVeniceServerResponseBuilder()
+          .setErrorCode(GrpcErrorCodes.INTERNAL_ERROR)
+          .setErrorMessage("request status could not be null");
+      pipeline.processResponse(ctx);
+    }
+
+    if (statsContext.getStoreName() == null) {
+      ctx.setError();
+      ctx.getVeniceServerResponseBuilder()
+          .setErrorCode(GrpcErrorCodes.INTERNAL_ERROR)
+          .setErrorMessage("store name could not be null");
+      pipeline.processResponse(ctx);
     }
 
     ServerHttpRequestStats serverHttpRequestStats =
         statsContext.getCurrentStats().getStoreStats(statsContext.getStoreName());
+
     statsContext.recordBasicMetrics(serverHttpRequestStats);
 
     double elapsedTime = LatencyUtils.getLatencyInMS(statsContext.getRequestStartTimeInNS());
 
-    if (statsContext.getResponseStatus().equals(OK) || statsContext.getResponseStatus().equals(NOT_FOUND)) {
+    if (!ctx.hasError() && !responseStatus.equals(OK) || responseStatus.equals(NOT_FOUND)) {
       statsContext.successRequest(serverHttpRequestStats, elapsedTime);
     } else {
       statsContext.errorRequest(serverHttpRequestStats, elapsedTime);
@@ -418,6 +438,15 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
       throw new VeniceException("store name could not be null if request succeeded");
     }
   }
+  //
+  // private void successRequestGrpc(ServerHttpRequestStats stats, double elapsedTime, String storeName) {
+  // if (storeName != null) {
+  // stats.recordSuccessRequest();
+  // stats.recordSuccessRequestLatency(elapsedTime);
+  // } else {
+  // throw new VeniceException("store name could not be null if request succeeded");
+  // }
+  // }
 
   private void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
     if (storeName == null) {

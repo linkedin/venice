@@ -91,4 +91,15 @@ public class GrpcHandlerContextTest {
 
     assertTrue(handlerContext.isCompleted());
   }
+
+  @Test
+  public void testHasError() {
+    GrpcHandlerContext handlerContext = new GrpcHandlerContext(null, null, null);
+
+    assertFalse(handlerContext.hasError());
+
+    handlerContext.setError();
+
+    assertTrue(handlerContext.hasError());
+  }
 }

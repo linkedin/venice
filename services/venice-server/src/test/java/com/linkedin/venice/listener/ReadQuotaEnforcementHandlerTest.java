@@ -384,6 +384,6 @@ public class ReadQuotaEnforcementHandlerTest {
     doAnswer((a) -> {
       blocked.incrementAndGet();
       return null;
-    }).when(pipeline).onError(any());
+    }).when(grpcCtx).setError();
   }
 }

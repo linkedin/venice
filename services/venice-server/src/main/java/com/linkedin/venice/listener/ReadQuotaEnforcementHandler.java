@@ -203,8 +203,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     if (store == null) {
       String error = "Invalid request resource " + request.getResourceName();
       LOGGER.error(error);
+      ctx.setError();
       ctx.getVeniceServerResponseBuilder().setErrorCode(BAD_REQUEST).setErrorMessage(error);
-      pipeline.onError(ctx);
+      pipeline.processRequest(ctx);
       return;
     }
 
@@ -231,9 +232,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
                   + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
 
           LOGGER.error(errorMessage);
-
+          ctx.setError();
           ctx.getVeniceServerResponseBuilder().setErrorCode(TOO_MANY_REQUESTS).setErrorMessage(errorMessage);
-          pipeline.onError(ctx);
+          pipeline.processRequest(ctx);
           return;
         }
       }
@@ -250,8 +251,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       if (enforcing) {
         LOGGER.error("Server over capacity when performing gRPC request");
         String errorMessage = "Server over capacity";
+        ctx.setError();
         ctx.getVeniceServerResponseBuilder().setErrorCode(SERVICE_UNAVAILABLE).setErrorMessage(errorMessage);
-        pipeline.onError(ctx);
+        pipeline.processRequest(ctx);
         return;
       }
     }

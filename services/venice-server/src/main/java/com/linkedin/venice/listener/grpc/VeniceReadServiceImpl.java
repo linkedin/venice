@@ -34,13 +34,7 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     GrpcHandlerPipeline requestPipeline = handlerPipeline.getNewPipeline();
 
     requestPipeline.processRequest(ctx);
-    if (requestPipeline.hasError()) {
-      return;
-    }
     requestPipeline.processResponse(ctx);
-    if (requestPipeline.hasError()) {
-      return;
-    }
 
     responseObserver.onNext(ctx.getVeniceServerResponseBuilder().build());
     responseObserver.onCompleted();

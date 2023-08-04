@@ -13,6 +13,7 @@ public class GrpcHandlerContext {
   private StreamObserver<VeniceServerResponse> responseObserver;
 
   private boolean isCompleted = false;
+  private boolean hasError = false;
   private RouterRequest routerRequest;
   private ReadResponse readResponse;
   private GrpcStatsContext grpcStatsContext;
@@ -80,5 +81,13 @@ public class GrpcHandlerContext {
 
   public boolean isCompleted() {
     return isCompleted;
+  }
+
+  public boolean hasError() {
+    return hasError;
+  }
+
+  public void setError() {
+    hasError = true;
   }
 }
