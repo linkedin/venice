@@ -887,6 +887,49 @@ jobs:
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
+  IntegrationTestsR:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+          cache: 'gradle'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestR"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success() || failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
+
   IntegrationTestsZ:
     strategy:
       fail-fast: false
@@ -1079,7 +1122,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: [ValidateGradleWrapper, StaticAnalysis, UnitTestsAndCodeCoverage, AvroCompatibilityTests, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ, AlpiniUnitTests, AlpiniFunctionalTests]
+    needs: [ValidateGradleWrapper, StaticAnalysis, UnitTestsAndCodeCoverage, AvroCompatibilityTests, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsR, IntegrationTestsZ, AlpiniUnitTests, AlpiniFunctionalTests]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
