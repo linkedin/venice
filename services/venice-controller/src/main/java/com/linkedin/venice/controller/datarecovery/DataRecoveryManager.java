@@ -22,6 +22,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 
@@ -68,6 +70,15 @@ public class DataRecoveryManager implements Closeable {
     }
   }
 
+  private String getRecoveryPushJobId(String srcPushJobId) {
+    final String prefix = "data-recovery";
+    if (!srcPushJobId.startsWith(prefix)) {
+      return String.format("%s(%s)_%s", prefix, LocalDateTime.now(ZoneOffset.UTC), srcPushJobId);
+    }
+    return srcPushJobId
+        .replaceFirst("data-recovery\\(.*\\)", String.format("%s(%s)", prefix, LocalDateTime.now(ZoneOffset.UTC)));
+  }
+
   /**
    * Initiate data recovery process by recreating the version, kafka topic, and Helix resources accordingly.
    */
@@ -89,7 +100,7 @@ public class DataRecoveryManager implements Closeable {
        * Update the push job id as a version with same id cannot be added twice.
        * @see VeniceHelixAdmin#addSpecificVersion(String, String, Version)
        */
-      sourceFabricVersion.setPushJobId("data_recovery_" + sourceFabricVersion.getPushJobId());
+      sourceFabricVersion.setPushJobId(getRecoveryPushJobId(sourceFabricVersion.getPushJobId()));
     }
     Version dataRecoveryVersion = sourceFabricVersion.cloneVersion();
     dataRecoveryVersion.setStatus(VersionStatus.STARTED);

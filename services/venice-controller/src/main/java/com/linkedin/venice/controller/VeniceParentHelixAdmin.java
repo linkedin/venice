@@ -3622,10 +3622,16 @@ public class VeniceParentHelixAdmin implements Admin {
       String clusterName,
       StoreInfo destStore,
       int versionNumber) {
-    // Currently new version data recovery is only supported for batch-only store.
-    // For existing data centers, current store version might be serving read requests. Need to create a new version.
-    // For new data centers or non-current version, it's ok to delete and recreate it. No need to create a new version.
-    return destStore.getHybridStoreConfig() == null && versionNumber == destStore.getCurrentVersion()
+    /**
+     * Creating a new data recovery version on the destination colo when satisfying:
+     * 1. New version data recovery is only supported for batch-only store.
+     * 2. For the existing destination data center, a new version is needed if
+     *    2.1. srcVersionNumber equals to the current version in dest colo, as current version is serving read requests.
+     *    2.2. srcVersionNumber is less than the current version in dest colo, because Venice normally assumes that a
+     *         new version always have a larger version number than previous ones
+     *         e.g. {@link StoreBackupVersionCleanupService#cleanupBackupVersion(Store, String)}.
+     */
+    return destStore.getHybridStoreConfig() == null && versionNumber <= destStore.getCurrentVersion()
         && multiClusterConfigs.getControllerConfig(clusterName).getChildDataCenterAllowlist().contains(destFabric);
   }
 
@@ -3641,6 +3647,13 @@ public class VeniceParentHelixAdmin implements Admin {
       String destinationFabric,
       boolean copyAllVersionConfigs,
       Optional<Version> ignored) {
+    if (Objects.equals(sourceFabric, destinationFabric)) {
+      throw new VeniceException(
+          String.format(
+              "Source ({}) and destination ({}) cannot be the same data center",
+              sourceFabric,
+              destinationFabric));
+    }
     StoreInfo srcStore = getStoreInChildRegion(sourceFabric, clusterName, storeName);
     if (version == VERSION_ID_UNSET) {
       version = srcStore.getCurrentVersion();
@@ -3661,9 +3674,9 @@ public class VeniceParentHelixAdmin implements Admin {
         parentStore.setLargestUsedVersionNumber(newVersion);
         repository.updateStore(parentStore);
         LOGGER.info(
-            "Current version {}_v{} in {} might be serving read requests. Copying data to a new version {}.",
-            storeName,
+            "version {} is less or equal to in the current version of {} in {}. Copying data to a new version {}.",
             version,
+            storeName,
             destinationFabric,
             newVersion);
         version = newVersion;
@@ -3690,17 +3703,20 @@ public class VeniceParentHelixAdmin implements Admin {
       String sourceFabric,
       String destinationFabric,
       Optional<Integer> ignored) {
+    if (Objects.equals(sourceFabric, destinationFabric)) {
+      throw new VeniceException(
+          String.format(
+              "Source ({}) and destination ({}) cannot be the same data center",
+              sourceFabric,
+              destinationFabric));
+    }
     StoreInfo srcStore = getStoreInChildRegion(sourceFabric, clusterName, storeName);
     if (version == VERSION_ID_UNSET) {
       version = srcStore.getCurrentVersion();
     }
     StoreInfo destStore = getStoreInChildRegion(destinationFabric, clusterName, storeName);
     if (whetherToCreateNewDataRecoveryVersion(destinationFabric, clusterName, destStore, version)) {
-      LOGGER.info(
-          "Skip current version {}_v{} cleanup in {} as it might be serving read requests.",
-          storeName,
-          version,
-          destinationFabric);
+      LOGGER.info("Skip cleanup for store: {}, version:{} in {}", storeName, version, destinationFabric);
       return;
     }
     int amplificationFactor = srcStore.getPartitionerConfig().getAmplificationFactor();
