@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -13,19 +14,26 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.Config;
 import org.apache.kafka.clients.admin.ConfigEntry;
 import org.apache.kafka.clients.admin.CreateTopicsResult;
+import org.apache.kafka.clients.admin.DeleteTopicsResult;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownServerException;
+import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -146,5 +154,69 @@ public class ApacheKafkaAdminAdapterTest {
     // Verify that createTopics() and get() are called 4 times
     verify(internalKafkaAdminClientMock, times(4)).createTopics(any());
     verify(createTopicsKafkaFutureMock, times(4)).get();
+  }
+
+  @Test
+  public void testDeleteTopicValidTopicDeletion() throws Exception {
+    DeleteTopicsResult deleteTopicsResultMock = mock(DeleteTopicsResult.class);
+    KafkaFuture<Void> topicDeletionFutureMock = mock(KafkaFuture.class);
+
+    when(internalKafkaAdminClientMock.deleteTopics(any())).thenReturn(deleteTopicsResultMock);
+    when(deleteTopicsResultMock.all()).thenReturn(topicDeletionFutureMock);
+    when(topicDeletionFutureMock.get(eq(1000L), eq(TimeUnit.MILLISECONDS))).thenReturn(null);
+
+    kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L));
+
+    verify(internalKafkaAdminClientMock).deleteTopics(eq(Collections.singleton(testPubSubTopic.getName())));
+    verify(deleteTopicsResultMock).all();
+    verify(topicDeletionFutureMock).get(eq(1000L), eq(TimeUnit.MILLISECONDS));
+  }
+
+  @Test
+  public void testDeleteTopicThrowsException() throws Exception {
+    DeleteTopicsResult deleteTopicsResultMock = mock(DeleteTopicsResult.class);
+    KafkaFuture<Void> topicDeletionFutureMock = mock(KafkaFuture.class);
+
+    when(internalKafkaAdminClientMock.deleteTopics(any())).thenReturn(deleteTopicsResultMock);
+    when(deleteTopicsResultMock.all()).thenReturn(topicDeletionFutureMock);
+
+    when(topicDeletionFutureMock.get(eq(1000L), eq(TimeUnit.MILLISECONDS)))
+        .thenThrow(new ExecutionException(new UnknownTopicOrPartitionException("Unknown topic or partition")))
+        .thenThrow(new ExecutionException(new TimeoutException("Timeout exception")))
+        .thenThrow(new ExecutionException(new UnknownServerException("Unknown server exception")))
+        .thenThrow(new java.util.concurrent.TimeoutException("Timeout exception"))
+        .thenThrow(new InterruptedException("Interrupted exception"));
+
+    // First call throws UnknownServerException
+    assertThrows(
+        PubSubTopicDoesNotExistException.class,
+        () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
+    verify(internalKafkaAdminClientMock).deleteTopics(eq(Collections.singleton(testPubSubTopic.getName())));
+
+    // Second call throws TimeoutException
+    assertThrows(
+        PubSubOpTimeoutException.class,
+        () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
+
+    // Third call throws UnknownServerException
+    assertThrows(
+        PubSubClientException.class,
+        () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
+
+    // Fourth call throws TimeoutException
+    assertThrows(
+        PubSubOpTimeoutException.class,
+        () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
+
+    // Fifth call throws InterruptedException
+    assertThrows(
+        PubSubClientException.class,
+        () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
+    assertTrue(Thread.currentThread().isInterrupted());
+
+    // Verify that deleteTopics() and get() are called 5 times
+    verify(internalKafkaAdminClientMock, times(5)).deleteTopics(eq(Collections.singleton(testPubSubTopic.getName())));
+    verify(deleteTopicsResultMock, times(5)).all();
+    verify(topicDeletionFutureMock, times(5)).get(eq(1000L), eq(TimeUnit.MILLISECONDS));
   }
 }

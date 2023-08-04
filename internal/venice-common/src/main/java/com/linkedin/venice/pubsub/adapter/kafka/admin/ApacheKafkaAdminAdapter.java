@@ -50,7 +50,6 @@ import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.TimeoutException;
-import org.apache.kafka.common.errors.TopicDeletionDisabledException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
@@ -186,9 +185,6 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       LOGGER.debug("Failed to delete kafka topic: {}", topic.getName(), e);
       if (ExceptionUtils.recursiveClassEquals(e, UnknownTopicOrPartitionException.class)) {
         throw new PubSubTopicDoesNotExistException(topic.getName(), e);
-      }
-      if (ExceptionUtils.recursiveClassEquals(e, TopicDeletionDisabledException.class)) {
-        throw new PubSubClientException("Topic deletion is disabled for topic: " + topic.getName(), e);
       }
       if (ExceptionUtils.recursiveClassEquals(e, TimeoutException.class)) {
         throw new PubSubOpTimeoutException("Timed out while deleting topic: " + topic.getName(), e);

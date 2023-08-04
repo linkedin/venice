@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import com.linkedin.venice.utils.RetryUtils;
@@ -41,6 +42,16 @@ public interface PubSubAdminAdapter extends Closeable {
       int replication,
       PubSubTopicConfiguration pubSubTopicConfiguration);
 
+  /**
+   * Delete a topic with the given name. The calling thread will block until the topic is deleted or the timeout is reached.
+   *
+   * @param topicName The name of the topic to delete.
+   * @param timeout The maximum duration to wait for the deletion to complete.
+   *
+   * @throws PubSubTopicDoesNotExistException If the topic does not exist.
+   * @throws PubSubOpTimeoutException If the operation times out.
+   * @throws PubSubClientException For all other issues related to the PubSub client.
+   */
   void deleteTopic(PubSubTopic topicName, Duration timeout);
 
   Set<PubSubTopic> listAllTopics();
