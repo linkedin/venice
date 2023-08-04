@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
-import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
 import com.linkedin.venice.exceptions.VeniceRetriableException;
@@ -71,30 +71,37 @@ public interface PubSubAdminAdapter extends Closeable {
    *
    * @throws PubSubTopicDoesNotExistException If the specified PubSubTopic topic does not exist.
    * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve the configuration.
-   * @throws PubSubClientException If an error occurs while attempting to retrieve the configuration.
-   * @throws PubSubClientException If the current thread is interrupted while attempting to retrieve the configuration.
+   * @throws PubSubClientException If an error occurs while attempting to retrieve the configuration or if the current thread is interrupted while attempting to retrieve the configuration.
    */
   PubSubTopicConfiguration getTopicConfig(PubSubTopic pubSubTopic);
 
-  default PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topic) {
-    long accumWaitTime = 0;
+  default PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic pubSubTopic) {
+    long accumulatedWaitTime = 0;
     long sleepIntervalInMs = 100;
     Exception exception = null;
-    while (accumWaitTime < getMaxGetTopicConfigRetryTimeInMs()) {
+    while (accumulatedWaitTime < getMaxGetTopicConfigRetryTimeInMs()) {
       try {
-        return getTopicConfig(topic);
+        return getTopicConfig(pubSubTopic);
       } catch (PubSubClientRetriableException | PubSubClientException e) {
         exception = e;
         Utils.sleep(sleepIntervalInMs);
-        accumWaitTime += sleepIntervalInMs;
+        accumulatedWaitTime += sleepIntervalInMs;
         sleepIntervalInMs = Math.min(5 * MS_PER_SECOND, sleepIntervalInMs * 2);
       }
     }
     throw new PubSubClientException(
-        "After retrying for " + accumWaitTime + "ms, failed to get topic configs for: " + topic,
+        "After retrying for " + accumulatedWaitTime + "ms, failed to get topic configs for: " + pubSubTopic,
         exception);
   }
 
+  /**
+   * Retrieves a set of all available PubSub topics from the PubSub cluster.
+   *
+   * @return A Set of PubSubTopic objects representing all available topics.
+   *
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve the list of topics.
+   * @throws PubSubClientException If an error occurs while attempting to retrieve the list of topics or the current thread is interrupted while attempting to retrieve the list of topics.
+   */
   Set<PubSubTopic> listAllTopics();
 
   void setTopicConfig(PubSubTopic pubSubTopic, PubSubTopicConfiguration pubSubTopicConfiguration)
@@ -198,6 +205,6 @@ public interface PubSubAdminAdapter extends Closeable {
 
   // "admin.get.topic.config.max.retry.sec"
   default long getMaxGetTopicConfigRetryTimeInMs() {
-    return Duration.ofSeconds(DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS).toMillis();
+    return Duration.ofSeconds(PUBSUB_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS_DEFAULT_VALUE).toMillis();
   }
 }

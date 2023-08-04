@@ -103,8 +103,8 @@ public class PubSubInstrumentedAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName) {
-    return instrument(GET_TOPIC_CONFIG_WITH_RETRY, () -> pubSubAdminAdapter.getTopicConfigWithRetry(topicName));
+  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic pubSubTopic) {
+    return instrument(GET_TOPIC_CONFIG_WITH_RETRY, () -> pubSubAdminAdapter.getTopicConfigWithRetry(pubSubTopic));
   }
 
   @Override

@@ -100,13 +100,13 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topic) {
+  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic pubSubTopic) {
     long accumWaitTime = 0;
     long sleepIntervalInMs = 100;
     VeniceException veniceException = null;
     while (accumWaitTime < 1000) {
       try {
-        return getTopicConfig(topic);
+        return getTopicConfig(pubSubTopic);
       } catch (VeniceException e) {
         veniceException = e;
         Utils.sleep(sleepIntervalInMs);
@@ -115,7 +115,7 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
       }
     }
     throw new VeniceException(
-        "After retrying for " + accumWaitTime + "ms, failed to get topic configs for: " + topic,
+        "After retrying for " + accumWaitTime + "ms, failed to get topic configs for: " + pubSubTopic,
         veniceException);
   }
 

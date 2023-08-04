@@ -9,5 +9,9 @@ public class PubSubConstants {
   // explicitly set.
   public static final String PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS =
       "pubsub.producer.use.high.throughput.defaults";
-  public static final long DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS = 600;
+
+  /**
+   * Default v
+   */
+  public static final long PUBSUB_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS_DEFAULT_VALUE = 600;
 }

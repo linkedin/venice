@@ -224,8 +224,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
    *
    * @throws PubSubTopicDoesNotExistException If the specified Kafka topic does not exist.
    * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve the configuration.
-   * @throws PubSubClientException If an error occurs while attempting to retrieve the configuration.
-   * @throws PubSubClientException If the current thread is interrupted while attempting to retrieve the configuration.
+   * @throws PubSubClientException If an error occurs while attempting to retrieve the configuration or if the current thread is interrupted while attempting to retrieve the configuration.
    */
   @Override
   public PubSubTopicConfiguration getTopicConfig(PubSubTopic pubSubTopic) {
@@ -250,6 +249,14 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     }
   }
 
+  /**
+   * Retrieves a set of all available PubSub topics from the Kafka cluster.
+   *
+   * @return A Set of PubSubTopic objects representing all available Kafka topics.
+   *
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve the list of topics.
+   * @throws PubSubClientException If an error occurs while attempting to retrieve the list of topics or the current thread is interrupted while attempting to retrieve the list of topics.
+   */
   @Override
   public Set<PubSubTopic> listAllTopics() {
     ListTopicsResult listTopicsResult = getKafkaAdminClient().listTopics();
@@ -259,8 +266,14 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
           .stream()
           .map(t -> pubSubTopicRepository.getTopic(t))
           .collect(Collectors.toSet());
-    } catch (Exception e) {
-      throw new PubSubClientException("Failed to list all topics due to exception: ", e);
+    } catch (ExecutionException e) {
+      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+        throw new PubSubClientRetriableException("Failed to list topics", e);
+      }
+      throw new PubSubClientException("Failed to list topics", e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PubSubClientException("Interrupted while listing topics", e);
     }
   }
 
