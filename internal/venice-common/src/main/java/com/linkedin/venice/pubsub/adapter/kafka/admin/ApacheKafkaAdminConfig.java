@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
-import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS;
+import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
@@ -37,7 +37,13 @@ public class ApacheKafkaAdminConfig {
           ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC,
           DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS);
     }
+  }
 
+  long getMaxGetTopicConfigRetryTimeInMs() {
+    return Long.parseLong(
+        adminProperties.getProperty(
+            ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC,
+            String.valueOf(DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS)));
   }
 
   public Properties getAdminProperties() {

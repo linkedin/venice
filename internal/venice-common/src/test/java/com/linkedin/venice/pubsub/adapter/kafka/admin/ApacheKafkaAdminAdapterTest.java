@@ -13,6 +13,7 @@ import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -30,6 +31,7 @@ import org.apache.kafka.clients.admin.CreateTopicsResult;
 import org.apache.kafka.clients.admin.DeleteTopicsResult;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
+import org.apache.kafka.common.errors.NetworkException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownServerException;
@@ -46,6 +48,7 @@ public class ApacheKafkaAdminAdapterTest {
   private ApacheKafkaAdminAdapter kafkaAdminAdapter;
   private PubSubTopicConfiguration sampleTopicConfiguration;
   private Config sampleConfig;
+  private ApacheKafkaAdminConfig apacheKafkaAdminConfig;
 
   private static final int NUM_PARTITIONS = 3;
   private static final int REPLICATION_FACTOR = 4;
@@ -56,7 +59,9 @@ public class ApacheKafkaAdminAdapterTest {
     maxRetryInMs = 1000L;
     pubSubTopicRepository = new PubSubTopicRepository();
     testPubSubTopic = pubSubTopicRepository.getTopic("test-topic");
-    kafkaAdminAdapter = new ApacheKafkaAdminAdapter(internalKafkaAdminClientMock, maxRetryInMs, pubSubTopicRepository);
+    apacheKafkaAdminConfig = mock(ApacheKafkaAdminConfig.class);
+    kafkaAdminAdapter =
+        new ApacheKafkaAdminAdapter(internalKafkaAdminClientMock, apacheKafkaAdminConfig, pubSubTopicRepository);
     sampleTopicConfiguration = new PubSubTopicConfiguration(
         Optional.of(Duration.ofDays(3).toMillis()),
         true,
@@ -122,6 +127,7 @@ public class ApacheKafkaAdminAdapterTest {
     when(createTopicsKafkaFutureMock.get())
         .thenThrow(new ExecutionException(new InvalidReplicationFactorException("Invalid replication factor")))
         .thenThrow(new ExecutionException(new TopicExistsException("Topic exists")))
+        .thenThrow(new ExecutionException(new NetworkException("Retryable network exception")))
         .thenThrow(new ExecutionException(new UnknownServerException("Unknown server exception")))
         .thenThrow(new InterruptedException("Interrupted exception"));
 
@@ -138,22 +144,28 @@ public class ApacheKafkaAdminAdapterTest {
         () -> kafkaAdminAdapter
             .createTopic(testPubSubTopic, NUM_PARTITIONS, REPLICATION_FACTOR, sampleTopicConfiguration));
 
-    // Third call throws UnknownServerException
+    // Third call throws NetworkException
+    assertThrows(
+        PubSubClientRetriableException.class,
+        () -> kafkaAdminAdapter
+            .createTopic(testPubSubTopic, NUM_PARTITIONS, REPLICATION_FACTOR, sampleTopicConfiguration));
+
+    // Fourth call throws UnknownServerException
     assertThrows(
         PubSubClientException.class,
         () -> kafkaAdminAdapter
             .createTopic(testPubSubTopic, NUM_PARTITIONS, REPLICATION_FACTOR, sampleTopicConfiguration));
 
-    // Fourth call throws InterruptedException
+    // Fifth call throws InterruptedException
     assertThrows(
         PubSubClientException.class,
         () -> kafkaAdminAdapter
             .createTopic(testPubSubTopic, NUM_PARTITIONS, REPLICATION_FACTOR, sampleTopicConfiguration));
     assertTrue(Thread.currentThread().isInterrupted());
 
-    // Verify that createTopics() and get() are called 4 times
-    verify(internalKafkaAdminClientMock, times(4)).createTopics(any());
-    verify(createTopicsKafkaFutureMock, times(4)).get();
+    // Verify that createTopics() and get() are called 5 times
+    verify(internalKafkaAdminClientMock, times(5)).createTopics(any());
+    verify(createTopicsKafkaFutureMock, times(5)).get();
   }
 
   @Test

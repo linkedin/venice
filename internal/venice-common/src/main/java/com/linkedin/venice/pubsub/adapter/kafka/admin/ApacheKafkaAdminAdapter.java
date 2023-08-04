@@ -1,8 +1,5 @@
 package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC;
-import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
-
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
@@ -17,7 +14,6 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import com.linkedin.venice.utils.ExceptionUtils;
-import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -49,6 +45,7 @@ import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.InvalidTopicException;
+import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
@@ -62,127 +59,194 @@ import org.apache.logging.log4j.Logger;
 public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaAdminAdapter.class);
   private final AdminClient internalKafkaAdminClient;
-  private Long maxRetryInMs;
+  private final ApacheKafkaAdminConfig apacheKafkaAdminConfig;
   private PubSubTopicRepository pubSubTopicRepository;
 
-  public ApacheKafkaAdminAdapter(Properties properties, PubSubTopicRepository pubSubTopicRepository) {
+  public ApacheKafkaAdminAdapter(
+      ApacheKafkaAdminConfig apacheKafkaAdminConfig,
+      PubSubTopicRepository pubSubTopicRepository) {
     this(
-        AdminClient
-            .create(Objects.requireNonNull(properties, "Properties for kafka admin construction cannot be null!")),
-        (Long) properties.get(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC) * MS_PER_SECOND,
+        AdminClient.create(
+            Objects.requireNonNull(
+                apacheKafkaAdminConfig.getAdminProperties(),
+                "Properties for kafka admin construction cannot be null!")),
+        apacheKafkaAdminConfig,
         pubSubTopicRepository);
-    LOGGER.debug("Created KafkaAdminClient with properties: {}", properties);
   }
 
   // used for testing
   ApacheKafkaAdminAdapter(
       AdminClient internalKafkaAdminClient,
-      Long maxRetryInMs,
+      ApacheKafkaAdminConfig apacheKafkaAdminConfig,
       PubSubTopicRepository pubSubTopicRepository) {
+    this.apacheKafkaAdminConfig = apacheKafkaAdminConfig;
     this.internalKafkaAdminClient =
         Objects.requireNonNull(internalKafkaAdminClient, "Kafka admin client cannot be null!");
-    this.maxRetryInMs = maxRetryInMs;
     this.pubSubTopicRepository = pubSubTopicRepository;
+    LOGGER.debug("Created KafkaAdminClient with properties: {}", apacheKafkaAdminConfig.getAdminProperties());
   }
 
+  /**
+   * Creates a new topic in the PubSub system with the given parameters.
+   *
+   * @param pubSubTopic The topic to be created.
+   * @param numPartitions The number of partitions to be created for the topic.
+   * @param replicationFactor The number of replicas for each partition.
+   * @param pubSubTopicConfiguration Additional topic configuration such as retention, compaction policy, etc.
+   * @throws PubSubInvalidReplicationFactorException If the provided replication factor is invalid according to broker constraints, or if the number of brokers available is less than the provided replication factor.
+   * @throws PubSubTopicExistsException If a topic with the same name already exists.
+   * @throws PubSubClientRetriableException If the operation failed due to a retriable error.
+   * @throws PubSubClientException For all other issues related to the PubSub client.
+   */
   @Override
   public void createTopic(
-      PubSubTopic topic,
+      PubSubTopic pubSubTopic,
       int numPartitions,
-      int replication,
+      int replicationFactor,
       PubSubTopicConfiguration pubSubTopicConfiguration) {
-    if (replication < 1 || replication > Short.MAX_VALUE) {
-      throw new PubSubInvalidReplicationFactorException(
-          "Replication factor cannot be > " + Short.MAX_VALUE + " or < 1");
+    if (replicationFactor < 1 || replicationFactor > Short.MAX_VALUE) {
+      throw new IllegalArgumentException("Replication factor cannot be > " + Short.MAX_VALUE + " or < 1");
     }
     // Convert topic configuration into properties
     Properties topicProperties = unmarshallProperties(pubSubTopicConfiguration);
     Map<String, String> topicPropertiesMap = new HashMap<>(topicProperties.size());
     topicProperties.stringPropertyNames().forEach(key -> topicPropertiesMap.put(key, topicProperties.getProperty(key)));
-    Collection<NewTopic> newTopics = Collections
-        .singleton(new NewTopic(topic.getName(), numPartitions, (short) replication).configs(topicPropertiesMap));
+    Collection<NewTopic> newTopics = Collections.singleton(
+        new NewTopic(pubSubTopic.getName(), numPartitions, (short) replicationFactor).configs(topicPropertiesMap));
     try {
       LOGGER.debug(
           "Creating kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
-          topic.getName(),
+          pubSubTopic.getName(),
           numPartitions,
-          replication,
+          replicationFactor,
           topicProperties);
       CreateTopicsResult createTopicsResult = getKafkaAdminClient().createTopics(newTopics);
       KafkaFuture<Void> topicCreationFuture = createTopicsResult.all();
       topicCreationFuture.get(); // block until topic creation is complete
 
-      int actualNumPartitions = createTopicsResult.numPartitions(topic.getName()).get();
-      int actualReplicationFactor = createTopicsResult.replicationFactor(topic.getName()).get();
-      Config actualTopicConfig = createTopicsResult.config(topic.getName()).get();
+      int actualNumPartitions = createTopicsResult.numPartitions(pubSubTopic.getName()).get();
+      int actualReplicationFactor = createTopicsResult.replicationFactor(pubSubTopic.getName()).get();
+      Config actualTopicConfig = createTopicsResult.config(pubSubTopic.getName()).get();
 
       if (actualNumPartitions != numPartitions) {
         throw new PubSubClientException(
             String.format(
                 "Kafka topic %s was created with incorrect num of partitions - requested: %d actual: %d",
-                topic.getName(),
+                pubSubTopic.getName(),
                 numPartitions,
                 actualNumPartitions));
       }
       LOGGER.debug(
           "Successfully created kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
-          topic.getName(),
+          pubSubTopic.getName(),
           actualNumPartitions,
           actualReplicationFactor,
           actualTopicConfig);
     } catch (ExecutionException e) {
       LOGGER.debug(
           "Failed to create kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
-          topic.getName(),
+          pubSubTopic.getName(),
           numPartitions,
-          replication,
+          replicationFactor,
           topicProperties,
           e);
       if (ExceptionUtils.recursiveClassEquals(e, InvalidReplicationFactorException.class)) {
-        throw new PubSubInvalidReplicationFactorException(topic.getName(), replication, e);
-      } else if (ExceptionUtils.recursiveClassEquals(e, TopicExistsException.class)) {
-        throw new PubSubTopicExistsException(topic, e);
-      } else {
-        throw new PubSubClientException("Failed to create topic: " + topic + " due to ExecutionException", e);
+        throw new PubSubInvalidReplicationFactorException(pubSubTopic.getName(), replicationFactor, e);
       }
+      if (ExceptionUtils.recursiveClassEquals(e, TopicExistsException.class)) {
+        throw new PubSubTopicExistsException(pubSubTopic, e);
+      }
+      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+        throw new PubSubClientRetriableException("Failed to create kafka topic: " + pubSubTopic, e);
+      }
+      throw new PubSubClientException("Failed to create kafka topic: " + pubSubTopic + " due to ExecutionException", e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       LOGGER.debug(
           "Failed to create kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
-          topic.getName(),
+          pubSubTopic.getName(),
           numPartitions,
-          replication,
+          replicationFactor,
           topicProperties,
           e);
-      throw new PubSubClientException("Failed to create topic: " + topic + "due to Exception", e);
+      throw new PubSubClientException("Failed to create kafka topic: " + pubSubTopic + "due to Exception", e);
     }
   }
 
+  /**
+   * Delete a given topic.
+   * The calling thread will block until the topic is deleted or the timeout is reached.
+   *
+   * @param pubSubTopic The topic to delete.
+   * @param timeout The maximum duration to wait for the deletion to complete.
+   *
+   * @throws PubSubTopicDoesNotExistException If the topic does not exist.
+   * @throws PubSubOpTimeoutException If the operation times out.
+   * @throws PubSubClientRetriableException If the operation fails and can be retried.
+   * @throws PubSubClientException For all other issues related to the PubSub client.
+   */
   @Override
-  public void deleteTopic(PubSubTopic topic, Duration timeout) {
+  public void deleteTopic(PubSubTopic pubSubTopic, Duration timeout) {
     try {
-      LOGGER.debug("Deleting kafka topic: {}", topic.getName());
+      LOGGER.debug("Deleting kafka topic: {}", pubSubTopic.getName());
       DeleteTopicsResult deleteTopicsResult =
-          internalKafkaAdminClient.deleteTopics(Collections.singleton(topic.getName()));
+          internalKafkaAdminClient.deleteTopics(Collections.singleton(pubSubTopic.getName()));
       KafkaFuture<Void> topicDeletionFuture = deleteTopicsResult.all();
       topicDeletionFuture.get(timeout.toMillis(), TimeUnit.MILLISECONDS); // block until topic deletion is complete
-      LOGGER.debug("Successfully deleted kafka topic: {}", topic.getName());
+      LOGGER.debug("Successfully deleted kafka topic: {}", pubSubTopic.getName());
     } catch (ExecutionException e) {
-      LOGGER.debug("Failed to delete kafka topic: {}", topic.getName(), e);
+      LOGGER.debug("Failed to delete kafka topic: {}", pubSubTopic.getName(), e);
       if (ExceptionUtils.recursiveClassEquals(e, UnknownTopicOrPartitionException.class)) {
-        throw new PubSubTopicDoesNotExistException(topic.getName(), e);
+        throw new PubSubTopicDoesNotExistException(pubSubTopic.getName(), e);
       }
       if (ExceptionUtils.recursiveClassEquals(e, TimeoutException.class)) {
-        throw new PubSubOpTimeoutException("Timed out while deleting topic: " + topic.getName(), e);
+        throw new PubSubOpTimeoutException("Timed out while deleting kafka topic: " + pubSubTopic.getName(), e);
       }
-      throw new PubSubClientException("Failed to delete topic: " + topic.getName(), e);
+      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+        throw new PubSubClientRetriableException("Failed to delete kafka topic: " + pubSubTopic.getName(), e);
+      }
+      throw new PubSubClientException("Failed to delete topic: " + pubSubTopic.getName(), e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      LOGGER.debug("Failed to delete kafka topic: {}", topic.getName(), e);
-      throw new PubSubClientException("Interrupted while deleting topic: " + topic.getName(), e);
+      LOGGER.debug("Failed to delete kafka topic: {}", pubSubTopic.getName(), e);
+      throw new PubSubClientException("Interrupted while deleting kafka topic: " + pubSubTopic.getName(), e);
     } catch (java.util.concurrent.TimeoutException e) {
-      LOGGER.debug("Failed to delete kafka topic: {}", topic.getName(), e);
-      throw new PubSubOpTimeoutException("Timed out while deleting topic: " + topic.getName(), e);
+      LOGGER.debug("Failed to delete kafka topic: {}", pubSubTopic.getName(), e);
+      throw new PubSubOpTimeoutException("Timed out while deleting kafka topic: " + pubSubTopic.getName(), e);
+    }
+  }
+
+  /**
+   * Retrieves the configuration of a Kafka topic.
+   *
+   * @param pubSubTopic The PubSubTopic representing the Kafka topic for which to retrieve the configuration.
+   * @return The configuration of the specified Kafka topic as a PubSubTopicConfiguration object.
+   *
+   * @throws PubSubTopicDoesNotExistException If the specified Kafka topic does not exist.
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve the configuration.
+   * @throws PubSubClientException If an error occurs while attempting to retrieve the configuration.
+   * @throws PubSubClientException If the current thread is interrupted while attempting to retrieve the configuration.
+   */
+  @Override
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic pubSubTopic) {
+    ConfigResource resource = new ConfigResource(ConfigResource.Type.TOPIC, pubSubTopic.getName());
+    Collection<ConfigResource> configResources = Collections.singleton(resource);
+    DescribeConfigsResult describeConfigsResult = getKafkaAdminClient().describeConfigs(configResources);
+    try {
+      Config config = describeConfigsResult.all().get().get(resource);
+      return marshallProperties(config);
+    } catch (ExecutionException e) {
+      LOGGER.debug("Failed to get configs for kafka topic: {}", pubSubTopic, e);
+      if (ExceptionUtils.recursiveClassEquals(e, UnknownTopicOrPartitionException.class)) {
+        throw new PubSubTopicDoesNotExistException(pubSubTopic, e);
+      }
+      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+        throw new PubSubClientRetriableException("Failed to get configs for kafka topic: " + pubSubTopic, e);
+      }
+      throw new PubSubClientException("Failed to get configs for kafka topic: " + pubSubTopic, e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PubSubClientException("Interrupted while getting configs for kafka topic: " + pubSubTopic, e);
     }
   }
 
@@ -233,42 +297,6 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
             // Option B: ... or default to a sentinel value if it's missing
             .orElse(TopicManager.UNKNOWN_TOPIC_RETENTION),
         "retention");
-  }
-
-  @Override
-  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topic) throws PubSubTopicDoesNotExistException {
-    ConfigResource resource = new ConfigResource(ConfigResource.Type.TOPIC, topic.getName());
-    Collection<ConfigResource> configResources = Collections.singleton(resource);
-    DescribeConfigsResult result = getKafkaAdminClient().describeConfigs(configResources);
-    try {
-      Config config = result.all().get().get(resource);
-      return marshallProperties(config);
-    } catch (Exception e) {
-      if (e.getCause() instanceof UnknownTopicOrPartitionException) {
-        throw new PubSubTopicDoesNotExistException("Topic: " + topic + " doesn't exist", e);
-      }
-      throw new PubSubClientException("Failed to get topic configs for: " + topic, e);
-    }
-  }
-
-  @Override
-  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topic) {
-    long accumWaitTime = 0;
-    long sleepIntervalInMs = 100;
-    Exception exception = null;
-    while (accumWaitTime < this.maxRetryInMs) {
-      try {
-        return getTopicConfig(topic);
-      } catch (PubSubClientRetriableException | PubSubClientException e) {
-        exception = e;
-        Utils.sleep(sleepIntervalInMs);
-        accumWaitTime += sleepIntervalInMs;
-        sleepIntervalInMs = Math.min(5 * MS_PER_SECOND, sleepIntervalInMs * 2);
-      }
-    }
-    throw new PubSubClientException(
-        "After retrying for " + accumWaitTime + "ms, failed to get topic configs for: " + topic,
-        exception);
   }
 
   @Override
@@ -465,5 +493,10 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     } catch (Exception e) {
       throw new PubSubClientException("Failed to get " + content + " for some topics", e);
     }
+  }
+
+  @Override
+  public long getMaxGetTopicConfigRetryTimeInMs() {
+    return apacheKafkaAdminConfig.getMaxGetTopicConfigRetryTimeInMs();
   }
 }

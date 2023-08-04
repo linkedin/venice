@@ -70,8 +70,12 @@ public class TopicManager implements Closeable {
    */
   public static final long DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS = 24 * Time.MS_PER_HOUR;
 
-  private static final List<Class<? extends Throwable>> CREATE_TOPIC_RETRIABLE_EXCEPTIONS = Collections
-      .unmodifiableList(Arrays.asList(PubSubInvalidReplicationFactorException.class, PubSubOpTimeoutException.class));
+  private static final List<Class<? extends Throwable>> CREATE_TOPIC_RETRIABLE_EXCEPTIONS =
+      Collections.unmodifiableList(
+          Arrays.asList(
+              PubSubInvalidReplicationFactorException.class,
+              PubSubOpTimeoutException.class,
+              PubSubClientRetriableException.class));
 
   // Immutable state
   private final Logger logger;
@@ -484,50 +488,50 @@ public class TopicManager implements Closeable {
 
   /**
    * Delete a topic and block until it is deleted or operation times out.
-   * @param topicName topic to delete
+   * @param pubSubTopic topic to delete
    */
-  public void ensureTopicIsDeletedAndBlock(PubSubTopic topicName) {
-    if (!containsTopicAndAllPartitionsAreOnline(topicName)) {
+  public void ensureTopicIsDeletedAndBlock(PubSubTopic pubSubTopic) {
+    if (!containsTopicAndAllPartitionsAreOnline(pubSubTopic)) {
       // Topic doesn't exist
       return;
     }
 
-    logger.info("Deleting topic: {}", topicName);
+    logger.info("Deleting topic: {}", pubSubTopic);
     try {
-      pubSubWriteOnlyAdminAdapter.get().deleteTopic(topicName, Duration.ofMillis(kafkaOperationTimeoutMs));
-      logger.info("Topic: {} has been deleted", topicName);
+      pubSubWriteOnlyAdminAdapter.get().deleteTopic(pubSubTopic, Duration.ofMillis(kafkaOperationTimeoutMs));
+      logger.info("Topic: {} has been deleted", pubSubTopic);
     } catch (PubSubOpTimeoutException e) {
-      logger.warn("Failed to delete topic: {} after {} ms", topicName, kafkaOperationTimeoutMs);
+      logger.warn("Failed to delete topic: {} after {} ms", pubSubTopic, kafkaOperationTimeoutMs);
     } catch (PubSubTopicDoesNotExistException e) {
       // No-op. Topic is deleted already, consider this as a successful deletion.
     } catch (PubSubClientRetriableException | PubSubClientException e) {
-      logger.error("Failed to delete topic: {}", topicName, e);
+      logger.error("Failed to delete topic: {}", pubSubTopic, e);
       throw e;
     }
 
     // let's make sure the topic is deleted
-    if (pubSubWriteOnlyAdminAdapter.get().containsTopic(topicName)) {
-      throw new PubSubTopicExistsException("Topic: " + topicName.getName() + " still exists after deletion");
+    if (pubSubWriteOnlyAdminAdapter.get().containsTopic(pubSubTopic)) {
+      throw new PubSubTopicExistsException("Topic: " + pubSubTopic.getName() + " still exists after deletion");
     }
   }
 
-  public void ensureTopicIsDeletedAndBlockWithRetry(PubSubTopic topicName) {
+  public void ensureTopicIsDeletedAndBlockWithRetry(PubSubTopic pubSubTopic) {
     int attempts = 0;
     while (attempts++ < MAX_TOPIC_DELETE_RETRIES) {
       try {
-        logger.debug("Deleting topic: {} with retry attempt {} / {}", topicName, attempts, MAX_TOPIC_DELETE_RETRIES);
-        ensureTopicIsDeletedAndBlock(topicName);
+        logger.debug("Deleting topic: {} with retry attempt {} / {}", pubSubTopic, attempts, MAX_TOPIC_DELETE_RETRIES);
+        ensureTopicIsDeletedAndBlock(pubSubTopic);
         return;
       } catch (PubSubClientRetriableException e) {
         String errorMessage = e instanceof PubSubOpTimeoutException ? "timed out" : "errored out";
         logger.warn(
             "Topic deletion for topic: {} {}! Retry attempt {} / {}",
-            topicName,
+            pubSubTopic,
             errorMessage,
             attempts,
             MAX_TOPIC_DELETE_RETRIES);
         if (attempts == MAX_TOPIC_DELETE_RETRIES) {
-          logger.error("Topic deletion for topic {} {}! Giving up!!", topicName, errorMessage, e);
+          logger.error("Topic deletion for topic {} {}! Giving up!!", pubSubTopic, errorMessage, e);
           throw e;
         }
       }

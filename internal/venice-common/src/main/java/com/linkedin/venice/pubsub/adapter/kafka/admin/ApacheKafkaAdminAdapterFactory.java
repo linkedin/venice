@@ -19,9 +19,8 @@ public class ApacheKafkaAdminAdapterFactory implements PubSubAdminAdapterFactory
 
   @Override
   public PubSubAdminAdapter create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository) {
-    ApacheKafkaAdminConfig adminConfig = new ApacheKafkaAdminConfig(veniceProperties);
-    PubSubAdminAdapter pubSubAdminAdapter =
-        new ApacheKafkaAdminAdapter(adminConfig.getAdminProperties(), pubSubTopicRepository);
+    ApacheKafkaAdminConfig apacheKafkaAdminConfig = new ApacheKafkaAdminConfig(veniceProperties);
+    PubSubAdminAdapter pubSubAdminAdapter = new ApacheKafkaAdminAdapter(apacheKafkaAdminConfig, pubSubTopicRepository);
     return pubSubAdminAdapter;
   }
 
