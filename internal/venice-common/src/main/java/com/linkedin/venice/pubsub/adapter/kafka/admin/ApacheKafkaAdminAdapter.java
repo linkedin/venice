@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.Config;
 import org.apache.kafka.clients.admin.ConfigEntry;
+import org.apache.kafka.clients.admin.CreateTopicsResult;
 import org.apache.kafka.clients.admin.DescribeConfigsResult;
 import org.apache.kafka.clients.admin.ListTopicsResult;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -56,16 +58,27 @@ import org.apache.logging.log4j.Logger;
  */
 public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaAdminAdapter.class);
-  private AdminClient kafkaAdminClient;
+  private final AdminClient internalKafkaAdminClient;
   private Long maxRetryInMs;
   private PubSubTopicRepository pubSubTopicRepository;
 
   public ApacheKafkaAdminAdapter(Properties properties, PubSubTopicRepository pubSubTopicRepository) {
-    if (properties == null) {
-      throw new IllegalArgumentException("properties cannot be null!");
-    }
-    this.kafkaAdminClient = AdminClient.create(properties);
-    this.maxRetryInMs = (Long) properties.get(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC) * MS_PER_SECOND;
+    this(
+        AdminClient
+            .create(Objects.requireNonNull(properties, "Properties for kafka admin construction cannot be null!")),
+        (Long) properties.get(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC) * MS_PER_SECOND,
+        pubSubTopicRepository);
+    LOGGER.debug("Created KafkaAdminClient with properties: {}", properties);
+  }
+
+  // used for testing
+  ApacheKafkaAdminAdapter(
+      AdminClient internalKafkaAdminClient,
+      Long maxRetryInMs,
+      PubSubTopicRepository pubSubTopicRepository) {
+    this.internalKafkaAdminClient =
+        Objects.requireNonNull(internalKafkaAdminClient, "Kafka admin client cannot be null!");
+    this.maxRetryInMs = maxRetryInMs;
     this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
@@ -75,27 +88,69 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       int numPartitions,
       int replication,
       PubSubTopicConfiguration pubSubTopicConfiguration) {
-    if (replication > Short.MAX_VALUE) {
-      throw new IllegalArgumentException("Replication factor cannot be > " + Short.MAX_VALUE);
+    if (replication < 1 || replication > Short.MAX_VALUE) {
+      throw new PubSubInvalidReplicationFactorException(
+          "Replication factor cannot be > " + Short.MAX_VALUE + " or < 1");
     }
     // Convert topic configuration into properties
     Properties topicProperties = unmarshallProperties(pubSubTopicConfiguration);
-    Map<String, String> topicPropertiesMap = new HashMap<>();
+    Map<String, String> topicPropertiesMap = new HashMap<>(topicProperties.size());
     topicProperties.stringPropertyNames().forEach(key -> topicPropertiesMap.put(key, topicProperties.getProperty(key)));
     Collection<NewTopic> newTopics = Collections
         .singleton(new NewTopic(topic.getName(), numPartitions, (short) replication).configs(topicPropertiesMap));
     try {
-      getKafkaAdminClient().createTopics(newTopics).all().get();
+      LOGGER.debug(
+          "Creating kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
+          topic.getName(),
+          numPartitions,
+          replication,
+          topicProperties);
+      CreateTopicsResult createTopicsResult = getKafkaAdminClient().createTopics(newTopics);
+      KafkaFuture<Void> topicCreationFuture = createTopicsResult.all();
+      topicCreationFuture.get(); // block until topic creation is complete
+
+      int actualNumPartitions = createTopicsResult.numPartitions(topic.getName()).get();
+      int actualReplicationFactor = createTopicsResult.replicationFactor(topic.getName()).get();
+      Config actualTopicConfig = createTopicsResult.config(topic.getName()).get();
+
+      if (actualNumPartitions != numPartitions) {
+        throw new PubSubClientException(
+            String.format(
+                "Kafka topic %s was created with incorrect num of partitions - requested: %d actual: %d",
+                topic.getName(),
+                numPartitions,
+                actualNumPartitions));
+      }
+      LOGGER.debug(
+          "Successfully created kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
+          topic.getName(),
+          actualNumPartitions,
+          actualReplicationFactor,
+          actualTopicConfig);
     } catch (ExecutionException e) {
+      LOGGER.debug(
+          "Failed to create kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
+          topic.getName(),
+          numPartitions,
+          replication,
+          topicProperties,
+          e);
       if (ExceptionUtils.recursiveClassEquals(e, InvalidReplicationFactorException.class)) {
-        throw new PubSubInvalidReplicationFactorException(topic.getName(), replication, e.getCause());
+        throw new PubSubInvalidReplicationFactorException(topic.getName(), replication, e);
       } else if (ExceptionUtils.recursiveClassEquals(e, TopicExistsException.class)) {
-        throw new PubSubTopicExistsException(topic.getName());
+        throw new PubSubTopicExistsException(topic.getName(), e);
       } else {
         throw new PubSubClientException("Failed to create topic: " + topic + " due to ExecutionException", e);
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      LOGGER.debug(
+          "Failed to create kafka topic: {} with numPartitions: {}, replicationFactor: {} and properties: {}",
+          topic.getName(),
+          numPartitions,
+          replication,
+          topicProperties,
+          e);
       throw new PubSubClientException("Failed to create topic: " + topic + "due to Exception", e);
     }
   }
@@ -278,9 +333,9 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
 
   @Override
   public void close() throws IOException {
-    if (this.kafkaAdminClient != null) {
+    if (this.internalKafkaAdminClient != null) {
       try {
-        this.kafkaAdminClient.close(Duration.ofSeconds(60));
+        this.internalKafkaAdminClient.close(Duration.ofSeconds(60));
       } catch (Exception e) {
         LOGGER.warn("Exception (suppressed) during kafkaAdminClient.close()", e);
       }
@@ -328,10 +383,10 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   }
 
   private AdminClient getKafkaAdminClient() {
-    if (kafkaAdminClient == null) {
+    if (internalKafkaAdminClient == null) {
       throw new IllegalStateException("initialize(properties) has not been called!");
     }
-    return kafkaAdminClient;
+    return internalKafkaAdminClient;
   }
 
   private <T> Map<PubSubTopic, T> getSomethingForAllTopics(Function<Config, T> configTransformer, String content) {

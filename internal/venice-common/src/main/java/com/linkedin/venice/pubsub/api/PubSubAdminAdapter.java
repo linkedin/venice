@@ -26,7 +26,6 @@ public interface PubSubAdminAdapter extends Closeable {
    * @param numPartitions The number of partitions to be created for the topic.
    * @param replication The number of replicas for each partition.
    * @param pubSubTopicConfiguration Additional topic configuration such as retention, compaction policy, etc.
-   * @throws IllegalArgumentException If the replication factor is greater than Short.MAX_VALUE.
    * @throws PubSubInvalidReplicationFactorException If the provided replication factor is invalid according to broker constraints, or if the number of brokers available is less than the provided replication factor.
    * @throws PubSubTopicExistsException If a topic with the same name already exists.
    * @throws PubSubClientException For all other issues related to the PubSub client.
