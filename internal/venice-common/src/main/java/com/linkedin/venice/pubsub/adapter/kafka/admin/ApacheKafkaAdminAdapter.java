@@ -41,7 +41,6 @@ import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
-import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.errors.TopicExistsException;
@@ -332,8 +331,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
 
       return true;
     } catch (ExecutionException e) {
-      if (e.getCause() != null && (e.getCause() instanceof UnknownTopicOrPartitionException
-          || e.getCause() instanceof InvalidTopicException)) {
+      if (e.getCause() instanceof UnknownTopicOrPartitionException) {
         // Topic doesn't exist...
         return false;
       }
@@ -383,8 +381,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       }
       return true;
     } catch (ExecutionException e) {
-      if (e.getCause() != null && (e.getCause() instanceof UnknownTopicOrPartitionException
-          || e.getCause() instanceof InvalidTopicException)) {
+      if (e.getCause() instanceof UnknownTopicOrPartitionException) {
         // Topic doesn't exist...
         return false;
       }

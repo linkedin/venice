@@ -8,6 +8,7 @@ import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -26,6 +27,7 @@ import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.AuthorizationException;
 import org.apache.kafka.common.errors.InvalidTopicException;
+import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
@@ -74,7 +76,13 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
    * @param key - The key of the message to be sent.
    * @param value - The {@link KafkaMessageEnvelope}, which acts as the Kafka value.
    * @param pubsubProducerCallback - The callback function, which will be triggered when Kafka client sends out the message.
-   * */
+   * @return - A {@link Future} of {@link PubSubProduceResult}, which will be completed when the message is sent to pub-sub server successfully.
+   * @throws PubSubOpTimeoutException - If the operation times out.
+   * @throws PubSubTopicAuthorizationException - If the producer is not authorized to send to the topic.
+   * @throws PubSubTopicDoesNotExistException - If the topic does not exist.
+   * @throws PubSubClientRetriableException - If the operation fails due to transient reasons.
+   * @throws PubSubClientException - If the operation fails due to other reasons.
+   */
   @Override
   public Future<PubSubProduceResult> sendMessage(
       String topic,
@@ -110,6 +118,12 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
               + record.partition(),
           e);
     } catch (Exception e) {
+      if (e instanceof RetriableException) {
+        throw new PubSubClientRetriableException(
+            "Got a retriable error while trying to produce message into Kafka. Topic: '" + record.topic()
+                + "', partition: " + record.partition(),
+            e);
+      }
       throw new PubSubClientException(
           "Got an error while trying to produce message into Kafka. Topic: '" + record.topic() + "', partition: "
               + record.partition(),
