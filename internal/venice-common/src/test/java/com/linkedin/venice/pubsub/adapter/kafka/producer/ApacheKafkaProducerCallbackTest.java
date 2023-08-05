@@ -9,6 +9,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.pubsub.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.utils.ExceptionUtils;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -49,11 +50,12 @@ public class ApacheKafkaProducerCallbackTest {
 
     assertTrue(internalCallback.isInvoked());
     assertNotNull(internalCallback.getException());
-    assertEquals(internalCallback.getException(), exception);
+    assertTrue(
+        ExceptionUtils.recursiveClassEquals(internalCallback.getException(), UnknownTopicOrPartitionException.class));
     assertNull(internalCallback.getProduceResult());
   }
 
-  @Test(expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Unknown topic: topicX.*")
+  @Test(expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*Topic does not exists.*")
   public void testOnCompletionWithNonNullExceptionShouldCompleteFutureExceptionally()
       throws ExecutionException, InterruptedException {
     PubSubProducerCallbackSimpleImpl internalCallback = new PubSubProducerCallbackSimpleImpl();
