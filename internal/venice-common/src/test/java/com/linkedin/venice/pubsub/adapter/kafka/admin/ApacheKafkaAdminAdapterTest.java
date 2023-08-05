@@ -94,7 +94,7 @@ public class ApacheKafkaAdminAdapterTest {
     verify(createTopicsKafkaFutureMock).get();
   }
 
-  @Test(expectedExceptions = PubSubInvalidReplicationFactorException.class)
+  @Test(expectedExceptions = IllegalArgumentException.class)
   public void testCreateTopicInvalidReplicationFactor() {
     kafkaAdminAdapter.createTopic(testPubSubTopic, NUM_PARTITIONS, Short.MAX_VALUE + 1, sampleTopicConfiguration);
   }

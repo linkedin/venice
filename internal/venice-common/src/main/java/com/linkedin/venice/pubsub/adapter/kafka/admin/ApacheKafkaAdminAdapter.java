@@ -90,6 +90,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
    * @param numPartitions The number of partitions to be created for the topic.
    * @param replicationFactor The number of replicas for each partition.
    * @param pubSubTopicConfiguration Additional topic configuration such as retention, compaction policy, etc.
+   * @throws IllegalArgumentException If the replication factor is invalid.
    * @throws PubSubInvalidReplicationFactorException If the provided replication factor is invalid according to broker constraints, or if the number of brokers available is less than the provided replication factor.
    * @throws PubSubTopicExistsException If a topic with the same name already exists.
    * @throws PubSubClientRetriableException If the operation failed due to a retriable error.
@@ -153,7 +154,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       if (ExceptionUtils.recursiveClassEquals(e, TopicExistsException.class)) {
         throw new PubSubTopicExistsException(pubSubTopic, e);
       }
-      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+      if (e.getCause() instanceof RetriableException) {
         throw new PubSubClientRetriableException("Failed to create kafka topic: " + pubSubTopic, e);
       }
       throw new PubSubClientException("Failed to create kafka topic: " + pubSubTopic + " due to ExecutionException", e);
@@ -199,7 +200,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       if (ExceptionUtils.recursiveClassEquals(e, TimeoutException.class)) {
         throw new PubSubOpTimeoutException("Timed out while deleting kafka topic: " + pubSubTopic.getName(), e);
       }
-      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+      if (e.getCause() instanceof RetriableException) {
         throw new PubSubClientRetriableException("Failed to delete kafka topic: " + pubSubTopic.getName(), e);
       }
       throw new PubSubClientException("Failed to delete topic: " + pubSubTopic.getName(), e);
@@ -236,7 +237,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       if (ExceptionUtils.recursiveClassEquals(e, UnknownTopicOrPartitionException.class)) {
         throw new PubSubTopicDoesNotExistException(pubSubTopic, e);
       }
-      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+      if (e.getCause() instanceof RetriableException) {
         throw new PubSubClientRetriableException("Failed to get configs for kafka topic: " + pubSubTopic, e);
       }
       throw new PubSubClientException("Failed to get configs for kafka topic: " + pubSubTopic, e);
@@ -264,7 +265,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
           .map(t -> pubSubTopicRepository.getTopic(t))
           .collect(Collectors.toSet());
     } catch (ExecutionException e) {
-      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+      if (e.getCause() instanceof RetriableException) {
         throw new PubSubClientRetriableException("Failed to list topics", e);
       }
       throw new PubSubClientException("Failed to list topics", e);
@@ -336,7 +337,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
         // Topic doesn't exist...
         return false;
       }
-      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+      if (e.getCause() instanceof RetriableException) {
         throw new PubSubClientRetriableException("Failed to check if '" + pubSubTopic + " exists!", e);
       }
       throw new PubSubClientException("Failed to check if '" + pubSubTopic + " exists!", e);
@@ -387,45 +388,13 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
         // Topic doesn't exist...
         return false;
       }
-      if (e.getCause() != null && (e.getCause() instanceof RetriableException)) {
+      if (e.getCause() instanceof RetriableException) {
         throw new PubSubClientRetriableException("Failed to check if '" + pubSubTopicPartition + " exists!", e);
       }
       throw new PubSubClientException("Failed to check if '" + pubSubTopicPartition + " exists!", e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new PubSubClientException("Failed to check if '" + pubSubTopicPartition + " exists!", e);
-    }
-  }
-
-  @Override
-  public Map<PubSubTopic, Long> getAllTopicRetentions() {
-    return getSomethingForAllTopics(
-        config -> Optional.ofNullable(config.get(TopicConfig.RETENTION_MS_CONFIG))
-            // Option A: perform a string-to-long conversion if it's present...
-            .map(configEntry -> Long.parseLong(configEntry.value()))
-            // Option B: ... or default to a sentinel value if it's missing
-            .orElse(TopicManager.UNKNOWN_TOPIC_RETENTION),
-        "retention");
-  }
-
-  @Override
-  public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> pubSubTopics) {
-    return getSomethingForSomeTopics(pubSubTopics, config -> marshallProperties(config), "configs");
-  }
-
-  @Override
-  public String getClassName() {
-    return ApacheKafkaAdminAdapter.class.getName();
-  }
-
-  @Override
-  public void close() throws IOException {
-    if (this.internalKafkaAdminClient != null) {
-      try {
-        this.internalKafkaAdminClient.close(Duration.ofSeconds(60));
-      } catch (Exception e) {
-        LOGGER.warn("Exception (suppressed) during kafkaAdminClient.close()", e);
-      }
     }
   }
 
@@ -469,6 +438,25 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     return topicProperties;
   }
 
+  /**
+   * Retrieves the retention settings for all Kafka topics.
+   *
+   * @return A map of Kafka topics and their corresponding retention settings in milliseconds.
+   * If a topic does not have a retention setting, it will be mapped to {@link TopicManager#UNKNOWN_TOPIC_RETENTION}.
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve retention settings.
+   * @throws PubSubClientException If an error occurs while attempting to retrieve retention settings or if the current thread is interrupted while attempting to retrieve retention settings.
+   */
+  @Override
+  public Map<PubSubTopic, Long> getAllTopicRetentions() {
+    return getSomethingForAllTopics(
+        config -> Optional.ofNullable(config.get(TopicConfig.RETENTION_MS_CONFIG))
+            // Option A: perform a string-to-long conversion if it's present...
+            .map(configEntry -> Long.parseLong(configEntry.value()))
+            // Option B: ... or default to a sentinel value if it's missing
+            .orElse(TopicManager.UNKNOWN_TOPIC_RETENTION),
+        "retention");
+  }
+
   private <T> Map<PubSubTopic, T> getSomethingForAllTopics(Function<Config, T> configTransformer, String content) {
     try {
       Set<PubSubTopic> pubSubTopics = internalKafkaAdminClient.listTopics()
@@ -479,13 +467,29 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
           .collect(Collectors.toSet());
       return getSomethingForSomeTopics(pubSubTopics, configTransformer, content);
     } catch (ExecutionException e) {
-      throw new PubSubClientRetriableException("Failed to get " + content + " for all topics", e);
+      if (e.getCause() instanceof RetriableException) {
+        throw new PubSubClientRetriableException("Failed to get " + content + " for all topics", e);
+      }
+      throw new PubSubClientException("Failed to get " + content + " for all topics", e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new PubSubClientException("Interrupted while getting " + content + " for all topics", e);
     } catch (Exception e) {
       throw new PubSubClientException("Failed to get " + content + " for all topics", e);
     }
+  }
+
+  /**
+   * Retrieves the configurations for a set of Kafka topics.
+   *
+   * @param pubSubTopics The set of Kafka topics to retrieve configurations for.
+   * @return A map of Kafka topics and their corresponding configurations.
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve configurations.
+   * @throws PubSubClientException If an error occurs while attempting to retrieve configurations or if the current thread is interrupted while attempting to retrieve configurations.
+   */
+  @Override
+  public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> pubSubTopics) {
+    return getSomethingForSomeTopics(pubSubTopics, config -> marshallProperties(config), "configs");
   }
 
   private <T> Map<PubSubTopic, T> getSomethingForSomeTopics(
@@ -514,12 +518,31 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     } catch (ExecutionException e) {
       int numberOfTopic = pubSubTopics.size();
       String numberOfTopicString = numberOfTopic + " topic" + (numberOfTopic > 1 ? "s" : "");
-      throw new PubSubClientRetriableException("Failed to get " + content + " for " + numberOfTopicString, e);
+      if (e.getCause() instanceof RetriableException) {
+        throw new PubSubClientRetriableException("Failed to get " + content + " for " + numberOfTopicString, e);
+      }
+      throw new PubSubClientException("Failed to get " + content + " for " + numberOfTopicString, e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new PubSubClientException("Interrupted while getting " + content + " for some topics", e);
     } catch (Exception e) {
       throw new PubSubClientException("Failed to get " + content + " for some topics", e);
+    }
+  }
+
+  @Override
+  public String getClassName() {
+    return ApacheKafkaAdminAdapter.class.getName();
+  }
+
+  @Override
+  public void close() throws IOException {
+    if (this.internalKafkaAdminClient != null) {
+      try {
+        this.internalKafkaAdminClient.close(Duration.ofSeconds(60));
+      } catch (Exception e) {
+        LOGGER.warn("Exception (suppressed) during kafkaAdminClient.close()", e);
+      }
     }
   }
 

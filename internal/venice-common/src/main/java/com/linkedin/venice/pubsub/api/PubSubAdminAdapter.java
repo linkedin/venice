@@ -4,6 +4,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_ADMIN_GET_TOPIC_
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
 import com.linkedin.venice.exceptions.VeniceRetriableException;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
@@ -33,6 +34,8 @@ public interface PubSubAdminAdapter extends Closeable {
    * @param numPartitions The number of partitions to be created for the topic.
    * @param replicationFactor The number of replicas for each partition.
    * @param pubSubTopicConfiguration Additional topic configuration such as retention, compaction policy, etc.
+   *
+   * @throws IllegalArgumentException If the replication factor is invalid.
    * @throws PubSubInvalidReplicationFactorException If the provided replication factor is invalid according to broker constraints, or if the number of brokers available is less than the provided replication factor.
    * @throws PubSubTopicExistsException If a topic with the same name already exists.
    * @throws PubSubClientRetriableException If the operation failed due to a retriable error.
@@ -229,13 +232,28 @@ public interface PubSubAdminAdapter extends Closeable {
         .unmodifiableList(Arrays.asList(PubSubOpTimeoutException.class, PubSubClientRetriableException.class));
   }
 
+  /**
+   * Retrieves the retention settings for all PubSub topics.
+   *
+   * @return A map of pub-sub topics and their corresponding retention settings in milliseconds.
+   * If a topic does not have a retention setting, it will be mapped to {@link TopicManager#UNKNOWN_TOPIC_RETENTION}.
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve retention settings.
+   * @throws PubSubClientException If an error occurs while attempting to retrieve retention settings or if the current thread is interrupted while attempting to retrieve retention settings.
+   */
   Map<PubSubTopic, Long> getAllTopicRetentions();
 
   String getClassName();
 
+  /**
+   * Retrieves the configurations for a set of PubSub topics.
+   *
+   * @param pubSubTopics The set of PubSub topics to retrieve configurations for.
+   * @return A map of PubSub topics and their corresponding configurations.
+   * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve configurations.
+   * @throws PubSubClientException If an error occurs while attempting to retrieve configurations or if the current thread is interrupted while attempting to retrieve configurations.
+   */
   Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> pubSubTopics);
 
-  // "admin.get.topic.config.max.retry.sec"
   default long getMaxGetTopicConfigRetryTimeInMs() {
     return Duration.ofSeconds(PUBSUB_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS_DEFAULT_VALUE).toMillis();
   }
