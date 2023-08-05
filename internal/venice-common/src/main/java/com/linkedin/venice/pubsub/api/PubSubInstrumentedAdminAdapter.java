@@ -130,6 +130,11 @@ public class PubSubInstrumentedAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
+  public long getMaxGetTopicConfigRetryTimeInMs() {
+    return pubSubAdminAdapter.getMaxGetTopicConfigRetryTimeInMs();
+  }
+
+  @Override
   public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
     return instrument(GET_SOME_TOPIC_CONFIGS, () -> pubSubAdminAdapter.getSomeTopicConfigs(topicNames));
   }

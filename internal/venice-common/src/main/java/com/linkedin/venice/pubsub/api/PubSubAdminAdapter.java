@@ -15,6 +15,8 @@ import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -190,12 +192,12 @@ public interface PubSubAdminAdapter extends Closeable {
     try {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
         if (expectedResult != this.containsTopic(pubSubTopic)) {
-          throw new VeniceRetriableException(
+          throw new PubSubClientRetriableException(
               "Retrying containsTopic check to get expected result: " + expectedResult + " for topic " + pubSubTopic);
         }
         return expectedResult;
       }, maxAttempts, initialBackoff, maxBackoff, maxDuration, getRetriableExceptions());
-    } catch (VeniceRetriableException e) {
+    } catch (PubSubClientRetriableException e) {
       return !expectedResult; // Eventually still not get the expected result
     }
   }
@@ -219,7 +221,13 @@ public interface PubSubAdminAdapter extends Closeable {
     }
   }
 
-  List<Class<? extends Throwable>> getRetriableExceptions();
+  /**
+   * @return Returns a list of exceptions that are retriable for this PubSubClient.
+   */
+  default List<Class<? extends Throwable>> getRetriableExceptions() {
+    return Collections
+        .unmodifiableList(Arrays.asList(PubSubOpTimeoutException.class, PubSubClientRetriableException.class));
+  }
 
   Map<PubSubTopic, Long> getAllTopicRetentions();
 

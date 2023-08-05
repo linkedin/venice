@@ -54,6 +54,7 @@ import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -547,7 +548,7 @@ public class TopicManagerTest {
   @Test
   public void testContainsTopicWithExpectationAndRetry() throws InterruptedException {
     // Case 1: topic does not exist
-    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("nonExistingTopic"));
     Assert.assertFalse(topicManager.containsTopicWithExpectationAndRetry(nonExistingTopic, 3, true));
 
     // Case 2: topic exists
@@ -558,7 +559,8 @@ public class TopicManagerTest {
     // Case 3: topic does not exist initially but topic is created later.
     // This test case is to simulate the situation where the contains topic check fails on initial attempt(s) but
     // succeeds eventually.
-    PubSubTopic initiallyNotExistTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    PubSubTopic initiallyNotExistTopic =
+        pubSubTopicRepository.getTopic(Utils.getUniqueString("initiallyNotExistTopic"));
 
     final long delayedTopicCreationInSeconds = 1;
     CountDownLatch delayedTopicCreationStartedSignal = new CountDownLatch(1);

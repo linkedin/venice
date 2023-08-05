@@ -16,11 +16,9 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -119,7 +117,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
           numPartitions,
           replicationFactor,
           topicProperties);
-      CreateTopicsResult createTopicsResult = getKafkaAdminClient().createTopics(newTopics);
+      CreateTopicsResult createTopicsResult = internalKafkaAdminClient.createTopics(newTopics);
       KafkaFuture<Void> topicCreationFuture = createTopicsResult.all();
       topicCreationFuture.get(); // block until topic creation is complete
 
@@ -323,7 +321,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     try {
       Collection<String> topicNames = Collections.singleton(pubSubTopic.getName());
       TopicDescription topicDescription =
-          getKafkaAdminClient().describeTopics(topicNames).values().get(pubSubTopic.getName()).get();
+          internalKafkaAdminClient.describeTopics(topicNames).values().get(pubSubTopic.getName()).get();
       if (topicDescription == null) {
         LOGGER.warn(
             "Unexpected: kafkaAdminClient.describeTopics returned null "
@@ -364,7 +362,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
 
       Collection<String> topicNames = Collections.singleton(pubSubTopic.getName());
       TopicDescription topicDescription =
-          getKafkaAdminClient().describeTopics(topicNames).values().get(pubSubTopic.getName()).get();
+          internalKafkaAdminClient.describeTopics(topicNames).values().get(pubSubTopic.getName()).get();
 
       if (topicDescription == null) {
         LOGGER.warn(
@@ -408,15 +406,6 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
             // Option B: ... or default to a sentinel value if it's missing
             .orElse(TopicManager.UNKNOWN_TOPIC_RETENTION),
         "retention");
-  }
-
-  /**
-   * @return Returns a list of exceptions that are retriable for this PubSubClient.
-   */
-  @Override
-  public List<Class<? extends Throwable>> getRetriableExceptions() {
-    return Collections
-        .unmodifiableList(Arrays.asList(PubSubOpTimeoutException.class, PubSubClientRetriableException.class));
   }
 
   @Override
@@ -480,16 +469,9 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     return topicProperties;
   }
 
-  private AdminClient getKafkaAdminClient() {
-    if (internalKafkaAdminClient == null) {
-      throw new IllegalStateException("initialize(properties) has not been called!");
-    }
-    return internalKafkaAdminClient;
-  }
-
   private <T> Map<PubSubTopic, T> getSomethingForAllTopics(Function<Config, T> configTransformer, String content) {
     try {
-      Set<PubSubTopic> pubSubTopics = getKafkaAdminClient().listTopics()
+      Set<PubSubTopic> pubSubTopics = internalKafkaAdminClient.listTopics()
           .names()
           .get()
           .stream()
@@ -518,7 +500,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
           .collect(Collectors.toCollection(ArrayList::new));
 
       // Step 2: retrieve the configs of specified topics
-      getKafkaAdminClient().describeConfigs(configResources)
+      internalKafkaAdminClient.describeConfigs(configResources)
           .all()
           .get()
           // Step 3: populate the map to be returned
