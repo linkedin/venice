@@ -1,10 +1,10 @@
 package com.linkedin.venice.listener;
 
-import static com.linkedin.venice.grpc.GrpcErrorCodes.*;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
+import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
@@ -204,7 +204,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       String error = "Invalid request resource " + request.getResourceName();
       LOGGER.error(error);
       ctx.setError();
-      ctx.getVeniceServerResponseBuilder().setErrorCode(BAD_REQUEST).setErrorMessage(error);
+      ctx.getVeniceServerResponseBuilder().setErrorCode(GrpcErrorCodes.BAD_REQUEST).setErrorMessage(error);
       pipeline.processRequest(ctx);
       return;
     }
@@ -233,7 +233,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
           LOGGER.error(errorMessage);
           ctx.setError();
-          ctx.getVeniceServerResponseBuilder().setErrorCode(TOO_MANY_REQUESTS).setErrorMessage(errorMessage);
+          ctx.getVeniceServerResponseBuilder()
+              .setErrorCode(GrpcErrorCodes.TOO_MANY_REQUESTS)
+              .setErrorMessage(errorMessage);
           pipeline.processRequest(ctx);
           return;
         }
@@ -252,7 +254,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         LOGGER.error("Server over capacity when performing gRPC request");
         String errorMessage = "Server over capacity";
         ctx.setError();
-        ctx.getVeniceServerResponseBuilder().setErrorCode(SERVICE_UNAVAILABLE).setErrorMessage(errorMessage);
+        ctx.getVeniceServerResponseBuilder()
+            .setErrorCode(GrpcErrorCodes.SERVICE_UNAVAILABLE)
+            .setErrorMessage(errorMessage);
         pipeline.processRequest(ctx);
         return;
       }
