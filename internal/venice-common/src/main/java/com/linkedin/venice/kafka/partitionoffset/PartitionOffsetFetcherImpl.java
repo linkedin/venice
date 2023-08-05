@@ -3,7 +3,6 @@ package com.linkedin.venice.kafka.partitionoffset;
 import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -382,10 +381,6 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
             return allConsumedRecords;
           }
         }
-      } catch (PubSubOpTimeoutException ex) {
-        throw new VeniceTimeoutException(
-            "Timeout exception when fetching the latest offset for topic-partition: " + pubSubTopicPartition,
-            ex);
       } finally {
         pubSubConsumer.get().unSubscribe(pubSubTopicPartition);
       }
@@ -510,18 +505,12 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
             "Cannot retrieve latest offsets for invalid partition " + pubSubTopicPartition.getPartitionNumber());
       }
       long earliestOffset;
-      try {
-        Long offset = pubSubConsumer.get().beginningOffset(pubSubTopicPartition, DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
-        if (offset != null) {
-          earliestOffset = offset;
-        } else {
-          throw new VeniceException(
-              "offset result returned from beginningOffsets does not contain entry: " + pubSubTopicPartition);
-        }
-      } catch (PubSubOpTimeoutException e) {
-        throw new VeniceTimeoutException(
-            "Timeout exception when fetching beginning offset for topic-partition: " + pubSubTopicPartition,
-            e);
+      Long offset = pubSubConsumer.get().beginningOffset(pubSubTopicPartition, DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
+      if (offset != null) {
+        earliestOffset = offset;
+      } else {
+        throw new VeniceException(
+            "offset result returned from beginningOffsets does not contain entry: " + pubSubTopicPartition);
       }
       return earliestOffset;
     }
