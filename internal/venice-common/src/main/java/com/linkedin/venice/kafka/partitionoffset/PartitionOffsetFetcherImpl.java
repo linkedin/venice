@@ -41,7 +41,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
-  private static final List<Class<? extends Throwable>> KAFKA_RETRIABLE_FAILURES =
+  private static final List<Class<? extends Throwable>> PUBSUB_RETRIABLE_FAILURES =
       Collections.singletonList(PubSubClientRetriableException.class);
   public static final Duration DEFAULT_KAFKA_OFFSET_API_TIMEOUT = Duration.ofMinutes(1);
   public static final long NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION = -1;
@@ -168,7 +168,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
           Duration.ofMillis(100),
           Duration.ofSeconds(5),
           Duration.ofMinutes(1),
-          KAFKA_RETRIABLE_FAILURES);
+          PUBSUB_RETRIABLE_FAILURES);
       return topicPartitionOffset;
     }
   }
@@ -181,7 +181,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
           Duration.ofMillis(100),
           Duration.ofSeconds(5),
           Duration.ofMinutes(1),
-          KAFKA_RETRIABLE_FAILURES);
+          PUBSUB_RETRIABLE_FAILURES);
       return topicPartitionOffset;
     }
   }
