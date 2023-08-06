@@ -13,7 +13,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;

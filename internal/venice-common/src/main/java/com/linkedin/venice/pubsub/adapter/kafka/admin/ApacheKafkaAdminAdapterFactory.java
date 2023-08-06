@@ -1,9 +1,9 @@
 package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 
