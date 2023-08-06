@@ -31,7 +31,7 @@ public class ZkServerWrapper extends ProcessWrapper {
   private static final Logger LOGGER = LogManager.getLogger(ZkServerWrapper.class);
 
   public static final String SERVICE_NAME = "Zookeeper";
-  private static final int MAX_WAIT_TIME_DURING_STARTUP = 5 * Time.MS_PER_SECOND;
+  private static final int MAX_WAIT_TIME_DURING_STARTUP = 10 * Time.MS_PER_MINUTE;
   private static final ConcurrentLinkedQueue<String> CHROOTS = new ConcurrentLinkedQueue<>();
 
   /**
