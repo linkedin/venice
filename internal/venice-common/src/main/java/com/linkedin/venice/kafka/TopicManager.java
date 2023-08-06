@@ -17,7 +17,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
-import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
@@ -71,11 +70,7 @@ public class TopicManager implements Closeable {
   public static final long DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS = 24 * Time.MS_PER_HOUR;
 
   private static final List<Class<? extends Throwable>> CREATE_TOPIC_RETRIABLE_EXCEPTIONS =
-      Collections.unmodifiableList(
-          Arrays.asList(
-              PubSubInvalidReplicationFactorException.class,
-              PubSubOpTimeoutException.class,
-              PubSubClientRetriableException.class));
+      Collections.unmodifiableList(Arrays.asList(PubSubOpTimeoutException.class, PubSubClientRetriableException.class));
 
   // Immutable state
   private final Logger logger;

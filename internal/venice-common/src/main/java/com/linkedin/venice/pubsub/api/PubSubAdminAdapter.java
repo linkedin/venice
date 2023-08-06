@@ -8,7 +8,6 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
-import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
@@ -36,17 +35,9 @@ public interface PubSubAdminAdapter extends Closeable {
    * @param pubSubTopicConfiguration Additional topic configuration such as retention, compaction policy, etc.
    *
    * @throws IllegalArgumentException If the replication factor is invalid.
-   * @throws PubSubInvalidReplicationFactorException If the provided replication factor is invalid according to broker constraints, or if the number of brokers available is less than the provided replication factor.
    * @throws PubSubTopicExistsException If a topic with the same name already exists.
    * @throws PubSubClientRetriableException If the operation failed due to a retriable error.
    * @throws PubSubClientException For all other issues related to the PubSub client.
-   *
-   * @see PubSubTopic
-   * @see PubSubTopicConfiguration
-   * @see PubSubInvalidReplicationFactorException
-   * @see PubSubTopicExistsException
-   * @see PubSubClientRetriableException
-   * @see PubSubClientException
    */
   void createTopic(
       PubSubTopic pubSubTopic,

@@ -14,7 +14,6 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
-import com.linkedin.venice.pubsub.api.exceptions.PubSubInvalidReplicationFactorException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
@@ -131,7 +130,7 @@ public class ApacheKafkaAdminAdapterTest {
 
     // First call throws InvalidReplicationFactorException
     assertThrows(
-        PubSubInvalidReplicationFactorException.class,
+        PubSubClientRetriableException.class,
         () -> kafkaAdminAdapter
             .createTopic(testPubSubTopic, NUM_PARTITIONS, REPLICATION_FACTOR, sampleTopicConfiguration));
     verify(internalKafkaAdminClientMock).createTopics(any());
