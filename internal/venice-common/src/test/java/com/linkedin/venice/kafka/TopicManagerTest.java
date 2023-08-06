@@ -32,6 +32,7 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -433,8 +434,9 @@ public class TopicManagerTest {
         topicManager
             .isRetentionBelowTruncatedThreshold(deprecatedTopicRetentionMaxMs + 1, deprecatedTopicRetentionMaxMs));
     Assert.assertFalse(
-        topicManager
-            .isRetentionBelowTruncatedThreshold(TopicManager.UNKNOWN_TOPIC_RETENTION, deprecatedTopicRetentionMaxMs));
+        topicManager.isRetentionBelowTruncatedThreshold(
+            PubSubConstants.UNKNOWN_TOPIC_RETENTION,
+            deprecatedTopicRetentionMaxMs));
     Assert.assertTrue(
         topicManager
             .isRetentionBelowTruncatedThreshold(deprecatedTopicRetentionMaxMs - 1, deprecatedTopicRetentionMaxMs));

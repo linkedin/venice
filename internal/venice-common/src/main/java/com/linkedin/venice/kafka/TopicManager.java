@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -57,7 +58,6 @@ public class TopicManager implements Closeable {
   public static final long BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN = 2 * Time.MS_PER_DAY;
 
   public static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
-  public static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   public static final int MAX_TOPIC_DELETE_RETRIES = 3;
   public static final int DEFAULT_KAFKA_REPLICATION_FACTOR = 3;
 
@@ -421,7 +421,7 @@ public class TopicManager implements Closeable {
     if (pubSubTopicConfiguration.retentionInMs().isPresent()) {
       return pubSubTopicConfiguration.retentionInMs().get();
     }
-    return UNKNOWN_TOPIC_RETENTION;
+    return PubSubConstants.UNKNOWN_TOPIC_RETENTION;
   }
 
   /**
@@ -440,7 +440,7 @@ public class TopicManager implements Closeable {
   }
 
   public boolean isRetentionBelowTruncatedThreshold(long retention, long truncatedTopicMaxRetentionMs) {
-    return retention != UNKNOWN_TOPIC_RETENTION && retention <= truncatedTopicMaxRetentionMs;
+    return retention != PubSubConstants.UNKNOWN_TOPIC_RETENTION && retention <= truncatedTopicMaxRetentionMs;
   }
 
   /**

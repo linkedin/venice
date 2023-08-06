@@ -1,9 +1,8 @@
 package com.linkedin.venice.pubsub.api;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS_DEFAULT_VALUE;
-import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
-import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
@@ -81,7 +80,7 @@ public interface PubSubAdminAdapter extends Closeable {
         exception = e;
         Utils.sleep(sleepIntervalInMs);
         accumulatedWaitTime += sleepIntervalInMs;
-        sleepIntervalInMs = Math.min(5 * MS_PER_SECOND, sleepIntervalInMs * 2);
+        sleepIntervalInMs = Math.min(5000, sleepIntervalInMs * 2);
       }
     }
     throw new PubSubClientException(
@@ -226,7 +225,7 @@ public interface PubSubAdminAdapter extends Closeable {
    * Retrieves the retention settings for all PubSub topics.
    *
    * @return A map of pub-sub topics and their corresponding retention settings in milliseconds.
-   * If a topic does not have a retention setting, it will be mapped to {@link TopicManager#UNKNOWN_TOPIC_RETENTION}.
+   * If a topic does not have a retention setting, it will be mapped to {@link PubSubConstants#UNKNOWN_TOPIC_RETENTION}.
    * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve retention settings.
    * @throws PubSubClientException If an error occurs while attempting to retrieve retention settings or if the current thread is interrupted while attempting to retrieve retention settings.
    */

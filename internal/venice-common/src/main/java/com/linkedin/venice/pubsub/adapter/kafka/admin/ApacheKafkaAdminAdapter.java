@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
-import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
@@ -435,7 +435,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
    * Retrieves the retention settings for all Kafka topics.
    *
    * @return A map of Kafka topics and their corresponding retention settings in milliseconds.
-   * If a topic does not have a retention setting, it will be mapped to {@link TopicManager#UNKNOWN_TOPIC_RETENTION}.
+   * If a topic does not have a retention setting, it will be mapped to {@link PubSubConstants#UNKNOWN_TOPIC_RETENTION}.
    * @throws PubSubClientRetriableException If a retriable error occurs while attempting to retrieve retention settings.
    * @throws PubSubClientException If an error occurs while attempting to retrieve retention settings or if the current thread is interrupted while attempting to retrieve retention settings.
    */
@@ -446,7 +446,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
             // Option A: perform a string-to-long conversion if it's present...
             .map(configEntry -> Long.parseLong(configEntry.value()))
             // Option B: ... or default to a sentinel value if it's missing
-            .orElse(TopicManager.UNKNOWN_TOPIC_RETENTION),
+            .orElse(PubSubConstants.UNKNOWN_TOPIC_RETENTION),
         "retention");
   }
 

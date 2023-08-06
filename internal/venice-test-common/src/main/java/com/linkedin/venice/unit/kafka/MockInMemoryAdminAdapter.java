@@ -4,7 +4,7 @@ import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
-import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
@@ -85,7 +85,7 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
       if (retentionMs.isPresent()) {
         retentions.put(entry.getKey(), retentionMs.get());
       } else {
-        retentions.put(entry.getKey(), TopicManager.UNKNOWN_TOPIC_RETENTION);
+        retentions.put(entry.getKey(), PubSubConstants.UNKNOWN_TOPIC_RETENTION);
       }
     }
     return retentions;
