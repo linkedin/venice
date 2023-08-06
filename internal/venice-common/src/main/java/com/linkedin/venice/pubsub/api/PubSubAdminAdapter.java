@@ -3,7 +3,6 @@ package com.linkedin.venice.pubsub.api;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
-import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -204,13 +203,13 @@ public interface PubSubAdminAdapter extends Closeable {
     try {
       return RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(() -> {
         if (expectedResult != this.containsTopicWithPartitionCheck(pubSubTopicPartition)) {
-          throw new VeniceRetriableException(
+          throw new PubSubClientRetriableException(
               "Retrying containsTopic check to get expected result: " + expectedResult + " for :"
                   + pubSubTopicPartition);
         }
         return expectedResult;
       }, maxAttempts, attemptDuration, getRetriableExceptions());
-    } catch (VeniceRetriableException e) {
+    } catch (PubSubClientRetriableException e) {
       return !expectedResult; // Eventually still not get the expected result
     }
   }
