@@ -12,10 +12,12 @@ import it.unimi.dsi.fastutil.ints.IntList;
 
 public class GrpcStatsContext {
   /**
-   * We need to maintain stats for gRPC requests --> current StatsHandler for Netty Pipeline maintains instance
-   * variables per channel, which guarantee that each request will be handled by a single thread, thus we cannot
-   * use the same StatsHandler for gRPC requests, so we create a new StatsContext for each gRPC request so we can
-   * maintain per request stats which will be aggregated by StatsHandler.
+   * We need to be able to record server side statistics for gRPC requests. The current StatsHandler in the Netty
+   * Pipeline maintains instance variables per channel, and guarantees that each request will be handled by the same
+   * thread, thus we cannot augment StatsHandler in the same way as other handlers for gRPC requests. We create a
+   * new StatsContext for each gRPC request, so we can maintain per request stats which will be aggregated on request
+   * completion using references to the proper Metrics Repository in AggServerHttpRequestStats. This class is almost a
+   * direct copy of StatsHandler, without Netty Channel Read/Write logic.
    */
   private long startTimeInNS;
   private HttpResponseStatus responseStatus;

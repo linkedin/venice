@@ -8,6 +8,11 @@ import io.grpc.stub.StreamObserver;
 
 
 public class GrpcHandlerContext {
+  /**
+   * We need to keep track of each request as it goes through the pipeline so that we can record the necessary metrics
+   * and separate different parts of the logic for the response. If a specific handler raises an error, we set
+   * the hasError flag to true and stop executing the rest of the pipeline excluding the stats collection.
+   */
   private VeniceClientRequest veniceClientRequest;
   private VeniceServerResponse.Builder veniceServerResponseBuilder;
   private StreamObserver<VeniceServerResponse> responseObserver;

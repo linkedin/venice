@@ -5,6 +5,15 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * We use this class to manage the pipeline of handlers for gRPC requests to follow a similar logical flow to
+ * the Netty pipeline. On every new request, we create pipeline instance in order to keep track of the request
+ * in the pipeline as a whole. This allows us to keep track of the state of a request with respect to the handler that
+ * is currently processing the request, and allows for the handlers to be stateless.
+ *
+ * The order of the handlers in the pipeline is modeled after the Netty pipeline, and both are initialized in
+ * {@link com.linkedin.venice.listener.HttpChannelInitializer}.
+ */
 public class GrpcHandlerPipeline {
   private static final Logger LOGGER = LogManager.getLogger(GrpcHandlerPipeline.class);
   private final ArrayList<VeniceGrpcHandler> inboundHandlers;
