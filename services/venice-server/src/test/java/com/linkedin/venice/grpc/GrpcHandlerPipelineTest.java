@@ -105,29 +105,4 @@ public class GrpcHandlerPipelineTest {
     verify(handlerB, times(1)).grpcWrite(mockContext, pipeline);
     verify(handlerC, times(1)).grpcWrite(mockContext, pipeline);
   }
-
-  // @Test
-  // public void testOnError() {
-  // VeniceGrpcHandler mockHandler = mock(VeniceGrpcHandler.class);
-  //
-  // GrpcHandlerPipeline pipeline = new GrpcHandlerPipeline();
-  // pipeline.addHandler(mockHandler);
-  //
-  // GrpcHandlerContext mockContext = mock(GrpcHandlerContext.class);
-  //
-  // VeniceServerResponse.Builder responseBuilder = VeniceServerResponse.newBuilder();
-  // when(mockContext.getVeniceServerResponseBuilder()).thenReturn(responseBuilder);
-  //
-  // StreamObserver<VeniceServerResponse> responseObserver = mock(StreamObserver.class);
-  // when(mockContext.getResponseObserver()).thenReturn(responseObserver);
-  //
-  // pipeline.onError(mockContext);
-  //
-  // VeniceServerResponse response = responseBuilder.build();
-  //
-  // verify(responseObserver).onNext(response);
-  // verify(responseObserver).onCompleted();
-  //
-  // assertTrue(mockContext.hasError());
-  // }
 }

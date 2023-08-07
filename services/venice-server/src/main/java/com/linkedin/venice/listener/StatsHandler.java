@@ -438,15 +438,6 @@ public class StatsHandler extends ChannelDuplexHandler implements VeniceGrpcHand
       throw new VeniceException("store name could not be null if request succeeded");
     }
   }
-  //
-  // private void successRequestGrpc(ServerHttpRequestStats stats, double elapsedTime, String storeName) {
-  // if (storeName != null) {
-  // stats.recordSuccessRequest();
-  // stats.recordSuccessRequestLatency(elapsedTime);
-  // } else {
-  // throw new VeniceException("store name could not be null if request succeeded");
-  // }
-  // }
 
   private void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
     if (storeName == null) {
