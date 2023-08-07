@@ -130,8 +130,8 @@ public class PubSubInstrumentedAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public long getMaxGetTopicConfigRetryTimeInMs() {
-    return pubSubAdminAdapter.getMaxGetTopicConfigRetryTimeInMs();
+  public long getTopicConfigMaxRetryInMs() {
+    return pubSubAdminAdapter.getTopicConfigMaxRetryInMs();
   }
 
   @Override

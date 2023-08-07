@@ -55,7 +55,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaAdminAdapter.class);
   private final AdminClient internalKafkaAdminClient;
   private final ApacheKafkaAdminConfig apacheKafkaAdminConfig;
-  private PubSubTopicRepository pubSubTopicRepository;
+  private final PubSubTopicRepository pubSubTopicRepository;
 
   public ApacheKafkaAdminAdapter(
       ApacheKafkaAdminConfig apacheKafkaAdminConfig,
@@ -540,7 +540,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public long getMaxGetTopicConfigRetryTimeInMs() {
-    return apacheKafkaAdminConfig.getMaxGetTopicConfigRetryTimeInMs();
+  public long getTopicConfigMaxRetryInMs() {
+    return apacheKafkaAdminConfig.getTopicConfigMaxRetryInMs();
   }
 }

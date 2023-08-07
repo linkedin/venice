@@ -1,7 +1,5 @@
 package com.linkedin.venice.pubsub.api;
 
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS_DEFAULT_VALUE;
-
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -73,14 +71,14 @@ public interface PubSubAdminAdapter extends Closeable {
     long accumulatedWaitTime = 0;
     long sleepIntervalInMs = 100;
     Exception exception = null;
-    while (accumulatedWaitTime < getMaxGetTopicConfigRetryTimeInMs()) {
+    while (accumulatedWaitTime < getTopicConfigMaxRetryInMs()) {
       try {
         return getTopicConfig(pubSubTopic);
       } catch (PubSubClientRetriableException | PubSubClientException e) {
         exception = e;
         Utils.sleep(sleepIntervalInMs);
         accumulatedWaitTime += sleepIntervalInMs;
-        sleepIntervalInMs = Math.min(5000, sleepIntervalInMs * 2);
+        sleepIntervalInMs = Math.min(5_000, sleepIntervalInMs * 2);
       }
     }
     throw new PubSubClientException(
@@ -171,7 +169,7 @@ public interface PubSubAdminAdapter extends Closeable {
   default boolean containsTopicWithExpectationAndRetry(
       PubSubTopic pubSubTopic,
       int maxAttempts,
-      final boolean expectedResult,
+      boolean expectedResult,
       Duration initialBackoff,
       Duration maxBackoff,
       Duration maxDuration) {
@@ -185,7 +183,8 @@ public interface PubSubAdminAdapter extends Closeable {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
         if (expectedResult != this.containsTopic(pubSubTopic)) {
           throw new PubSubClientRetriableException(
-              "Retrying containsTopic check to get expected result: " + expectedResult + " for topic " + pubSubTopic);
+              "Retrying containsTopic check to make sure the topic: " + pubSubTopic
+                  + (expectedResult ? " exists" : " does not exist"));
         }
         return expectedResult;
       }, maxAttempts, initialBackoff, maxBackoff, maxDuration, getRetriableExceptions());
@@ -203,8 +202,8 @@ public interface PubSubAdminAdapter extends Closeable {
       return RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(() -> {
         if (expectedResult != this.containsTopicWithPartitionCheck(pubSubTopicPartition)) {
           throw new PubSubClientRetriableException(
-              "Retrying containsTopic check to get expected result: " + expectedResult + " for :"
-                  + pubSubTopicPartition);
+              "Retrying containsTopicWithPartition check to make sure the topicPartition: " + pubSubTopicPartition
+                  + (expectedResult ? " exists" : " does not exist"));
         }
         return expectedResult;
       }, maxAttempts, attemptDuration, getRetriableExceptions());
@@ -243,7 +242,7 @@ public interface PubSubAdminAdapter extends Closeable {
    */
   Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> pubSubTopics);
 
-  default long getMaxGetTopicConfigRetryTimeInMs() {
-    return Duration.ofSeconds(PUBSUB_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS_DEFAULT_VALUE).toMillis();
+  default long getTopicConfigMaxRetryInMs() {
+    return Duration.ofSeconds(PubSubConstants.PUBSUB_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS_DEFAULT_VALUE).toMillis();
   }
 }
