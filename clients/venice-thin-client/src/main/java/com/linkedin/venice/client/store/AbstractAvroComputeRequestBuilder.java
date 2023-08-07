@@ -9,9 +9,10 @@ import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperatio
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
-import com.linkedin.venice.client.store.streaming.PartialResponseCollectingStreamingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
@@ -32,8 +33,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.avro.Schema;
 
 
@@ -289,7 +292,20 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
 
   @Override
   public CompletableFuture<Map<K, ComputeGenericRecord>> execute(Set<K> keys) throws VeniceClientException {
-    CompletableFuture<Map<K, ComputeGenericRecord>> resultFuture = ComputeRequestBuilder.super.execute(keys);
+    CompletableFuture<Map<K, ComputeGenericRecord>> resultFuture = new CompletableFuture<>();
+    CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamResultFuture = streamingExecute(keys);
+    streamResultFuture.whenComplete((response, throwable) -> {
+      if (throwable != null) {
+        resultFuture.completeExceptionally(throwable);
+      } else if (!response.isFullResponse()) {
+        resultFuture.completeExceptionally(
+            new VeniceClientException(
+                "Received partial response, returned entry count: " + response.getTotalEntryCount()
+                    + ", and key count: " + keys.size()));
+      } else {
+        resultFuture.complete(response);
+      }
+    });
 
     if (streamingStats.isPresent()) {
       return AppTimeOutTrackingCompletableFuture.track(resultFuture, streamingStats.get());
@@ -299,10 +315,38 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
 
   @Override
   public CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamingExecute(Set<K> keys) {
-    PartialResponseCollectingStreamingCallback<K, ComputeGenericRecord> callback =
-        new PartialResponseCollectingStreamingCallback<>(keys, streamingStats.orElse(null));
-    streamingExecute(keys, callback);
-    return callback.getResultFuture();
+    Map<K, ComputeGenericRecord> resultMap = new VeniceConcurrentHashMap<>(keys.size());
+    Queue<K> nonExistingKeyList = new ConcurrentLinkedQueue<>();
+    VeniceResponseCompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> resultFuture =
+        new VeniceResponseCompletableFuture<>(
+            () -> new VeniceResponseMapImpl(resultMap, nonExistingKeyList, false),
+            keys.size(),
+            streamingStats);
+    streamingExecute(keys, new StreamingCallback<K, ComputeGenericRecord>() {
+      @Override
+      public void onRecordReceived(K key, ComputeGenericRecord value) {
+        if (value != null) {
+          /**
+           * {@link java.util.concurrent.ConcurrentHashMap#put} won't take 'null' as the value.
+           */
+          resultMap.put(key, value);
+        } else {
+          nonExistingKeyList.add(key);
+        }
+      }
+
+      @Override
+      public void onCompletion(Optional<Exception> exception) {
+        if (exception.isPresent()) {
+          resultFuture.completeExceptionally(exception.get());
+        } else {
+          boolean isFullResponse = resultMap.size() + nonExistingKeyList.size() == keys.size();
+          resultFuture.complete(new VeniceResponseMapImpl(resultMap, nonExistingKeyList, isFullResponse));
+        }
+      }
+    });
+
+    return resultFuture;
   }
 
   @Override

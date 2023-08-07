@@ -5,9 +5,10 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
-import com.linkedin.venice.client.store.streaming.PartialResponseCollectingStreamingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -24,6 +25,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,8 +35,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -318,24 +322,35 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) throws VeniceClientException {
     verifyMetadataInitialized();
-    PartialResponseCollectingStreamingCallback<K, V> callback =
-        new PartialResponseCollectingStreamingCallback<K, V>(keys, null) {
-          @Override
-          public void onRecordReceived(K key, V value) {
-            if (value != null) {
-              requestContext.successRequestKeyCount.incrementAndGet();
-            }
-            super.onRecordReceived(key, value);
-          }
+    // keys that do not exist in the storage nodes
+    Queue<K> nonExistingKeys = new ConcurrentLinkedQueue<>();
+    VeniceConcurrentHashMap<K, V> valueMap = new VeniceConcurrentHashMap<>();
+    CompletableFuture<VeniceResponseMap<K, V>> streamingResponseFuture = new VeniceResponseCompletableFuture<>(
+        () -> new VeniceResponseMapImpl<K, V>(valueMap, nonExistingKeys, false),
+        keys.size(),
+        Optional.empty());
+    streamingBatchGet(requestContext, keys, new StreamingCallback<K, V>() {
+      @Override
+      public void onRecordReceived(K key, V value) {
+        if (value == null) {
+          nonExistingKeys.add(key);
+        } else {
+          requestContext.successRequestKeyCount.incrementAndGet();
+          valueMap.put(key, value);
+        }
+      }
 
-          @Override
-          public void onCompletion(Optional<Exception> exception) {
-            requestContext.complete();
-            super.onCompletion(exception);
-          }
-        };
-    streamingBatchGet(requestContext, keys, callback);
-    return callback.getResultFuture();
+      @Override
+      public void onCompletion(Optional<Exception> exception) {
+        requestContext.complete();
+        if (exception.isPresent()) {
+          streamingResponseFuture.completeExceptionally(exception.get());
+        } else {
+          streamingResponseFuture.complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, true));
+        }
+      }
+    });
+    return streamingResponseFuture;
   }
 
   /**

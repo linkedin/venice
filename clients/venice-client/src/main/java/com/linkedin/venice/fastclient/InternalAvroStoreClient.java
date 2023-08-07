@@ -29,18 +29,18 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
    * @throws VeniceClientException
    */
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    return batchGet(new BatchGetRequestContext<>(), keys);
+    return batchGet(new BatchGetRequestContext<K, V>(), keys);
   }
 
   protected abstract CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException;
 
   public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
-    streamingBatchGet(new BatchGetRequestContext<>(), keys, callback);
+    streamingBatchGet(new BatchGetRequestContext<K, V>(), keys, callback);
   }
 
   public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
-    return streamingBatchGet(new BatchGetRequestContext<>(), keys);
+    return streamingBatchGet(new BatchGetRequestContext<K, V>(), keys);
   }
 
   protected abstract void streamingBatchGet(
