@@ -254,13 +254,13 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       return;
     }
     // TransientRecord map is indexed by non-chunked key.
-    PartitionConsumptionState.TransientRecord record =
-        getPartitionConsumptionState().getTransientRecord(getSourceConsumerRecord().getKey().getKey());
-    if (record != null) {
-      record.setValueManifest(chunkedValueManifest);
-      record.setRmdManifest(chunkedRmdManifest);
-    } else {
-      if (ingestionTask.isTransientRecordBufferUsed()) {
+    if (getIngestionTask().isTransientRecordBufferUsed()) {
+      PartitionConsumptionState.TransientRecord record =
+          getPartitionConsumptionState().getTransientRecord(getSourceConsumerRecord().getKey().getKey());
+      if (record != null) {
+        record.setValueManifest(chunkedValueManifest);
+        record.setRmdManifest(chunkedRmdManifest);
+      } else {
         LOGGER.error("Transient record is missing when trying to update value/RMD manifest.");
       }
     }
@@ -353,5 +353,9 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
 
   public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getSourceConsumerRecord() {
     return sourceConsumerRecord;
+  }
+
+  public LeaderFollowerStoreIngestionTask getIngestionTask() {
+    return ingestionTask;
   }
 }

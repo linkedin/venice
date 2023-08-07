@@ -3491,7 +3491,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * for this ingestion task or not.
    * For L/F mode only WC ingestion task needs this buffer.
    */
-  protected boolean isTransientRecordBufferUsed() {
+  public boolean isTransientRecordBufferUsed() {
     return isWriteComputationEnabled;
   }
 

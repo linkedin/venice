@@ -1188,7 +1188,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @return
    */
   @Override
-  protected boolean isTransientRecordBufferUsed() {
+  public boolean isTransientRecordBufferUsed() {
     return true;
   }
 
