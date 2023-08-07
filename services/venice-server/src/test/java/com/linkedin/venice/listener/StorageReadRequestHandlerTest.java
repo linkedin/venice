@@ -31,6 +31,9 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.grpc.GrpcErrorCodes;
+import com.linkedin.venice.listener.grpc.GrpcHandlerContext;
+import com.linkedin.venice.listener.grpc.GrpcHandlerPipeline;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
@@ -52,6 +55,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.protocols.VeniceClientRequest;
+import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -508,5 +513,21 @@ public class StorageReadRequestHandlerTest {
       }
     }
     Assert.assertEquals(computeResponse.getReadComputeOutputSize(), expectedReadComputeOutputSize);
+  }
+
+  @Test
+  public void testGrpcRead() {
+    VeniceClientRequest request =
+        VeniceClientRequest.newBuilder().setIsBatchRequest(true).setStoreName("testStore").build();
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
+    GrpcHandlerContext ctx = new GrpcHandlerContext(request, builder, null);
+    GrpcHandlerPipeline pipeline = mock(GrpcHandlerPipeline.class);
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.grpcRead(ctx, pipeline); // will cause np exception
+
+    verify(pipeline, times(1)).processRequest(any());
+    Assert.assertEquals(builder.getErrorCode(), GrpcErrorCodes.INTERNAL_ERROR);
+    Assert.assertEquals(builder.getErrorMessage(), "Internal Error");
   }
 }

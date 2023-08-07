@@ -392,7 +392,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
       ctx.setError();
       ctx.getVeniceServerResponseBuilder()
           .setErrorCode(GrpcErrorCodes.INTERNAL_ERROR)
-          .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.toString());
+          .setErrorMessage(e.getMessage() != null ? e.getMessage() : "Internal Error");
     }
 
     if (!ctx.hasError() && response != null) {
