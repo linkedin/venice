@@ -11,7 +11,6 @@ import org.apache.avro.generic.GenericRecord;
 public class HadamardProductOperator implements ReadComputeOperator {
   @Override
   public void compute(
-      int computeRequestVersion,
       ComputeOperation op,
       Schema.Field operatorInputField,
       Schema.Field resultField,

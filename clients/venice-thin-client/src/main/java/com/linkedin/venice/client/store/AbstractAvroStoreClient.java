@@ -3,7 +3,6 @@ package com.linkedin.venice.client.store;
 import static com.linkedin.venice.HttpConstants.VENICE_CLIENT_COMPUTE;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.HttpConstants.VENICE_KEY_COUNT;
-import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V2;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
@@ -74,9 +73,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private static final Map<String, String> GET_HEADER_MAP = new HashMap<>();
   private static final Map<String, String> MULTI_GET_HEADER_MAP = new HashMap<>();
   private static final Map<String, String> MULTI_GET_HEADER_MAP_FOR_STREAMING;
-  private static final Map<String, String> COMPUTE_HEADER_MAP_V2 = new HashMap<>();
   private static final Map<String, String> COMPUTE_HEADER_MAP_V3 = new HashMap<>();
-  static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V2;
   static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
 
   static {
@@ -99,21 +96,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         Integer.toString(CompressionStrategy.GZIP.getValue()));
 
     /**
-     * COMPUTE_REQUEST_V1 is deprecated.
+     * COMPUTE_REQUEST_V1 and V2 are deprecated.
      */
-    COMPUTE_HEADER_MAP_V2.put(
-        HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V2.getProtocolVersion()));
-
     COMPUTE_HEADER_MAP_V3.put(
         HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
 
     MULTI_GET_HEADER_MAP_FOR_STREAMING = new HashMap<>(MULTI_GET_HEADER_MAP);
     MULTI_GET_HEADER_MAP_FOR_STREAMING.put(HttpConstants.VENICE_STREAMING, "1");
-
-    COMPUTE_HEADER_MAP_FOR_STREAMING_V2 = new HashMap<>(COMPUTE_HEADER_MAP_V2);
-    COMPUTE_HEADER_MAP_FOR_STREAMING_V2.put(HttpConstants.VENICE_STREAMING, "1");
 
     COMPUTE_HEADER_MAP_FOR_STREAMING_V3 = new HashMap<>(COMPUTE_HEADER_MAP_V3);
     COMPUTE_HEADER_MAP_FOR_STREAMING_V3.put(HttpConstants.VENICE_STREAMING, "1");
@@ -635,7 +625,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       return;
     }
 
-    computeRequest.initializeOperationResultFields(resultSchema);
     ClientComputeRecordStreamDecoder.Callback<K, GenericRecord> decoderCallback =
         new ClientComputeRecordStreamDecoder.Callback<K, GenericRecord>(
             DelegatingTrackingCallback.wrap((StreamingCallback) callback)) {
@@ -645,7 +634,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           public void onRawRecordReceived(K key, GenericRecord value) {
             if (value != null) {
               value = ComputeUtils.computeResult(
-                  computeRequest.getComputeRequestVersion(),
                   computeRequest.getOperations(),
                   computeRequest.getOperationResultFields(),
                   sharedContext,
@@ -692,10 +680,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       List<K> keyList,
       TransportClientStreamingCallback callback,
       Optional<ClientStats> stats) throws VeniceClientException {
-    Map<String, String> headers = new HashMap<>(
-        computeRequest.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2
-            ? COMPUTE_HEADER_MAP_FOR_STREAMING_V2
-            : COMPUTE_HEADER_MAP_FOR_STREAMING_V3);
+    Map<String, String> headers = new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V3);
     int schemaId = getSchemaReader().getValueSchemaId(computeRequest.getValueSchema());
     headers.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
     headers.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));

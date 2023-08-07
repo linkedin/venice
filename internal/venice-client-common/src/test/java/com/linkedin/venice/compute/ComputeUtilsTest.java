@@ -57,18 +57,14 @@ public class ComputeUtilsTest {
     count.setResultFieldName("StringListFieldCount");
     op1.setOperation(count);
     operations.add(op1);
-    ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(computeVersion);
-    computeRequestWrapper.setOperations(operations);
-    computeRequestWrapper.initializeOperationResultFields(resultSchema);
-    List<Schema.Field> operationResultFields = computeRequestWrapper.getOperationResultFields();
+    List<Schema.Field> operationResultFields = ComputeUtils.getOperationResultFields(operations, resultSchema);
     Map<String, Object> sharedContext = new HashMap<>();
     GenericRecord inputRecord = new GenericData.Record(valueSchema);
     inputRecord.put("StringListField", new ArrayList<>());
     GenericRecord outputRecord = new GenericData.Record(resultSchema);
 
     // Code under test
-    ComputeUtils
-        .computeResult(computeVersion, operations, operationResultFields, sharedContext, inputRecord, outputRecord);
+    ComputeUtils.computeResult(operations, operationResultFields, sharedContext, inputRecord, outputRecord);
 
     assertNull(outputRecord.get("IntMapField"));
     assertEquals(outputRecord.get("StringListFieldCount"), 0);
@@ -264,7 +260,6 @@ public class ComputeUtilsTest {
 
     @Override
     public void compute(
-        int computeVersion,
         ComputeOperation operation,
         Schema.Field operatorInputField,
         Schema.Field resultField,

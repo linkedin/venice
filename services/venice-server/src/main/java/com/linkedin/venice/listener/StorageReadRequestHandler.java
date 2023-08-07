@@ -16,9 +16,9 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.compression.VeniceCompressor;
-import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.compute.protocol.request.ComputeRequest;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
@@ -74,6 +74,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -601,12 +602,14 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     reusableObjects.computeContext.clear();
 
     ComputeResponseWrapper response = new ComputeResponseWrapper(request.getKeyCount());
-    request.getComputeRequest().initializeOperationResultFields(reusableResultRecord.getSchema());
+    List<ComputeOperation> operations = request.getComputeRequest().getOperations();
+    List<Schema.Field> operationResultFields = ComputeUtils.getOperationResultFields(operations, resultSchema);
     int hits = 0;
     for (ComputeRouterRequestKeyV1 key: request.getKeys()) {
       AvroRecordUtils.clearRecord(reusableResultRecord);
       GenericRecord result = computeResult(
-          request.getComputeRequest(),
+          operations,
+          operationResultFields,
           storeVersion,
           key,
           reusableValueRecord,
@@ -619,7 +622,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         hits++;
       }
     }
-    incrementOperatorCounters(response, request.getComputeRequest().getOperations(), hits);
+    incrementOperatorCounters(response, operations, hits);
     return response;
   }
 
@@ -632,17 +635,13 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return metadataRetriever.getMetadata(request.getStoreName());
   }
 
-  private Schema getComputeResultSchema(ComputeRequestWrapper computeRequest, Schema valueSchema) {
+  private Schema getComputeResultSchema(ComputeRequest computeRequest, Schema valueSchema) {
     Utf8 resultSchemaStr = (Utf8) computeRequest.getResultSchemaStr();
     Schema resultSchema = computeResultSchemaCache.get(resultSchemaStr);
     if (resultSchema == null) {
       resultSchema = new Schema.Parser().parse(resultSchemaStr.toString());
       // Sanity check on the result schema
-      ComputeUtils.checkResultSchema(
-          resultSchema,
-          valueSchema,
-          computeRequest.getComputeRequestVersion(),
-          computeRequest.getOperations());
+      ComputeUtils.checkResultSchema(resultSchema, valueSchema, computeRequest.getOperations());
       computeResultSchemaCache.putIfAbsent(resultSchemaStr, resultSchema);
     }
     return resultSchema;
@@ -684,7 +683,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private GenericRecord computeResult(
-      ComputeRequestWrapper computeRequest,
+      List<ComputeOperation> operations,
+      List<Schema.Field> operationResultFields,
       PerStoreVersionState storeVersion,
       ComputeRouterRequestKeyV1 key,
       GenericRecord reusableValueRecord,
@@ -701,9 +701,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
     long computeStartTimeInNS = System.nanoTime();
     reusableResultRecord = ComputeUtils.computeResult(
-        computeRequest.getComputeRequestVersion(),
-        computeRequest.getOperations(),
-        computeRequest.getOperationResultFields(),
+        operations,
+        operationResultFields,
         reusableObjects.computeContext,
         reusableValueRecord,
         reusableResultRecord);

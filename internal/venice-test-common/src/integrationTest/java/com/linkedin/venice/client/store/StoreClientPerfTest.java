@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
+import com.linkedin.venice.client.schema.SchemaAndToString;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -13,7 +14,6 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -204,7 +204,7 @@ public class StoreClientPerfTest {
       super(storeClient, latestValueSchema);
     }
 
-    public Pair<Schema, String> getResultSchema() {
+    public SchemaAndToString getResultSchema() {
       return super.getResultSchema();
     }
   }
@@ -234,8 +234,7 @@ public class StoreClientPerfTest {
       Collection<String> fieldNames =
           valueSchema.getFields().stream().map(field -> field.name()).collect(Collectors.toList());
       testComputeRequestBuilder.project(fieldNames);
-      Pair<Schema, String> computeResultSchemaPair = testComputeRequestBuilder.getResultSchema();
-      Schema computeResultSchema = computeResultSchemaPair.getFirst();
+      Schema computeResultSchema = testComputeRequestBuilder.getResultSchema().getSchema();
       RecordSerializer<Object> computeResultSerializer =
           SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
       RecordDeserializer<Object> computeResultDeserializer =
