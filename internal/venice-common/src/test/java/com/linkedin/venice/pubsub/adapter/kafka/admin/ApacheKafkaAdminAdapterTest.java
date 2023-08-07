@@ -596,8 +596,6 @@ public class ApacheKafkaAdminAdapterTest {
 
   @Test
   public void testGetSomeTopicConfigs() throws ExecutionException, InterruptedException {
-    ListTopicsResult listTopicsResultMock = mock(ListTopicsResult.class);
-    KafkaFuture<Set<String>> listTopicsKafkaFutureMock = mock(KafkaFuture.class);
     Set<PubSubTopic> pubSubTopics =
         new HashSet<>(Arrays.asList(pubSubTopicRepository.getTopic("t1_v1"), pubSubTopicRepository.getTopic("t3_v2")));
 
