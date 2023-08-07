@@ -26,5 +26,5 @@ public class VeniceClusterWrapperConstants {
   public static final String CHILD_REGION_NAME_PREFIX = "dc-";
 
   // constant for tests with just one data center/region
-  public static final String STANDALONE_REGION_NAME = "planet-earth";
+  public static final String STANDALONE_REGION_NAME = "testRegion";
 }

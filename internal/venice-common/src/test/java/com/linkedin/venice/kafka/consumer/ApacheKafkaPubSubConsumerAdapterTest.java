@@ -14,7 +14,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -31,6 +30,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -99,7 +99,9 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
     PubSubTopic testTopic = pubSubTopicRepository.getTopic("test_topic_v1");
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(testTopic, 1);
     TopicPartition topicPartition = new TopicPartition(testTopic.getName(), pubSubTopicPartition.getPartitionNumber());
-    Assert.assertThrows(UnsubscribedTopicPartitionException.class, () -> consumer.resetOffset(pubSubTopicPartition));
+    Assert.assertThrows(
+        PubSubUnsubscribedTopicPartitionException.class,
+        () -> consumer.resetOffset(pubSubTopicPartition));
 
     // Test subscribe
     consumer.subscribe(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);

@@ -15,12 +15,12 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -136,8 +136,9 @@ public class TestDeleteStoreDeletesRealtimeTopic {
           "Real-time buffer topic should be truncated: " + realTimeTopicName + " but retention is set to: "
               + topicManager.getTopicRetention(realTimeTopicName) + ".");
       LOGGER.info("Confirmed truncation of real-time topic: {}", realTimeTopicName);
-    } catch (TopicDoesNotExistException e) {
-      LOGGER.info("Caught a TopicDoesNotExistException for real-time topic: {}, which is fine.", realTimeTopicName);
+    } catch (PubSubTopicDoesNotExistException e) {
+      LOGGER
+          .info("Caught a PubSubTopicDoesNotExistException for real-time topic: {}, which is fine.", realTimeTopicName);
     } catch (Exception e) {
       LOGGER.error(e);
     }

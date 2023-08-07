@@ -81,7 +81,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.producer.online.OnlineProducerFactory;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;

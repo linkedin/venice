@@ -13,8 +13,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VSON_PUSH;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
-import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
@@ -229,7 +229,7 @@ public class VeniceReducer extends AbstractMapReduceTask
         try {
           sendMessageToKafka(reporter, message.getConsumer());
         } catch (VeniceException e) {
-          if (e instanceof TopicAuthorizationVeniceException) {
+          if (e instanceof VeniceResourceAccessException) {
             MRJobCounterHelper.incrWriteAclAuthorizationFailureCount(reporter, 1);
             LOGGER.error(e);
             return;

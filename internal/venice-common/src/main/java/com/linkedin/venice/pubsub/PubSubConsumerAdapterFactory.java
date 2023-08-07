@@ -1,5 +1,8 @@
-package com.linkedin.venice.pubsub.api;
+package com.linkedin.venice.pubsub;
 
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
 

@@ -1,4 +1,4 @@
-package com.linkedin.venice.pubsub.api;
+package com.linkedin.venice.pubsub;
 
 /**
  * A wrapper around pub-sub producer, consumer, and admin adapter factories

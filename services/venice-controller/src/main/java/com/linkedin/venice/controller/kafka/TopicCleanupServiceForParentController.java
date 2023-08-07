@@ -2,13 +2,13 @@ package com.linkedin.venice.controller.kafka;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -65,8 +65,8 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
             storeToCountdownForDeletion.remove(topic + "_" + topicManager.getPubSubBootstrapServers());
             try {
               topicManager.ensureTopicIsDeletedAndBlockWithRetry(topic);
-            } catch (ExecutionException e) {
-              LOGGER.warn("ExecutionException caught when trying to delete topic: {}", topic);
+            } catch (VeniceException e) {
+              LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic, e); // log headline of e only
               // No op, will try again in the next cleanup cycle.
             }
           }

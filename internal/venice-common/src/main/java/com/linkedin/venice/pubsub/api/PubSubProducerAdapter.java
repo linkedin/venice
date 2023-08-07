@@ -2,6 +2,11 @@ package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -36,13 +41,29 @@ public interface PubSubProducerAdapter {
     return future.get(timeout, timeUnit);
   }
 
+  /**
+   * Sends a message to a PubSub topic asynchronously and returns a {@link Future} representing the result of the produce operation.
+   *
+   * @param topic The name of the Kafka topic to which the message will be sent.
+   * @param partition The partition to which the message should be sent.
+   * @param key The key associated with the message, used for partitioning and message retrieval.
+   * @param value The message payload to be sent to the PubSubTopic topic.
+   * @param pubSubMessageHeaders Additional headers to be included with the message.
+   * @param pubSubProducerCallback An optional callback to handle the result of the produce operation.
+   * @return A {@link Future} representing the result of the produce operation.
+   * @throws PubSubOpTimeoutException If the produce operation times out.
+   * @throws PubSubTopicAuthorizationException If there's an authorization error while producing the message.
+   * @throws PubSubTopicDoesNotExistException If the target topic does not exist.
+   * @throws PubSubClientRetriableException If a retriable error occurs while producing the message.
+   * @throws PubSubClientException If an error occurs while producing the message.
+   */
   Future<PubSubProduceResult> sendMessage(
       String topic,
       Integer partition,
       KafkaKey key,
       KafkaMessageEnvelope value,
-      PubSubMessageHeaders headers,
-      PubSubProducerCallback callback);
+      PubSubMessageHeaders pubSubMessageHeaders,
+      PubSubProducerCallback pubSubProducerCallback);
 
   void flush();
 

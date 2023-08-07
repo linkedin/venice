@@ -15,8 +15,8 @@ import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreV
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;

@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 
 

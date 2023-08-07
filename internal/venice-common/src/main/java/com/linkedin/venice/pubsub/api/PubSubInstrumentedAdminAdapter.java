@@ -12,18 +12,18 @@ import static com.linkedin.venice.stats.PubSubAdminWrapperStats.OCCURRENCE_LATEN
 import static com.linkedin.venice.stats.PubSubAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.LIST_ALL_TOPICS;
 import static com.linkedin.venice.stats.PubSubAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.SET_TOPIC_CONFIG;
 
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.stats.PubSubAdminWrapperStats;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
@@ -71,13 +71,12 @@ public class PubSubInstrumentedAdminAdapter implements PubSubAdminAdapter {
     });
   }
 
-  /**
-   * Note: This latency measurement is not accurate since this is an async API. But we measure it anyways since
-   * we record the occurrence rate at least
-   */
   @Override
-  public Future<Void> deleteTopic(PubSubTopic topicName) {
-    return instrument(DELETE_TOPIC, () -> pubSubAdminAdapter.deleteTopic(topicName));
+  public void deleteTopic(PubSubTopic topicName, Duration timeout) {
+    instrument(DELETE_TOPIC, () -> {
+      pubSubAdminAdapter.deleteTopic(topicName, timeout);
+      return null;
+    });
   }
 
   @Override
@@ -99,13 +98,13 @@ public class PubSubInstrumentedAdminAdapter implements PubSubAdminAdapter {
   }
 
   @Override
-  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws PubSubTopicDoesNotExistException {
     return instrument(GET_TOPIC_CONFIG, () -> pubSubAdminAdapter.getTopicConfig(topicName));
   }
 
   @Override
-  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName) {
-    return instrument(GET_TOPIC_CONFIG_WITH_RETRY, () -> pubSubAdminAdapter.getTopicConfigWithRetry(topicName));
+  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic pubSubTopic) {
+    return instrument(GET_TOPIC_CONFIG_WITH_RETRY, () -> pubSubAdminAdapter.getTopicConfigWithRetry(pubSubTopic));
   }
 
   @Override
@@ -128,6 +127,11 @@ public class PubSubInstrumentedAdminAdapter implements PubSubAdminAdapter {
   @Override
   public List<Class<? extends Throwable>> getRetriableExceptions() {
     return pubSubAdminAdapter.getRetriableExceptions();
+  }
+
+  @Override
+  public long getTopicConfigMaxRetryInMs() {
+    return pubSubAdminAdapter.getTopicConfigMaxRetryInMs();
   }
 
   @Override

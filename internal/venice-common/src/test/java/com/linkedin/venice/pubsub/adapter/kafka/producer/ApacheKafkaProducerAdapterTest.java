@@ -13,14 +13,18 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -34,10 +38,15 @@ import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.errors.AuthenticationException;
+import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.errors.InvalidTopicException;
 import org.apache.kafka.common.errors.TimeoutException;
+import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -55,7 +64,7 @@ public class ApacheKafkaProducerAdapterTest {
     producerConfigMock = mock(ApacheKafkaProducerConfig.class);
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "The internal KafkaProducer has been closed")
+  @Test(expectedExceptions = PubSubClientException.class, expectedExceptionsMessageRegExp = "The internal KafkaProducer has been closed")
   public void testEnsureProducerIsNotClosedThrowsExceptionWhenProducerIsClosed() {
     ApacheKafkaProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(producerConfigMock, kafkaProducerMock);
     doNothing().when(kafkaProducerMock).close(any());
@@ -71,11 +80,39 @@ public class ApacheKafkaProducerAdapterTest {
     assertEquals(producerAdapter.getNumberOfPartitions(TOPIC_NAME), 0);
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Got an error while trying to produce message into Kafka.*")
+  @Test
   public void testSendMessageThrowsAnExceptionOnTimeout() {
-    doThrow(TimeoutException.class).when(kafkaProducerMock).send(any(), any());
     ApacheKafkaProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(producerConfigMock, kafkaProducerMock);
-    producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, null);
+
+    doThrow(TimeoutException.class).when(kafkaProducerMock).send(any(), any());
+    assertThrows(
+        PubSubOpTimeoutException.class,
+        () -> producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, null));
+
+    doThrow(AuthenticationException.class).when(kafkaProducerMock).send(any(), any());
+    assertThrows(
+        PubSubTopicAuthorizationException.class,
+        () -> producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, null));
+
+    doThrow(AuthorizationException.class).when(kafkaProducerMock).send(any(), any());
+    assertThrows(
+        PubSubTopicAuthorizationException.class,
+        () -> producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, null));
+
+    doThrow(UnknownTopicOrPartitionException.class).when(kafkaProducerMock).send(any(), any());
+    assertThrows(
+        PubSubTopicDoesNotExistException.class,
+        () -> producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, null));
+
+    doThrow(InvalidTopicException.class).when(kafkaProducerMock).send(any(), any());
+    assertThrows(
+        PubSubTopicDoesNotExistException.class,
+        () -> producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, null));
+
+    doThrow(KafkaException.class).when(kafkaProducerMock).send(any(), any());
+    assertThrows(
+        PubSubClientException.class,
+        () -> producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, null));
   }
 
   @Test
