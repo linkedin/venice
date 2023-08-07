@@ -13,9 +13,12 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -44,6 +47,7 @@ import org.apache.kafka.clients.admin.DescribeTopicsResult;
 import org.apache.kafka.clients.admin.ListTopicsResult;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
+import org.apache.kafka.common.TopicPartitionInfo;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
@@ -361,25 +365,26 @@ public class ApacheKafkaAdminAdapterTest {
     AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
     KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
 
-    Map<ConfigResource, Config> configs = new HashMap<>();
+    Map<ConfigResource, Config> resourceConfigMap = new HashMap<>();
     when(internalKafkaAdminClientMock.alterConfigs(any())).thenAnswer(invocation -> {
-      configs.putAll(invocation.getArgument(0));
+      resourceConfigMap.putAll(invocation.getArgument(0));
       return alterConfigsResultMock;
     });
     when(alterConfigsResultMock.all()).thenReturn(alterConfigsKafkaFutureMock);
 
     kafkaAdminAdapter.setTopicConfig(testPubSubTopic, topicConfiguration);
 
-    assertEquals(configs.size(), 1);
-    ConfigResource configResource = configs.keySet().iterator().next();
-    assertEquals(configResource.type(), ConfigResource.Type.TOPIC);
-    assertEquals(configResource.name(), testPubSubTopic.getName());
+    assertEquals(resourceConfigMap.size(), 1);
+    for (Map.Entry<ConfigResource, Config> entry: resourceConfigMap.entrySet()) {
+      assertEquals(entry.getKey().type(), ConfigResource.Type.TOPIC);
+      assertEquals(entry.getKey().name(), testPubSubTopic.getName());
 
-    Config config = configs.get(configResource);
-    assertEquals(config.get(TopicConfig.RETENTION_MS_CONFIG).value(), "1111");
-    assertEquals(config.get(TopicConfig.CLEANUP_POLICY_CONFIG).value(), TopicConfig.CLEANUP_POLICY_COMPACT);
-    assertEquals(config.get(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG).value(), "222");
-    assertEquals(config.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG).value(), "333");
+      Config config = entry.getValue();
+      assertEquals(config.get(TopicConfig.RETENTION_MS_CONFIG).value(), "1111");
+      assertEquals(config.get(TopicConfig.CLEANUP_POLICY_CONFIG).value(), TopicConfig.CLEANUP_POLICY_COMPACT);
+      assertEquals(config.get(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG).value(), "222");
+      assertEquals(config.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG).value(), "333");
+    }
   }
 
   @Test
@@ -434,6 +439,194 @@ public class ApacheKafkaAdminAdapterTest {
 
     assertTrue(kafkaAdminAdapter.containsTopic(testPubSubTopic));
     assertFalse(kafkaAdminAdapter.containsTopic(testPubSubTopic));
+
+    verify(internalKafkaAdminClientMock, times(2)).describeTopics(any());
+    verify(describeTopicsResultMock, times(2)).values();
+    verify(describeTopicsKafkaFutureMock, times(2)).get();
   }
 
+  @Test
+  public void testContainsTopicThrowsException() throws ExecutionException, InterruptedException {
+    DescribeTopicsResult describeTopicsResultMock = mock(DescribeTopicsResult.class);
+    KafkaFuture<TopicDescription> describeTopicsKafkaFutureMock = mock(KafkaFuture.class);
+    Map<String, KafkaFuture<TopicDescription>> futureHashMap = new HashMap<>();
+    futureHashMap.put(testPubSubTopic.getName(), describeTopicsKafkaFutureMock);
+
+    when(internalKafkaAdminClientMock.describeTopics(any())).thenReturn(describeTopicsResultMock);
+    when(describeTopicsResultMock.values()).thenReturn(futureHashMap);
+    when(describeTopicsKafkaFutureMock.get())
+        .thenThrow(new ExecutionException(new UnknownTopicOrPartitionException("Unknown topic or partition")))
+        .thenThrow(new ExecutionException(new NetworkException("Retriable exception")))
+        .thenThrow(new ExecutionException(new UnknownServerException("Unknown server exception")))
+        .thenThrow(new InterruptedException("Interrupted exception"));
+
+    assertFalse(kafkaAdminAdapter.containsTopic(testPubSubTopic));
+    assertThrows(PubSubClientRetriableException.class, () -> kafkaAdminAdapter.containsTopic(testPubSubTopic));
+    assertThrows(PubSubClientException.class, () -> kafkaAdminAdapter.containsTopic(testPubSubTopic));
+    assertThrows(PubSubClientException.class, () -> kafkaAdminAdapter.containsTopic(testPubSubTopic));
+    assertTrue(Thread.currentThread().isInterrupted());
+
+    verify(internalKafkaAdminClientMock, times(4)).describeTopics(any());
+    verify(describeTopicsResultMock, times(4)).values();
+    verify(describeTopicsKafkaFutureMock, times(4)).get();
+  }
+
+  @Test
+  public void testContainsTopicWithPartitionCheck() throws ExecutionException, InterruptedException {
+    DescribeTopicsResult describeTopicsResultMock = mock(DescribeTopicsResult.class);
+    KafkaFuture<TopicDescription> describeTopicsKafkaFutureMock = mock(KafkaFuture.class);
+    Map<String, KafkaFuture<TopicDescription>> futureHashMap = new HashMap<>();
+    futureHashMap.put(testPubSubTopic.getName(), describeTopicsKafkaFutureMock);
+
+    List<TopicPartitionInfo> partitions =
+        Arrays.asList(mock(TopicPartitionInfo.class), mock(TopicPartitionInfo.class), mock(TopicPartitionInfo.class));
+
+    when(internalKafkaAdminClientMock.describeTopics(any())).thenReturn(describeTopicsResultMock);
+    when(describeTopicsResultMock.values()).thenReturn(futureHashMap);
+    when(describeTopicsKafkaFutureMock.get()).thenReturn(null) // first call to containsTopicWithPartitionCheck should
+                                                               // return null
+        .thenReturn(new TopicDescription(testPubSubTopic.getName(), false, partitions));
+
+    assertFalse(kafkaAdminAdapter.containsTopicWithPartitionCheck(new PubSubTopicPartitionImpl(testPubSubTopic, 0)));
+    assertTrue(kafkaAdminAdapter.containsTopicWithPartitionCheck(new PubSubTopicPartitionImpl(testPubSubTopic, 0)));
+    assertTrue(kafkaAdminAdapter.containsTopicWithPartitionCheck(new PubSubTopicPartitionImpl(testPubSubTopic, 1)));
+    assertTrue(kafkaAdminAdapter.containsTopicWithPartitionCheck(new PubSubTopicPartitionImpl(testPubSubTopic, 2)));
+    assertFalse(kafkaAdminAdapter.containsTopicWithPartitionCheck(new PubSubTopicPartitionImpl(testPubSubTopic, 3)));
+  }
+
+  @Test
+  public void testContainsTopicWithPartitionCheckThrowsException() throws ExecutionException, InterruptedException {
+    DescribeTopicsResult describeTopicsResultMock = mock(DescribeTopicsResult.class);
+    KafkaFuture<TopicDescription> describeTopicsKafkaFutureMock = mock(KafkaFuture.class);
+    Map<String, KafkaFuture<TopicDescription>> futureHashMap = new HashMap<>();
+    futureHashMap.put(testPubSubTopic.getName(), describeTopicsKafkaFutureMock);
+
+    when(internalKafkaAdminClientMock.describeTopics(any())).thenReturn(describeTopicsResultMock);
+    when(describeTopicsResultMock.values()).thenReturn(futureHashMap);
+    when(describeTopicsKafkaFutureMock.get())
+        .thenThrow(new ExecutionException(new UnknownTopicOrPartitionException("Unknown topic or partition")))
+        .thenThrow(new ExecutionException(new NetworkException("Retriable exception")))
+        .thenThrow(new ExecutionException(new UnknownServerException("Unknown server exception")))
+        .thenThrow(new InterruptedException("Interrupted exception"));
+
+    PubSubTopicPartition testPubSubTopicPartition = new PubSubTopicPartitionImpl(testPubSubTopic, 0);
+    assertFalse(kafkaAdminAdapter.containsTopicWithPartitionCheck(testPubSubTopicPartition));
+    assertThrows(
+        PubSubClientRetriableException.class,
+        () -> kafkaAdminAdapter.containsTopicWithPartitionCheck(testPubSubTopicPartition));
+    assertThrows(
+        PubSubClientException.class,
+        () -> kafkaAdminAdapter.containsTopicWithPartitionCheck(testPubSubTopicPartition));
+    assertThrows(
+        PubSubClientException.class,
+        () -> kafkaAdminAdapter.containsTopicWithPartitionCheck(testPubSubTopicPartition));
+    assertTrue(Thread.currentThread().isInterrupted());
+
+    verify(internalKafkaAdminClientMock, times(4)).describeTopics(any());
+    verify(describeTopicsResultMock, times(4)).values();
+    verify(describeTopicsKafkaFutureMock, times(4)).get();
+  }
+
+  @Test
+  public void testGetAllTopicRetentions() throws ExecutionException, InterruptedException {
+    ListTopicsResult listTopicsResultMock = mock(ListTopicsResult.class);
+    KafkaFuture<Set<String>> listTopicsKafkaFutureMock = mock(KafkaFuture.class);
+    Set<String> sampleTopics = new HashSet<>(Arrays.asList("t1_v1", "t2_rt", "t3_v2", "t4_rt"));
+
+    when(internalKafkaAdminClientMock.listTopics()).thenReturn(listTopicsResultMock);
+    when(listTopicsResultMock.names()).thenReturn(listTopicsKafkaFutureMock);
+    when(listTopicsKafkaFutureMock.get()).thenReturn(sampleTopics);
+
+    DescribeConfigsResult describeConfigsResultMock = mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> describeConfigsKafkaFutureMock = mock(KafkaFuture.class);
+    Map<ConfigResource, Config> resourceConfigMap = new HashMap<>();
+    resourceConfigMap.put(
+        new ConfigResource(ConfigResource.Type.TOPIC, "t1_v1"),
+        new Config(Collections.singletonList(new ConfigEntry(TopicConfig.RETENTION_MS_CONFIG, "1"))));
+    resourceConfigMap.put(
+        new ConfigResource(ConfigResource.Type.TOPIC, "t2_rt"),
+        new Config(Collections.singletonList(new ConfigEntry(TopicConfig.RETENTION_MS_CONFIG, "2"))));
+    resourceConfigMap.put(
+        new ConfigResource(ConfigResource.Type.TOPIC, "t3_v2"),
+        new Config(Collections.singletonList(new ConfigEntry(TopicConfig.RETENTION_MS_CONFIG, "3"))));
+    resourceConfigMap.put(new ConfigResource(ConfigResource.Type.TOPIC, "t4_rt"), new Config(Collections.emptyList()));
+
+    when(internalKafkaAdminClientMock.describeConfigs(any())).thenReturn(describeConfigsResultMock);
+    when(describeConfigsResultMock.all()).thenReturn(describeConfigsKafkaFutureMock);
+    when(describeConfigsKafkaFutureMock.get()).thenReturn(resourceConfigMap);
+
+    Map<PubSubTopic, Long> result = kafkaAdminAdapter.getAllTopicRetentions();
+    assertEquals(result.size(), 4);
+    assertEquals(result.get(pubSubTopicRepository.getTopic("t1_v1")), Long.valueOf(1));
+    assertEquals(result.get(pubSubTopicRepository.getTopic("t2_rt")), Long.valueOf(2));
+    assertEquals(result.get(pubSubTopicRepository.getTopic("t3_v2")), Long.valueOf(3));
+    assertEquals(
+        result.get(pubSubTopicRepository.getTopic("t4_rt")),
+        Long.valueOf(PubSubConstants.UNKNOWN_TOPIC_RETENTION));
+  }
+
+  @Test
+  public void testGetAllTopicRetentionsThrowsException() throws ExecutionException, InterruptedException {
+    ListTopicsResult listTopicsResultMock = mock(ListTopicsResult.class);
+    KafkaFuture<Set<String>> listTopicsKafkaFutureMock = mock(KafkaFuture.class);
+    Set<String> sampleTopics = new HashSet<>(Arrays.asList("t1_v1", "t2_rt", "t3_v2", "t4_rt"));
+
+    when(internalKafkaAdminClientMock.listTopics()).thenReturn(listTopicsResultMock);
+    when(listTopicsResultMock.names()).thenReturn(listTopicsKafkaFutureMock);
+    when(listTopicsKafkaFutureMock.get()).thenReturn(sampleTopics);
+
+    DescribeConfigsResult describeConfigsResultMock = mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> describeConfigsKafkaFutureMock = mock(KafkaFuture.class);
+    when(internalKafkaAdminClientMock.describeConfigs(any())).thenReturn(describeConfigsResultMock);
+    when(describeConfigsResultMock.all()).thenReturn(describeConfigsKafkaFutureMock);
+    when(describeConfigsKafkaFutureMock.get())
+        .thenThrow(new ExecutionException(new NetworkException("Retriable exception")))
+        .thenThrow(new ExecutionException(new UnknownServerException("Unknown server exception")))
+        .thenThrow(new InterruptedException("Interrupted exception"));
+
+    assertThrows(PubSubClientRetriableException.class, () -> kafkaAdminAdapter.getAllTopicRetentions());
+    assertThrows(PubSubClientException.class, () -> kafkaAdminAdapter.getAllTopicRetentions());
+    assertThrows(PubSubClientException.class, () -> kafkaAdminAdapter.getAllTopicRetentions());
+    assertTrue(Thread.currentThread().isInterrupted());
+
+    verify(internalKafkaAdminClientMock, times(3)).describeConfigs(any());
+    verify(describeConfigsResultMock, times(3)).all();
+    verify(describeConfigsKafkaFutureMock, times(3)).get();
+  }
+
+  @Test
+  public void testGetSomeTopicConfigs() throws ExecutionException, InterruptedException {
+    ListTopicsResult listTopicsResultMock = mock(ListTopicsResult.class);
+    KafkaFuture<Set<String>> listTopicsKafkaFutureMock = mock(KafkaFuture.class);
+    Set<PubSubTopic> pubSubTopics =
+        new HashSet<>(Arrays.asList(pubSubTopicRepository.getTopic("t1_v1"), pubSubTopicRepository.getTopic("t3_v2")));
+
+    DescribeConfigsResult describeConfigsResultMock = mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> describeConfigsKafkaFutureMock = mock(KafkaFuture.class);
+    Map<ConfigResource, Config> resourceConfigMap = new HashMap<>();
+    resourceConfigMap.put(
+        new ConfigResource(ConfigResource.Type.TOPIC, "t1_v1"),
+        new Config(Collections.singletonList(new ConfigEntry(TopicConfig.RETENTION_MS_CONFIG, "1"))));
+
+    resourceConfigMap.put(
+        new ConfigResource(ConfigResource.Type.TOPIC, "t3_v2"),
+        new Config(
+            Arrays.asList(
+                new ConfigEntry(TopicConfig.RETENTION_MS_CONFIG, "3"),
+                new ConfigEntry(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT))));
+
+    when(internalKafkaAdminClientMock.describeConfigs(any())).thenReturn(describeConfigsResultMock);
+    when(describeConfigsResultMock.all()).thenReturn(describeConfigsKafkaFutureMock);
+    when(describeConfigsKafkaFutureMock.get()).thenReturn(resourceConfigMap);
+
+    Map<PubSubTopic, PubSubTopicConfiguration> result = kafkaAdminAdapter.getSomeTopicConfigs(pubSubTopics);
+
+    assertEquals(result.size(), 2);
+
+    assertEquals(result.get(pubSubTopicRepository.getTopic("t1_v1")).isLogCompacted(), false);
+    assertEquals(result.get(pubSubTopicRepository.getTopic("t1_v1")).retentionInMs(), Optional.of(1L));
+
+    assertEquals(result.get(pubSubTopicRepository.getTopic("t3_v2")).isLogCompacted(), true);
+    assertEquals(result.get(pubSubTopicRepository.getTopic("t3_v2")).retentionInMs(), Optional.of(3L));
+  }
 }

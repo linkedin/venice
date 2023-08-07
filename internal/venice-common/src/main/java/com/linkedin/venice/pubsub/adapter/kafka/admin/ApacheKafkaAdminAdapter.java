@@ -467,8 +467,6 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new PubSubClientException("Interrupted while getting " + content + " for all topics", e);
-    } catch (Exception e) {
-      throw new PubSubClientException("Failed to get " + content + " for all topics", e);
     }
   }
 
