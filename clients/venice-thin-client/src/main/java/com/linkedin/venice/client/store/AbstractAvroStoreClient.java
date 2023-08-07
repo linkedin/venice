@@ -328,7 +328,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   /**
    * During the initialization, we do the cluster discovery at first to find the real end point this client need to talk
    * to, before initializing the serializer.
-   * So if sub-implementation needs to have its own serializer, please override the initSerializer method.
+   * So if sub-implementation needs to have its own serializer, please override the createKeySerializer method.
    */
   protected void init() {
     discoverD2Service(false);
@@ -351,7 +351,18 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     }
   }
 
-  protected void initSerializer() {
+  /**
+   * Clients using different protocols for deserialized data (e.g VSON, Proto, etc) can override this method to
+   * serialize the respective POJO to Avro bytes
+   * @return A serializer for key objects to Avro bytes
+   */
+  protected RecordSerializer<K> createKeySerializer() {
+    return getClientConfig().isUseFastAvro()
+        ? FastSerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema())
+        : SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
+  }
+
+  private void initSerializer() {
     // init key serializer
     if (needSchemaReader) {
       if (getSchemaReader() != null) {
@@ -376,9 +387,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
          * It is intentional to initialize {@link keySerializer} at last, so that other serializers are ready to use
          * once {@link keySerializer} is ready.
          */
-        this.keySerializer = getClientConfig().isUseFastAvro()
-            ? FastSerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema())
-            : SerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema());
+        this.keySerializer = createKeySerializer();
       } else {
         throw new VeniceClientException("SchemaReader is null while initializing serializer");
       }
