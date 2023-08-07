@@ -122,21 +122,18 @@ def integrationTestConfigs = {
 def integrationTestBuckets = [
   "A": [
       "com.linkedin.davinci.*",
-      "com.linkedin.venice.endToEnd.DaVinciClientMemoryLimitTest"],
+      "com.linkedin.venice.endToEnd.DaVinciClient*"],
   "B": [
       "com.linkedin.venice.endToEnd.DaVinciCluster*",
       "com.linkedin.venice.endToEnd.DaVinciCompute*",
       "com.linkedin.venice.endToEnd.DaVinciLive*"],
   "C": [
-      "com.linkedin.venice.endToEnd.DaVinciClientTest",
       "com.linkedin.venice.endToEnd.ActiveActive*"],
   "D": [
-      "com.linkedin.venice.endToEnd.TestActiveActive*",
-      "com.linkedin.venice.endToEnd.TestPartialUpdateWithActiveActiveReplication"],
+      "com.linkedin.venice.endToEnd.TestActiveActive*"],
   "E": [
       "com.linkedin.venice.helix.*",
-      "com.linkedin.venice.helixrebalance.*",
-      "com.linkedin.venice.controllerapi.*"],
+      "com.linkedin.venice.helixrebalance.*"],
   "F": [
       "com.linkedin.venice.server.*",
       "com.linkedin.venice.storagenode.*",
@@ -149,29 +146,28 @@ def integrationTestBuckets = [
       "com.linkedin.venice.fastclient.BatchGet*",
       "com.linkedin.venice.fastclient.schema.*",
       "com.linkedin.venice.fastclient.meta.*",
-      "com.linkedin.venice.endToEnd.TestEmptyPush",
-      "com.linkedin.venice.endToEnd.MetaSystemStoreTest"],
+      "com.linkedin.venice.endToEnd.TestEmptyPush"],
   "I": [
       "com.linkedin.venice.fastclient.AvroStoreClientEndToEndTest"],
   "J": [
       "com.linkedin.venice.hadoop.*",
       "com.linkedin.venice.endToEnd.TestVson*",
-      "com.linkedin.venice.endToEnd.Push*",
-      "com.linkedin.venice.writer.*"],
+      "com.linkedin.venice.endToEnd.Push*"],
   "K": [
       "com.linkedin.venice.endToEnd.TestPushJob*"],
   "L": [
       "com.linkedin.venice.endToEnd.TestBatch*"],
   "M": [
+      "com.linkedin.venice.kafka.*",
       "com.linkedin.venice.samza.*",
+      "com.linkedin.venice.writer.*",
       "com.linkedin.venice.endToEnd.PartialUpdateTest",
       "com.linkedin.venice.endToEnd.TestWritePathComputation",
       "com.linkedin.venice.endToEnd.WriteComputeWithActiveActiveReplicationTest"],
   "N": [
       "com.linkedin.venice.endToEnd.StoragePersona*",
       "com.linkedin.venice.endToEnd.TestStoreUpdateStoragePersona",
-      "com.linkedin.venice.persona.*",
-      "com.linkedin.venice.endToEnd.DataRecoveryTest"],
+      "com.linkedin.venice.persona.*"],
   "O": [
       "com.linkedin.venice.endToEnd.TestHybrid*"],
   "P": [
@@ -181,10 +177,7 @@ def integrationTestBuckets = [
       "com.linkedin.venice.controller.AdminTool*",
       "com.linkedin.venice.controller.VeniceParentHelixAdminTest"],
   "Q": [
-      "com.linkedin.venice.controller.Test*"],
-  "R": [
-      "com.linkedin.venice.pubsub.*",
-      "com.linkedin.venice.kafka.*"]
+      "com.linkedin.venice.controller.Test*"]
 ]
 
 integrationTestBuckets.each { name, patterns ->
