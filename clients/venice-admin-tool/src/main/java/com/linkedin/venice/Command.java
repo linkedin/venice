@@ -85,6 +85,7 @@ import static com.linkedin.venice.Arg.REPLICATION_FACTOR;
 import static com.linkedin.venice.Arg.RETRY;
 import static com.linkedin.venice.Arg.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.Arg.SERVER_URL;
 import static com.linkedin.venice.Arg.SKIP_DIV;
 import static com.linkedin.venice.Arg.SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
@@ -466,7 +467,7 @@ public enum Command {
   REQUEST_BASED_METADATA(
       "request-based-metadata",
       "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
-      new Arg[] { URL, STORE }
+      new Arg[] { URL, SERVER_URL, STORE }
   );
 
   private final String commandName;

@@ -409,7 +409,7 @@ public abstract class AbstractClientEndToEndSetup {
         clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
         clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
         // Validate and configure the metadata response schema forward compat support setup
-        AvroGenericStoreClient<String, GenericRecord> metadataResponseSchemaStoreClient = getGenericThinClient(
+        AvroGenericStoreClient metadataResponseSchemaStoreClient = getGenericThinClient(
             new MetricsRepository(),
             AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName());
         clientConfigBuilder.setMetadataResponseSchemaStoreClient(metadataResponseSchemaStoreClient);

@@ -3,6 +3,7 @@ package com.linkedin.venice;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
 
@@ -18,6 +19,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -27,6 +29,7 @@ import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -94,6 +97,7 @@ import com.linkedin.venice.schema.avro.SchemaCompatibility;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -137,6 +141,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -2814,8 +2819,9 @@ public class AdminTool {
 
   private static void getRequestBasedMetadata(CommandLine cmd) throws JsonProcessingException {
     String url = getRequiredArgument(cmd, Arg.URL);
+    String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
     String storeName = getRequiredArgument(cmd, Arg.STORE);
-    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(url);
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
     if (clientConfig.isHttps()) {
       if (!sslFactory.isPresent()) {
         throw new VeniceException("HTTPS url requires admin tool to be executed with cert");
@@ -2825,26 +2831,45 @@ public class AdminTool {
     TransportClient transportClient = null;
     try {
       transportClient = ClientFactory.getTransportClient(clientConfig);
-      getAndPrintRequestBasedMetadata(transportClient, url, storeName);
+      ControllerClient metadataResponseSchemaCC = ControllerClientFactory.discoverAndConstructControllerClient(
+          AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(),
+          url,
+          sslFactory,
+          1);
+      getAndPrintRequestBasedMetadata(transportClient, metadataResponseSchemaCC, serverUrl, storeName);
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
   }
 
-  static void getAndPrintRequestBasedMetadata(TransportClient transportClient, String url, String storeName)
-      throws JsonProcessingException {
+  static void getAndPrintRequestBasedMetadata(
+      TransportClient transportClient,
+      ControllerClient controllerClient,
+      String serverUrl,
+      String storeName) throws JsonProcessingException {
     String requestBasedMetadataURL = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     byte[] body;
+    int writerSchemaId;
     try {
-      body = transportClient.get(requestBasedMetadataURL).get().getBody();
+      TransportClientResponse transportClientResponse = transportClient.get(requestBasedMetadataURL).get();
+      writerSchemaId = transportClientResponse.getSchemaId();
+      body = transportClientResponse.getBody();
     } catch (Exception e) {
       throw new VeniceException(
-          "Encountered exception while trying to send metadata request to: " + url + "/" + requestBasedMetadataURL,
+          "Encountered exception while trying to send metadata request to: " + serverUrl + "/"
+              + requestBasedMetadataURL,
           e);
     }
-    RecordDeserializer<MetadataResponseRecord> metadataResponseDeserializer = FastSerializerDeserializerFactory
-        .getFastAvroSpecificDeserializer(MetadataResponseRecord.SCHEMA$, MetadataResponseRecord.class);
-    MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
+    SchemaResponse schemaResponse = controllerClient
+        .getValueSchema(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(), writerSchemaId);
+    if (schemaResponse.isError()) {
+      throw new VeniceException(
+          "Failed to fetch metadata response schema from controller, error: " + schemaResponse.getError());
+    }
+    Schema writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
+    RecordDeserializer<GenericRecord> metadataResponseDeserializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, MetadataResponseRecord.SCHEMA$);
+    GenericRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
     // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
     // Use the Avro record's toString() instead and pretty print it.
     Object printObject = ObjectMapperFactory.getInstance().readValue(metadataResponse.toString(), Object.class);

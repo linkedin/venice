@@ -70,7 +70,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final StoreMetadataFetchMode storeMetadataFetchMode;
   private final D2Client d2Client;
   private final String clusterDiscoveryD2Service;
-  private final AvroGenericStoreClient<K, V> metadataResponseSchemaStoreClient;
+  private final AvroGenericStoreClient metadataResponseSchemaStoreClient;
   /**
    * The choice of implementation for batch get: single get or streamingBatchget. The first version of batchGet in
    * FC used single get in a loop to support a customer request for two-key batch-get. This config allows switching
@@ -119,7 +119,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean useStreamingBatchGetAsDefault,
       boolean useGrpc,
       Map<String, String> nettyServerToGrpcAddressMap,
-      AvroGenericStoreClient<K, V> metadataResponseSchemaStoreClient) {
+      AvroGenericStoreClient metadataResponseSchemaStoreClient) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -377,7 +377,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return nettyServerToGrpcAddressMap;
   }
 
-  public AvroGenericStoreClient<K, V> getMetadataResponseSchemaStoreClient() {
+  public AvroGenericStoreClient getMetadataResponseSchemaStoreClient() {
     return this.metadataResponseSchemaStoreClient;
   }
 
@@ -430,7 +430,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean useStreamingBatchGetAsDefault = false;
     private boolean useGrpc = false;
     private Map<String, String> nettyServerToGrpcAddressMap = null;
-    private AvroGenericStoreClient<K, V> metadataResponseSchemaStoreClient;
+    private AvroGenericStoreClient metadataResponseSchemaStoreClient;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -600,7 +600,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     public ClientConfigBuilder<K, V, T> setMetadataResponseSchemaStoreClient(
-        AvroGenericStoreClient<K, V> metadataResponseSchemaStoreClient) {
+        AvroGenericStoreClient metadataResponseSchemaStoreClient) {
       this.metadataResponseSchemaStoreClient = metadataResponseSchemaStoreClient;
       return this;
     }

@@ -6,7 +6,6 @@ import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSO
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -75,19 +74,19 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final ICProvider icProvider;
   private final AtomicReference<Integer> maxValueSchemaId = new AtomicReference<>(SchemaData.INVALID_VALUE_SCHEMA_ID);
 
-  RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
+  RouterBackedSchemaReader(Supplier<InternalAvroStoreClient> clientSupplier) throws VeniceClientException {
     this(clientSupplier, Optional.empty(), Optional.empty());
   }
 
   public RouterBackedSchemaReader(
-      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Supplier<InternalAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter) {
     this(clientSupplier, readerSchema, preferredSchemaFilter, (ICProvider) null);
   }
 
   public RouterBackedSchemaReader(
-      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Supplier<InternalAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
       ICProvider icProvider) {
@@ -95,7 +94,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   public RouterBackedSchemaReader(
-      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Supplier<InternalAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
       Duration valueSchemaRefreshPeriod) {
@@ -103,7 +102,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
   }
 
   public RouterBackedSchemaReader(
-      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Supplier<InternalAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
       Duration valueSchemaRefreshPeriod,
@@ -120,7 +119,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
     this(storeClient, true, readerSchema, preferredSchemaFilter, valueSchemaRefreshPeriod, icProvider);
   }
 
-  public RouterBackedSchemaReader(
+  private RouterBackedSchemaReader(
       InternalAvroStoreClient storeClient,
       boolean externalClient,
       Optional<Schema> readerSchema,

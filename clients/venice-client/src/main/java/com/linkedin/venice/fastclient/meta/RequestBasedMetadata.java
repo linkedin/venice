@@ -1,10 +1,12 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD;
 import static com.linkedin.venice.schema.SchemaData.INVALID_VALUE_SCHEMA_ID;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -35,6 +37,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -76,16 +79,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
-  private final RouterBackedSchemaReader metadataResponseSchemaReader;
+  private RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
   private volatile boolean isReady;
   private Schema metadataResponseSchema = null;
   private int metadataResponseSchemaId = INVALID_VALUE_SCHEMA_ID;
 
-  public RequestBasedMetadata(
-      ClientConfig clientConfig,
-      D2TransportClient transportClient,
-      RouterBackedSchemaReader metadataResponseSchemaReader) {
+  public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
     super(clientConfig);
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
@@ -96,6 +96,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
     this.clientStats = clientConfig.getStats(RequestType.SINGLE_GET);
+    this.metadataResponseSchemaReader = new RouterBackedSchemaReader(
+        () -> (InternalAvroStoreClient) clientConfig.getMetadataResponseSchemaStoreClient(),
+        Optional.empty(),
+        Optional.empty(),
+        DEFAULT_SCHEMA_REFRESH_PERIOD,
+        null);
+  }
+
+  // For unit tests only
+  public synchronized void setMetadataResponseSchemaReader(RouterBackedSchemaReader metadataResponseSchemaReader) {
     this.metadataResponseSchemaReader = metadataResponseSchemaReader;
   }
 

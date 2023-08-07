@@ -159,7 +159,7 @@ public enum AvroProtocolDefinition {
   SERVER_ADMIN_RESPONSE_V1(1, AdminResponseRecord.class),
 
   /**
-   * Response record for metadata fetch request v1.
+   * Response record for metadata fetch request.
    */
   SERVER_METADATA_RESPONSE(1, MetadataResponseRecord.class),
 

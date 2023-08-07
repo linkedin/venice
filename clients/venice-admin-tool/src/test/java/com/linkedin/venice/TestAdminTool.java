@@ -11,6 +11,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -22,6 +23,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import java.io.IOException;
@@ -209,13 +211,13 @@ public class TestAdminTool {
   public void testAdminToolRequestBasedMetadata()
       throws ExecutionException, InterruptedException, JsonProcessingException {
     String storeName = "test-store1";
-    String[] getMetadataArgs =
-        { "--request-based-metadata", "--url", "http://localhost:7036", "--store", storeName, "--cluster", "venice-1" };
+    String[] getMetadataArgs = { "--request-based-metadata", "--url", "http://localhost:7036", "--server-url",
+        "http://localhost:7036", "--store", storeName };
     VeniceException requestException =
         Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgs));
-    Assert.assertTrue(requestException.getMessage().contains("exception while trying to send metadata request"));
-    String[] getMetadataArgsSSL = { "--request-based-metadata", "--url", "https://localhost:7036", "--store", storeName,
-        "--cluster", "venice-1" };
+    Assert.assertTrue(requestException.getMessage().contains("Unable to discover cluster for store"));
+    String[] getMetadataArgsSSL = { "--request-based-metadata", "--url", "https://localhost:7036", "--server-url",
+        "https://localhost:7036", "--store", storeName };
     VeniceException sslException = Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgsSSL));
     Assert.assertTrue(sslException.getMessage().contains("requires admin tool to be executed with cert"));
 
@@ -241,9 +243,18 @@ public class TestAdminTool {
     record.setLatestSuperSetValueSchemaId(1);
     byte[] responseByte = metadataResponseSerializer.serialize(record);
     doReturn(responseByte).when(response).getBody();
+    doReturn(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion()).when(response).getSchemaId();
     doReturn(response).when(completableFuture).get();
     String requestBasedMetadataURL = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(completableFuture).when(transportClient).get(requestBasedMetadataURL);
-    AdminTool.getAndPrintRequestBasedMetadata(transportClient, "http://localhost:7036", storeName);
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    SchemaResponse schemaResponse = mock(SchemaResponse.class);
+    doReturn(false).when(schemaResponse).isError();
+    doReturn(MetadataResponseRecord.SCHEMA$.toString()).when(schemaResponse).getSchemaStr();
+    doReturn(schemaResponse).when(controllerClient)
+        .getValueSchema(
+            AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(),
+            AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion());
+    AdminTool.getAndPrintRequestBasedMetadata(transportClient, controllerClient, "http://localhost:7036", storeName);
   }
 }
