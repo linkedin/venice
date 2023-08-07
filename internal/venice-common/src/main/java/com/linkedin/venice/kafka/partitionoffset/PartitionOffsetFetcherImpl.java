@@ -504,15 +504,12 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
         throw new IllegalArgumentException(
             "Cannot retrieve latest offsets for invalid partition " + pubSubTopicPartition.getPartitionNumber());
       }
-      long earliestOffset;
       Long offset = pubSubConsumer.get().beginningOffset(pubSubTopicPartition, DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
-      if (offset != null) {
-        earliestOffset = offset;
-      } else {
+      if (offset == null) {
         throw new VeniceException(
             "offset result returned from beginningOffsets does not contain entry: " + pubSubTopicPartition);
       }
-      return earliestOffset;
+      return offset;
     }
   }
 
