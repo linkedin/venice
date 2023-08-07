@@ -12,6 +12,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.LeaderProducerCallback;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -182,6 +183,9 @@ public class VeniceWriterUnitTest {
     when(record.getKey()).thenReturn(kafkaKey);
     when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
     when(leaderProducerCallback.getSourceConsumerRecord()).thenReturn(record);
+    LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    when(storeIngestionTask.isTransientRecordBufferUsed()).thenReturn(true);
+    when(leaderProducerCallback.getIngestionTask()).thenReturn(storeIngestionTask);
     doCallRealMethod().when(leaderProducerCallback).setChunkingInfo(any(), any(), any(), any(), any(), any(), any());
     writer.put(
         Integer.toString(1),
