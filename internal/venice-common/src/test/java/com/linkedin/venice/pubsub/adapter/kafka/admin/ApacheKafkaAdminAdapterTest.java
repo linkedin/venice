@@ -2,10 +2,14 @@ package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
@@ -18,17 +22,30 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AlterConfigsResult;
 import org.apache.kafka.clients.admin.Config;
 import org.apache.kafka.clients.admin.ConfigEntry;
 import org.apache.kafka.clients.admin.CreateTopicsResult;
 import org.apache.kafka.clients.admin.DeleteTopicsResult;
+import org.apache.kafka.clients.admin.DescribeConfigsResult;
+import org.apache.kafka.clients.admin.DescribeTopicsResult;
+import org.apache.kafka.clients.admin.ListTopicsResult;
+import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.KafkaFuture;
+import org.apache.kafka.common.config.ConfigResource;
+import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.NetworkException;
 import org.apache.kafka.common.errors.TimeoutException;
@@ -194,38 +211,229 @@ public class ApacheKafkaAdminAdapterTest {
         .thenThrow(new ExecutionException(new TimeoutException("Timeout exception")))
         .thenThrow(new ExecutionException(new UnknownServerException("Unknown server exception")))
         .thenThrow(new java.util.concurrent.TimeoutException("Timeout exception"))
+        .thenThrow(new ExecutionException(new NetworkException("Retryable network exception")))
         .thenThrow(new InterruptedException("Interrupted exception"));
 
-    // First call throws UnknownServerException
     assertThrows(
         PubSubTopicDoesNotExistException.class,
         () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
     verify(internalKafkaAdminClientMock).deleteTopics(eq(Collections.singleton(testPubSubTopic.getName())));
 
-    // Second call throws TimeoutException
     assertThrows(
         PubSubOpTimeoutException.class,
         () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
 
-    // Third call throws UnknownServerException
     assertThrows(
         PubSubClientException.class,
         () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
 
-    // Fourth call throws TimeoutException
     assertThrows(
         PubSubOpTimeoutException.class,
         () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
 
-    // Fifth call throws InterruptedException
+    assertThrows(
+        PubSubClientRetriableException.class,
+        () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
+
     assertThrows(
         PubSubClientException.class,
         () -> kafkaAdminAdapter.deleteTopic(testPubSubTopic, Duration.ofMillis(1000L)));
     assertTrue(Thread.currentThread().isInterrupted());
 
     // Verify that deleteTopics() and get() are called 5 times
-    verify(internalKafkaAdminClientMock, times(5)).deleteTopics(eq(Collections.singleton(testPubSubTopic.getName())));
-    verify(deleteTopicsResultMock, times(5)).all();
-    verify(topicDeletionFutureMock, times(5)).get(eq(1000L), eq(TimeUnit.MILLISECONDS));
+    verify(internalKafkaAdminClientMock, times(6)).deleteTopics(eq(Collections.singleton(testPubSubTopic.getName())));
+    verify(deleteTopicsResultMock, times(6)).all();
+    verify(topicDeletionFutureMock, times(6)).get(eq(1000L), eq(TimeUnit.MILLISECONDS));
   }
+
+  @Test
+  public void testGetTopicConfig() throws Exception {
+    DescribeConfigsResult describeConfigsResultMock = mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> describeConfigsKafkaFutureMock = mock(KafkaFuture.class);
+
+    List<ConfigEntry> configEntries = Arrays.asList(
+        new ConfigEntry("cleanup.policy", "compact"),
+        new ConfigEntry("retention.ms", "1111"),
+        new ConfigEntry("min.compaction.lag.ms", "2222"),
+        new ConfigEntry("min.insync.replicas", "3333"));
+    Config config = new Config(configEntries);
+    Map<ConfigResource, Config> configMap = new HashMap<>();
+    configMap.put(new ConfigResource(ConfigResource.Type.TOPIC, testPubSubTopic.getName()), config);
+
+    when(internalKafkaAdminClientMock.describeConfigs(any())).thenReturn(describeConfigsResultMock);
+    when(describeConfigsResultMock.all()).thenReturn(describeConfigsKafkaFutureMock);
+    when(describeConfigsKafkaFutureMock.get()).thenReturn(configMap);
+
+    PubSubTopicConfiguration topicConfiguration = kafkaAdminAdapter.getTopicConfig(testPubSubTopic);
+
+    assertTrue(topicConfiguration.isLogCompacted());
+
+    assertTrue(topicConfiguration.retentionInMs().isPresent());
+    assertEquals(topicConfiguration.retentionInMs().get(), Long.valueOf(1111));
+
+    assertEquals(topicConfiguration.minLogCompactionLagMs(), Long.valueOf(2222));
+
+    assertTrue(topicConfiguration.minInSyncReplicas().isPresent());
+    assertEquals(topicConfiguration.minInSyncReplicas().get(), Integer.valueOf(3333));
+
+    verify(internalKafkaAdminClientMock).describeConfigs(any());
+    verify(describeConfigsResultMock).all();
+    verify(describeConfigsKafkaFutureMock).get();
+  }
+
+  @Test
+  public void testGetTopicThrowsException() throws Exception {
+    DescribeConfigsResult describeConfigsResultMock = mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> describeConfigsKafkaFutureMock = mock(KafkaFuture.class);
+
+    when(internalKafkaAdminClientMock.describeConfigs(any())).thenReturn(describeConfigsResultMock);
+    when(describeConfigsResultMock.all()).thenReturn(describeConfigsKafkaFutureMock);
+
+    when(describeConfigsKafkaFutureMock.get())
+        .thenThrow(new ExecutionException(new UnknownTopicOrPartitionException("Unknown topic or partition")))
+        .thenThrow(new ExecutionException(new NetworkException("Retryable network exception")))
+        .thenThrow(new ExecutionException(new UnknownServerException("Unknown server exception")))
+        .thenThrow(new InterruptedException("Interrupted exception"));
+
+    assertThrows(PubSubTopicDoesNotExistException.class, () -> kafkaAdminAdapter.getTopicConfig(testPubSubTopic));
+
+    assertThrows(PubSubClientRetriableException.class, () -> kafkaAdminAdapter.getTopicConfig(testPubSubTopic));
+
+    assertThrows(PubSubClientException.class, () -> kafkaAdminAdapter.getTopicConfig(testPubSubTopic));
+
+    assertThrows(PubSubClientException.class, () -> kafkaAdminAdapter.getTopicConfig(testPubSubTopic));
+    assertTrue(Thread.currentThread().isInterrupted());
+
+    verify(internalKafkaAdminClientMock, times(4)).describeConfigs(any());
+    verify(describeConfigsResultMock, times(4)).all();
+    verify(describeConfigsKafkaFutureMock, times(4)).get();
+  }
+
+  @Test
+  public void testListAllTopics() throws ExecutionException, InterruptedException {
+    ListTopicsResult listTopicsResultMock = mock(ListTopicsResult.class);
+    KafkaFuture<Set<String>> listTopicsKafkaFutureMock = mock(KafkaFuture.class);
+    Set<String> sampleTopics = new HashSet<>(Arrays.asList("t1_v1", "t2_rt", "t3_v2"));
+
+    when(internalKafkaAdminClientMock.listTopics()).thenReturn(listTopicsResultMock);
+    when(listTopicsResultMock.names()).thenReturn(listTopicsKafkaFutureMock);
+    when(listTopicsKafkaFutureMock.get()).thenReturn(sampleTopics);
+
+    Set<PubSubTopic> topics = kafkaAdminAdapter.listAllTopics();
+
+    assertEquals(topics.size(), 3);
+    assertTrue(topics.contains(pubSubTopicRepository.getTopic("t1_v1")));
+    assertTrue(topics.contains(pubSubTopicRepository.getTopic("t2_rt")));
+    assertTrue(topics.contains(pubSubTopicRepository.getTopic("t3_v2")));
+
+    verify(internalKafkaAdminClientMock).listTopics();
+    verify(listTopicsResultMock).names();
+    verify(listTopicsKafkaFutureMock).get();
+  }
+
+  @Test
+  public void testListAllTopicsThrowsException() throws ExecutionException, InterruptedException {
+    ListTopicsResult listTopicsResultMock = mock(ListTopicsResult.class);
+    KafkaFuture<Set<String>> listTopicsKafkaFutureMock = mock(KafkaFuture.class);
+
+    when(internalKafkaAdminClientMock.listTopics()).thenReturn(listTopicsResultMock);
+    when(listTopicsResultMock.names()).thenReturn(listTopicsKafkaFutureMock);
+
+    when(listTopicsKafkaFutureMock.get())
+        .thenThrow(new ExecutionException(new NetworkException("Retryable network exception")))
+        .thenThrow(new ExecutionException(new UnknownServerException("Non-retryable exception")))
+        .thenThrow(new InterruptedException("Interrupted exception"));
+
+    assertThrows(PubSubClientRetriableException.class, () -> kafkaAdminAdapter.listAllTopics());
+    assertThrows(PubSubClientException.class, () -> kafkaAdminAdapter.listAllTopics());
+    assertThrows(PubSubClientException.class, () -> kafkaAdminAdapter.listAllTopics());
+    assertTrue(Thread.currentThread().isInterrupted());
+
+    verify(internalKafkaAdminClientMock, times(3)).listTopics();
+    verify(listTopicsResultMock, times(3)).names();
+    verify(listTopicsKafkaFutureMock, times(3)).get();
+  }
+
+  @Test
+  public void testSetTopicConfig() {
+    PubSubTopicConfiguration topicConfiguration =
+        new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L);
+    AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
+    KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
+
+    Map<ConfigResource, Config> configs = new HashMap<>();
+    when(internalKafkaAdminClientMock.alterConfigs(any())).thenAnswer(invocation -> {
+      configs.putAll(invocation.getArgument(0));
+      return alterConfigsResultMock;
+    });
+    when(alterConfigsResultMock.all()).thenReturn(alterConfigsKafkaFutureMock);
+
+    kafkaAdminAdapter.setTopicConfig(testPubSubTopic, topicConfiguration);
+
+    assertEquals(configs.size(), 1);
+    ConfigResource configResource = configs.keySet().iterator().next();
+    assertEquals(configResource.type(), ConfigResource.Type.TOPIC);
+    assertEquals(configResource.name(), testPubSubTopic.getName());
+
+    Config config = configs.get(configResource);
+    assertEquals(config.get(TopicConfig.RETENTION_MS_CONFIG).value(), "1111");
+    assertEquals(config.get(TopicConfig.CLEANUP_POLICY_CONFIG).value(), TopicConfig.CLEANUP_POLICY_COMPACT);
+    assertEquals(config.get(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG).value(), "222");
+    assertEquals(config.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG).value(), "333");
+  }
+
+  @Test
+  public void testSetTopicConfigThrowsException() throws ExecutionException, InterruptedException {
+    PubSubTopicConfiguration topicConfiguration =
+        new PubSubTopicConfiguration(Optional.of(1111L), true, Optional.of(222), 333L);
+    AlterConfigsResult alterConfigsResultMock = mock(AlterConfigsResult.class);
+    KafkaFuture<Void> alterConfigsKafkaFutureMock = mock(KafkaFuture.class);
+
+    when(internalKafkaAdminClientMock.alterConfigs(any())).thenReturn(alterConfigsResultMock);
+    when(alterConfigsResultMock.all()).thenReturn(alterConfigsKafkaFutureMock);
+
+    when(alterConfigsKafkaFutureMock.get())
+        .thenThrow(new ExecutionException(new UnknownTopicOrPartitionException("Unknown topic or partition")))
+        .thenThrow(new ExecutionException(new UnknownServerException("Unknown server exception")))
+        .thenThrow(new InterruptedException("Interrupted exception"));
+
+    ApacheKafkaAdminAdapter apacheKafkaAdminAdapterSpy = spy(kafkaAdminAdapter);
+    doReturn(false, true, true).when(apacheKafkaAdminAdapterSpy)
+        .containsTopicWithExpectationAndRetry(testPubSubTopic, 3, true);
+
+    assertThrows(
+        PubSubTopicDoesNotExistException.class,
+        () -> apacheKafkaAdminAdapterSpy.setTopicConfig(testPubSubTopic, topicConfiguration));
+
+    assertThrows(
+        PubSubClientException.class,
+        () -> apacheKafkaAdminAdapterSpy.setTopicConfig(testPubSubTopic, topicConfiguration));
+
+    assertThrows(
+        PubSubClientException.class,
+        () -> apacheKafkaAdminAdapterSpy.setTopicConfig(testPubSubTopic, topicConfiguration));
+    assertTrue(Thread.currentThread().isInterrupted());
+
+    verify(internalKafkaAdminClientMock, times(3)).alterConfigs(any());
+    verify(alterConfigsResultMock, times(3)).all();
+    verify(alterConfigsKafkaFutureMock, times(3)).get();
+  }
+
+  @Test
+  public void testContainsTopic() throws ExecutionException, InterruptedException {
+    DescribeTopicsResult describeTopicsResultMock = mock(DescribeTopicsResult.class);
+    KafkaFuture<TopicDescription> describeTopicsKafkaFutureMock = mock(KafkaFuture.class);
+    Map<String, KafkaFuture<TopicDescription>> futureHashMap = new HashMap<>();
+    futureHashMap.put(testPubSubTopic.getName(), describeTopicsKafkaFutureMock);
+
+    when(internalKafkaAdminClientMock.describeTopics(any())).thenReturn(describeTopicsResultMock);
+    when(describeTopicsResultMock.values()).thenReturn(futureHashMap);
+    when(describeTopicsKafkaFutureMock.get())
+        .thenReturn(new TopicDescription(testPubSubTopic.getName(), false, new ArrayList<>()))
+        .thenReturn(null);
+
+    assertTrue(kafkaAdminAdapter.containsTopic(testPubSubTopic));
+    assertFalse(kafkaAdminAdapter.containsTopic(testPubSubTopic));
+  }
+
 }
