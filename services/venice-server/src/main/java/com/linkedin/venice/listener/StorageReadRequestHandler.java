@@ -322,7 +322,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
         }
       });
-
     } else if (message instanceof HealthCheckRequest) {
       if (diskHealthCheckService.isDiskHealthy()) {
         context.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
@@ -358,15 +357,19 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
       pipeline.processRequest(ctx);
       return;
     }
+
     RouterRequest request = ctx.getRouterRequest();
     final long preSubmissionTimeNs = System.nanoTime();
-    ReadResponse response;
+    ReadResponse response = null;
+    double submissionWaitTime = -1;
+
     try {
       if (request.shouldRequestBeTerminatedEarly()) {
         throw new VeniceRequestEarlyTerminationException(request.getStoreName());
       }
-      double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
-      int queueLen = executor.getQueue().size();
+
+      submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
+      // int queueLen = executor.getQueue.size(); we do not need this here, we do not have a executor for grpc yet
       switch (request.getRequestType()) {
         case SINGLE_GET:
           response = handleSingleGetRequest((GetRouterRequest) request);
@@ -379,28 +382,27 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter impl
           ctx.getVeniceServerResponseBuilder()
               .setErrorCode(GrpcErrorCodes.BAD_REQUEST)
               .setErrorMessage("Unknown request type: " + request.getRequestType());
-          pipeline.processRequest(ctx);
-          return;
       }
+    } catch (VeniceNoStoreException e) {
+      ctx.setError();
+      ctx.getVeniceServerResponseBuilder()
+          .setErrorCode(GrpcErrorCodes.BAD_REQUEST)
+          .setErrorMessage("No storage exists for: " + e.getStoreName());
+    } catch (Exception e) {
+      ctx.setError();
+      ctx.getVeniceServerResponseBuilder()
+          .setErrorCode(GrpcErrorCodes.INTERNAL_ERROR)
+          .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.toString());
+    }
+
+    if (!ctx.hasError() && response != null) {
       response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
-      response.setStorageExecutionQueueLen(queueLen);
       response.setRCU(ReadQuotaEnforcementHandler.getRcu(request));
       if (request.isStreamingRequest()) {
         response.setStreamingResponse();
       }
 
       ctx.setReadResponse(response);
-    } catch (VeniceNoStoreException e) {
-      ctx.setError();
-      ctx.getVeniceServerResponseBuilder()
-          .setErrorCode(GrpcErrorCodes.BAD_REQUEST)
-          .setErrorMessage("No storage exists for: " + e.getStoreName());
-
-    } catch (Exception e) {
-      ctx.setError();
-      ctx.getVeniceServerResponseBuilder()
-          .setErrorCode(GrpcErrorCodes.INTERNAL_ERROR)
-          .setErrorMessage(e.getMessage() != null ? e.getMessage() : e.toString());
     }
 
     pipeline.processRequest(ctx);

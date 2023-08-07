@@ -260,7 +260,7 @@ subprojects {
     avroCompiler libraries.avroCompiler
     avroCompiler libraries.avroUtilBuilder
     avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
-    runtimeOnly libraries.grpcNettyShaded
+    implementation libraries.grpcNettyShaded
     implementation libraries.grpcProtobuf
     implementation libraries.grpcStub
     compileOnly libraries.tomcatAnnotations

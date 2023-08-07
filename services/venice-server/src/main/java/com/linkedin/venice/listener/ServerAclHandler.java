@@ -32,8 +32,6 @@ import org.apache.logging.log4j.Logger;
  */
 @ChannelHandler.Sharable
 public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> implements VeniceGrpcHandler {
-  private VeniceGrpcHandler nextInboundHandler;
-  private VeniceGrpcHandler nextOutboundHandler;
   private static final Logger LOGGER = LogManager.getLogger(ServerAclHandler.class);
 
   public static final AttributeKey<Boolean> SERVER_ACL_APPROVED_ATTRIBUTE_KEY =

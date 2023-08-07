@@ -136,6 +136,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   public void grpcRead(GrpcHandlerContext ctx, GrpcHandlerPipeline pipeline) {
     VeniceClientRequest clientRequest = ctx.getVeniceClientRequest();
     GrpcStatsContext statsContext = ctx.getGrpcStatsContext();
+
     RouterRequest routerRequest = clientRequest.getIsBatchRequest()
         ? MultiGetRouterRequestWrapper.parseMultiGetGrpcRequest(clientRequest)
         : GetRouterRequest.grpcGetRouterRequest(clientRequest);
