@@ -19,8 +19,8 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
-import com.linkedin.venice.exceptions.TopicAuthorizationVeniceException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
@@ -315,7 +315,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     OutputCollector mockCollector = mock(OutputCollector.class);
     AbstractVeniceWriter mockVeniceWriter = mock(AbstractVeniceWriter.class);
     when(mockVeniceWriter.put(any(), any(), anyInt(), any(), any()))
-        .thenThrow(new TopicAuthorizationVeniceException("No ACL permission"));
+        .thenThrow(new VeniceResourceAccessException("No ACL permission"));
     VeniceReducer reducer = new VeniceReducer();
     reducer.setVeniceWriter(mockVeniceWriter);
     reducer.configure(setupJobConf());

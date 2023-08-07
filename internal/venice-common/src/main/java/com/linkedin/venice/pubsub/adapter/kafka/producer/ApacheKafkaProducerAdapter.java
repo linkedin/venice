@@ -1,6 +1,5 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
@@ -8,6 +7,11 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap;
@@ -20,6 +24,12 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
+import org.apache.kafka.common.errors.AuthenticationException;
+import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.errors.InvalidTopicException;
+import org.apache.kafka.common.errors.RetriableException;
+import org.apache.kafka.common.errors.TimeoutException;
+import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -66,7 +76,13 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
    * @param key - The key of the message to be sent.
    * @param value - The {@link KafkaMessageEnvelope}, which acts as the Kafka value.
    * @param pubsubProducerCallback - The callback function, which will be triggered when Kafka client sends out the message.
-   * */
+   * @return - A {@link Future} of {@link PubSubProduceResult}, which will be completed when the message is sent to pub-sub server successfully.
+   * @throws PubSubOpTimeoutException - If the operation times out.
+   * @throws PubSubTopicAuthorizationException - If the producer is not authorized to send to the topic.
+   * @throws PubSubTopicDoesNotExistException - If the topic does not exist.
+   * @throws PubSubClientRetriableException - If the operation fails due to transient reasons.
+   * @throws PubSubClientException - If the operation fails due to other reasons.
+   */
   @Override
   public Future<PubSubProduceResult> sendMessage(
       String topic,
@@ -86,8 +102,29 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
     try {
       producer.send(record, kafkaCallback);
       return kafkaCallback.getProduceResultFuture();
+    } catch (TimeoutException e) {
+      throw new PubSubOpTimeoutException(
+          "Timed out while trying to produce message into Kafka. Topic: " + record.topic() + ", partition: "
+              + record.partition(),
+          e);
+    } catch (AuthenticationException | AuthorizationException e) {
+      throw new PubSubTopicAuthorizationException(
+          "Failed to produce message into Kafka due to authorization error. Topic: " + record.topic() + ", partition: "
+              + record.partition(),
+          e);
+    } catch (UnknownTopicOrPartitionException | InvalidTopicException e) {
+      throw new PubSubTopicDoesNotExistException(
+          "Failed to produce message into Kafka due to topic not found. Topic: " + record.topic() + ", partition: "
+              + record.partition(),
+          e);
     } catch (Exception e) {
-      throw new VeniceException(
+      if (e instanceof RetriableException) {
+        throw new PubSubClientRetriableException(
+            "Got a retriable error while trying to produce message into Kafka. Topic: '" + record.topic()
+                + "', partition: " + record.partition(),
+            e);
+      }
+      throw new PubSubClientException(
           "Got an error while trying to produce message into Kafka. Topic: '" + record.topic() + "', partition: "
               + record.partition(),
           e);
@@ -96,7 +133,7 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
 
   private void ensureProducerIsNotClosed() {
     if (producer == null) {
-      throw new VeniceException("The internal KafkaProducer has been closed");
+      throw new PubSubClientException("The internal KafkaProducer has been closed");
     }
   }
 

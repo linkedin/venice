@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -180,8 +179,8 @@ public class TopicCleanupService extends AbstractVeniceService {
               topic);
         }
         getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
-      } catch (ExecutionException e) {
-        LOGGER.warn("ExecutionException caught when trying to delete topic: {}", topic);
+      } catch (VeniceException e) {
+        LOGGER.warn("Caught exception when trying to delete topic: {} - {}", topic, e.toString());
         // No op, will try again in the next cleanup cycle.
       }
 

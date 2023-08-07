@@ -206,6 +206,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           addKafkaClusterIDMappingToServerConfigs(serverProperties, childRegionName, allPubSubBrokerWrappers);
 
       Map<String, String> pubSubBrokerProps = PubSubBrokerWrapper.getBrokerDetailsForClients(allPubSubBrokerWrappers);
+      LOGGER.info("### PubSub broker configs: {}", pubSubBrokerProps);
       finalParentControllerProperties.putAll(pubSubBrokerProps); // parent controllers
       finalChildControllerProperties.putAll(pubSubBrokerProps); // child controllers
 

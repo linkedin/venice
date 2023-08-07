@@ -245,7 +245,7 @@ public class ApacheKafkaProducerAdapterITest {
         } catch (Exception expected) {
           LOGGER.info("As expected an exception was received - {}", expected.toString()); // make spotbugs happy
           assertNotNull(expected.getMessage());
-          assertTrue(expected.getMessage().contains("Producer is closed forcefully"));
+          assertTrue(ExceptionUtils.recursiveMessageContains(expected, "Producer is closed forcefully"));
         }
       }
     }

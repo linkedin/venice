@@ -3,10 +3,10 @@ package com.linkedin.venice.integration.utils;
 import static com.linkedin.venice.integration.utils.ProcessWrapper.DEFAULT_HOST_NAME;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SslUtils.VeniceTlsConfiguration;
 import com.linkedin.venice.utils.TestMockTime;

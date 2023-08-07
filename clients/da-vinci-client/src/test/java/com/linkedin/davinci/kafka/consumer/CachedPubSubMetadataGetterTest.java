@@ -5,12 +5,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -42,7 +42,7 @@ public class CachedPubSubMetadataGetterTest {
     TopicManager mockTopicManagerThatThrowsException = mock(TopicManager.class);
     when(mockTopicManagerThatThrowsException.getPubSubBootstrapServers()).thenReturn(testBrokerUrl);
     when(mockTopicManagerThatThrowsException.getPartitionEarliestOffsetAndRetry(any(), anyInt()))
-        .thenThrow(TopicDoesNotExistException.class);
+        .thenThrow(PubSubTopicDoesNotExistException.class);
 
     // Even though we're passing a weird topic manager, we should have cached the last value, so this should return the
     // cached offset of 1

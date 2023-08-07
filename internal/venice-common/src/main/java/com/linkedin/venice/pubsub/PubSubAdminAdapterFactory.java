@@ -1,6 +1,7 @@
-package com.linkedin.venice.pubsub.api;
+package com.linkedin.venice.pubsub;
 
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
 
