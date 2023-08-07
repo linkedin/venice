@@ -8,7 +8,6 @@ import org.apache.avro.generic.GenericRecord;
 
 public interface ReadComputeOperator {
   void compute(
-      int computeRequestVersion,
       ComputeOperation op,
       Schema.Field operatorField,
       Schema.Field resultField,

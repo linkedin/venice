@@ -12,7 +12,6 @@ import org.apache.avro.generic.GenericRecord;
 public class CountOperator implements ReadComputeOperator {
   @Override
   public void compute(
-      int computeRequestVersion,
       ComputeOperation op,
       Schema.Field operatorInputField,
       Schema.Field resultField,

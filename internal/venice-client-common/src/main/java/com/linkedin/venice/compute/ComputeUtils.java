@@ -1,17 +1,23 @@
 package com.linkedin.venice.compute;
 
+import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.*;
+
 import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.compute.protocol.request.ComputeRequest;
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV3;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.Count;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -24,6 +30,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -41,11 +48,22 @@ public class ComputeUtils {
   private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  public static void checkResultSchema(
-      Schema resultSchema,
-      Schema valueSchema,
-      int version,
-      List<ComputeOperation> operations) {
+  /**
+   * N.B.: This deserializer performs an evolution from the schema of {@link ComputeRequestV3} to that of
+   * {@link ComputeRequest}, with the only difference between the two being that the items of the operations list
+   * in the former are defined as a union of one type, which unfortunately results in the SpecificRecord typing this
+   * as a {@link List<Object>}. This is a design shortcoming, but which we cannot easily fix, since there are already
+   * clients using this protocol. On the server-side, however, we wish to use proper types without lots of casting,
+   * which we can achieve by letting Avro do the evolution.
+   */
+  private static final RecordDeserializer<ComputeRequest> DESERIALIZER =
+      getFastAvroSpecificDeserializer(ComputeRequestV3.SCHEMA$, ComputeRequest.class);
+
+  public static ComputeRequest deserializeComputeRequest(BinaryDecoder decoder, ComputeRequest reuse) {
+    return DESERIALIZER.deserialize(reuse, decoder);
+  }
+
+  public static void checkResultSchema(Schema resultSchema, Schema valueSchema, List<ComputeOperation> operations) {
     if (resultSchema.getType() != Schema.Type.RECORD || valueSchema.getType() != Schema.Type.RECORD) {
       throw new VeniceException("Compute result schema and value schema must be RECORD type");
     }
@@ -173,6 +191,18 @@ public class ComputeUtils {
     }
   }
 
+  public static List<Schema.Field> getOperationResultFields(List<ComputeOperation> operations, Schema resultSchema) {
+    List<Schema.Field> operationResultFields = new ArrayList<>(operations.size());
+    ComputeOperation computeOperation;
+    ReadComputeOperator operator;
+    for (int i = 0; i < operations.size(); i++) {
+      computeOperation = operations.get(i);
+      operator = ComputeOperationType.valueOf(computeOperation).getOperator();
+      operationResultFields.add(resultSchema.getField(operator.getResultFieldName(computeOperation)));
+    }
+    return operationResultFields;
+  }
+
   private interface FloatSupplierByIndex {
     float get(int index);
   }
@@ -294,14 +324,12 @@ public class ComputeUtils {
   }
 
   public static GenericRecord computeResult(
-      int computeVersion,
       List<ComputeOperation> operations,
       List<Schema.Field> operationResultFields,
       Map<String, Object> sharedContext,
       GenericRecord inputRecord,
       Schema outputSchema) {
     return computeResult(
-        computeVersion,
         operations,
         operationResultFields,
         sharedContext,
@@ -310,7 +338,6 @@ public class ComputeUtils {
   }
 
   public static GenericRecord computeResult(
-      int computeVersion,
       List<ComputeOperation> operations,
       List<Schema.Field> operationResultFields,
       Map<String, Object> sharedContext,
@@ -338,15 +365,8 @@ public class ComputeUtils {
         continue;
       }
 
-      operator.compute(
-          computeVersion,
-          computeOperation,
-          operatorField,
-          resultField,
-          inputRecord,
-          outputRecord,
-          errorMap,
-          sharedContext);
+      operator
+          .compute(computeOperation, operatorField, resultField, inputRecord, outputRecord, errorMap, sharedContext);
     }
 
     Schema outputSchema = outputRecord.getSchema();

@@ -1,172 +1,58 @@
 package com.linkedin.venice.compute;
 
-import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer;
 import static com.linkedin.venice.serializer.SerializerDeserializerFactory.getAvroGenericSerializer;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV3;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV4;
-import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryDecoder;
 
 
 /**
- * ComputeRequestWrapper is the formal way of evolving compute request version;
- * the general idea is to keep schemas and request classes for all versions.
+ * This class is used by the client to encapsulate the information it needs about a compute request.
  *
- * Compute request will specify its own version in the request header and backend
- * will deserialize the compute request using the corresponding version class and
- * schema.
+ * N.B.: This class used to contain multiple versions of the {@link ComputeRequestV3} but it was not necessary
+ * since all the versions were anyway compatible with one another. We are now keeping only the latest version
+ * used on the wire, which is 3 (version 4 was never used as a wire protocol). We can always revisit this if
+ * the need to evolve read compute comes into play.
  */
 public class ComputeRequestWrapper {
   public static final int LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST = 3;
 
-  private static final RecordDeserializer[] DESERIALIZER_ARRAY = new RecordDeserializer[] { null,
-      getFastAvroSpecificDeserializer(ComputeRequestV1.SCHEMA$, ComputeRequestV1.class),
-      getFastAvroSpecificDeserializer(ComputeRequestV2.SCHEMA$, ComputeRequestV2.class),
-      getFastAvroSpecificDeserializer(ComputeRequestV3.SCHEMA$, ComputeRequestV3.class),
-      getFastAvroSpecificDeserializer(ComputeRequestV4.SCHEMA$, ComputeRequestV4.class) };
+  private static final RecordSerializer<ComputeRequestV3> SERIALIZER =
+      getAvroGenericSerializer(ComputeRequestV3.SCHEMA$);
 
-  private static final RecordSerializer[] SERIALIZER_ARRAY = new RecordSerializer[] { null,
-      getAvroGenericSerializer(ComputeRequestV1.SCHEMA$), getAvroGenericSerializer(ComputeRequestV2.SCHEMA$),
-      getAvroGenericSerializer(ComputeRequestV3.SCHEMA$), getAvroGenericSerializer(ComputeRequestV4.SCHEMA$) };
+  private final ComputeRequestV3 computeRequest;
+  private final Schema valueSchema;
+  private final List<Schema.Field> operationResultFields;
 
-  private int version;
-  private Object computeRequest;
-  private Schema valueSchema;
-  private List<Schema.Field> operationResultFields;
-
-  public ComputeRequestWrapper(int version) {
-    this.version = version;
-    switch (version) {
-      case 1:
-        computeRequest = new ComputeRequestV1();
-        break;
-      case 2:
-        computeRequest = new ComputeRequestV2();
-        break;
-      case 3:
-        computeRequest = new ComputeRequestV3();
-        break;
-      case 4:
-        computeRequest = new ComputeRequestV4();
-        break;
-      default:
-        throw new VeniceException("Compute request version " + version + " is not support yet.");
-    }
+  public ComputeRequestWrapper(
+      Schema valueSchema,
+      Schema resultSchema,
+      String resultSchemaString,
+      List<ComputeOperation> operations) {
+    this.computeRequest = new ComputeRequestV3();
+    this.computeRequest.setResultSchemaStr(resultSchemaString);
+    this.computeRequest.setOperations((List) operations);
+    this.valueSchema = valueSchema;
+    this.operationResultFields = ComputeUtils.getOperationResultFields(operations, resultSchema);
   }
 
   public byte[] serialize() {
-    return SERIALIZER_ARRAY[version].serialize(computeRequest);
-  }
-
-  public void deserialize(BinaryDecoder decoder) {
-    this.computeRequest = DESERIALIZER_ARRAY[version].deserialize(computeRequest, decoder);
-  }
-
-  public int getComputeRequestVersion() {
-    return version;
+    return SERIALIZER.serialize(this.computeRequest);
   }
 
   public CharSequence getResultSchemaStr() {
-    switch (version) {
-      case 1:
-        return ((ComputeRequestV1) computeRequest).resultSchemaStr;
-      case 2:
-        return ((ComputeRequestV2) computeRequest).resultSchemaStr;
-      case 3:
-        return ((ComputeRequestV3) computeRequest).resultSchemaStr;
-      case 4:
-        return ((ComputeRequestV4) computeRequest).resultSchemaStr;
-      default:
-        throw new VeniceException("Compute request version " + version + " is not support yet.");
-    }
-  }
-
-  public void setValueSchema(Schema schema) {
-    this.valueSchema = schema;
+    return this.computeRequest.getResultSchemaStr();
   }
 
   public Schema getValueSchema() {
     return this.valueSchema;
   }
 
-  public void setResultSchemaStr(String resultSchemaStr) {
-    switch (version) {
-      case 1:
-        ((ComputeRequestV1) computeRequest).resultSchemaStr = resultSchemaStr;
-        break;
-      case 2:
-        ((ComputeRequestV2) computeRequest).resultSchemaStr = resultSchemaStr;
-        break;
-      case 3:
-        ((ComputeRequestV3) computeRequest).resultSchemaStr = resultSchemaStr;
-        break;
-      case 4:
-        ((ComputeRequestV4) computeRequest).resultSchemaStr = resultSchemaStr;
-        break;
-      default:
-        throw new VeniceException("Compute request version " + version + " is not support yet.");
-    }
-  }
-
-  /**
-   * Use V2 ComputeOperation for both v1 and v2 request since ComputeOperation V2 is backward compatible
-   * with ComputeOperation V1.
-   * @return
-   */
   public List<ComputeOperation> getOperations() {
-    switch (version) {
-      case 1:
-        return (List) ((ComputeRequestV1) computeRequest).operations;
-      case 2:
-        return (List) ((ComputeRequestV2) computeRequest).operations;
-      case 3:
-        return (List) ((ComputeRequestV3) computeRequest).operations;
-      case 4:
-        return (List) ((ComputeRequestV4) computeRequest).operations;
-      default:
-        throw new VeniceException("Compute request version " + version + " is not support yet.");
-    }
-  }
-
-  public void setOperations(List<ComputeOperation> operations) {
-    switch (version) {
-      case 1:
-        ((ComputeRequestV1) computeRequest).operations = (List) operations;
-        break;
-      case 2:
-        ((ComputeRequestV2) computeRequest).operations = (List) operations;
-        break;
-      case 3:
-        ((ComputeRequestV3) computeRequest).operations = (List) operations;
-        break;
-      case 4:
-        ((ComputeRequestV4) computeRequest).operations = (List) operations;
-        break;
-      default:
-        throw new VeniceException("Compute request version " + version + " is not support yet.");
-    }
-  }
-
-  public void initializeOperationResultFields(Schema resultSchema) {
-    List<ComputeOperation> operations = getOperations();
-    this.operationResultFields = new ArrayList<>(operations.size());
-    ComputeOperation computeOperation;
-    ReadComputeOperator operator;
-    for (int i = 0; i < operations.size(); i++) {
-      computeOperation = operations.get(i);
-      operator = ComputeOperationType.valueOf(computeOperation).getOperator();
-      this.operationResultFields.add(resultSchema.getField(operator.getResultFieldName(computeOperation)));
-    }
+    return (List) this.computeRequest.getOperations();
   }
 
   public List<Schema.Field> getOperationResultFields() {
