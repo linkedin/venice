@@ -276,6 +276,5 @@ public class ApacheKafkaProducerConfig {
         properties.put("kafka.security.protocol", securityProtocol);
       }
     }
-
   }
 }

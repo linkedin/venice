@@ -7,6 +7,9 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import java.util.Properties;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.testng.annotations.Test;
 
 
@@ -31,5 +34,19 @@ public class ApacheKafkaConsumerConfigTest {
     assertEquals(SASL_JAAS_CONFIG, producerProperties.get("sasl.jaas.config"));
     assertEquals(SASL_MECHANISM, producerProperties.get("sasl.mechanism"));
     assertEquals("SASL_SSL", producerProperties.get("security.protocol"));
+  }
+
+  @Test
+  public void testGetValidConsumerProperties() {
+    Properties allProps = new Properties();
+    allProps.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "1000");
+    allProps.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "2000");
+    // this is common config; there are no admin specific configs
+    allProps.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+
+    Properties validProps = ApacheKafkaConsumerConfig.getValidConsumerProperties(allProps);
+    assertEquals(validProps.size(), 2);
+    assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
+    assertEquals(validProps.get(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG), "2000");
   }
 }

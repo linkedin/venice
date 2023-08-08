@@ -4,6 +4,9 @@ import static org.testng.Assert.*;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.testng.annotations.Test;
@@ -47,5 +50,17 @@ public class ApacheKafkaAdminConfigTest {
     assertEquals(SASL_JAAS_CONFIG, adminProperties.get("sasl.jaas.config"));
     assertEquals(SASL_MECHANISM, adminProperties.get("sasl.mechanism"));
     assertEquals(securityProtocol.name, adminProperties.get("security.protocol"));
+  }
+
+  @Test
+  public void testGetValidAdminProperties() {
+    Properties allProps = new Properties();
+    allProps.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "1000");
+    allProps.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "2000");
+    allProps.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+
+    Properties validProps = ApacheKafkaAdminConfig.getValidAdminProperties(allProps);
+    assertEquals(validProps.size(), 1);
+    assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
   }
 }

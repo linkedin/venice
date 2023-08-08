@@ -16,6 +16,8 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import java.util.function.BiConsumer;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -184,5 +186,19 @@ public class ApacheKafkaProducerConfigTest {
     assertEquals(actualProps2.get(ProducerConfig.BATCH_SIZE_CONFIG), "55");
     assertTrue(actualProps2.containsKey(ProducerConfig.LINGER_MS_CONFIG));
     assertEquals(actualProps2.get(ProducerConfig.LINGER_MS_CONFIG), "66");
+  }
+
+  @Test
+  public void testGetValidProducerProperties() {
+    Properties allProps = new Properties();
+    allProps.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "1000");
+    allProps.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "2000");
+    // this is common config; there are no admin specific configs
+    allProps.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+
+    Properties validProps = ApacheKafkaProducerConfig.getValidProducerProperties(allProps);
+    assertEquals(validProps.size(), 2);
+    assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
+    assertEquals(validProps.get(ProducerConfig.MAX_BLOCK_MS_CONFIG), "1000");
   }
 }
