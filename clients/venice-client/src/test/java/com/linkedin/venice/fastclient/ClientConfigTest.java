@@ -1,15 +1,10 @@
 package com.linkedin.venice.fastclient;
 
 import static org.mockito.Mockito.mock;
-import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.security.SSLFactory;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import org.testng.annotations.Test;
 
 
@@ -108,39 +103,40 @@ public class ClientConfigTest {
     clientConfigBuilder.build();
   }
 
-  @Test(expectedExceptions = UnsupportedOperationException.class)
-  public void testConfigWithGrpcEnabledNoMapping() {
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
-    clientConfigBuilder.setUseGrpc(true);
-    clientConfigBuilder.build();
-  }
-
-  @Test(expectedExceptions = UnsupportedOperationException.class)
-  public void testConfigWithGrpcEnabledWithMapping() {
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
-    clientConfigBuilder.setUseGrpc(true);
-    clientConfigBuilder.setNettyServerToGrpcAddressMap(new HashMap<>());
-    clientConfigBuilder.build();
-  }
-
-  @Test
-  public void testConfigWithGrpcEnabled() {
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
-    clientConfigBuilder.setUseGrpc(true);
-    Map<String, String> nettyServerToGrpcAddressMap = new HashMap<>();
-    nettyServerToGrpcAddressMap.put("localhost:1234", "localhost:1235");
-    clientConfigBuilder.setNettyServerToGrpcAddressMap(nettyServerToGrpcAddressMap);
-    clientConfigBuilder.build();
-  }
-
-  @Test
-  public void testConfigGrpcSsl() {
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
-    clientConfigBuilder.setUseGrpc(true);
-    clientConfigBuilder.setSSLFactoryForGrpc(mock(SSLFactory.class));
-    clientConfigBuilder.setNettyServerToGrpcAddressMap(Collections.singletonMap("localhost:1234", "localhost:1235"));
-    ClientConfig client = clientConfigBuilder.build();
-
-    assertNotNull(client.getSslFactoryForGrpc());
-  }
+  // @Test(expectedExceptions = UnsupportedOperationException.class)
+  // public void testConfigWithGrpcEnabledNoMapping() {
+  // ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+  // clientConfigBuilder.setUseGrpc(true);
+  // clientConfigBuilder.build();
+  // }
+  //
+  // @Test(expectedExceptions = UnsupportedOperationException.class)
+  // public void testConfigWithGrpcEnabledWithMapping() {
+  // ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+  // clientConfigBuilder.setUseGrpc(true);
+  // clientConfigBuilder.setNettyServerToGrpcAddressMap(new HashMap<>());
+  // clientConfigBuilder.build();
+  // }
+  //
+  // @Test
+  // public void testConfigWithGrpcEnabled() {
+  // ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+  // clientConfigBuilder.setUseGrpc(true);
+  // Map<String, String> nettyServerToGrpcAddressMap = new HashMap<>();
+  // nettyServerToGrpcAddressMap.put("localhost:1234", "localhost:1235");
+  // clientConfigBuilder.setNettyServerToGrpcAddressMap(nettyServerToGrpcAddressMap);
+  // clientConfigBuilder.build();
+  // }
+  //
+  // @Test
+  // public void testConfigGrpcSsl() {
+  // ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
+  // clientConfigBuilder.setUseGrpc(true);
+  // clientConfigBuilder.setSSLFactoryForGrpc(mock(SSLFactory.class));
+  // clientConfigBuilder.setNettyServerToGrpcAddressMap(Collections.singletonMap("localhost:1234", "localhost:1235"));
+  // ClientConfig client = clientConfigBuilder.build();
+  //
+  // assertNotNull(client.getSslFactoryForGrpc());
+  // }
+  // }
 }

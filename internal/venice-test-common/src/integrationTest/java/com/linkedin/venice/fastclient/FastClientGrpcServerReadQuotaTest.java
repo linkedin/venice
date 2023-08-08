@@ -25,12 +25,15 @@ public class FastClientGrpcServerReadQuotaTest extends AbstractClientEndToEndSet
    */
   @Test(timeOut = TIME_OUT)
   public void testGrpcServerReadQuota() throws Exception {
+    GrpcClientConfig grpcClientConfig = new GrpcClientConfig.Builder().setR2Client(r2Client)
+        .setSSLFactory(SslUtils.getVeniceLocalSslFactory())
+        .setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
+        .build();
+
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(r2Client)
+            .setGrpcClientConfig(grpcClientConfig)
             .setUseGrpc(true)
-            .setSSLFactoryForGrpc(SslUtils.getVeniceLocalSslFactory())
-            .setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
             .setSpeculativeQueryEnabled(false);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = getGenericFastClient(

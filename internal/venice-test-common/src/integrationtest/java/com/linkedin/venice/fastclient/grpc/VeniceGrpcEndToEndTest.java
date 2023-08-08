@@ -14,6 +14,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder;
+import com.linkedin.venice.fastclient.GrpcClientConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -48,7 +49,7 @@ import org.testng.annotations.Test;
 public class VeniceGrpcEndToEndTest {
   public static final int maxAllowedKeys = 150;
   private static final Logger LOGGER = LogManager.getLogger(VeniceGrpcEndToEndTest.class);
-  private static final int recordCnt = 3000;
+  private static final int recordCnt = 5000;
   private VeniceClusterWrapper cluster;
   private Map<String, String> nettyToGrpcPortMap;
   private String storeName;
@@ -74,7 +75,7 @@ public class VeniceGrpcEndToEndTest {
             .maxNumberOfPartitions(5)
             .minActiveReplica(1)
             .numberOfRouters(1)
-            .numberOfServers(2)
+            .numberOfServers(10)
             .sslToStorageNodes(true)
             .enableGrpc(true)
             .extraProperties(props)
@@ -186,6 +187,12 @@ public class VeniceGrpcEndToEndTest {
 
     D2Client d2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
 
+    GrpcClientConfig grpcClientConfig =
+        new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
+            .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
+            .setR2Client(grpcR2ClientPassthrough)
+            .build();
+
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -197,9 +204,7 @@ public class VeniceGrpcEndToEndTest {
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setUseGrpc(true)
-            .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
-            .setR2Client(grpcR2ClientPassthrough)
-            .setSSLFactoryForGrpc(SslUtils.getVeniceLocalSslFactory())
+            .setGrpcClientConfig(grpcClientConfig)
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
             .setSpeculativeQueryEnabled(false)
@@ -248,6 +253,12 @@ public class VeniceGrpcEndToEndTest {
 
     D2Client d2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
 
+    GrpcClientConfig grpcClientConfig =
+        new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
+            .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
+            .setR2Client(r2Client)
+            .build();
+
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -259,9 +270,7 @@ public class VeniceGrpcEndToEndTest {
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setUseGrpc(true)
-            .setR2Client(r2Client)
-            .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
-            .setSSLFactoryForGrpc(SslUtils.getVeniceLocalSslFactory())
+            .setGrpcClientConfig(grpcClientConfig)
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
             .setSpeculativeQueryEnabled(false)
@@ -298,6 +307,12 @@ public class VeniceGrpcEndToEndTest {
     D2Client grpcD2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
     D2Client fastD2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
 
+    GrpcClientConfig grpcClientConfig =
+        new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
+            .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
+            .setR2Client(grpcR2Client)
+            .build();
+
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(fastR2Client)
@@ -309,9 +324,7 @@ public class VeniceGrpcEndToEndTest {
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setUseGrpc(true)
-            .setR2Client(grpcR2Client)
-            .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
-            .setSSLFactoryForGrpc(SslUtils.getVeniceLocalSslFactory())
+            .setGrpcClientConfig(grpcClientConfig)
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
             .setSpeculativeQueryEnabled(false)

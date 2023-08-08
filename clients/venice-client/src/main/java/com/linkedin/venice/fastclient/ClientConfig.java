@@ -87,6 +87,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    */
   private final Map<String, String> nettyServerToGrpcAddressMap;
   private final SSLFactory sslFactoryForGrpc;
+  private final GrpcClientConfig grpcClientConfig;
 
   private ClientConfig(
       String storeName,
@@ -120,27 +121,19 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean useStreamingBatchGetAsDefault,
       boolean useGrpc,
       Map<String, String> nettyServerToGrpcAddressMap,
-      SSLFactory sslFactoryForGrpc) {
+      SSLFactory sslFactoryForGrpc,
+      GrpcClientConfig grpcClientConfig) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
-    if (r2Client == null) {
+    if (r2Client == null && !useGrpc) {
       throw new VeniceClientException("r2Client param shouldn't be null");
     }
-    if (useGrpc && nettyServerToGrpcAddressMap == null) {
+    if (useGrpc && grpcClientConfig == null) {
       throw new UnsupportedOperationException(
-          "we require a mapping of netty server addresses to grpc server addresses to use a gRPC enabled client");
+          "we require additional gRPC related configs when we create a gRPC enabled client");
     }
 
-    if (useGrpc && nettyServerToGrpcAddressMap.size() == 0) {
-      throw new UnsupportedOperationException(
-          "netty server to grpc server address map cannot be empty when using a gRPC enabled client");
-    }
-
-    if (useGrpc && r2Client == null) {
-      throw new UnsupportedOperationException(
-          "we require a r2Client to handle unsupported requests when using a gRPC enabled client");
-    }
     this.r2Client = r2Client;
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
@@ -251,13 +244,20 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       LOGGER.warn("Deprecated: Batch get will use single get implementation");
     }
 
+    // this.useGrpc = useGrpc;
+    // if (this.useGrpc) {
+    // LOGGER.info("Using gRPC for Venice Fast Client");
+    // }
+    //
     this.useGrpc = useGrpc;
-    if (this.useGrpc) {
-      LOGGER.info("Using gRPC for Venice Fast Client");
-    }
-
+    this.grpcClientConfig = grpcClientConfig;
     this.nettyServerToGrpcAddressMap = this.useGrpc ? nettyServerToGrpcAddressMap : null;
     this.sslFactoryForGrpc = this.useGrpc ? sslFactoryForGrpc : null;
+
+    if (this.useGrpc && this.grpcClientConfig == null) {
+      throw new VeniceClientException("gRPC client config must be specified when gRPC is enabled");
+    }
+
   }
 
   public String getStoreName() {
@@ -389,6 +389,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return sslFactoryForGrpc;
   }
 
+  public GrpcClientConfig getGrpcClientConfig() {
+    return grpcClientConfig;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -439,6 +443,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean useGrpc = false;
     private Map<String, String> nettyServerToGrpcAddressMap = null;
     private SSLFactory sslFactoryForGrpc = null;
+    private GrpcClientConfig grpcClientConfig = null;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -612,6 +617,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setGrpcClientConfig(GrpcClientConfig grpcClientConfig) {
+      this.grpcClientConfig = grpcClientConfig;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -644,7 +654,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
           .setUseGrpc(useGrpc)
           .setNettyServerToGrpcAddressMap(nettyServerToGrpcAddressMap)
-          .setSSLFactoryForGrpc(sslFactoryForGrpc);
+          .setSSLFactoryForGrpc(sslFactoryForGrpc)
+          .setGrpcClientConfig(grpcClientConfig);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -680,7 +691,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           useStreamingBatchGetAsDefault,
           useGrpc,
           nettyServerToGrpcAddressMap,
-          sslFactoryForGrpc);
+          sslFactoryForGrpc,
+          grpcClientConfig);
     }
   }
 }

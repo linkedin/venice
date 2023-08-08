@@ -254,9 +254,12 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
 
     if (enableGrpc) {
-      clientConfigBuilder.setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
-          .setUseGrpc(true)
-          .setSSLFactoryForGrpc(SslUtils.getVeniceLocalSslFactory());
+      GrpcClientConfig grpcClientConfig = new GrpcClientConfig.Builder().setR2Client(r2Client)
+          .setSSLFactory(SslUtils.getVeniceLocalSslFactory())
+          .setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
+          .build();
+
+      clientConfigBuilder.setUseGrpc(true).setGrpcClientConfig(grpcClientConfig);
     }
 
     // dualRead needs thinClient

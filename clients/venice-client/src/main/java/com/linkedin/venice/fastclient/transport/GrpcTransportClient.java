@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.fastclient.GrpcClientConfig;
 import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.grpc.GrpcSslUtils;
 import com.linkedin.venice.protocols.VeniceClientRequest;
@@ -39,12 +40,21 @@ public class GrpcTransportClient extends InternalTransportClient {
   private final SSLFactory sslFactory;
   private ChannelCredentials channelCredentials;
 
+  private ClientConfig clientConfig;
+  private GrpcClientConfig grpcClientConfig;
+
   public GrpcTransportClient(ClientConfig clientConfig) {
     serverGrpcChannels = new VeniceConcurrentHashMap<>();
     stubCache = new VeniceConcurrentHashMap<>();
-    nettyAddressToGrpcAddressMap = clientConfig.getNettyServerToGrpcAddressMap();
-    this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
-    this.sslFactory = clientConfig.getSslFactoryForGrpc();
+    this.clientConfig = clientConfig;
+    this.grpcClientConfig = clientConfig.getGrpcClientConfig();
+
+    // nettyAddressToGrpcAddressMap = clientConfig.getNettyServerToGrpcAddressMap();
+    // this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
+    // this.sslFactory = clientConfig.getSslFactoryForGrpc();
+    nettyAddressToGrpcAddressMap = grpcClientConfig.getNettyServerToGrpcAddressMap();
+    this.r2TransportClient = new R2TransportClient(grpcClientConfig.getR2Client());
+    this.sslFactory = grpcClientConfig.getSslFactory();
 
     initChannelCredentials();
   }
