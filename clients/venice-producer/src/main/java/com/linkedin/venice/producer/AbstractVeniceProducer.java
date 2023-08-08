@@ -6,7 +6,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
-import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -115,7 +114,6 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     if (versionCreationResponse.isEnableSSL()) {
       writerProps.put(KAFKA_OVER_SSL, "true");
       writerProps.put(SSL_KAFKA_BOOTSTRAP_SERVERS, versionCreationResponse.getKafkaBootstrapServers());
-      writerProps.putAll(new SSLConfig(producerConfigs).getKafkaSSLConfig());
     } else {
       writerProps.put(KAFKA_BOOTSTRAP_SERVERS, versionCreationResponse.getKafkaBootstrapServers());
     }
