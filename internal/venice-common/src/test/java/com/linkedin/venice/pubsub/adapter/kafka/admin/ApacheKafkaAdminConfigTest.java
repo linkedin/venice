@@ -58,6 +58,7 @@ public class ApacheKafkaAdminConfigTest {
     allProps.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "1000");
     allProps.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "2000");
     allProps.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+    allProps.put("bogus.kafka.config", "bogusValue");
 
     Properties validProps = ApacheKafkaAdminConfig.getValidAdminProperties(allProps);
     assertEquals(validProps.size(), 1);

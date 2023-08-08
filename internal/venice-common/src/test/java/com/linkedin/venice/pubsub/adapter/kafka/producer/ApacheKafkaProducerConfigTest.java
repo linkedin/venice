@@ -195,6 +195,7 @@ public class ApacheKafkaProducerConfigTest {
     allProps.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "2000");
     // this is common config; there are no admin specific configs
     allProps.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+    allProps.put("bogus.kafka.config", "bogusValue");
 
     Properties validProps = ApacheKafkaProducerConfig.getValidProducerProperties(allProps);
     assertEquals(validProps.size(), 2);
