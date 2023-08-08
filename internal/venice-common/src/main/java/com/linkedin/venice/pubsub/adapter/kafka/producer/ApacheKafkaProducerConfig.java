@@ -65,7 +65,8 @@ public class ApacheKafkaProducerConfig {
       boolean strictConfigs) {
     String brokerAddress =
         brokerAddressToOverride != null ? brokerAddressToOverride : getPubsubBrokerAddress(allVeniceProperties);
-    this.producerProperties = allVeniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties();
+    this.producerProperties =
+        getValidProducerProperties(allVeniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
     this.producerProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
     validateAndUpdateProperties(this.producerProperties, strictConfigs);
     if (producerName != null) {
@@ -201,6 +202,16 @@ public class ApacheKafkaProducerConfig {
               + "requiredConfigKey: '" + requiredConfigKey + "', requiredConfigValue: '" + requiredConfigValue
               + "', actualConfigValue: '" + actualConfigValue + "'.");
     }
+  }
+
+  public static Properties getValidProducerProperties(Properties extractedProperties) {
+    Properties validProperties = new Properties();
+    extractedProperties.forEach((configKey, configVal) -> {
+      if (ProducerConfig.configNames().contains(configKey)) {
+        validProperties.put(configKey, configVal);
+      }
+    });
+    return validProperties;
   }
 
   /**
