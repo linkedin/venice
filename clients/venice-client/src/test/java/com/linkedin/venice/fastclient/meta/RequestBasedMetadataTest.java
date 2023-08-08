@@ -1,8 +1,8 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static com.linkedin.venice.fastclient.meta.utils.RequestBasedMetadataTestUtils.KEY_SCHEMA;
-import static com.linkedin.venice.fastclient.meta.utils.RequestBasedMetadataTestUtils.VALUE_SCHEMA;
-import static com.linkedin.venice.fastclient.meta.utils.RequestBasedMetadataTestUtils.getMockMetaData;
+import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.KEY_SCHEMA;
+import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.VALUE_SCHEMA;
+import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockMetaData;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -11,7 +11,6 @@ import static org.testng.Assert.assertEquals;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.fastclient.ClientConfig;
-import com.linkedin.venice.fastclient.meta.utils.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;

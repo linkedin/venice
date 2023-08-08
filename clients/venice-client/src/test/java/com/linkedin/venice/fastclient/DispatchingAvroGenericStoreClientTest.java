@@ -10,11 +10,12 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
-import com.linkedin.venice.fastclient.meta.utils.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.read.RequestType;
@@ -73,7 +74,8 @@ public class DispatchingAvroGenericStoreClientTest {
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
         .setR2Client(mock(Client.class))
         .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
-        .setMetadataRefreshIntervalInSeconds(1L);
+        .setMetadataRefreshIntervalInSeconds(1L)
+        .setMetadataResponseSchemaStoreClient(mock(InternalAvroStoreClient.class));
 
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();

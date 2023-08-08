@@ -215,7 +215,7 @@ public class TestAdminTool {
         "http://localhost:7036", "--store", storeName };
     VeniceException requestException =
         Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgs));
-    Assert.assertTrue(requestException.getMessage().contains("Unable to discover cluster for store"));
+    Assert.assertTrue(requestException.getMessage().contains("Encountered exception while trying to send metadata"));
     String[] getMetadataArgsSSL = { "--request-based-metadata", "--url", "https://localhost:7036", "--server-url",
         "https://localhost:7036", "--store", storeName };
     VeniceException sslException = Assert.expectThrows(VeniceException.class, () -> AdminTool.main(getMetadataArgsSSL));
@@ -243,7 +243,8 @@ public class TestAdminTool {
     record.setLatestSuperSetValueSchemaId(1);
     byte[] responseByte = metadataResponseSerializer.serialize(record);
     doReturn(responseByte).when(response).getBody();
-    doReturn(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion()).when(response).getSchemaId();
+    doReturn(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion() + 1).when(response)
+        .getSchemaId();
     doReturn(response).when(completableFuture).get();
     String requestBasedMetadataURL = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(completableFuture).when(transportClient).get(requestBasedMetadataURL);
@@ -254,7 +255,8 @@ public class TestAdminTool {
     doReturn(schemaResponse).when(controllerClient)
         .getValueSchema(
             AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(),
-            AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion());
-    AdminTool.getAndPrintRequestBasedMetadata(transportClient, controllerClient, "http://localhost:7036", storeName);
+            AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion() + 1);
+    AdminTool
+        .getAndPrintRequestBasedMetadata(transportClient, () -> controllerClient, "http://localhost:7036", storeName);
   }
 }

@@ -139,6 +139,7 @@ import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -2831,12 +2832,15 @@ public class AdminTool {
     TransportClient transportClient = null;
     try {
       transportClient = ClientFactory.getTransportClient(clientConfig);
-      ControllerClient metadataResponseSchemaCC = ControllerClientFactory.discoverAndConstructControllerClient(
-          AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(),
-          url,
-          sslFactory,
-          1);
-      getAndPrintRequestBasedMetadata(transportClient, metadataResponseSchemaCC, serverUrl, storeName);
+      getAndPrintRequestBasedMetadata(
+          transportClient,
+          () -> ControllerClientFactory.discoverAndConstructControllerClient(
+              AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(),
+              url,
+              sslFactory,
+              1),
+          serverUrl,
+          storeName);
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
@@ -2844,7 +2848,7 @@ public class AdminTool {
 
   static void getAndPrintRequestBasedMetadata(
       TransportClient transportClient,
-      ControllerClient controllerClient,
+      Supplier<ControllerClient> controllerClientSupplier,
       String serverUrl,
       String storeName) throws JsonProcessingException {
     String requestBasedMetadataURL = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
@@ -2860,15 +2864,20 @@ public class AdminTool {
               + requestBasedMetadataURL,
           e);
     }
-    SchemaResponse schemaResponse = controllerClient
-        .getValueSchema(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(), writerSchemaId);
-    if (schemaResponse.isError()) {
-      throw new VeniceException(
-          "Failed to fetch metadata response schema from controller, error: " + schemaResponse.getError());
+    Schema writerSchema;
+    if (writerSchemaId != AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion()) {
+      SchemaResponse schemaResponse = controllerClientSupplier.get()
+          .getValueSchema(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName(), writerSchemaId);
+      if (schemaResponse.isError()) {
+        throw new VeniceException(
+            "Failed to fetch metadata response schema from controller, error: " + schemaResponse.getError());
+      }
+      writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
+    } else {
+      writerSchema = MetadataResponseRecord.SCHEMA$;
     }
-    Schema writerSchema = parseSchemaFromJSONLooseValidation(schemaResponse.getSchemaStr());
     RecordDeserializer<GenericRecord> metadataResponseDeserializer =
-        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, MetadataResponseRecord.SCHEMA$);
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, writerSchema);
     GenericRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
     // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
     // Use the Avro record's toString() instead and pretty print it.

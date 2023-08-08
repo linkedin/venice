@@ -1,4 +1,4 @@
-package com.linkedin.venice.fastclient.meta.utils;
+package com.linkedin.venice.fastclient.meta;
 
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -16,8 +17,6 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
-import com.linkedin.venice.fastclient.meta.ClientRoutingStrategyType;
-import com.linkedin.venice.fastclient.meta.RequestBasedMetadata;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.meta.QueryAction;
@@ -47,6 +46,7 @@ public class RequestBasedMetadataTestUtils {
     doReturn(clusterStats).when(clientConfig).getClusterStats();
     doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
     doReturn(mock(FastClientStats.class)).when(clientConfig).getStats(RequestType.SINGLE_GET);
+    doReturn(mock(InternalAvroStoreClient.class)).when(clientConfig).getMetadataResponseSchemaStoreClient();
     return clientConfig;
   }
 

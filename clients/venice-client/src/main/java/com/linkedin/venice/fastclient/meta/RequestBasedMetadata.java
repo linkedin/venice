@@ -1,6 +1,5 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD;
 import static com.linkedin.venice.schema.SchemaData.INVALID_VALUE_SCHEMA_ID;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -12,7 +11,6 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
@@ -82,8 +80,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private RouterBackedSchemaReader metadataResponseSchemaReader;
   private volatile boolean isServiceDiscovered;
   private volatile boolean isReady;
-  private Schema metadataResponseSchema = null;
-  private int metadataResponseSchemaId = INVALID_VALUE_SCHEMA_ID;
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
     super(clientConfig);
@@ -99,13 +95,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     this.metadataResponseSchemaReader = new RouterBackedSchemaReader(
         () -> (InternalAvroStoreClient) clientConfig.getMetadataResponseSchemaStoreClient(),
         Optional.empty(),
-        Optional.empty(),
-        DEFAULT_SCHEMA_REFRESH_PERIOD,
-        null);
+        Optional.empty());
   }
 
   // For unit tests only
-  public synchronized void setMetadataResponseSchemaReader(RouterBackedSchemaReader metadataResponseSchemaReader) {
+  synchronized void setMetadataResponseSchemaReader(RouterBackedSchemaReader metadataResponseSchemaReader) {
     this.metadataResponseSchemaReader = metadataResponseSchemaReader;
   }
 
@@ -174,26 +168,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @return if the fetched metadata was an updated version
    */
   private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
-    boolean updateComplete = false;
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
       TransportClientResponse transportClientResponse = fetchMetadata().get();
-      // Metadata response schema forward compatibility check
-      if (transportClientResponse.getSchemaId() > metadataResponseSchemaId) {
-        int newSchemaId = transportClientResponse.getSchemaId();
-        Schema newMetadataResponseSchema = metadataResponseSchemaReader.getValueSchema(newSchemaId);
-        if (newMetadataResponseSchema == null) {
-          throw new VeniceException(
-              "Failed to fetch new metadata response schema id: " + newSchemaId + ". Local schema id: "
-                  + metadataResponseSchemaId);
-        }
-        metadataResponseSchemaId = newSchemaId;
-        metadataResponseSchema = newMetadataResponseSchema;
-      }
+      // Metadata response schema forward compatibility support via router backed schema reader
+      int writerSchemaId = transportClientResponse.getSchemaId();
+      Schema writerSchema = metadataResponseSchemaReader.getValueSchema(writerSchemaId);
       byte[] body = transportClientResponse.getBody();
-      RecordDeserializer<MetadataResponseRecord> metadataResponseDeserializer = FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(metadataResponseSchema, MetadataResponseRecord.class);
+      RecordDeserializer<MetadataResponseRecord> metadataResponseDeserializer =
+          FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(writerSchema, MetadataResponseRecord.class);
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
 
@@ -250,21 +234,18 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       for (Map.Entry<CharSequence, Integer> entry: metadataResponse.getHelixGroupInfo().entrySet()) {
         helixGroupInfo.put(entry.getKey().toString(), entry.getValue());
       }
-
-      currentVersion.set(fetchedVersion);
-      clusterStats.updateCurrentVersion(getCurrentStoreVersion());
       latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
       // Wait for dictionary fetch to finish if there is one
       try {
         if (dictionaryFetchFuture != null) {
           dictionaryFetchFuture.get(ZSTD_DICT_FETCH_TIMEOUT, TimeUnit.SECONDS);
         }
-        updateComplete = true;
       } catch (ExecutionException | TimeoutException e) {
         LOGGER.warn(
             "Dictionary fetch operation could not complete in time for some of the versions. "
                 + "Will be retried on next refresh",
             e);
+        return;
       }
       // Evict entries from inactive versions
       Set<Integer> activeVersions = new HashSet<>(metadataResponse.getVersions());
@@ -273,10 +254,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionerMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
-
-      if (updateComplete) {
-        clientStats.updateCacheTimestamp(currentTimeMs);
-      }
+      currentVersion.set(fetchedVersion);
+      clusterStats.updateCurrentVersion(getCurrentStoreVersion());
+      // Update the metadata timestamp only if all updates are successful
+      clientStats.updateCacheTimestamp(currentTimeMs);
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
       // TODO: need a better way to handle store migration
