@@ -286,12 +286,7 @@ public class DataRecoveryTest {
        * With two rounds of dc-0 -> dc-1 data recovery, current version in dc-1 changes to 2 and then 3.
        * Then with two rounds of dc-1 -> dc-0 data recovery, current version in dc-0 becomes 3 and then 4.
        */
-
-      // Perform 2 rounds of dc-0 --> dc-1 data recovery.
       performDataRecoveryTest(storeName, parentControllerClient, dc1Client, "dc-0", "dc-1", 2, 2);
-
-      // Perform 2 rounds of dc-1 --> dc-0 data recovery. Now, since src colo's (dc-1) current version is 3, we
-      // should expect dc-0 current version becomes 3 and then 4.
       performDataRecoveryTest(storeName, parentControllerClient, dc0Client, "dc-1", "dc-0", 2, 3);
     }
   }
