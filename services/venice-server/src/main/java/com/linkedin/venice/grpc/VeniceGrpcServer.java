@@ -39,7 +39,7 @@ public class VeniceGrpcServer {
         .build();
   }
 
-  public void initServerCredentials() {
+  private void initServerCredentials() {
     if (sslFactory == null && config.getCredentials() == null) {
       LOGGER.info("Creating gRPC server with insecure credentials");
       credentials = InsecureServerCredentials.create();

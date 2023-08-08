@@ -13,6 +13,7 @@ import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
@@ -253,7 +254,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
 
     if (enableGrpc) {
-      clientConfigBuilder.setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap()).setUseGrpc(true);
+      clientConfigBuilder.setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
+          .setUseGrpc(true)
+          .setSSLFactoryForGrpc(SslUtils.getVeniceLocalSslFactory());
     }
 
     // dualRead needs thinClient
