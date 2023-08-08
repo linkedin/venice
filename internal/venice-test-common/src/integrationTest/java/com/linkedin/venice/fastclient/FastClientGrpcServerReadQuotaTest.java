@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ public class FastClientGrpcServerReadQuotaTest extends AbstractClientEndToEndSet
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
             .setUseGrpc(true)
+            .setSSLFactoryForGrpc(SslUtils.getVeniceLocalSslFactory())
             .setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
             .setSpeculativeQueryEnabled(false);
 

@@ -1,7 +1,9 @@
 package com.linkedin.venice.grpc;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.listener.grpc.GrpcStatsContext;
 import com.linkedin.venice.listener.request.RouterRequest;
