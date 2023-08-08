@@ -4,12 +4,14 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -127,7 +129,15 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
-    executeStateTransition(message, context, this::removePartitionFromStoreGracefully);
+    executeStateTransition(message, context, () -> {
+      try {
+        // Gracefully drop partition to drain the requests to this partition
+        Thread.sleep(TimeUnit.SECONDS.toMillis(getStoreConfig().getPartitionGracefulDropDelaySeconds()));
+      } catch (InterruptedException e) {
+        throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
+      }
+      removePartitionFromStoreGracefully();
+    });
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.DROPPED_STATE)
