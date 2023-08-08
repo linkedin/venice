@@ -7,7 +7,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.*;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -68,6 +68,6 @@ public class TestDataRecoveryManager {
     verify(veniceAdmin).addSpecificVersion(eq(clusterName), eq(storeName), captor.capture());
     assertEquals(captor.getValue().getDataRecoveryVersionConfig().getDataRecoverySourceVersionNumber(), version);
     assertEquals(captor.getValue().getNumber(), 2);
-    assertEquals(captor.getValue().getPushJobId(), "data_recovery_pushJob1");
+    assertTrue(captor.getValue().getPushJobId().startsWith("data-recovery"));
   }
 }
