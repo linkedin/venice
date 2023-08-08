@@ -27,4 +27,6 @@ public class VeniceClusterWrapperConstants {
 
   // constant for tests with just one data center/region
   public static final String STANDALONE_REGION_NAME = "testRegion";
+
+  public static final String ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER = "routerPortToUseInVeniceRouterWrapper";
 }
