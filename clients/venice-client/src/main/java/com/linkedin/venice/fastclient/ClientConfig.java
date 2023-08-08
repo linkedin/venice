@@ -12,6 +12,7 @@ import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.VenicePathParser;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -85,6 +86,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * route requests to the correct server/partition
    */
   private final Map<String, String> nettyServerToGrpcAddressMap;
+  private final SSLFactory sslFactoryForGrpc;
 
   private ClientConfig(
       String storeName,
@@ -117,7 +119,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       String clusterDiscoveryD2Service,
       boolean useStreamingBatchGetAsDefault,
       boolean useGrpc,
-      Map<String, String> nettyServerToGrpcAddressMap) {
+      Map<String, String> nettyServerToGrpcAddressMap,
+      SSLFactory sslFactoryForGrpc) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -254,6 +257,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     this.nettyServerToGrpcAddressMap = this.useGrpc ? nettyServerToGrpcAddressMap : null;
+    this.sslFactoryForGrpc = this.useGrpc ? sslFactoryForGrpc : null;
   }
 
   public String getStoreName() {
@@ -381,6 +385,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return nettyServerToGrpcAddressMap;
   }
 
+  public SSLFactory getSslFactoryForGrpc() {
+    return sslFactoryForGrpc;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -430,6 +438,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean useStreamingBatchGetAsDefault = false;
     private boolean useGrpc = false;
     private Map<String, String> nettyServerToGrpcAddressMap = null;
+    private SSLFactory sslFactoryForGrpc = null;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -598,6 +607,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setSSLFactoryForGrpc(SSLFactory sslFactoryForGrpc) {
+      this.sslFactoryForGrpc = sslFactoryForGrpc;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -629,7 +643,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
           .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
           .setUseGrpc(useGrpc)
-          .setNettyServerToGrpcAddressMap(nettyServerToGrpcAddressMap);
+          .setNettyServerToGrpcAddressMap(nettyServerToGrpcAddressMap)
+          .setSSLFactoryForGrpc(sslFactoryForGrpc);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -664,7 +679,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           clusterDiscoveryD2Service,
           useStreamingBatchGetAsDefault,
           useGrpc,
-          nettyServerToGrpcAddressMap);
+          nettyServerToGrpcAddressMap,
+          sslFactoryForGrpc);
     }
   }
 }

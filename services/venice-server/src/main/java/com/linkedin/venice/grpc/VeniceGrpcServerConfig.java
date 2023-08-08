@@ -1,7 +1,7 @@
 package com.linkedin.venice.grpc;
 
+import com.linkedin.venice.security.SSLFactory;
 import io.grpc.BindableService;
-import io.grpc.InsecureServerCredentials;
 import io.grpc.ServerCredentials;
 import io.grpc.ServerInterceptor;
 import java.util.Collections;
@@ -13,12 +13,14 @@ public class VeniceGrpcServerConfig {
   private final ServerCredentials credentials;
   private final BindableService service;
   private final List<? extends ServerInterceptor> interceptors;
+  private SSLFactory sslFactory;
 
   private VeniceGrpcServerConfig(Builder builder) {
     port = builder.port;
     credentials = builder.credentials;
     service = builder.service;
     interceptors = builder.interceptors;
+    sslFactory = builder.sslFactory;
   }
 
   public int getPort() {
@@ -37,6 +39,10 @@ public class VeniceGrpcServerConfig {
     return interceptors;
   }
 
+  public SSLFactory getSslFactory() {
+    return sslFactory;
+  }
+
   @Override
   public String toString() {
     return "VeniceGrpcServerConfig{" + "port=" + port + ", service=" + service + "}";
@@ -47,6 +53,7 @@ public class VeniceGrpcServerConfig {
     private ServerCredentials credentials;
     private BindableService service;
     private List<? extends ServerInterceptor> interceptors;
+    private SSLFactory sslFactory;
 
     public Builder setPort(int port) {
       this.port = port;
@@ -73,6 +80,11 @@ public class VeniceGrpcServerConfig {
       return this;
     }
 
+    public Builder setSslFactory(SSLFactory sslFactory) {
+      this.sslFactory = sslFactory;
+      return this;
+    }
+
     public VeniceGrpcServerConfig build() {
       verifyAndAddDefaults();
       return new VeniceGrpcServerConfig(this);
@@ -81,9 +93,6 @@ public class VeniceGrpcServerConfig {
     private void verifyAndAddDefaults() {
       if (port == null) {
         throw new IllegalArgumentException("Port must be set");
-      }
-      if (credentials == null) {
-        credentials = InsecureServerCredentials.create();
       }
       if (service == null) {
         throw new IllegalArgumentException("Service must be set");

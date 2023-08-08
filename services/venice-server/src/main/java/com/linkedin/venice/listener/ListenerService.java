@@ -157,10 +157,12 @@ public class ListenerService extends AbstractVeniceService {
         .childOption(ChannelOption.TCP_NODELAY, true);
 
     if (isGrpcEnabled && grpcServer == null) {
-      grpcServer = new VeniceGrpcServer(
-          new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
-              .setService(new VeniceReadServiceImpl(channelInitializer))
-              .build());
+      VeniceGrpcServerConfig.Builder grpcServerBuilder = new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
+          .setService(new VeniceReadServiceImpl(channelInitializer));
+
+      sslFactory.ifPresent(grpcServerBuilder::setSslFactory);
+
+      grpcServer = new VeniceGrpcServer(grpcServerBuilder.build());
     }
   }
 

@@ -22,6 +22,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -198,6 +199,7 @@ public class VeniceGrpcEndToEndTest {
             .setUseGrpc(true)
             .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
             .setR2Client(grpcR2ClientPassthrough)
+            .setSSLFactoryForGrpc(SslUtils.getVeniceLocalSslFactory())
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
             .setSpeculativeQueryEnabled(false)
@@ -259,6 +261,7 @@ public class VeniceGrpcEndToEndTest {
             .setUseGrpc(true)
             .setR2Client(r2Client)
             .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
+            .setSSLFactoryForGrpc(SslUtils.getVeniceLocalSslFactory())
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys)
             .setSpeculativeQueryEnabled(false)
@@ -270,19 +273,9 @@ public class VeniceGrpcEndToEndTest {
     AvroGenericStoreClient<String, GenericRecord> grpcFastClient =
         getGenericFastClient(grpcClientConfigBuilder, new MetricsRepository(), d2Client);
 
-    long grpcTime = 0;
-    long fastClientTime = 0;
-
     for (int key = 1; key < recordCnt; key++) {
-      long start = System.currentTimeMillis();
       String grpcClientRecord = ((Utf8) grpcFastClient.get(Integer.toString(key)).get()).toString();
-      long end = System.currentTimeMillis();
-      grpcTime += end - start;
-
-      start = System.currentTimeMillis();
       String fastClientRecord = ((Utf8) genericFastClient.get(Integer.toString(key)).get()).toString();
-      end = System.currentTimeMillis();
-      fastClientTime += end - start;
       String avroClientRecord = avroClient.get(Integer.toString(key)).get().toString();
 
       LOGGER.info("key: {}, thinClientRecord: {}", key, avroClientRecord);
@@ -292,9 +285,6 @@ public class VeniceGrpcEndToEndTest {
       Assert.assertEquals(grpcClientRecord, avroClientRecord);
       Assert.assertEquals(grpcClientRecord, fastClientRecord);
     }
-    LOGGER.info("benchmark for {} records, ###", recordCnt);
-    LOGGER.info("grpcTime: {}", grpcTime);
-    LOGGER.info("fastClientTime: {}", fastClientTime);
 
     grpcFastClient.close();
     avroClient.close();
@@ -321,6 +311,7 @@ public class VeniceGrpcEndToEndTest {
             .setUseGrpc(true)
             .setR2Client(grpcR2Client)
             .setNettyServerToGrpcAddressMap(nettyToGrpcPortMap)
+            .setSSLFactoryForGrpc(SslUtils.getVeniceLocalSslFactory())
             .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeys + 1)
             .setRoutingPendingRequestCounterInstanceBlockThreshold(maxAllowedKeys + 1)
             .setSpeculativeQueryEnabled(false)
@@ -333,15 +324,22 @@ public class VeniceGrpcEndToEndTest {
 
     Set<Set<String>> keySets = getKeySets();
     for (Set<String> keySet: keySets) {
-      Map<String, GenericRecord> fastClientRet = genericFastClient.batchGet(keySet).get();
-      Map<String, GenericRecord> grpcClientRet = grpcFastClient.batchGet(keySet).get();
+      Map<String, GenericRecord> genericFastClientRecords = genericFastClient.batchGet(keySet).get();
+      Map<String, GenericRecord> grpcFastClientRecords = grpcFastClient.batchGet(keySet).get();
 
       for (String key: keySet) {
-        LOGGER.info("key: {}, fastClientRet: {}", key, fastClientRet.get(key));
-        LOGGER.info("key: {}, grpcClientRet: {}", key, grpcClientRet.get(key));
-        Assert.assertEquals(fastClientRet.get(key), grpcClientRet.get(key));
+        String genericFastClientRecord = ((Utf8) genericFastClientRecords.get(key)).toString();
+        String grpcFastClientRecord = ((Utf8) grpcFastClientRecords.get(key)).toString();
+
+        LOGGER.info("key: {}, grpcClientRecord: {}", key, grpcFastClientRecord);
+        LOGGER.info("key: {}, fastClientRecord: {}", key, genericFastClientRecord);
+
+        Assert.assertEquals(grpcFastClientRecord, genericFastClientRecord);
       }
     }
+
+    grpcFastClient.close();
+    genericFastClient.close();
   }
 
   private Set<Set<String>> getKeySets() {

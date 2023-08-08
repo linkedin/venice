@@ -9,12 +9,17 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.grpc.GrpcErrorCodes;
+import com.linkedin.venice.grpc.GrpcSslUtils;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.grpc.ChannelCredentials;
+import io.grpc.Grpc;
+import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
+import io.grpc.TlsChannelCredentials;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.util.Map;
@@ -31,12 +36,33 @@ public class GrpcTransportClient extends InternalTransportClient {
   // we cache stubs to avoid creating a new stub for each request, improves performance
   private final VeniceConcurrentHashMap<ManagedChannel, VeniceReadServiceGrpc.VeniceReadServiceStub> stubCache;
   private final TransportClient r2TransportClient; // used for non-storage related requests
+  private final SSLFactory sslFactory;
+  private ChannelCredentials channelCredentials;
 
   public GrpcTransportClient(ClientConfig clientConfig) {
     serverGrpcChannels = new VeniceConcurrentHashMap<>();
     stubCache = new VeniceConcurrentHashMap<>();
     nettyAddressToGrpcAddressMap = clientConfig.getNettyServerToGrpcAddressMap();
     this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
+    this.sslFactory = clientConfig.getSslFactoryForGrpc();
+
+    initChannelCredentials();
+  }
+
+  private void initChannelCredentials() {
+    if (sslFactory == null) {
+      channelCredentials = InsecureChannelCredentials.create();
+      return;
+    }
+
+    try {
+      TlsChannelCredentials.Builder tlsBuilder = TlsChannelCredentials.newBuilder();
+      tlsBuilder.keyManager(GrpcSslUtils.getKeyManagers(sslFactory));
+      tlsBuilder.trustManager(GrpcSslUtils.getTrustManagers(sslFactory));
+      channelCredentials = tlsBuilder.build();
+    } catch (Exception e) {
+      throw new VeniceException("Failed to initialize channel credentials", e);
+    }
   }
 
   protected ManagedChannel getChannel(String serverAddress) {
@@ -46,7 +72,7 @@ public class GrpcTransportClient extends InternalTransportClient {
 
     return serverGrpcChannels.computeIfAbsent(
         serverAddress,
-        k -> ManagedChannelBuilder.forTarget(nettyAddressToGrpcAddressMap.get(k)).usePlaintext().build());
+        k -> Grpc.newChannelBuilder(nettyAddressToGrpcAddressMap.get(k), channelCredentials).build());
   }
 
   protected VeniceReadServiceGrpc.VeniceReadServiceStub getStub(ManagedChannel channel) {
