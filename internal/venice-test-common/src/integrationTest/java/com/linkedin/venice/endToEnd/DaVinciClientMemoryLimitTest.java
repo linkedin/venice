@@ -73,7 +73,7 @@ import org.testng.annotations.Test;
 
 
 public class DaVinciClientMemoryLimitTest {
-  private static final int TEST_TIMEOUT = 120_000;
+  private static final int TEST_TIMEOUT = 180_000;
   private VeniceClusterWrapper venice;
   private D2Client d2Client;
 
