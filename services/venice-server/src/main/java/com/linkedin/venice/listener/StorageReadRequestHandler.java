@@ -431,7 +431,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return new PerStoreVersionState(partitionerConfig, partitioner, storageEngine, storeDeserializerCache);
   }
 
-  private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
+  public ReadResponse handleSingleGetRequest(GetRouterRequest request) {
     String topic = request.getResourceName();
     PerStoreVersionState perStoreVersionState = getPerStoreVersionState(topic);
     int subPartition = getSubPartitionId(request.getPartition(), request.getKeyBytes(), perStoreVersionState);
@@ -545,7 +545,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     });
   }
 
-  private ReadResponse handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
+  public ReadResponse handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     PerStoreVersionState perStoreVersionState = getPerStoreVersionState(request.getResourceName());
     AbstractStorageEngine storageEngine = perStoreVersionState.storageEngine;

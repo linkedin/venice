@@ -2,6 +2,7 @@ package com.linkedin.davinci.config;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
+
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
@@ -13,7 +14,6 @@ import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
-import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT_STORE_LIST;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MLOCK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
@@ -101,7 +101,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME
 import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
-import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
 import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
@@ -115,7 +114,9 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
-
+import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT_STORE_LIST;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
@@ -266,6 +267,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * number of worker threads for the netty listener.  If not specified, netty uses twice cpu count.
    */
   private final int nettyWorkerThreadCount;
+  private final int grpcWorkerThreadCount;
 
   private final long databaseSyncBytesIntervalForTransactionalMode;
 
@@ -479,6 +481,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30);
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
+    grpcWorkerThreadCount = serverProperties.getInt(GRPC_SERVER_WORKER_THREAD_COUNT, Runtime.getRuntime()
+        .availableProcessors());
 
     remoteIngestionRepairSleepInterval = serverProperties.getInt(
         SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS,
@@ -868,6 +872,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getNettyWorkerThreadCount() {
     return nettyWorkerThreadCount;
+  }
+
+  public int getGrpcWorkerThreadCount() {
+    return grpcWorkerThreadCount;
   }
 
   public long getDatabaseSyncBytesIntervalForTransactionalMode() {
