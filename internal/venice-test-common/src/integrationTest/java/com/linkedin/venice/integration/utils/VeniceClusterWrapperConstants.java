@@ -28,5 +28,14 @@ public class VeniceClusterWrapperConstants {
   // constant for tests with just one data center/region
   public static final String STANDALONE_REGION_NAME = "testRegion";
 
+  /**
+   * Use this constant to specify the port for the VeniceRouterWrapper.
+   * If the specified port is already in use, the router startup will fail. Additionally,
+   * if the same set of configurations are provided to initiate multiple routers with
+   * this configuration and the same port, only the first router will start successfully.
+   *
+   * Unless it is necessary to use a specific port, it is recommended to not specify this constant
+   * and let the router wrapper a free port.
+   */
   public static final String ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER = "routerPortToUseInVeniceRouterWrapper";
 }

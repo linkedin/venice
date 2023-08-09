@@ -117,6 +117,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
     return (serviceName, dataDirectory) -> {
       int port;
+      // If a port is specified using ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER, this port will be used,
+      // as the requester will be connecting to the router via this port.
+      // This method will not honor the port specified with LISTENER_PORT as it might be used by
+      // VeniceServerWrapper, since it is passed via the shared properties.
       if (properties.containsKey(ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER)) {
         port = Integer.parseInt(properties.getProperty(ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER));
       } else {
