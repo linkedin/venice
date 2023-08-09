@@ -1,5 +1,7 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -87,7 +89,7 @@ public class VeniceClusterInitializer implements Closeable {
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
     routerProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
-    routerProperties.put(ConfigKeys.LISTENER_PORT, Integer.toString(routerPort));
+    routerProperties.put(ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER, Integer.toString(routerPort));
     this.veniceCluster.addVeniceRouter(routerProperties);
     String routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
     LOGGER.info("Router address: {}", routerAddr);
