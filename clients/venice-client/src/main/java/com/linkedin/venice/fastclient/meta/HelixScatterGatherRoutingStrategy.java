@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * will be performed using instances belonging to the assigned groups. If no instance belonging to the selected group is
  * found for a given partition, the instance with the next group in the assigned ordering will be used
  */
-public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy {
+public class HelixScatterGatherRoutingStrategy extends AbstractClientRoutingStrategy {
   private AtomicReference<HelixGroupInfo> helixGroupInfoAtomicReference = new AtomicReference<>();
   private final InstanceHealthMonitor instanceHealthMonitor;
 
@@ -47,6 +47,7 @@ public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy 
     return selectedReplicas;
   }
 
+  @Override
   public void updateHelixGroupInfo(Map<String, Integer> instanceToHelixGroupIdMap) {
     helixGroupInfoAtomicReference.set(new HelixGroupInfo(Collections.unmodifiableMap(instanceToHelixGroupIdMap)));
   }

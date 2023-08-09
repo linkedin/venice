@@ -260,7 +260,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
 
     try {
       if (dualRead) {
-        genericThinClient = getGenericThinClient(thinClientMetricsRepository, storeName);
+        genericThinClient = getGenericThinClient(thinClientMetricsRepository);
         clientConfigBuilder.setGenericThinClient(genericThinClient);
         specificThinClient = getSpecificThinClient();
         clientConfigBuilder.setSpecificThinClient(specificThinClient);
@@ -342,7 +342,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
 
     try {
       if (dualRead) {
-        genericThinClient = getGenericThinClient(thinClientMetricsRepository, storeName);
+        genericThinClient = getGenericThinClient(thinClientMetricsRepository);
         clientConfigBuilder.setGenericThinClient(genericThinClient);
         specificThinClient = getSpecificThinClient();
         clientConfigBuilder.setSpecificThinClient(specificThinClient);

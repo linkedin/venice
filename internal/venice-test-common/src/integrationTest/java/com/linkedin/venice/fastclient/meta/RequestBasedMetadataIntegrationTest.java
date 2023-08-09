@@ -6,7 +6,6 @@ import static org.testng.Assert.*;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -24,10 +23,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -57,7 +54,6 @@ public class RequestBasedMetadataIntegrationTest {
   private Client r2Client;
   private D2Client d2Client;
   private ClientConfig clientConfig;
-  private AvroGenericStoreClient metadataResponseSchemaStoreClient;
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -79,13 +75,6 @@ public class RequestBasedMetadataIntegrationTest {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
-    metadataResponseSchemaStoreClient = com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
-        com.linkedin.venice.client.store.ClientConfig
-            .defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName())
-            .setVeniceURL(veniceCluster.getRandomRouterSslURL())
-            .setSslFactory(SslUtils.getVeniceLocalSslFactory())
-            .setMetricsRepository(new MetricsRepository()));
-    clientConfigBuilder.setMetadataResponseSchemaStoreClient(metadataResponseSchemaStoreClient);
     clientConfig = clientConfigBuilder.build();
     requestBasedMetadata = new RequestBasedMetadata(
         clientConfig,
@@ -145,7 +134,6 @@ public class RequestBasedMetadataIntegrationTest {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(true);
     clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
-    clientConfigBuilder.setMetadataResponseSchemaStoreClient(metadataResponseSchemaStoreClient);
     ClientConfig zstdClientConfig = clientConfigBuilder.build();
 
     RequestBasedMetadata zstdRequestBasedMetadata = new RequestBasedMetadata(

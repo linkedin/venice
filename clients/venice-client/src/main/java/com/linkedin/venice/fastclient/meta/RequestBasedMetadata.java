@@ -1,9 +1,11 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig;
 import static com.linkedin.venice.schema.SchemaData.INVALID_VALUE_SCHEMA_ID;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
+import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -23,6 +25,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -92,10 +95,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
     this.clientStats = clientConfig.getStats(RequestType.SINGLE_GET);
-    this.metadataResponseSchemaReader = new RouterBackedSchemaReader(
-        () -> (InternalAvroStoreClient) clientConfig.getMetadataResponseSchemaStoreClient(),
-        Optional.empty(),
-        Optional.empty());
+    InternalAvroStoreClient metadataSchemaResponseStoreClient = new AvroGenericStoreClientImpl(
+        // Create a new D2TransportClient since the other one will be set to point to server d2 after cluster discovery
+        new D2TransportClient(clusterDiscoveryD2ServiceName, transportClient.getD2Client()),
+        false,
+        defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
+    this.metadataResponseSchemaReader =
+        new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
   }
 
   // For unit tests only
@@ -277,9 +283,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private void refresh() {
     try {
       updateCache(false);
-      if (routingStrategy instanceof HelixScatterGatherRoutingStrategy) {
-        ((HelixScatterGatherRoutingStrategy) routingStrategy).updateHelixGroupInfo(helixGroupInfo);
-      }
+      routingStrategy.updateHelixGroupInfo(helixGroupInfo);
       isReady = true;
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.

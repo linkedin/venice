@@ -10,7 +10,6 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -74,8 +73,7 @@ public class DispatchingAvroGenericStoreClientTest {
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
         .setR2Client(mock(Client.class))
         .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
-        .setMetadataRefreshIntervalInSeconds(1L)
-        .setMetadataResponseSchemaStoreClient(mock(InternalAvroStoreClient.class));
+        .setMetadataRefreshIntervalInSeconds(1L);
 
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();

@@ -25,8 +25,6 @@ import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
-import com.linkedin.venice.helix.HelixState;
-import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -48,7 +46,6 @@ import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -58,7 +55,6 @@ import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.util.Collections;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.Optional;
@@ -482,30 +478,25 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
     mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id2"));
     mockStore.setCurrentVersion(2);
-    ResourceAssignment resourceAssignment = new ResourceAssignment();
     String topicName = Version.composeKafkaTopic(storeName, 2);
     PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
-    partitionAssignment
-        .addPartition(new Partition(0, new EnumMap<>(HelixState.class), new EnumMap<>(ExecutionStatus.class)));
-    resourceAssignment.setPartitionAssignment(topicName, partitionAssignment);
+    Partition partition = mock(Partition.class);
+    doReturn(0).when(partition).getId();
     List<Instance> readyToServeInstances = Collections.singletonList(new Instance("host1", "host1", 1234));
+    doReturn(readyToServeInstances).when(partition).getReadyToServeInstances();
+    partitionAssignment.addPartition(partition);
 
     String schema = "\"string\"";
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
     Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, schema));
     Mockito.when(mockSchemaRepo.getValueSchemas(storeName))
         .thenReturn(Collections.singletonList(new SchemaEntry(0, schema)));
-    Mockito.when(mockCustomizedViewRepository.getResourceAssignment()).thenReturn(resourceAssignment);
     Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
-    Mockito.when(mockCustomizedViewRepository.getReadyToServeInstances(topicName, 0)).thenReturn(readyToServeInstances);
-
     Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
 
     MetadataResponse metadataResponse = kafkaStoreIngestionService.getMetadata(storeName);
-
     Assert.assertNotNull(metadataResponse);
     Assert.assertEquals(metadataResponse.getResponseRecord().getKeySchema().get("0"), "\"string\"");
-
     // Verify the metadata
     Assert.assertEquals(metadataResponse.getResponseRecord().getVersions().size(), 2);
     VersionProperties versionProperties = metadataResponse.getResponseRecord().getVersionMetadata();

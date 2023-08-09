@@ -408,11 +408,7 @@ public abstract class AbstractClientEndToEndSetup {
         clientConfigBuilder.setD2Client(d2Client);
         clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
         clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
-        // Validate and configure the metadata response schema forward compat support setup
-        AvroGenericStoreClient metadataResponseSchemaStoreClient = getGenericThinClient(
-            new MetricsRepository(),
-            AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName());
-        clientConfigBuilder.setMetadataResponseSchemaStoreClient(metadataResponseSchemaStoreClient);
+        // Validate the metadata response schema forward compat support setup
         veniceCluster.useControllerClient(controllerClient -> {
           String schemaStoreName = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName();
           MultiSchemaResponse multiSchemaResponse = controllerClient.getAllValueSchema(schemaStoreName);
@@ -476,9 +472,7 @@ public abstract class AbstractClientEndToEndSetup {
     }
   }
 
-  protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient(
-      MetricsRepository metricsRepository,
-      String storeName) {
+  protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient(MetricsRepository metricsRepository) {
     return com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
         com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(veniceCluster.getRandomRouterSslURL())

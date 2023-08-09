@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
-import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -46,7 +45,6 @@ public class RequestBasedMetadataTestUtils {
     doReturn(clusterStats).when(clientConfig).getClusterStats();
     doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
     doReturn(mock(FastClientStats.class)).when(clientConfig).getStats(RequestType.SINGLE_GET);
-    doReturn(mock(InternalAvroStoreClient.class)).when(clientConfig).getMetadataResponseSchemaStoreClient();
     return clientConfig;
   }
 

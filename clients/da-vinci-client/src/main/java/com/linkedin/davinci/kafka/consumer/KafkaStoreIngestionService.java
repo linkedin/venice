@@ -1219,18 +1219,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
       // Routing metadata
       Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
-      String storeCurrentVersionResource = Version.composeKafkaTopic(storeName, currentVersionNumber);
-      for (String resource: customizedViewRepository.getResourceAssignment().getAssignedResources()) {
-        if (storeCurrentVersionResource.equals(resource)) {
-          for (Partition partition: customizedViewRepository.getPartitionAssignments(resource).getAllPartitions()) {
-            List<CharSequence> instances = new ArrayList<>();
-            for (Instance instance: customizedViewRepository.getReadyToServeInstances(resource, partition.getId())) {
-              instances.add(instance.getUrl(true));
-            }
-            routingInfo.put(String.valueOf(partition.getId()), instances);
-          }
+      String currentVersionResource = Version.composeKafkaTopic(storeName, currentVersionNumber);
+      for (Partition partition: customizedViewRepository.getPartitionAssignments(currentVersionResource)
+          .getAllPartitions()) {
+        List<CharSequence> instances = new ArrayList<>();
+        for (Instance instance: partition.getReadyToServeInstances()) {
+          instances.add(instance.getUrl(true));
         }
+        routingInfo.put(String.valueOf(partition.getId()), instances);
       }
+
       // Helix metadata
       Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
       for (Map.Entry<String, Integer> entry: helixInstanceConfigRepository.getInstanceGroupIdMapping().entrySet()) {
