@@ -4,14 +4,14 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
+import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.schema.merge.UpdateResultStatus;
+import com.linkedin.davinci.schema.merge.ValueAndRmd;
+import com.linkedin.davinci.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.merge.MergeRecordHelper;
-import com.linkedin.venice.schema.merge.UpdateResultStatus;
-import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1;
-import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.List;

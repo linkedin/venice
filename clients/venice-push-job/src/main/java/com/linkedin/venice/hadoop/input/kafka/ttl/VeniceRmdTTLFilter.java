@@ -5,7 +5,10 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Instant;
@@ -27,6 +30,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
   private final long ttlInMs;
   private final HDFSRmdSchemaSource schemaSource;
   protected final Map<RmdVersionId, Schema> rmdMapping;
+  private final Map<RmdVersionId, RecordDeserializer<GenericRecord>> rmdDeserializerCache;
 
   public VeniceRmdTTLFilter(final VeniceProperties props) throws IOException {
     super(props);
@@ -34,6 +38,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     ttlInMs = TimeUnit.SECONDS.toMillis(props.getLong(VenicePushJob.REPUSH_TTL_IN_SECONDS));
     schemaSource = new HDFSRmdSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR));
     rmdMapping = schemaSource.fetchSchemas();
+    this.rmdDeserializerCache = new VeniceConcurrentHashMap<>();
   }
 
   @Override
@@ -63,13 +68,19 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
           "The record doesn't contain required RMD field. Please check if your store has A/A enabled");
     }
     int id = getRmdId(value), valueSchemaId = getSchemaId(value);
-    Schema schema = rmdMapping.get(new RmdVersionId(valueSchemaId, id));
-    GenericRecord record = RmdUtils.deserializeRmdBytes(schema, schema, rmdPayload);
+    RmdVersionId rmdVersionId = new RmdVersionId(valueSchemaId, id);
+    GenericRecord record =
+        this.rmdDeserializerCache.computeIfAbsent(rmdVersionId, this::generateDeserializer).deserialize(rmdPayload);
     return RmdUtils.extractTimestampFromRmd(record)
         .stream()
         .mapToLong(v -> v)
         .max()
         .orElseThrow(NoSuchElementException::new);
+  }
+
+  private RecordDeserializer<GenericRecord> generateDeserializer(RmdVersionId rmdVersionId) {
+    Schema schema = rmdMapping.get(rmdVersionId);
+    return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(schema, schema);
   }
 
   protected abstract int getSchemaId(final INPUT_VALUE value);

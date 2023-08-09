@@ -8,7 +8,7 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.LIST
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.MAP_OPS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
 
-import com.linkedin.venice.schema.SchemaUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +40,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
           "Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
     }
 
-    final GenericRecord updatedValue = currValue == null ? SchemaUtils.createGenericRecord(valueSchema) : currValue;
+    final GenericRecord updatedValue = currValue == null ? AvroSchemaUtils.createGenericRecord(valueSchema) : currValue;
     for (Schema.Field valueField: updatedValue.getSchema().getFields()) {
       final String valueFieldName = valueField.name();
       Object writeComputeFieldValue = writeComputeRecord.get(valueFieldName);
@@ -84,8 +84,8 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     }
   }
 
-  // Visible for testing
-  Object updateArray(Schema arraySchema, List originalArray, Object writeComputeArray) {
+  // protected access for testing
+  public Object updateArray(Schema arraySchema, List originalArray, Object writeComputeArray) {
     if (writeComputeArray instanceof List) {
       return writeComputeArray; // Partial update on a list field
     }
@@ -115,8 +115,8 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     return originalArray;
   }
 
-  // Visible for testing
-  Object updateMap(Map originalMap, Object writeComputeMap) {
+  // protected access for testing
+  protected Object updateMap(Map originalMap, Object writeComputeMap) {
     if (writeComputeMap instanceof Map) {
       return writeComputeMap; // Partial update on a map field
     }

@@ -30,7 +30,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
       - name: Build with gradle
-        run: ./gradlew assemble --stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
+        run: ./gradlew assemble --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1
 
       - name: Build docker images for Venice (latest-dev tag)
         shell: bash

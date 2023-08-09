@@ -10,17 +10,17 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_O
 import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.getFieldOperationType;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.schema.merge.ValueAndRmd;
+import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.SchemaUtils;
-import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
-import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -229,7 +229,7 @@ public class MergeConflictResolver {
     ValueAndRmd<GenericRecord> oldValueAndRmd =
         prepareValueAndRmdForUpdate(oldValueBytesProvider.get(), rmdWithValueSchemaId, supersetValueSchemaEntry);
 
-    int oldValueSchemaID = oldValueAndRmd.getValueSchemaID();
+    int oldValueSchemaID = oldValueAndRmd.getValueSchemaId();
     if (oldValueSchemaID == -1) {
       oldValueSchemaID = supersetValueSchemaEntry.getId();
     }
@@ -412,7 +412,7 @@ public class MergeConflictResolver {
       oldRmdRecord = convertRmdToUseReaderValueSchema(readerValueSchemaID, oldValueWriterSchemaID, oldRmdRecord);
     }
     ValueAndRmd<GenericRecord> createdOldValueAndRmd = new ValueAndRmd<>(Lazy.of(() -> oldValueRecord), oldRmdRecord);
-    createdOldValueAndRmd.setValueSchemaID(readerValueSchemaID);
+    createdOldValueAndRmd.setValueSchemaId(readerValueSchemaID);
     return createdOldValueAndRmd;
   }
 
@@ -421,7 +421,7 @@ public class MergeConflictResolver {
       int oldValueWriterSchemaID,
       ByteBuffer oldValueBytes) {
     if (oldValueBytes == null) {
-      return SchemaUtils.createGenericRecord(readerValueSchema);
+      return AvroSchemaUtils.createGenericRecord(readerValueSchema);
     }
     final Schema oldValueWriterSchema = getValueSchema(oldValueWriterSchemaID);
     return deserializeValue(oldValueBytes, oldValueWriterSchema, readerValueSchema);
@@ -596,7 +596,7 @@ public class MergeConflictResolver {
       GenericRecord newValue;
       if (oldValueBytes == null) {
         // Value and RMD both never existed
-        newValue = SchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
+        newValue = AvroSchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
       } else {
         int schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
         Schema writerSchema = getValueSchema(schemaId);
@@ -642,7 +642,7 @@ public class MergeConflictResolver {
       GenericRecord oldValueRecord) {
     Schema perFieldTimestampRecordSchema = rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
     // Per-field timestamp record schema should have default timestamp values.
-    GenericRecord perFieldTimestampRecord = SchemaUtils.createGenericRecord(perFieldTimestampRecordSchema);
+    GenericRecord perFieldTimestampRecord = AvroSchemaUtils.createGenericRecord(perFieldTimestampRecordSchema);
     for (Schema.Field field: perFieldTimestampRecordSchema.getFields()) {
       Schema.Type timestampFieldType = field.schema().getType();
       switch (timestampFieldType) {
@@ -651,7 +651,7 @@ public class MergeConflictResolver {
           continue;
 
         case RECORD:
-          GenericRecord collectionFieldTimestampRecord = SchemaUtils.createGenericRecord(field.schema());
+          GenericRecord collectionFieldTimestampRecord = AvroSchemaUtils.createGenericRecord(field.schema());
           // Only need to set the top-level field timestamp on collection timestamp record.
           collectionFieldTimestampRecord.put(TOP_LEVEL_TS_FIELD_NAME, fieldTimestamp);
           // When a collection field metadata is created, its top-level colo ID is always -1.
