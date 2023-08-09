@@ -78,6 +78,13 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
    * We would like to share the same SstFileManager across all the databases.
    */
   private final SstFileManager sstFileManager;
+  /**
+   * This class will allocate a separate {@link SstFileManager} for memory enforcement since
+   * there is a method: {@link VeniceServerConfig#enforceMemoryLimitInStore(String)} to decide whether
+   * the memory enforcement should apply to all stores or not.
+   * Memory limiter will apply per {@link SstFileManager}.
+   */
+  private final SstFileManager sstFileManagerForMemoryLimiter;
 
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
@@ -98,6 +105,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
   private final long memtableSize;
 
+  private final VeniceServerConfig serverConfig;
+
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
     this(
         serverConfig,
@@ -111,6 +120,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       RocksDBMemoryStats rocksDBMemoryStats,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+    this.serverConfig = serverConfig;
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
     this.rocksDBPath = serverConfig.getDataBasePath() + File.separator + "rocksdb";
     this.rocksDBMemoryStats = rocksDBMemoryStats;
@@ -171,8 +181,13 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     try {
       this.sstFileManager = new SstFileManager(this.env);
       if (this.memoryLimit > 0) {
-        this.sstFileManager.setMaxAllowedSpaceUsage(this.memoryLimit);
+        this.sstFileManagerForMemoryLimiter = new SstFileManager(this.env);
+        this.sstFileManagerForMemoryLimiter.setMaxAllowedSpaceUsage(this.memoryLimit);
         LOGGER.info("Setup the max allowed SST space usage: {} in RocksDB factory", this.memoryLimit);
+        rocksDBMemoryStats.setMemoryLimit(this.memoryLimit);
+        rocksDBMemoryStats.setSstFileManager(this.sstFileManagerForMemoryLimiter);
+      } else {
+        this.sstFileManagerForMemoryLimiter = null;
       }
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to create the shared SstFileManager", e);
@@ -184,10 +199,6 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
         DEFAULT_FAIRNESS,
         DEFAULT_MODE,
         rocksDBServerConfig.isAutoTunedRateLimiterEnabled());
-    if (this.memoryLimit > 0) {
-      rocksDBMemoryStats.setMemoryLimit(this.memoryLimit);
-      rocksDBMemoryStats.setSstFileManager(this.sstFileManager);
-    }
   }
 
   public long getMemoryLimit() {
@@ -212,6 +223,17 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
   public SstFileManager getSstFileManager() {
     return sstFileManager;
+  }
+
+  public SstFileManager getSstFileManagerForMemoryLimiter() {
+    return sstFileManagerForMemoryLimiter;
+  }
+
+  /**
+   * Whether memory limiter applies or not.
+   */
+  public boolean enforceMemoryLimit(String storeNameWithoutVersionSuffix) {
+    return this.memoryLimit > 0 && serverConfig.enforceMemoryLimitInStore(storeNameWithoutVersionSuffix);
   }
 
   public Env getEnv() {
@@ -281,6 +303,12 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     writeBufferManager.close();
     rateLimiter.close();
     this.env.close();
+    if (sstFileManager != null) {
+      sstFileManager.close();
+    }
+    if (sstFileManagerForMemoryLimiter != null) {
+      sstFileManagerForMemoryLimiter.close();
+    }
     LOGGER.info("Closed RocksDBStorageEngineFactory");
   }
 

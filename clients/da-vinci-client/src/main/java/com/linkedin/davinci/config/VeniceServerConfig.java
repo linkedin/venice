@@ -13,6 +13,7 @@ import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
+import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT_STORE_LIST;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MLOCK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
@@ -419,6 +420,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long ingestionMemoryLimit;
   private final boolean ingestionMlockEnabled;
+  private final Set<String> ingestionMemoryLimitStoreSet;
   private final List<String> forkedProcessJvmArgList;
 
   private final long divProducerStateMaxAgeMs;
@@ -667,6 +669,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ingestionMemoryLimit = extractIngestionMemoryLimit(serverProperties, ingestionMode, forkedProcessJvmArgList);
     LOGGER.info("Ingestion memory limit: {} after subtracting other usages", ingestionMemoryLimit);
     ingestionMlockEnabled = serverProperties.getBoolean(INGESTION_MLOCK_ENABLED, false);
+    ingestionMemoryLimitStoreSet = serverProperties.getList(INGESTION_MEMORY_LIMIT_STORE_LIST, Collections.emptyList())
+        .stream()
+        .collect(Collectors.toSet());
 
     this.divProducerStateMaxAgeMs =
         serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, KafkaDataIntegrityValidator.DISABLED);
@@ -1199,6 +1204,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isIngestionMlockEnabled() {
     return ingestionMlockEnabled;
+  }
+
+  public boolean enforceMemoryLimitInStore(String storeName) {
+    return ingestionMemoryLimitStoreSet.isEmpty() || ingestionMemoryLimitStoreSet.contains(storeName);
   }
 
   public long getDivProducerStateMaxAgeMs() {
