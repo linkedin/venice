@@ -403,9 +403,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
    * acquired the lock, no other thread could operate for this cluster.
    */
   public AutoCloseableLock lockForShutdown() {
-    LOGGER.info(
-        "lockForShutdown() called. Will log the current stacktrace and then attempt to acquire the lock.",
-        new VeniceException("Not thrown, for logging purposes only."));
     return clusterLockManager.createClusterWriteLock();
   }
 
