@@ -18,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
 
 public abstract class AbstractStoreMetadata implements StoreMetadata {
   private final InstanceHealthMonitor instanceHealthMonitor;
-  protected ClientRoutingStrategy routingStrategy;
+  protected AbstractClientRoutingStrategy routingStrategy;
   protected final String storeName;
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
@@ -40,7 +40,7 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   /**
    * For testing only.
    */
-  public void setRoutingStrategy(ClientRoutingStrategy routingStrategy) {
+  public void setRoutingStrategy(AbstractClientRoutingStrategy routingStrategy) {
     this.routingStrategy = routingStrategy;
   }
 

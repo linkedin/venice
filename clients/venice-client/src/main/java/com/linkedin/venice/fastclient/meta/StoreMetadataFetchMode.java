@@ -7,6 +7,7 @@ public enum StoreMetadataFetchMode {
   /**
    * Use thin-client to query meta system store via routers
    */
+  @Deprecated
   THIN_CLIENT_BASED_METADATA,
 
   /**
