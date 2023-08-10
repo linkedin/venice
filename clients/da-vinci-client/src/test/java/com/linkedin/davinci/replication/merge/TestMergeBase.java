@@ -4,13 +4,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.replication.merge.helper.utils.ValueAndDerivedSchemas;
+import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
-import com.linkedin.venice.utils.IndexedHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;

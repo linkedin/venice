@@ -204,7 +204,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         .thenCallRealMethod();
     when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), any(), any(), anyInt(), anyBoolean()))
         .thenCallRealMethod();
-    when(ingestionTask.getRmdProtocolVersionID()).thenReturn(rmdProtocolVersionID);
+    when(ingestionTask.getRmdProtocolVersionId()).thenReturn(rmdProtocolVersionID);
     doCallRealMethod().when(ingestionTask)
         .produceToLocalKafka(any(), any(), any(), any(), anyInt(), anyString(), anyInt(), anyLong());
     byte[] key = "foo".getBytes();
@@ -390,7 +390,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     when(serverConfig.isComputeFastAvroEnabled()).thenReturn(false);
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
-    when(ingestionTask.getRmdProtocolVersionID()).thenReturn(1);
+    when(ingestionTask.getRmdProtocolVersionId()).thenReturn(1);
     Lazy<VeniceCompressor> compressor = Lazy.of(NoopCompressor::new);
     when(ingestionTask.getCompressor()).thenReturn(compressor);
     when(ingestionTask.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);

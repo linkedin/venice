@@ -7,7 +7,7 @@ import static org.apache.avro.Schema.Type.RECORD;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.SchemaUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -86,7 +86,7 @@ public class RmdSchemaGeneratorV1 {
     if (originalSchema.getType() == RECORD) {
       timestampSchemas.add(generateMetadataSchemaFromRecord(originalSchema, namespace));
     }
-    Schema tsUnionSchema = SchemaUtils.createFlattenedUnionSchema(timestampSchemas);
+    Schema tsUnionSchema = AvroSchemaUtils.createFlattenedUnionSchema(timestampSchemas);
 
     Schema.Field timeStampField = AvroCompatibilityHelper.newField(null)
         .setName(TIMESTAMP_FIELD_NAME)

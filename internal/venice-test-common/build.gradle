@@ -245,7 +245,7 @@ task generateGHCI() {
   appendToGHCI(validateGradleWrapperFileContent, targetFilePath, validateGradleWrapper, 5, "")
   jobs << validateGradleWrapper
 
-  def common = "--stacktrace --continue --no-daemon "
+  def common = "--continue --no-daemon "
   def staticAnalysisFlowGradleArgs = common + "clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification"
 
   def staticAnalysis = "StaticAnalysis"
