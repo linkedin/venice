@@ -57,6 +57,10 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
     return executorService;
   }
 
+  /**
+   * Use the right state transition stats for the resource. By default, use the regular one; when
+   * dual state transition thread pool is enabled, use the future version stats for future version resource.
+   */
   public ParticipantStateTransitionStats getStateTransitionStats(String resourceName) {
     return stateTransitionStats;
   }

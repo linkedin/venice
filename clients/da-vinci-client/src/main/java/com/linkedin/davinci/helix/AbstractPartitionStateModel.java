@@ -248,10 +248,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     // Since this removes the storageEngine from the map not doing an un-subscribe and dropping a partition could
     // lead to NPE and other issues.
     // Adding a topic unsubscribe call for those race conditions as a safeguard before dropping the partition.
-    ingestionBackend.dropStoragePartitionGracefully(
-        storeConfig,
-        partition,
-        getStoreConfig().getPartitionGracefulDropDelaySeconds());
+    ingestionBackend
+        .dropStoragePartitionGracefully(storeConfig, partition, getStoreConfig().getStopConsumptionWaitRetriesNumber());
     removeCustomizedState();
   }
 
