@@ -22,9 +22,6 @@ import org.apache.avro.generic.IndexedRecord;
  * Write compute V1 handles value records that do not have replication metadata.
  */
 public class WriteComputeHandlerV1 implements WriteComputeHandler {
-  // GenericData is a singleton util class Avro provides. We're using it to construct the default field values
-  protected static final GenericData GENERIC_DATA = GenericData.get();
-
   @Override
   public GenericRecord updateValueRecord(
       Schema valueSchema,
@@ -84,8 +81,8 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     }
   }
 
-  // protected access for testing
-  public Object updateArray(Schema arraySchema, List originalArray, Object writeComputeArray) {
+  // Visible for testing
+  Object updateArray(Schema arraySchema, List originalArray, Object writeComputeArray) {
     if (writeComputeArray instanceof List) {
       return writeComputeArray; // Partial update on a list field
     }
@@ -115,8 +112,8 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     return originalArray;
   }
 
-  // protected access for testing
-  protected Object updateMap(Map originalMap, Object writeComputeMap) {
+  // Visible for testing
+  Object updateMap(Map originalMap, Object writeComputeMap) {
     if (writeComputeMap instanceof Map) {
       return writeComputeMap; // Partial update on a map field
     }

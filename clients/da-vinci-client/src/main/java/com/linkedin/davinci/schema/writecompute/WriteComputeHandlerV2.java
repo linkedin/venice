@@ -175,14 +175,4 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
     }
     return (GenericRecord) fieldTimestamp;
   }
-
-  // protected access for testing
-  public Object updateArray(Schema arraySchema, List originalArray, Object writeComputeArray) {
-    return super.updateArray(arraySchema, originalArray, writeComputeArray);
-  }
-
-  // protected access for testing
-  protected Object updateMap(Map originalMap, Object writeComputeMap) {
-    return super.updateMap(originalMap, writeComputeMap);
-  }
 }
