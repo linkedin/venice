@@ -1920,6 +1920,14 @@ public class ConfigKeys {
   public static final String INGESTION_MLOCK_ENABLED = "ingestion.mlock.enabled";
 
   /**
+   * Only applies the memory limiter to the stores listed in this config.
+   * This is mainly used for testing purpose since ultimately, we want to enforce memory limiter against
+   * all the stores to avoid node crash.
+   * Empty config means ingestion memory limiter will apply to all the stores.
+   */
+  public static final String INGESTION_MEMORY_LIMIT_STORE_LIST = "ingestion.memory.limit.store.list";
+
+  /**
    * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
    * can prevent OOMing in cases where there is a lot of historical churn in RT producers. The age of a given
    * producer's state is defined as:

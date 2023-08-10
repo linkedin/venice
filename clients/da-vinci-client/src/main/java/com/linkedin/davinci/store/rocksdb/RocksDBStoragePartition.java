@@ -8,6 +8,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.io.File;
@@ -79,6 +80,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private final EnvOptions envOptions;
 
   protected final String storeName;
+  private final String storeNameWithoutVersionSuffix;
   protected final int partitionId;
   private final String fullPathForPartitionDB;
 
@@ -153,6 +155,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.rocksDBServerConfig = rocksDBServerConfig;
     // Create the folder for storage partition if it doesn't exist
     this.storeName = storagePartitionConfig.getStoreName();
+    this.storeNameWithoutVersionSuffix = Version.parseStoreFromVersionTopic(storeName);
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.aggStatistics = factory.getAggStatistics();
 
@@ -233,7 +236,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
             e);
       }
     };
-    if (factory.getMemoryLimit() > 0) {
+    if (factory.enforceMemoryLimit(storeNameWithoutVersionSuffix)) {
       /**
        * We need to put a lock when calculating the memory usage since multiple threads can open different databases concurrently.
        *
@@ -241,7 +244,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
        * so this function will do the check manually when opening up any new database.
        */
       synchronized (factory) {
-        checkMemoryLimit(factory.getMemoryLimit(), factory.getSstFileManager(), fullPathForPartitionDB);
+        checkMemoryLimit(factory.getMemoryLimit(), factory.getSstFileManagerForMemoryLimiter(), fullPathForPartitionDB);
         dbOpenRunnable.run();
       }
     } else {
@@ -331,7 +334,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
     options.setEnv(factory.getEnv());
     options.setRateLimiter(factory.getRateLimiter());
-    options.setSstFileManager(factory.getSstFileManager());
+    if (factory.enforceMemoryLimit(storeNameWithoutVersionSuffix)) {
+      options.setSstFileManager(factory.getSstFileManagerForMemoryLimiter());
+    } else {
+      options.setSstFileManager(factory.getSstFileManager());
+    }
     options.setWriteBufferManager(factory.getWriteBufferManager());
 
     options.setCreateIfMissing(true);
@@ -455,7 +462,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   private void checkAndThrowMemoryLimitException(RocksDBException e) {
     if (e.getMessage().contains(ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_SPACE_QUOTA)) {
-      throw new MemoryLimitExhaustedException(storeName, partitionId, factory.getSstFileManager().getTotalSize());
+      throw new MemoryLimitExhaustedException(
+          storeName,
+          partitionId,
+          factory.getSstFileManagerForMemoryLimiter().getTotalSize());
     }
   }
 
