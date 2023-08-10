@@ -208,8 +208,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     /**
      * Native replication could also be used to perform data recovery by pointing the source version topic kafka url to
      * a topic with good data in another child fabric.
+     * During data recovery for DaVinci client running in follower mode does not have the configs needed for data recovery
+     * which leads to DaVinci host ingestion failure, ignore data recovery config for daVinci.
      */
-    if (version.getDataRecoveryVersionConfig() == null) {
+    if (version.getDataRecoveryVersionConfig() == null || isDaVinciClient) {
       this.nativeReplicationSourceVersionTopicKafkaURL = version.getPushStreamSourceAddress();
       isDataRecovery = false;
     } else {
