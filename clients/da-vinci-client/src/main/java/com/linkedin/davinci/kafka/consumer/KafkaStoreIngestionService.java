@@ -1177,50 +1177,59 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   @Override
   public MetadataResponse getMetadata(String storeName) {
+    hostLevelIngestionStats.getStoreStats(storeName).recordRequestBasedMetadataInvokeCount();
     MetadataResponse response = new MetadataResponse();
     try {
       Store store = metadataRepo.getStoreOrThrow(storeName);
-
-      Version version = store.getVersion(store.getCurrentVersion()).get();
+      // Version metadata
+      int currentVersionNumber = store.getCurrentVersion();
+      if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
+        throw new VeniceException(
+            "No valid store version available to read for store: " + storeName
+                + ". Please push data to the store before consuming");
+      }
+      Optional<Version> currentVersionOptional = store.getVersion(currentVersionNumber);
+      if (!currentVersionOptional.isPresent()) {
+        throw new VeniceException(
+            String.format("Current version: %d not found in store: %s", currentVersionNumber, storeName));
+      }
+      Version currentVersion = currentVersionOptional.get();
       Map<CharSequence, CharSequence> partitionerParams =
-          new HashMap<>(version.getPartitionerConfig().getPartitionerParams());
+          new HashMap<>(currentVersion.getPartitionerConfig().getPartitionerParams());
       VersionProperties versionProperties = new VersionProperties(
-          store.getCurrentVersion(),
-          version.getCompressionStrategy().getValue(),
-          version.getPartitionCount(),
-          version.getPartitionerConfig().getPartitionerClass(),
+          currentVersionNumber,
+          currentVersion.getCompressionStrategy().getValue(),
+          currentVersion.getPartitionCount(),
+          currentVersion.getPartitionerConfig().getPartitionerClass(),
           partitionerParams,
-          version.getPartitionerConfig().getAmplificationFactor());
+          currentVersion.getPartitionerConfig().getAmplificationFactor());
 
       List<Integer> versions = new ArrayList<>();
       for (Version v: store.getVersions()) {
         versions.add(v.getNumber());
       }
-
+      // Schema metadata
       Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
           String.valueOf(schemaRepo.getKeySchema(storeName).getId()),
           schemaRepo.getKeySchema(storeName).getSchema().toString());
       Map<CharSequence, CharSequence> valueSchemas = new HashMap<>();
-      for (SchemaEntry schemaEntry: schemaRepo.getValueSchemas(storeName)) {
-        String valueSchemaStr = schemaEntry.getSchema().toString();
-        int valueSchemaId = schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
-        valueSchemas.put(String.valueOf(valueSchemaId), valueSchemaStr);
-      }
       int latestSuperSetValueSchemaId = store.getLatestSuperSetValueSchemaId();
-
+      for (SchemaEntry schemaEntry: schemaRepo.getValueSchemas(storeName)) {
+        valueSchemas.put(String.valueOf(schemaEntry.getId()), schemaEntry.getSchema().toString());
+      }
+      // Routing metadata
       Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
-      for (String resource: customizedViewRepository.getResourceAssignment().getAssignedResources()) {
-        if (resource.endsWith("v" + store.getCurrentVersion())) {
-          for (Partition partition: customizedViewRepository.getPartitionAssignments(resource).getAllPartitions()) {
-            List<CharSequence> instances = new ArrayList<>();
-            for (Instance instance: customizedViewRepository.getReadyToServeInstances(resource, partition.getId())) {
-              instances.add(instance.getUrl(true));
-            }
-            routingInfo.put(String.valueOf(partition.getId()), instances);
-          }
+      String currentVersionResource = Version.composeKafkaTopic(storeName, currentVersionNumber);
+      for (Partition partition: customizedViewRepository.getPartitionAssignments(currentVersionResource)
+          .getAllPartitions()) {
+        List<CharSequence> instances = new ArrayList<>();
+        for (Instance instance: partition.getReadyToServeInstances()) {
+          instances.add(instance.getUrl(true));
         }
+        routingInfo.put(String.valueOf(partition.getId()), instances);
       }
 
+      // Helix metadata
       Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
       for (Map.Entry<String, Integer> entry: helixInstanceConfigRepository.getInstanceGroupIdMapping().entrySet()) {
         helixGroupInfo.put(HelixUtils.instanceIdToUrl(entry.getKey()), entry.getValue());
@@ -1233,12 +1242,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       response.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
       response.setRoutingInfo(routingInfo);
       response.setHelixGroupInfo(helixGroupInfo);
-    } catch (VeniceNoStoreException e) {
-      LOGGER.warn("Store {} not found in metadataRepo.", storeName);
-      response.setMessage("Store \"" + storeName + "\" not found");
+    } catch (VeniceException e) {
+      LOGGER.warn("Failed to populate request based metadata for store: {}.", storeName);
+      response.setMessage("Failed to populate metadata for store: " + storeName + " due to: " + e.getMessage());
       response.setError(true);
+      hostLevelIngestionStats.getStoreStats(storeName).recordRequestBasedMetadataFailureCount();
     }
-
     return response;
   }
 

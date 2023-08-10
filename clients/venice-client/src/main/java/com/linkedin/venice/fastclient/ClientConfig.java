@@ -224,7 +224,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     if (this.storeMetadataFetchMode == StoreMetadataFetchMode.SERVER_BASED_METADATA) {
       if (this.d2Client == null || this.clusterDiscoveryD2Service == null) {
         throw new VeniceClientException(
-            "Both param: d2Client and param: clusterDiscoveryD2Service must be specified when request based metadata is enabled");
+            "Both param: d2Client and param: clusterDiscoveryD2Service must be set for request based metadata");
       }
     }
     if (clientRoutingStrategyType == ClientRoutingStrategyType.HELIX_ASSISTED

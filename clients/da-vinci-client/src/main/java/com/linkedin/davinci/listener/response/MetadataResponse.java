@@ -62,7 +62,7 @@ public class MetadataResponse {
   }
 
   public int getResponseSchemaIdHeader() {
-    return AvroProtocolDefinition.SERVER_METADATA_RESPONSE_V1.getCurrentProtocolVersion();
+    return AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
   }
 
   public void setError(boolean error) {
