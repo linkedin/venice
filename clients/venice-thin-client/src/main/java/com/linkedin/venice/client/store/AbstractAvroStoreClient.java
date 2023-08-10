@@ -721,7 +721,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public void start() throws VeniceClientException {
     if (needSchemaReader) {
       this.schemaReader = new RouterBackedSchemaReader(
-          this,
+          this::getStoreClientForSchemaReader,
           getReaderSchema(),
           clientConfig.getPreferredSchemaFilter(),
           clientConfig.getSchemaRefreshPeriod(),
@@ -746,6 +746,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   protected Optional<Schema> getReaderSchema() {
     return Optional.empty();
   }
+
+  /**
+   * To avoid cycle dependency, we need to initialize another store client for schema reader.
+   * @return
+   * @throws VeniceClientException
+   */
+  protected abstract AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader();
 
   public abstract RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException;
 

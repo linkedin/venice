@@ -22,6 +22,14 @@ public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl
   }
 
   @Override
+  protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
+    return new VsonGenericStoreClientImpl<K, V>(
+        getTransportClient().getCopyIfNotUsableInCallback(),
+        false,
+        ClientConfig.defaultVsonGenericClientConfig(getStoreName()));
+  }
+
+  @Override
   protected RecordDeserializer<V> getDeserializerFromFactory(Schema writer, Schema reader) {
     return SerializerDeserializerFactory.getVsonDeserializer(writer, reader);
   }
