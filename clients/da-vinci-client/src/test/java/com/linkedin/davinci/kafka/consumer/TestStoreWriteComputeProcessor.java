@@ -4,10 +4,10 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.client.store.schemas.TestValueRecord;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import org.apache.avro.Schema;

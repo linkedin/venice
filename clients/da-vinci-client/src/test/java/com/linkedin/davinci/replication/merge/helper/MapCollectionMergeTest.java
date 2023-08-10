@@ -5,7 +5,7 @@ import com.linkedin.davinci.replication.merge.helper.utils.DeleteMapOperation;
 import com.linkedin.davinci.replication.merge.helper.utils.ExpectedCollectionResults;
 import com.linkedin.davinci.replication.merge.helper.utils.MergeMapOperation;
 import com.linkedin.davinci.replication.merge.helper.utils.PutMapOperation;
-import com.linkedin.venice.utils.IndexedHashMap;
+import com.linkedin.davinci.utils.IndexedHashMap;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;

@@ -53,7 +53,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification"
+          arguments: "--continue --no-daemon clean check --parallel -Pspotallbugs -x test -x integrationTest -x jacocoTestCoverageVerification"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -182,7 +182,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -225,7 +225,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -268,7 +268,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -311,7 +311,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -354,7 +354,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -397,7 +397,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -440,7 +440,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -483,7 +483,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -526,7 +526,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -569,7 +569,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -612,7 +612,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -655,7 +655,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -698,7 +698,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -741,7 +741,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -784,7 +784,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -827,7 +827,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -870,7 +870,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -913,7 +913,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -984,7 +984,7 @@ jobs:
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DmaxParallelForks=1 alpiniUnitTest"
+          arguments: "--continue --no-daemon -DmaxParallelForks=1 alpiniUnitTest"
       - name: Package Build Artifacts
         if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
         shell: bash
@@ -1055,7 +1055,7 @@ jobs:
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon -DmaxParallelForks=1 alpiniFunctionalTest"
+          arguments: "--continue --no-daemon -DmaxParallelForks=1 alpiniFunctionalTest"
       - name: Package Build Artifacts
         if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
         shell: bash

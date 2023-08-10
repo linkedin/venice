@@ -1,7 +1,7 @@
 package com.linkedin.davinci.replication.merge;
 
+import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import com.linkedin.venice.annotation.Threadsafe;
-import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.utils.lazy.Lazy;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;

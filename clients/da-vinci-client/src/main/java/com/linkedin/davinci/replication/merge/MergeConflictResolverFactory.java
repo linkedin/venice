@@ -1,8 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
-import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
-import com.linkedin.venice.schema.merge.MergeRecordHelper;
-import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
+import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
+import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.schema.writecompute.WriteComputeProcessor;
 import org.apache.avro.generic.GenericData;
 
 
