@@ -5,6 +5,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.meta.Store;
 import java.util.concurrent.CompletableFuture;
 import org.testng.annotations.Test;
@@ -21,7 +22,8 @@ public class VeniceLeaderFollowerStateModelTest extends
         mockNotifier,
         mockReadOnlyStoreRepository,
         CompletableFuture.completedFuture(mockPushStatusAccessor),
-        null);
+        null,
+        mock(ParticipantStateTransitionStats.class));
   }
 
   @Override

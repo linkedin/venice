@@ -2,6 +2,7 @@ package com.linkedin.davinci.helix;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
+import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.HelixUtils;
@@ -21,6 +22,7 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
       VeniceIngestionBackend ingestionBackend,
       VeniceConfigLoader configService,
       ExecutorService executorService,
+      ParticipantStateTransitionStats stateTransitionStats,
       ReadOnlyStoreRepository metadataRepo,
       CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
       String instanceName) {
@@ -28,6 +30,7 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
         ingestionBackend,
         configService,
         executorService,
+        stateTransitionStats,
         metadataRepo,
         partitionPushStatusAccessorFuture,
         instanceName);
@@ -48,7 +51,8 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
         leaderFollowerStateModelNotifier,
         getStoreMetadataRepo(),
         partitionPushStatusAccessorFuture,
-        instanceName);
+        instanceName,
+        getStateTransitionStats(resourceName));
   }
 
   /**

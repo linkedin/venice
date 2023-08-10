@@ -3,6 +3,7 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
+import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
@@ -53,6 +54,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   private final AtomicLong leaderSessionId = new AtomicLong(0L);
 
   private final LeaderFollowerIngestionProgressNotifier notifier;
+  private final ParticipantStateTransitionStats threadPoolStats;
 
   public LeaderFollowerPartitionStateModel(
       VeniceIngestionBackend ingestionBackend,
@@ -61,9 +63,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       LeaderFollowerIngestionProgressNotifier notifier,
       ReadOnlyStoreRepository metadataRepo,
       CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
-      String instanceName) {
+      String instanceName,
+      ParticipantStateTransitionStats threadPoolStats) {
     super(ingestionBackend, metadataRepo, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);
     this.notifier = notifier;
+    this.threadPoolStats = threadPoolStats;
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
@@ -131,10 +135,13 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, context, () -> {
       try {
+        this.threadPoolStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
         // Gracefully drop partition to drain the requests to this partition
         Thread.sleep(TimeUnit.SECONDS.toMillis(getStoreConfig().getPartitionGracefulDropDelaySeconds()));
       } catch (InterruptedException e) {
         throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
+      } finally {
+        this.threadPoolStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
       }
       removePartitionFromStoreGracefully();
     });
