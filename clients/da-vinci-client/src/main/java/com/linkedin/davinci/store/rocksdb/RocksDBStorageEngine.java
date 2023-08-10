@@ -258,6 +258,10 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   @Override
   public boolean hasMemorySpaceLeft() {
     SstFileManager sstFileManager = factory.getSstFileManagerForMemoryLimiter();
+    if (sstFileManager == null) {
+      // Memory limiter is disabled.
+      return true;
+    }
     if (sstFileManager.isMaxAllowedSpaceReached() || sstFileManager.isMaxAllowedSpaceReachedIncludingCompactions()) {
       return false;
     }
