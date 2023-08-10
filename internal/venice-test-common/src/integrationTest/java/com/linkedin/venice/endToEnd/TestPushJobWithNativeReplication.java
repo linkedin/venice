@@ -2,8 +2,12 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
@@ -25,6 +29,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_ENAB
 import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
+import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
@@ -43,9 +48,14 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertFalse;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.StorageClass;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -65,6 +75,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -88,13 +99,16 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -107,6 +121,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -143,6 +158,7 @@ public class TestPushJobWithNativeReplication {
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private D2Client d2Client;
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -186,6 +202,14 @@ public class TestPushJobWithNativeReplication {
         false);
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    VeniceClusterWrapper clusterWrapper =
+        multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(CLUSTER_NAMES[0]);
+    d2Client = new D2ClientBuilder().setZkHosts(clusterWrapper.getZk().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2Client);
+
   }
 
   @AfterClass(alwaysRun = true)
@@ -968,18 +992,16 @@ public class TestPushJobWithNativeReplication {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(participantStoreName, 1),
           controllerClient,
-          100,
+          10,
           TimeUnit.MINUTES);
     }
-
     motherOfAllTests(
         "testTargetedRegionPushJobBatchStore",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          props.put(TARGETED_REGION_PUSH_ENABLED, true);
-          // no need to set but add here for clarity
-          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+          props.put(TARGETED_REGION_PUSH_ENABLED, false);
+          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
           try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
             job.run(); // the job should succeed
 
@@ -991,6 +1013,24 @@ public class TestPushJobWithNativeReplication {
                   .values()) {
                 Assert.assertEquals(version, 1);
               }
+            });
+          }
+          props.put(TARGETED_REGION_PUSH_ENABLED, true);
+          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+          TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 20);
+          try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
+              // Current version should become 2
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 2);
+              }
+              // should be able to read all 20 records.
+              validateDaVinciClient(storeName, 20);
             });
           }
         });
@@ -1082,6 +1122,34 @@ public class TestPushJobWithNativeReplication {
       }
     } finally {
       FileUtils.deleteDirectory(inputDir);
+    }
+  }
+
+  private void validateDaVinciClient(String storeName, int recordCount)
+      throws ExecutionException, InterruptedException {
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    DaVinciClient<String, Object> client;
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .build();
+    MetricsRepository metricsRepository = new MetricsRepository();
+    DaVinciConfig clientConfig = new DaVinciConfig();
+    clientConfig.setStorageClass(StorageClass.DISK);
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
+      client = factory.getGenericAvroClient(storeName, clientConfig);
+      client.start();
+      client.subscribeAll().get(30, TimeUnit.SECONDS);
+      for (int i = 1; i <= recordCount; i++) {
+        Assert.assertNotNull(client.get(Integer.toString(i)));
+      }
+    } catch (TimeoutException e) {
+      throw new RuntimeException(e);
     }
   }
 
