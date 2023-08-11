@@ -1,6 +1,7 @@
 package com.linkedin.davinci.schema.merge;
 
 import javax.annotation.concurrent.ThreadSafe;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -13,9 +14,9 @@ import org.apache.avro.generic.GenericRecord;
 @ThreadSafe
 public interface MergeRecordHelper {
   UpdateResultStatus putOnField(
-      GenericRecord currRecord,
-      GenericRecord currTimestampRecord,
-      String fieldName,
+      GenericRecord currentRecord,
+      GenericRecord currentTimestampRecord,
+      Schema.Field currentRecordField,
       Object newFieldValue,
       long putTimestamp,
       int putOperationColoID);

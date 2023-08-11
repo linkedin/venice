@@ -73,14 +73,14 @@ public class TestMergeBase {
     GenericRecord fieldTimestampsRecord =
         mergeConflictResolver.createPerFieldTimestampRecord(schemaSet.getRmdSchema(), initialTs, oldValueRecord);
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, fieldTimestampsRecord);
-    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<>());
+    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
     return createRmdRecord(rmdRecord);
   }
 
   protected GenericRecord initiateValueLevelRmdRecord(long initialTs) {
     GenericRecord rmdRecord = new GenericData.Record(schemaSet.getRmdSchema());
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, initialTs);
-    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<>());
+    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
     return createRmdRecord(rmdRecord);
   }
 

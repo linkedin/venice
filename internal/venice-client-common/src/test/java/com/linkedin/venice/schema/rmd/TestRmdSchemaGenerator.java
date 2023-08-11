@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema.rmd;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static org.apache.avro.Schema.Type.ARRAY;
 import static org.apache.avro.Schema.Type.BOOLEAN;
@@ -406,7 +406,7 @@ public class TestRmdSchemaGenerator {
     Assert.assertEquals(AvroSchemaUtils.getFieldDefault(tsField), 0L);
 
     Assert.assertEquals(rmdSchema.getType(), RECORD);
-    Schema.Field vectorField = rmdSchema.getField(REPLICATION_CHECKPOINT_VECTOR_FIELD);
+    Schema.Field vectorField = rmdSchema.getField(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME);
     Assert.assertEquals(vectorField.schema().getType(), ARRAY);
     Assert.assertEquals(AvroSchemaUtils.getFieldDefault(vectorField), Collections.EMPTY_LIST);
 

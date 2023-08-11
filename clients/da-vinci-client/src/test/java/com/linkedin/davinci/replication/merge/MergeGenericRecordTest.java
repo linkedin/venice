@@ -1,6 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_DIFF;
 import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_UNION;
@@ -101,7 +101,7 @@ public class MergeGenericRecordTest {
 
     Assert.assertEquals(deletedValueAndRmd3.getValue(), valueAndRmd.getValue());
     Assert.assertEquals(
-        (List<Long>) deletedValueAndRmd3.getRmd().get(REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<Long>) deletedValueAndRmd3.getRmd().get(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
         Collections.singletonList(1L));
     // Verify that the same object is returned
     Assert.assertSame(deletedValueAndRmd3, valueAndRmd);

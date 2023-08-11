@@ -91,7 +91,7 @@ public class TestMergeConflictResolver {
   protected GenericRecord createRmdWithValueLevelTimestamp(Schema rmdSchema, long valueLevelTimestamp) {
     final GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, valueLevelTimestamp);
-    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<>());
+    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
     return rmdRecord;
   }
 
@@ -124,7 +124,7 @@ public class TestMergeConflictResolver {
       }
     });
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, fieldTimestampsRecord);
-    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<>());
+    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
     return rmdRecord;
   }
 

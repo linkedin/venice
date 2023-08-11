@@ -172,7 +172,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           ((PutListOperation) op).getNewList(),
           (CollectionRmdTimestamp<Object>) collectionMetadata,
           currValueRecord,
-          op.getFieldName());
+          currValueRecord.getSchema().getField(op.getFieldName()));
 
     } else if (op instanceof PutMapOperation) {
       handlerToTest.handlePutMap(
@@ -181,14 +181,14 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           ((PutMapOperation) op).getNewMap(),
           (CollectionRmdTimestamp<String>) collectionMetadata,
           currValueRecord,
-          op.getFieldName());
+          currValueRecord.getSchema().getField(op.getFieldName()));
 
     } else if (op instanceof MergeListOperation) {
       handlerToTest.handleModifyList(
           op.getOpTimestamp(),
           (CollectionRmdTimestamp<Object>) collectionMetadata,
           currValueRecord,
-          op.getFieldName(),
+          currValueRecord.getSchema().getField(op.getFieldName()),
           ((MergeListOperation) op).getNewElements(),
           ((MergeListOperation) op).getToRemoveElements());
 
@@ -197,7 +197,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           op.getOpTimestamp(),
           (CollectionRmdTimestamp<String>) collectionMetadata,
           currValueRecord,
-          op.getFieldName(),
+          currValueRecord.getSchema().getField(op.getFieldName()),
           ((MergeMapOperation) op).getNewEntries(),
           ((MergeMapOperation) op).getToRemoveKeys());
 
@@ -207,7 +207,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           op.getOpColoID(),
           (CollectionRmdTimestamp<Object>) collectionMetadata,
           currValueRecord,
-          op.getFieldName());
+          currValueRecord.getSchema().getField(op.getFieldName()));
 
     } else if (op instanceof DeleteMapOperation) {
       handlerToTest.handleDeleteMap(
@@ -215,7 +215,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           op.getOpColoID(),
           (CollectionRmdTimestamp<String>) collectionMetadata,
           currValueRecord,
-          op.getFieldName());
+          currValueRecord.getSchema().getField(op.getFieldName()));
     } else {
       throw new IllegalStateException("Unknown operation type: Got: " + op.getClass());
     }

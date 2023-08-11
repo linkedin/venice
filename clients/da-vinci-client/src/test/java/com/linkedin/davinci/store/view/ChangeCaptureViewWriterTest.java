@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store.view;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 
@@ -222,7 +222,7 @@ public class ChangeCaptureViewWriterTest {
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);
     GenericRecord rmdRecordWithValueLevelTimeStamp = new GenericData.Record(rmdSchema);
     rmdRecordWithValueLevelTimeStamp.put(TIMESTAMP_FIELD_NAME, 20L);
-    rmdRecordWithValueLevelTimeStamp.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, vectors);
+    rmdRecordWithValueLevelTimeStamp.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, vectors);
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Update Case
