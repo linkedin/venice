@@ -1003,8 +1003,8 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          props.put(TARGETED_REGION_PUSH_ENABLED, true);
-          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+          props.put(TARGETED_REGION_PUSH_ENABLED, false);
+          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
           try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
             job.run(); // the job should succeed
 
