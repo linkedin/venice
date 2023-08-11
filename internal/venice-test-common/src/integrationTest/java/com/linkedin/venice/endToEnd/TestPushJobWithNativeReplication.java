@@ -94,8 +94,10 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
+import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
+import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -126,6 +128,7 @@ import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -1000,8 +1003,8 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          props.put(TARGETED_REGION_PUSH_ENABLED, false);
-          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
+          props.put(TARGETED_REGION_PUSH_ENABLED, true);
+          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
           try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
             job.run(); // the job should succeed
 
@@ -1031,6 +1034,7 @@ public class TestPushJobWithNativeReplication {
               }
               // should be able to read all 20 records.
               validateDaVinciClient(storeName, 20);
+              validatePushJobDetails(clusterName, storeName);
             });
           }
         });
@@ -1059,6 +1063,7 @@ public class TestPushJobWithNativeReplication {
                   .values()) {
                 Assert.assertEquals(version, 2);
               }
+              validatePushJobDetails(clusterName, storeName);
             });
           }
         });
@@ -1150,6 +1155,29 @@ public class TestPushJobWithNativeReplication {
       }
     } catch (TimeoutException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  private void validatePushJobDetails(String clusterName, String storeName)
+      throws ExecutionException, InterruptedException {
+    String pushJobDetailsStoreName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
+    VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+    String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+
+    // Verify push job details are populated
+    try (AvroGenericStoreClient<PushJobStatusRecordKey, Object> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(pushJobDetailsStoreName).setVeniceURL(routerUrl))) {
+      PushJobStatusRecordKey key = new PushJobStatusRecordKey();
+      key.setStoreName(storeName);
+      key.setVersionNumber(1);
+      GenericRecord value = (GenericRecord) client.get(key).get();
+      Map<Utf8, List<PushJobDetailsStatusTuple>> map = (HashMap) value.get("coloStatus");
+      Assert.assertEquals(map.size(), 2);
+      List<PushJobDetailsStatusTuple> status = map.get(new Utf8("dc-0"));
+      Assert.assertEquals(((GenericRecord) status.get(1)).get("status"), PushJobDetailsStatus.COMPLETED.getValue());
+      status = map.get(new Utf8("dc-1"));
+      Assert.assertEquals(((GenericRecord) status.get(1)).get("status"), PushJobDetailsStatus.COMPLETED.getValue());
+
     }
   }
 
