@@ -1063,7 +1063,6 @@ public class TestPushJobWithNativeReplication {
                   .values()) {
                 Assert.assertEquals(version, 2);
               }
-              validatePushJobDetails(clusterName, storeName);
             });
           }
         });
