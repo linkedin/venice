@@ -249,7 +249,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     // lead to NPE and other issues.
     // Adding a topic unsubscribe call for those race conditions as a safeguard before dropping the partition.
     ingestionBackend
-        .dropStoragePartitionGracefully(storeConfig, partition, getStoreConfig().getStopConsumptionWaitRetriesNumber());
+        .dropStoragePartitionGracefully(storeConfig, partition, getStoreConfig().getStopConsumptionTimeoutInSeconds());
     removeCustomizedState();
   }
 

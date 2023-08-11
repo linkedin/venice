@@ -608,7 +608,7 @@ public class ConfigKeys {
   /**
    * Number of retries allowed for stopConsumptionAndWait() API in StoreIngestionService.
    */
-  public static final String SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM = "server.stop.consumption.wait.retries.num";
+  public static final String SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS = "server.stop.consumption.timeout.in.seconds";
 
   /**
    * Service listening port number for main ingestion service.

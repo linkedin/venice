@@ -6,6 +6,7 @@ import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -134,14 +135,26 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, context, () -> {
+      boolean isCurrentVersion = false;
       try {
-        this.threadPoolStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
-        // Gracefully drop partition to drain the requests to this partition
-        Thread.sleep(TimeUnit.SECONDS.toMillis(getStoreConfig().getPartitionGracefulDropDelaySeconds()));
-      } catch (InterruptedException e) {
-        throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
-      } finally {
-        this.threadPoolStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+        String resourceName = message.getResourceName();
+        String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+        int version = Version.parseVersionFromKafkaTopicName(resourceName);
+        isCurrentVersion = getStoreRepo().getStoreOrThrow(storeName).getCurrentVersion() == version;
+      } catch (VeniceNoStoreException e) {
+        logger.warn("Failed to determine if the resource is current version", e);
+      }
+      if (isCurrentVersion) {
+        // Only do graceful drop for current version resources that are being queried
+        try {
+          this.threadPoolStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+          // Gracefully drop partition to drain the requests to this partition
+          Thread.sleep(TimeUnit.SECONDS.toMillis(getStoreConfig().getPartitionGracefulDropDelaySeconds()));
+        } catch (InterruptedException e) {
+          throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
+        } finally {
+          this.threadPoolStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+        }
       }
       removePartitionFromStoreGracefully();
     });
