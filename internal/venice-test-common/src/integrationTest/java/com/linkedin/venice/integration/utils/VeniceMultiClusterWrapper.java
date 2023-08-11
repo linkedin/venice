@@ -12,6 +12,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -69,7 +70,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
             "PubSubBrokerWrapper region name " + pubSubBrokerWrapper.getRegionName()
                 + " does not match with the region name " + options.getRegionName() + " in the options");
       }
-      Map<String, String> pubBrokerDetails = pubSubBrokerWrapper.getAdditionalConfig();
+      Map<String, String> pubBrokerDetails =
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper));
       String[] clusterNames = new String[options.getNumberOfClusters()];
       Map<String, String> clusterToD2 = new HashMap<>();
       Map<String, String> clusterToServerD2 = new HashMap<>();
@@ -126,7 +128,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
       }
       // Specify the system store cluster name
-      Properties extraProperties = options.getVeniceProperties().toProperties();
+      Properties extraProperties = options.getExtraProperties();
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
       extraProperties.putAll(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       pubBrokerDetails.forEach((key, value) -> extraProperties.putIfAbsent(key, value));

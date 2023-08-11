@@ -15,10 +15,9 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.List;
@@ -68,7 +67,7 @@ public class OneTouchDataRecoveryTest {
         REPLICATION_FACTOR,
         Optional.empty(),
         Optional.empty(),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(serverProperties),
         false);
 
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();

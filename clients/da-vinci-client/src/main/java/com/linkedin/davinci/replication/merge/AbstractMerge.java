@@ -3,7 +3,7 @@ package com.linkedin.davinci.replication.merge;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
-import com.linkedin.venice.schema.merge.ValueAndRmd;
+import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import java.util.List;
 import org.apache.avro.generic.GenericRecord;
 

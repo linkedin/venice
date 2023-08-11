@@ -76,7 +76,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.ByteArrayOutputStream;
@@ -101,7 +100,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
-import org.apache.logging.log4j.LogManager;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -139,9 +137,9 @@ public class PartialUpdateTest {
         2,
         1,
         2,
-        Optional.of(new VeniceProperties(controllerProps)),
-        Optional.of(new Properties(controllerProps)),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(controllerProps),
+        Optional.of(controllerProps),
+        Optional.of(serverProperties),
         false);
     this.childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
@@ -216,7 +214,6 @@ public class PartialUpdateTest {
           try {
             GenericRecord value = (GenericRecord) storeReader.get(keyRecord).get();
             assertNotNull(value, "key " + keyRecord + " should not be missing!");
-            LogManager.getLogger().info("DEBUGGING: " + value);
           } catch (Exception e) {
             throw new VeniceException(e);
           }

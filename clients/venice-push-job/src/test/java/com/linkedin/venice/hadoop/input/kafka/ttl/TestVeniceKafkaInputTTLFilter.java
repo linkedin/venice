@@ -16,11 +16,12 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
-import com.linkedin.venice.schema.rmd.RmdUtils;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -157,8 +158,9 @@ public class TestVeniceKafkaInputTTLFilter {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
     value.schemaId = isChunkedRecord ? -10 : 1;
     value.replicationMetadataVersionId = 1;
-    value.replicationMetadataPayload =
-        RmdUtils.serializeRmdRecord(rmdSchema, generateRmdRecordWithValueLevelTimeStamp(timestamp));
+    value.replicationMetadataPayload = ByteBuffer.wrap(
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema)
+            .serialize(generateRmdRecordWithValueLevelTimeStamp(timestamp)));
     return value;
   }
 

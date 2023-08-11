@@ -14,6 +14,8 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
+import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -48,8 +50,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
-import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -198,14 +198,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     }
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
-    this.storeWriteComputeHandler = new StoreWriteComputeProcessor(storeName, schemaRepository, mergeRecordHelper);
+    this.storeWriteComputeHandler = new StoreWriteComputeProcessor(
+        storeName,
+        schemaRepository,
+        mergeRecordHelper,
+        serverConfig.isComputeFastAvroEnabled());
     this.isNativeReplicationEnabled = version.isNativeReplicationEnabled();
 
     /**
      * Native replication could also be used to perform data recovery by pointing the source version topic kafka url to
      * a topic with good data in another child fabric.
+     * During data recovery for DaVinci client running in follower mode does not have the configs needed for data recovery
+     * which leads to DaVinci host ingestion failure, ignore data recovery config for daVinci.
      */
-    if (version.getDataRecoveryVersionConfig() == null) {
+    if (version.getDataRecoveryVersionConfig() == null || isDaVinciClient) {
       this.nativeReplicationSourceVersionTopicKafkaURL = version.getPushStreamSourceAddress();
       isDataRecovery = false;
     } else {
@@ -1032,7 +1038,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
     }
     if (!isDataRecoveryCompleted) {
-      long dataRecoverySourceVTEndOffset = cachedKafkaMetadataGetter.getOffset(
+      long dataRecoverySourceVTEndOffset = cachedPubSubMetadataGetter.getOffset(
           topicManagerRepository.getTopicManager(nativeReplicationSourceVersionTopicKafkaURL),
           versionTopic,
           partitionConsumptionState.getPartition());
@@ -1538,9 +1544,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     /**
      * After END_OF_PUSH received, `isReadyToServe()` is invoked for each message until the lag is caught up (otherwise,
      * if we only check ready to serve periodically, the lag may never catch up); in order not to slow down the hybrid
-     * ingestion, {@link CachedKafkaMetadataGetter} was introduced to get the latest offset periodically;
+     * ingestion, {@link CachedPubSubMetadataGetter} was introduced to get the latest offset periodically;
      * with this strategy, it is possible that partition could become 'ONLINE' at most
-     * {@link CachedKafkaMetadataGetter#ttlMs} earlier.
+     * {@link CachedPubSubMetadataGetter#ttlMs} earlier.
      */
     PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
     if (leaderTopic == null || !leaderTopic.isRealTime()) {
@@ -1560,7 +1566,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // Followers and Davinci clients, use local VT to compute hybrid lag.
     if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-      return cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partition)
+      return cachedPubSubMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partition)
           - partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
     }
 
@@ -1628,7 +1634,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     int partition = pcs.getPartition();
 
     if (pcs.isEndOfPushReceived() && !pcs.isLatchReleased()) {
-      if (cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partition) - 1 <= pcs
+      if (cachedPubSubMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partition) - 1 <= pcs
           .getLatestProcessedLocalVersionTopicOffset()) {
         statusReportAdapter.reportCatchUpVersionTopicOffsetLag(pcs);
 
@@ -1708,7 +1714,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
         }
         if (!record.getTopicPartition().getPubSubTopic().equals(currentLeaderTopic)) {
-          String errorMsg = "Leader receives a Kafka record that doesn't belong to leader topic. Store version: "
+          String errorMsg = "Leader received a pubsub message that doesn't belong to the leader topic. Store version: "
               + this.kafkaVersionTopic + ", partition: " + partitionConsumptionState.getPartition() + ", leader topic: "
               + currentLeaderTopic + ", topic of incoming message: "
               + record.getTopicPartition().getPubSubTopic().getName();
@@ -1761,14 +1767,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return false;
     }
 
+    PubSubTopic incomingMessageTopic = record.getTopicPartition().getPubSubTopic();
     switch (partitionConsumptionState.getLeaderFollowerState()) {
       case LEADER:
         PubSubTopic currentLeaderTopic =
             partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-        if (!record.getTopicPartition().getPubSubTopic().equals(currentLeaderTopic)) {
-          String errorMsg = "Leader receives a Kafka record that doesn't belong to leader topic. Store version: "
+        if (!incomingMessageTopic.equals(currentLeaderTopic)) {
+          String errorMsg = "Leader received a pubsub message that doesn't belong to the leader topic. Store version: "
               + this.kafkaVersionTopic + ", partition: " + partitionConsumptionState.getPartition() + ", leader topic: "
-              + currentLeaderTopic + ", topic of incoming message: " + currentLeaderTopic.getName();
+              + currentLeaderTopic + ", topic of incoming message: " + incomingMessageTopic.getName();
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsg)) {
             LOGGER.error(errorMsg);
           }
@@ -1776,11 +1783,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
         break;
       default:
-        if (!record.getTopicPartition().getPubSubTopic().equals(this.versionTopic)) {
-          String errorMsg = partitionConsumptionState.getLeaderFollowerState().toString()
-              + " replica receives a Kafka record that doesn't belong to version topic. Store version: "
-              + this.kafkaVersionTopic + ", partition: " + partitionConsumptionState.getPartition()
-              + ", topic of incoming message: " + record.getTopicPartition().getPubSubTopic().getName();
+        if (!incomingMessageTopic.equals(this.versionTopic)) {
+          String errorMsg = partitionConsumptionState.getLeaderFollowerState()
+              + " replica received a pubsub message that doesn't belong to version topic: " + this.kafkaVersionTopic
+              + ", partition: " + partitionConsumptionState.getPartition() + ", topic of incoming message: "
+              + incomingMessageTopic.getName();
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(errorMsg)) {
             LOGGER.error(errorMsg);
           }
@@ -2328,11 +2335,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             return offsetLagOptional;
           }
           // Fall back to use the old way
-          return (cachedKafkaMetadataGetter.getOffset(
+          return (cachedPubSubMetadataGetter.getOffset(
               getTopicManager(nativeReplicationSourceVersionTopicKafkaURL),
               currentLeaderTopic,
               pcs.getPartition()) - 1)
-              - (cachedKafkaMetadataGetter
+              - (cachedPubSubMetadataGetter
                   .getOffset(getTopicManager(localKafkaServer), currentLeaderTopic, pcs.getPartition()) - 1);
         })
         .sum();
@@ -2387,7 +2394,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (currentLeaderTopic.isRealTime()) {
             return this.measureHybridOffsetLag(pcs, false);
           } else {
-            return (cachedKafkaMetadataGetter
+            return (cachedPubSubMetadataGetter
                 .getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic, pcs.getPartition()) - 1)
                 - pcs.getLatestProcessedLocalVersionTopicOffset();
           }
@@ -2456,7 +2463,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             return offsetLagOptional;
           }
           // Fall back to calculate offset lag in the old way
-          return (cachedKafkaMetadataGetter
+          return (cachedPubSubMetadataGetter
               .getOffset(getTopicManager(localKafkaServer), versionTopic, pcs.getPartition()) - 1)
               - pcs.getLatestProcessedLocalVersionTopicOffset();
         })
@@ -2667,8 +2674,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               putValue.position(),
               putValue.remaining(),
               put.schemaId,
-              null,
-              null, // Since we did not perform read, it is not possible to delete old value chunks here.
               null);
         }
 
@@ -2737,8 +2742,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
          */
         if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
-          partitionConsumptionState
-              .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null, null, null);
+          partitionConsumptionState.setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, -1, null);
         }
         leaderProducedRecordContext =
             LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getOffset(), keyBytes, null);
@@ -2863,8 +2867,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           0,
           updatedValueBytes.length,
           readerValueSchemaId,
-          null,
-          oldValueManifest,
           null);
 
       ByteBuffer updateValueWithSchemaId =
@@ -3065,7 +3067,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     long lastOffsetInRealTimeTopic = offsetFromConsumer >= 0
         ? offsetFromConsumer
-        : cachedKafkaMetadataGetter
+        : cachedPubSubMetadataGetter
             .getOffset(getTopicManager(sourceRealTimeTopicKafkaURL), leaderTopic, partitionToGetLatestOffsetFor);
 
     if (latestLeaderOffset == -1) {
@@ -3082,7 +3084,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // We don't have a positive consumer lag, but this could be because we haven't polled.
       // So as a final check to determine if the topic is empty, we check
       // if the end offset is the same as the beginning
-      long earliestOffset = cachedKafkaMetadataGetter.getEarliestOffset(
+      long earliestOffset = cachedPubSubMetadataGetter.getEarliestOffset(
           getTopicManager(sourceRealTimeTopicKafkaURL),
           new PubSubTopicPartitionImpl(leaderTopic, partitionToGetLatestOffsetFor));
       if (earliestOffset == lastOffsetInRealTimeTopic - 1) {

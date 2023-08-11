@@ -8,6 +8,7 @@ import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperatio
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.schema.SchemaAndToString;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
@@ -47,7 +48,7 @@ import org.apache.avro.Schema;
  * @param <K>
  */
 public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
-  protected static final Map<Map<String, Object>, Pair<Schema, String>> RESULT_SCHEMA_CACHE =
+  protected static final Map<Map<String, Object>, SchemaAndToString> RESULT_SCHEMA_CACHE =
       new VeniceConcurrentHashMap<>();
   protected static final String PROJECTION_SPEC = "projection_spec";
   protected static final String DOT_PRODUCT_SPEC = "dotProduct_spec";
@@ -267,7 +268,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
    * Generate compute operations for projections, dot-product and cosine-similarity.
    * @return a list of existing compute operations
    */
-  protected List<ComputeOperation> getCommonComputeOperations() {
+  protected List<ComputeOperation> getComputeRequestOperations() {
     List<ComputeOperation> operations = new LinkedList<>();
     dotProducts.forEach(dotProduct -> {
       ComputeOperation computeOperation = new ComputeOperation();
@@ -358,10 +359,10 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     executed = true;
 
     long preRequestTimeInNS = time.nanoseconds();
-    Pair<Schema, String> resultSchema = getResultSchema();
+    SchemaAndToString resultSchema = getResultSchema();
     // Generate ComputeRequest object
-    ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema.getSecond());
-    storeClient.compute(computeRequestWrapper, keys, resultSchema.getFirst(), callback, preRequestTimeInNS);
+    ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema);
+    storeClient.compute(computeRequestWrapper, keys, resultSchema.getSchema(), callback, preRequestTimeInNS);
   }
 
   protected void checkComputeFieldValidity(
@@ -439,7 +440,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     return expectedListSchema.getElementType().getType() == Schema.Type.FLOAT;
   }
 
-  protected Pair<Schema, String> getResultSchema() {
+  protected SchemaAndToString getResultSchema() {
     Map<String, Object> computeSpec = getCommonComputeSpec();
 
     return RESULT_SCHEMA_CACHE.computeIfAbsent(computeSpec, spec -> {
@@ -453,7 +454,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
       List<Schema.Field> resultSchemaFields = getCommonResultFields();
       Schema generatedResultSchema = Schema.createRecord(resultSchemaName, "", "", false);
       generatedResultSchema.setFields(resultSchemaFields);
-      return Pair.create(generatedResultSchema, generatedResultSchema.toString());
+      return new SchemaAndToString(generatedResultSchema);
     });
   }
 
@@ -472,5 +473,11 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     return this;
   }
 
-  protected abstract ComputeRequestWrapper generateComputeRequest(String resultSchemaStr);
+  protected ComputeRequestWrapper generateComputeRequest(SchemaAndToString resultSchema) {
+    return new ComputeRequestWrapper(
+        this.latestValueSchema,
+        resultSchema.getSchema(),
+        resultSchema.getToString(),
+        getComputeRequestOperations());
+  }
 }

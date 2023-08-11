@@ -29,6 +29,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
@@ -42,8 +43,9 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -408,6 +410,15 @@ public abstract class AbstractClientEndToEndSetup {
         clientConfigBuilder.setD2Client(d2Client);
         clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
         clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+        // Validate the metadata response schema forward compat support setup
+        veniceCluster.useControllerClient(controllerClient -> {
+          String schemaStoreName = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName();
+          MultiSchemaResponse multiSchemaResponse = controllerClient.getAllValueSchema(schemaStoreName);
+          assertFalse(multiSchemaResponse.isError());
+          assertEquals(
+              AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion(),
+              multiSchemaResponse.getSchemas().length);
+        });
         break;
       case THIN_CLIENT_BASED_METADATA:
         setupThinClientBasedStoreMetadata();

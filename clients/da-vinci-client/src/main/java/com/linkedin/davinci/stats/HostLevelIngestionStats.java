@@ -130,6 +130,16 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    */
   private final LongAdderRateGauge totalTombstoneCreationDCRRate;
 
+  /**
+   * Measure the number of time request based metadata endpoint was invoked
+   */
+  private final Sensor requestBasedMetadataInvokeCount;
+
+  /**
+   * Measure the number of time request based metadata endpoint failed to respond
+   */
+  private final Sensor requestBasedMetadataFailureCount;
+
   private Sensor registerPerStoreAndTotalSensor(
       String sensorName,
       HostLevelIngestionStats totalStats,
@@ -389,6 +399,18 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.leaderIngestionReplicationMetadataLookUpLatencySensor,
         avgAndMax());
+
+    this.requestBasedMetadataInvokeCount = registerPerStoreAndTotalSensor(
+        "request_based_metadata_invoke_count",
+        totalStats,
+        () -> totalStats.requestBasedMetadataInvokeCount,
+        new Rate());
+
+    this.requestBasedMetadataFailureCount = registerPerStoreAndTotalSensor(
+        "request_based_metadata_failure_count",
+        totalStats,
+        () -> totalStats.requestBasedMetadataFailureCount,
+        new Rate());
   }
 
   /** Record a host-level byte consumption rate across all store versions */
@@ -537,5 +559,13 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordOffsetRegressionDCRError() {
     totalOffsetRegressionDCRErrorRate.record();
+  }
+
+  public void recordRequestBasedMetadataInvokeCount() {
+    requestBasedMetadataInvokeCount.record();
+  }
+
+  public void recordRequestBasedMetadataFailureCount() {
+    requestBasedMetadataFailureCount.record();
   }
 }

@@ -31,6 +31,7 @@ dependencies {
   implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
 
   testImplementation project(':internal:venice-test-common')
+  testImplementation project(':internal:venice-client-common').sourceSets.test.output
   testImplementation libraries.kafkaClientsTest
 }
 

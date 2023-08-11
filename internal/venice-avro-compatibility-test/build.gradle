@@ -14,7 +14,7 @@ def AVRO_1_6 = 'org.apache.avro:avro:1.6.3'
 def AVRO_1_7 = 'org.apache.avro:avro:1.7.7'
 def AVRO_1_8 = 'org.apache.avro:avro:1.8.2'
 def AVRO_1_9 = 'org.apache.avro:avro:1.9.2'
-def AVRO_1_10 = 'org.apache.avro:avro:1.10.0'
+def AVRO_1_10 = 'org.apache.avro:avro:1.10.2'
 
 dependencies {
   testImplementation project(':clients:da-vinci-client')

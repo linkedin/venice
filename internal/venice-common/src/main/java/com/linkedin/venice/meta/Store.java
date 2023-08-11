@@ -266,6 +266,8 @@ public interface Store {
 
   void addVersion(Version version);
 
+  void addVersion(Version version, boolean isClonedVersion);
+
   void forceAddVersion(Version version, boolean isClonedVersion);
 
   void checkDisableStoreWrite(String action, int version);
@@ -291,4 +293,8 @@ public interface Store {
   boolean isStorageNodeReadQuotaEnabled();
 
   void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled);
+
+  long getMinCompactionLagSeconds();
+
+  void setMinCompactionLagSeconds(long minCompactionLagSeconds);
 }

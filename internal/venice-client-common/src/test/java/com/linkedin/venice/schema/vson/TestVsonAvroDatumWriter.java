@@ -2,6 +2,7 @@ package com.linkedin.venice.schema.vson;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.utils.TestUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -63,9 +64,7 @@ public class TestVsonAvroDatumWriter {
     testWriter(vsonSchemaStr, () -> record, (avroObject) -> {
       Assert.assertEquals(((GenericData.Record) avroObject).get("member_id"), 1);
       Assert.assertEquals(((GenericData.Record) avroObject).get("score"), 2f);
-
-      // test querying an invalid field. By default, Avro is gonna return null.
-      Assert.assertNull(((GenericData.Record) avroObject).get("unknown field"));
+      TestUtils.checkMissingFieldInAvroRecord((GenericData.Record) avroObject, "unknown field");
     });
 
     // record with null field

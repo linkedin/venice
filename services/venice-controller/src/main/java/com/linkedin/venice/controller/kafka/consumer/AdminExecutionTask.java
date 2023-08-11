@@ -518,6 +518,7 @@ public class AdminExecutionTask implements Callable<Void> {
     }
 
     params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
+    params.setMinCompactionLagSeconds(message.minCompactionLagSeconds);
 
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {

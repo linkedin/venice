@@ -22,8 +22,8 @@ public class ClientTestUtils {
   public static final Object[] FASTCLIENT_HTTP_VARIANTS = { FastClientHTTPVariant.HTTP_1_1_BASED_R2_CLIENT,
       FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT, FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5 };
 
-  public static final Object[] STORE_METADATA_FETCH_MODES = { StoreMetadataFetchMode.THIN_CLIENT_BASED_METADATA,
-      StoreMetadataFetchMode.SERVER_BASED_METADATA, StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA };
+  public static final Object[] STORE_METADATA_FETCH_MODES =
+      { StoreMetadataFetchMode.SERVER_BASED_METADATA, StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA };
 
   private static Client setupTransportClientFactory(FastClientHTTPVariant fastClientHTTPVariant) {
     /**

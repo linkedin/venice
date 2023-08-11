@@ -10,7 +10,6 @@ import static org.mockito.Mockito.when;
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
@@ -32,7 +31,6 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
-import org.apache.avro.Schema;
 import org.apache.commons.lang.ArrayUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -130,13 +128,6 @@ public class TestVeniceComputePath {
           -1,
           1);
       Assert.assertEquals(computePath.getComputeRequestLengthInBytes(), expectedLength);
-
-      ComputeRequestWrapper requestInPath = computePath.getComputeRequest();
-      Schema resultSchemaInPath = Schema.parse(requestInPath.getResultSchemaStr().toString());
-      Schema expectedResultSchema = Schema.parse(computeRequest.resultSchemaStr.toString());
-
-      Assert.assertTrue(resultSchemaInPath.equals(expectedResultSchema));
-      Assert.assertEquals(requestInPath.getOperations(), computeRequest.operations);
     }
   }
 

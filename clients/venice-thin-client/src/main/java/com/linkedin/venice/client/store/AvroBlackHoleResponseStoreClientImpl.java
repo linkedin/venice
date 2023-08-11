@@ -1,7 +1,5 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V2;
-
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.streaming.DelegatingTrackingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -45,9 +43,7 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
 
     byte[] serializedComputeRequest = serializeComputeRequest(computeRequestWrapper, keys);
 
-    Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
-        ? COMPUTE_HEADER_MAP_FOR_STREAMING_V2
-        : COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
+    Map<String, String> headerMap = COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
 
     getTransportClient().streamPost(
         getComputeRequestPath(),

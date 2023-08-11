@@ -8,7 +8,7 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.LIST
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.MAP_OPS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
 
-import com.linkedin.venice.schema.SchemaUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,9 +22,6 @@ import org.apache.avro.generic.IndexedRecord;
  * Write compute V1 handles value records that do not have replication metadata.
  */
 public class WriteComputeHandlerV1 implements WriteComputeHandler {
-  // GenericData is a singleton util class Avro provides. We're using it to construct the default field values
-  protected static final GenericData GENERIC_DATA = GenericData.get();
-
   @Override
   public GenericRecord updateValueRecord(
       Schema valueSchema,
@@ -40,8 +37,8 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
           "Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
     }
 
-    final GenericRecord updatedValue = currValue == null ? SchemaUtils.createGenericRecord(valueSchema) : currValue;
-    for (Schema.Field valueField: valueSchema.getFields()) {
+    final GenericRecord updatedValue = currValue == null ? AvroSchemaUtils.createGenericRecord(valueSchema) : currValue;
+    for (Schema.Field valueField: updatedValue.getSchema().getFields()) {
       final String valueFieldName = valueField.name();
       Object writeComputeFieldValue = writeComputeRecord.get(valueFieldName);
       if (isNoOpField(writeComputeFieldValue)) {
@@ -49,8 +46,8 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
 
       } else {
         Object updatedFieldObject =
-            updateFieldValue(valueField.schema(), updatedValue.get(valueFieldName), writeComputeFieldValue);
-        updatedValue.put(valueFieldName, updatedFieldObject);
+            updateFieldValue(valueField.schema(), updatedValue.get(valueField.pos()), writeComputeFieldValue);
+        updatedValue.put(valueField.pos(), updatedFieldObject);
       }
     }
     return updatedValue;

@@ -50,7 +50,6 @@ import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -96,9 +95,9 @@ public class PushJobDetailsTest {
         1,
         1,
         1,
-        Optional.of(new VeniceProperties(parentControllerProperties)),
+        Optional.of(parentControllerProperties),
         Optional.empty(),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(serverProperties),
         false);
     String clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
 

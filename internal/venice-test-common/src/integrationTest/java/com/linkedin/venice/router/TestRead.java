@@ -30,7 +30,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
@@ -306,8 +306,8 @@ public abstract class TestRead {
             record.put(UNUSED_FIELD_NAME, -i);
             Assert.assertEquals(result.get(KEY_PREFIX + i), record);
             Assert.assertEquals(computeResult.get(KEY_PREFIX + i).get(VALUE_FIELD_NAME), i);
-            Assert.assertNull(computeResult.get(KEY_PREFIX + i).get(UNUSED_FIELD_NAME));
-            Assert.assertNull(computeResult.get(KEY_PREFIX + i).get(UNKNOWN_FIELD_NAME));
+            TestUtils.checkMissingFieldInAvroRecord(computeResult.get(KEY_PREFIX + i), UNUSED_FIELD_NAME);
+            TestUtils.checkMissingFieldInAvroRecord(computeResult.get(KEY_PREFIX + i), UNKNOWN_FIELD_NAME);
           }
 
           // Test simple get

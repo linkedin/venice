@@ -2,6 +2,8 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
+import static com.linkedin.venice.ConfigKeys.ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
@@ -10,27 +12,36 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLE
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -74,6 +85,8 @@ public class TestActiveActiveReplicationForIncPush {
 
     Properties controllerProps = new Properties();
     controllerProps.put(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "true");
+    controllerProps.put(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, true);
+    controllerProps.put(ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES, true);
 
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
@@ -83,9 +96,9 @@ public class TestActiveActiveReplicationForIncPush {
         2,
         1,
         2,
-        Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(controllerProps),
+        Optional.of(serverProperties),
         false);
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     clusterNames = multiRegionMultiClusterWrapper.getClusterNames();
@@ -145,18 +158,24 @@ public class TestActiveActiveReplicationForIncPush {
       TestWriteUtils.writeSimpleAvroFileWithUserSchema3(inputDirInc2);
 
       TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
+
+      verifyHybridAndIncPushConfig(
+          storeName,
+          false,
+          false,
+          parentControllerClient,
+          dc0ControllerClient,
+          dc1ControllerClient,
+          dc2ControllerClient);
+
       // Store Setup
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setPartitionCount(1)
               .setHybridOffsetLagThreshold(TEST_TIMEOUT / 2)
               .setHybridRewindSeconds(2L)
-              .setIncrementalPushEnabled(true)
-              .setNativeReplicationEnabled(true)
               .setNativeReplicationSourceFabric("dc-2");
       TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
-
-      UpdateStoreQueryParams enableAARepl = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
 
       // Print all the kafka cluster URLs
       LOGGER.info("KafkaURL {}:{}", dcNames[0], childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
@@ -164,11 +183,17 @@ public class TestActiveActiveReplicationForIncPush {
       LOGGER.info("KafkaURL {}:{}", dcNames[2], childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
       LOGGER.info("KafkaURL {}:{}", parentRegionName, veniceParentDefaultKafka.getAddress());
 
-      // Turn on A/A in parent to trigger auto replication metadata schema registration
-      TestWriteUtils.updateStore(storeName, parentControllerClient, enableAARepl);
-
       // verify store configs
       TestUtils.verifyDCConfigNativeAndActiveRepl(
+          storeName,
+          true,
+          true,
+          parentControllerClient,
+          dc0ControllerClient,
+          dc1ControllerClient,
+          dc2ControllerClient);
+
+      verifyHybridAndIncPushConfig(
           storeName,
           true,
           true,
@@ -204,6 +229,31 @@ public class TestActiveActiveReplicationForIncPush {
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
       }
       NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
+    }
+  }
+
+  public static void verifyHybridAndIncPushConfig(
+      String storeName,
+      boolean expectedIncPushStatus,
+      boolean isNonNullHybridStoreConfig,
+      ControllerClient... controllerClients) {
+    for (ControllerClient controllerClient: controllerClients) {
+      waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
+        StoreInfo storeInfo = storeResponse.getStore();
+        assertEquals(
+            storeInfo.isIncrementalPushEnabled(),
+            expectedIncPushStatus,
+            "The incremental push config does not match.");
+        if (!isNonNullHybridStoreConfig) {
+          assertNull(storeInfo.getHybridStoreConfig(), "The hybrid store config is not null.");
+          return;
+        }
+        HybridStoreConfig hybridStoreConfig = storeInfo.getHybridStoreConfig();
+        assertNotNull(hybridStoreConfig, "The hybrid store config is null.");
+        DataReplicationPolicy policy = hybridStoreConfig.getDataReplicationPolicy();
+        assertNotNull(policy, "The data replication policy is null.");
+      });
     }
   }
 }

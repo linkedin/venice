@@ -3,7 +3,6 @@ package com.linkedin.venice.client.store;
 import static com.linkedin.venice.HttpConstants.VENICE_CLIENT_COMPUTE;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID;
 import static com.linkedin.venice.HttpConstants.VENICE_KEY_COUNT;
-import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V2;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
@@ -74,9 +73,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private static final Map<String, String> GET_HEADER_MAP = new HashMap<>();
   private static final Map<String, String> MULTI_GET_HEADER_MAP = new HashMap<>();
   private static final Map<String, String> MULTI_GET_HEADER_MAP_FOR_STREAMING;
-  private static final Map<String, String> COMPUTE_HEADER_MAP_V2 = new HashMap<>();
   private static final Map<String, String> COMPUTE_HEADER_MAP_V3 = new HashMap<>();
-  static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V2;
   static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
 
   static {
@@ -99,21 +96,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         Integer.toString(CompressionStrategy.GZIP.getValue()));
 
     /**
-     * COMPUTE_REQUEST_V1 is deprecated.
+     * COMPUTE_REQUEST_V1 and V2 are deprecated.
      */
-    COMPUTE_HEADER_MAP_V2.put(
-        HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V2.getProtocolVersion()));
-
     COMPUTE_HEADER_MAP_V3.put(
         HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V3.getProtocolVersion()));
 
     MULTI_GET_HEADER_MAP_FOR_STREAMING = new HashMap<>(MULTI_GET_HEADER_MAP);
     MULTI_GET_HEADER_MAP_FOR_STREAMING.put(HttpConstants.VENICE_STREAMING, "1");
-
-    COMPUTE_HEADER_MAP_FOR_STREAMING_V2 = new HashMap<>(COMPUTE_HEADER_MAP_V2);
-    COMPUTE_HEADER_MAP_FOR_STREAMING_V2.put(HttpConstants.VENICE_STREAMING, "1");
 
     COMPUTE_HEADER_MAP_FOR_STREAMING_V3 = new HashMap<>(COMPUTE_HEADER_MAP_V3);
     COMPUTE_HEADER_MAP_FOR_STREAMING_V3.put(HttpConstants.VENICE_STREAMING, "1");
@@ -338,7 +328,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   /**
    * During the initialization, we do the cluster discovery at first to find the real end point this client need to talk
    * to, before initializing the serializer.
-   * So if sub-implementation needs to have its own serializer, please override the initSerializer method.
+   * So if sub-implementation needs to have its own serializer, please override the createKeySerializer method.
    */
   protected void init() {
     discoverD2Service(false);
@@ -361,7 +351,18 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     }
   }
 
-  protected void initSerializer() {
+  /**
+   * Clients using different protocols for deserialized data (e.g VSON, Proto, etc) can override this method to
+   * serialize the respective POJO to Avro bytes
+   * @return A serializer for key objects to Avro bytes
+   */
+  protected RecordSerializer<K> createKeySerializer() {
+    return getClientConfig().isUseFastAvro()
+        ? FastSerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema())
+        : SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
+  }
+
+  private void initSerializer() {
     // init key serializer
     if (needSchemaReader) {
       if (getSchemaReader() != null) {
@@ -386,9 +387,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
          * It is intentional to initialize {@link keySerializer} at last, so that other serializers are ready to use
          * once {@link keySerializer} is ready.
          */
-        this.keySerializer = getClientConfig().isUseFastAvro()
-            ? FastSerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema())
-            : SerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema());
+        this.keySerializer = createKeySerializer();
       } else {
         throw new VeniceClientException("SchemaReader is null while initializing serializer");
       }
@@ -644,8 +643,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           public void onRawRecordReceived(K key, GenericRecord value) {
             if (value != null) {
               value = ComputeUtils.computeResult(
-                  computeRequest.getComputeRequestVersion(),
                   computeRequest.getOperations(),
+                  computeRequest.getOperationResultFields(),
                   sharedContext,
                   value,
                   resultSchema);
@@ -690,10 +689,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       List<K> keyList,
       TransportClientStreamingCallback callback,
       Optional<ClientStats> stats) throws VeniceClientException {
-    Map<String, String> headers = new HashMap<>(
-        computeRequest.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2
-            ? COMPUTE_HEADER_MAP_FOR_STREAMING_V2
-            : COMPUTE_HEADER_MAP_FOR_STREAMING_V3);
+    Map<String, String> headers = new HashMap<>(COMPUTE_HEADER_MAP_FOR_STREAMING_V3);
     int schemaId = getSchemaReader().getValueSchemaId(computeRequest.getValueSchema());
     headers.put(VENICE_KEY_COUNT, Integer.toString(keyList.size()));
     headers.put(VENICE_COMPUTE_VALUE_SCHEMA_ID, Integer.toString(schemaId));
@@ -725,7 +721,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public void start() throws VeniceClientException {
     if (needSchemaReader) {
       this.schemaReader = new RouterBackedSchemaReader(
-          this,
+          this::getStoreClientForSchemaReader,
           getReaderSchema(),
           clientConfig.getPreferredSchemaFilter(),
           clientConfig.getSchemaRefreshPeriod(),
@@ -750,6 +746,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   protected Optional<Schema> getReaderSchema() {
     return Optional.empty();
   }
+
+  /**
+   * To avoid cycle dependency, we need to initialize another store client for schema reader.
+   * @return
+   * @throws VeniceClientException
+   */
+  protected abstract AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader();
 
   public abstract RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException;
 

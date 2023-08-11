@@ -27,9 +27,9 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -276,7 +276,7 @@ public class KafkaConsumptionTest {
       PubSubBrokerWrapper pubSubBrokerWrapper) throws ExecutionException, InterruptedException {
     PubSubProducerAdapter producerAdapter = pubSubBrokerWrapper.getPubSubClientsFactory()
         .getProducerAdapterFactory()
-        .create(new VeniceProperties(new Properties()), "test-producer", pubSubBrokerWrapper.getAddress());
+        .create(VeniceProperties.empty(), "test-producer", pubSubBrokerWrapper.getAddress());
 
     final byte[] randomBytes = new byte[] { 0, 1 };
 

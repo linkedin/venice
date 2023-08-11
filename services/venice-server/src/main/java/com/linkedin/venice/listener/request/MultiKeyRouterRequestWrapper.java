@@ -18,6 +18,17 @@ public abstract class MultiKeyRouterRequestWrapper<K> extends RouterRequest {
     this.keys.forEach(key -> ++keyCount);
   }
 
+  protected MultiKeyRouterRequestWrapper(
+      String resourceName,
+      Iterable<K> keys,
+      boolean isRetryRequest,
+      boolean isStreamingRequest) {
+    super(resourceName, isRetryRequest, isStreamingRequest);
+
+    this.keys = keys;
+    this.keys.forEach(key -> ++keyCount);
+  }
+
   public Iterable<K> getKeys() {
     return this.keys;
   }

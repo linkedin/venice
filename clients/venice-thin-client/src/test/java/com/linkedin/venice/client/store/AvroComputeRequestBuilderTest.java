@@ -1,11 +1,8 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V3;
-import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V4;
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 import static com.linkedin.venice.client.store.predicate.PredicateBuilder.and;
 import static com.linkedin.venice.client.store.predicate.PredicateBuilder.equalTo;
-import static com.linkedin.venice.compute.ComputeRequestWrapper.LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST;
 import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.COSINE_SIMILARITY;
 import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.DOT_PRODUCT;
 import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.HADAMARD_PRODUCT;
@@ -117,7 +114,6 @@ public class AvroComputeRequestBuilderTest {
     Assert.assertEquals(capturedComputeRequest.getValueSchema(), VALID_RECORD_SCHEMA);
     Assert.assertEquals(capturedComputeRequest.getResultSchemaStr().toString(), expectedSchema);
     Assert.assertEquals(capturedComputeRequest.getOperations().size(), 6);
-    Assert.assertEquals(capturedComputeRequest.getComputeRequestVersion(), COMPUTE_REQUEST_VERSION_V3);
 
     List<Float> expectedDotProductParam = new ArrayList<>();
     for (Float f: dotProductParam) {
@@ -217,11 +213,6 @@ public class AvroComputeRequestBuilderTest {
     Assert.assertEquals(capturedComputeRequest.getValueSchema(), VALID_RECORD_SCHEMA);
     Assert.assertEquals(capturedComputeRequest.getResultSchemaStr().toString(), expectedSchema);
     Assert.assertEquals(capturedComputeRequest.getOperations().size(), 3);
-    /**
-     * Compute request version should be {@link LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST}
-     * if {@link AvroComputeRequestBuilderV3#hadamardProduct(String, List, String)} is invoked.
-     */
-    Assert.assertEquals(capturedComputeRequest.getComputeRequestVersion(), LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
 
     // Verify hadamard-product parameter
     List<Float> expectedHadamardProductParam = new ArrayList<>();
@@ -437,7 +428,6 @@ public class AvroComputeRequestBuilderTest {
     Assert.assertTrue(Arrays.equals(prefixByteCaptor.getValue(), expectedPrefixBytes));
     ComputeRequestWrapper capturedComputeRequest = computeRequestCaptor.getValue();
     Assert.assertEquals(capturedComputeRequest.getOperations().size(), 0);
-    Assert.assertEquals(capturedComputeRequest.getComputeRequestVersion(), COMPUTE_REQUEST_VERSION_V4);
     Assert.assertEquals(streamingCallbackCaptor.getValue(), callback);
   }
 

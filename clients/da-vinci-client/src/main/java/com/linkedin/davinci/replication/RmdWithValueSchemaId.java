@@ -11,38 +11,38 @@ import org.apache.avro.generic.GenericRecord;
  *    3. Value schema ID used to generate the RMD schema.
  */
 public class RmdWithValueSchemaId {
-  private int valueSchemaID;
-  private int rmdProtocolVersionID;
+  private int valueSchemaId;
+  private int rmdProtocolVersionId;
   private GenericRecord rmdRecord;
 
   private ChunkedValueManifest rmdManifest;
 
   public RmdWithValueSchemaId(
-      int valueSchemaID,
-      int rmdProtocolVersionID,
+      int valueSchemaId,
+      int rmdProtocolVersionId,
       GenericRecord rmdRecord,
       ChunkedValueManifest rmdManifest) {
-    this.valueSchemaID = valueSchemaID;
+    this.valueSchemaId = valueSchemaId;
     this.rmdRecord = rmdRecord;
-    this.rmdProtocolVersionID = rmdProtocolVersionID;
+    this.rmdProtocolVersionId = rmdProtocolVersionId;
     this.rmdManifest = rmdManifest;
   }
 
-  public RmdWithValueSchemaId(int valueSchemaID, int rmdProtocolVersionID, GenericRecord rmdRecord) {
-    this.valueSchemaID = valueSchemaID;
+  public RmdWithValueSchemaId(int valueSchemaId, int rmdProtocolVersionId, GenericRecord rmdRecord) {
+    this.valueSchemaId = valueSchemaId;
     this.rmdRecord = rmdRecord;
-    this.rmdProtocolVersionID = rmdProtocolVersionID;
+    this.rmdProtocolVersionId = rmdProtocolVersionId;
   }
 
   public RmdWithValueSchemaId() {
   }
 
-  public void setValueSchemaID(int valueSchemaID) {
-    this.valueSchemaID = valueSchemaID;
+  public void setValueSchemaId(int valueSchemaId) {
+    this.valueSchemaId = valueSchemaId;
   }
 
-  public void setRmdProtocolVersionID(int rmdProtocolVersionID) {
-    this.rmdProtocolVersionID = rmdProtocolVersionID;
+  public void setRmdProtocolVersionId(int rmdProtocolVersionId) {
+    this.rmdProtocolVersionId = rmdProtocolVersionId;
   }
 
   public void setRmdRecord(GenericRecord rmdRecord) {
@@ -58,11 +58,11 @@ public class RmdWithValueSchemaId {
   }
 
   public int getValueSchemaId() {
-    return valueSchemaID;
+    return valueSchemaId;
   }
 
-  public int getRmdProtocolVersionID() {
-    return rmdProtocolVersionID;
+  public int getRmdProtocolVersionId() {
+    return rmdProtocolVersionId;
   }
 
   public ChunkedValueManifest getRmdManifest() {

@@ -60,7 +60,6 @@ import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
@@ -78,6 +77,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -1279,7 +1279,7 @@ public class AdminConsumptionTaskTest {
     String mockPushJobId = "mock push job id";
     int versionNumber = 1;
     int numberOfPartitions = 1;
-    doThrow(new VeniceOperationAgainstKafkaTimedOut("Mocking kafka topic creation timeout")).when(admin)
+    doThrow(new PubSubOpTimeoutException("Mocking kafka topic creation timeout")).when(admin)
         .addVersionAndStartIngestion(
             clusterName,
             storeName,

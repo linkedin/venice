@@ -10,13 +10,13 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
-import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
@@ -46,7 +46,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     final int oldValueSchemaId = 3;
     // Set up
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV2);
-    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema);
+    GenericRecord updateFieldWriteComputeRecord = AvroSchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldWriteComputeRecord.put("age", 66);
     updateFieldWriteComputeRecord.put("name", "Venice");
     ByteBuffer writeComputeBytes = ByteBuffer.wrap(
@@ -99,7 +99,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     final int oldValueSchemaId = 3;
 
     // Set up old/current value.
-    GenericRecord oldValueRecord = SchemaUtils.createGenericRecord(personSchemaV2);
+    GenericRecord oldValueRecord = AvroSchemaUtils.createGenericRecord(personSchemaV2);
     oldValueRecord.put("age", 30);
     oldValueRecord.put("name", "Kafka");
     oldValueRecord.put("intArray", Arrays.asList(1, 2, 3));
@@ -135,7 +135,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
             new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
-    GenericRecord updateFieldPartialUpdateRecord1 = SchemaUtils.createGenericRecord(writeComputeSchema);
+    GenericRecord updateFieldPartialUpdateRecord1 = AvroSchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldPartialUpdateRecord1.put("age", 66);
     updateFieldPartialUpdateRecord1.put("name", "Venice");
     updateFieldPartialUpdateRecord1.put("intArray", Arrays.asList(6, 7, 8));
@@ -152,7 +152,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         1,
         1);
 
-    GenericRecord updateFieldPartialUpdateRecord2 = SchemaUtils.createGenericRecord(writeComputeSchema);
+    GenericRecord updateFieldPartialUpdateRecord2 = AvroSchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldPartialUpdateRecord2.put("intArray", Arrays.asList(10, 20, 30, 40));
     ByteBuffer writeComputeBytes2 = ByteBuffer.wrap(
         MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldPartialUpdateRecord2));
@@ -206,7 +206,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     final int oldValueSchemaId = 3;
 
     // Set up old/current value.
-    GenericRecord oldValueRecord = SchemaUtils.createGenericRecord(personSchemaV1);
+    GenericRecord oldValueRecord = AvroSchemaUtils.createGenericRecord(personSchemaV1);
     oldValueRecord.put("age", 30);
     oldValueRecord.put("name", "Kafka");
     oldValueRecord.put("intArray", Arrays.asList(1, 2, 3));

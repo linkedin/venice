@@ -2,7 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -26,9 +25,8 @@ import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
-import com.linkedin.venice.helix.HelixState;
-import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.ClusterInfoProvider;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -43,11 +41,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.metadata.response.VersionProperties;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -57,7 +55,7 @@ import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.util.Collections;
-import java.util.EnumMap;
+import java.util.List;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
@@ -441,8 +439,9 @@ public abstract class KafkaStoreIngestionServiceTest {
     Assert.assertNotNull(storeIngestionTask);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testGetMetadata(boolean isCurrentVersion) {
+  @Test
+  public void testGetMetadata() {
+    MetricsRepository metricsRepository = new MetricsRepository();
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageEngineRepository,
         mockVeniceConfigLoader,
@@ -453,7 +452,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.of(CompletableFuture.completedFuture(mockCustomizedViewRepository)),
         Optional.of(CompletableFuture.completedFuture(mockHelixInstanceConfigRepository)),
         mockLiveClusterConfigRepo,
-        new MetricsRepository(),
+        metricsRepository,
         Optional.empty(),
         Optional.empty(),
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
@@ -465,8 +464,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         false,
         null,
         mockPubSubClientsFactory);
-    String topicName = "test-store_v" + (isCurrentVersion ? "0" : "1");
-    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    String storeName = "test-store";
+    String otherStoreName = "test-store2";
     Store mockStore = new ZKStore(
         storeName,
         "unit-test",
@@ -476,33 +475,38 @@ public abstract class KafkaStoreIngestionServiceTest {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
-    mockStore.addVersion(new VersionImpl(storeName, 0, "test-job-id"));
-
-    ResourceAssignment resourceAssignment = new ResourceAssignment();
-    resourceAssignment.setPartitionAssignment(topicName, null);
-
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    mockStore.addVersion(new VersionImpl(storeName, 2, "test-job-id2"));
+    mockStore.setCurrentVersion(2);
+    String topicName = Version.composeKafkaTopic(storeName, 2);
     PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
-    partitionAssignment
-        .addPartition(new Partition(0, new EnumMap<>(HelixState.class), new EnumMap<>(ExecutionStatus.class)));
+    Partition partition = mock(Partition.class);
+    doReturn(0).when(partition).getId();
+    List<Instance> readyToServeInstances = Collections.singletonList(new Instance("host1", "host1", 1234));
+    doReturn(readyToServeInstances).when(partition).getReadyToServeInstances();
+    partitionAssignment.addPartition(partition);
+
+    String schema = "\"string\"";
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
-    Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, "{\"type\" : \"string\"}"));
-    Mockito.when(mockSchemaRepo.getValueSchemas(storeName)).thenReturn(Collections.emptyList());
-    Mockito.when(mockCustomizedViewRepository.getResourceAssignment()).thenReturn(resourceAssignment);
+    Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, schema));
+    Mockito.when(mockSchemaRepo.getValueSchemas(storeName))
+        .thenReturn(Collections.singletonList(new SchemaEntry(0, schema)));
     Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
-    Mockito.when(mockCustomizedViewRepository.getReplicaStates(eq(topicName), anyInt()))
-        .thenReturn(Collections.emptyList());
     Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
 
     MetadataResponse metadataResponse = kafkaStoreIngestionService.getMetadata(storeName);
-
     Assert.assertNotNull(metadataResponse);
     Assert.assertEquals(metadataResponse.getResponseRecord().getKeySchema().get("0"), "\"string\"");
-
-    // verify that routing tables from versions other than the current were not added
-    if (isCurrentVersion) {
-      Assert.assertEquals(metadataResponse.getResponseRecord().getRoutingInfo().get("0"), Collections.emptyList());
-    } else {
-      Assert.assertTrue(metadataResponse.getResponseRecord().getRoutingInfo().isEmpty());
-    }
+    // Verify the metadata
+    Assert.assertEquals(metadataResponse.getResponseRecord().getVersions().size(), 2);
+    VersionProperties versionProperties = metadataResponse.getResponseRecord().getVersionMetadata();
+    Assert.assertNotNull(versionProperties);
+    Assert.assertEquals(versionProperties.getCurrentVersion(), 2);
+    Assert.assertEquals(versionProperties.getPartitionCount(), 1);
+    Assert.assertEquals(metadataResponse.getResponseRecord().getRoutingInfo().get("0").size(), 1);
+    String metadataInvokeMetricName = "." + storeName + "--request_based_metadata_invoke_count.Rate";
+    String metadataFailureMetricName = "." + storeName + "--request_based_metadata_failure_count.Rate";
+    Assert.assertTrue(metricsRepository.getMetric(metadataInvokeMetricName).value() > 0);
+    Assert.assertEquals(metricsRepository.getMetric(metadataFailureMetricName).value(), 0d);
   }
 }

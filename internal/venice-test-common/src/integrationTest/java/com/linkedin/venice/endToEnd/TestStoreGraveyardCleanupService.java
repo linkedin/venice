@@ -17,7 +17,6 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -58,9 +57,9 @@ public class TestStoreGraveyardCleanupService {
         1,
         1,
         1,
-        Optional.of(new VeniceProperties(parentControllerProperties)),
+        Optional.of(parentControllerProperties),
         Optional.empty(),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(serverProperties),
         false);
 
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();

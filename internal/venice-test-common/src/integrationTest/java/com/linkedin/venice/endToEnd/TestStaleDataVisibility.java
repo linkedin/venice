@@ -20,7 +20,6 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -69,7 +68,7 @@ public class TestStaleDataVisibility {
         1,
         Optional.empty(),
         Optional.of(childControllerProperties),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(serverProperties),
         false);
 
     childClusters = multiRegionMultiClusterWrapper.getChildRegions();

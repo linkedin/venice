@@ -1,6 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 
 
 public interface PubSubBrokerFactory<BROKER extends PubSubBrokerWrapper> {

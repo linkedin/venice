@@ -1,15 +1,22 @@
 package com.linkedin.venice.compute;
 
-import static org.testng.Assert.assertThrows;
+import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static org.testng.Assert.*;
 
 import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveFloatArrayList;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.compute.protocol.request.Count;
+import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericData;
@@ -20,11 +27,58 @@ import org.testng.annotations.Test;
 
 public class ComputeUtilsTest {
   @Test
+  public void testComputeResult() throws IOException {
+    // Input/output schemas
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("testMergeSchema.avsc"));
+    List<Schema.Field> resultSchemaFields = new ArrayList<>();
+    resultSchemaFields.add(
+        AvroCompatibilityHelper.createSchemaField(
+            "IntMapField",
+            Schema.createMap(Schema.create(Schema.Type.INT)),
+            "doc",
+            new HashMap<>()));
+    resultSchemaFields.add(
+        AvroCompatibilityHelper.createSchemaField("StringListFieldCount", Schema.create(Schema.Type.INT), "doc", -1));
+    resultSchemaFields.add(
+        AvroCompatibilityHelper.createSchemaField(
+            VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME,
+            Schema.createMap(Schema.create(Schema.Type.STRING)),
+            "doc",
+            new HashMap<>()));
+    Schema resultSchema = Schema.createRecord("Result", "doc", "com.acme", false, resultSchemaFields);
+
+    // Other boilerplate
+    int computeVersion = 4;
+    List<ComputeOperation> operations = new ArrayList<>();
+    ComputeOperation op1 = new ComputeOperation();
+    op1.setOperationType(ComputeOperationType.COUNT.getValue());
+    Count count = new Count();
+    count.setField("StringListField");
+    count.setResultFieldName("StringListFieldCount");
+    op1.setOperation(count);
+    operations.add(op1);
+    List<Schema.Field> operationResultFields = ComputeUtils.getOperationResultFields(operations, resultSchema);
+    Map<String, Object> sharedContext = new HashMap<>();
+    GenericRecord inputRecord = new GenericData.Record(valueSchema);
+    inputRecord.put("StringListField", new ArrayList<>());
+    GenericRecord outputRecord = new GenericData.Record(resultSchema);
+
+    // Code under test
+    ComputeUtils.computeResult(operations, operationResultFields, sharedContext, inputRecord, outputRecord);
+
+    assertNull(outputRecord.get("IntMapField"));
+    assertEquals(outputRecord.get("StringListFieldCount"), 0);
+    assertTrue(
+        ((Map<String, String>) outputRecord.get(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).isEmpty());
+  }
+
+  @Test
   public void testGetNullableFieldValueAsList_NonNullValue() {
     GenericRecord record = createGetNullableFieldValueAsListRecord();
     List<Integer> expectedList = Arrays.asList(1, 2, 3);
     record.put("listField", expectedList);
-    List<Integer> resultList = ComputeUtils.getNullableFieldValueAsList(record, "listField");
+    Schema.Field field = record.getSchema().getField("listField");
+    List<Integer> resultList = ComputeUtils.getNullableFieldValueAsList(record, field);
     Assert.assertEquals(resultList, expectedList);
   }
 
@@ -32,7 +86,8 @@ public class ComputeUtilsTest {
   public void testGetNullableFieldValueAsList_NullValue() {
     GenericRecord record = createGetNullableFieldValueAsListRecord();
     record.put("listField", null);
-    List<Integer> resultList = ComputeUtils.getNullableFieldValueAsList(record, "listField");
+    Schema.Field field = record.getSchema().getField("listField");
+    List<Integer> resultList = ComputeUtils.getNullableFieldValueAsList(record, field);
     Assert.assertEquals(resultList, Collections.emptyList());
   }
 
@@ -40,9 +95,8 @@ public class ComputeUtilsTest {
   public void testGetNullableFieldValueAsList_FieldNotList() {
     GenericRecord record = createGetNullableFieldValueAsListRecord();
     record.put("nonListField", 123);
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> ComputeUtils.getNullableFieldValueAsList(record, "nonListField"));
+    Schema.Field field = record.getSchema().getField("nonListField");
+    assertThrows(IllegalArgumentException.class, () -> ComputeUtils.getNullableFieldValueAsList(record, field));
   }
 
   @Test
@@ -135,8 +189,9 @@ public class ComputeUtilsTest {
         SchemaBuilder.record("SampleSchema").fields().name("field").type().nullable().intType().noDefault().endRecord();
     GenericRecord valueRecord = new GenericData.Record(schema);
 
-    Optional<String> errorMsg = ComputeUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, "field");
-    Assert.assertFalse(errorMsg.isPresent());
+    Schema.Field field = valueRecord.getSchema().getField("field");
+    String errorMsg = ComputeUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, field, "field");
+    Assert.assertNull(errorMsg);
   }
 
   @Test
@@ -147,10 +202,11 @@ public class ComputeUtilsTest {
         SchemaBuilder.record("SampleSchema").fields().name("field").type().nullable().intType().noDefault().endRecord();
     GenericRecord valueRecord = new GenericData.Record(schema);
 
-    Optional<String> errorMsg = ComputeUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, "field");
-    Assert.assertTrue(errorMsg.isPresent());
+    Schema.Field field = valueRecord.getSchema().getField("field");
+    String errorMsg = ComputeUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, field, "field");
+    Assert.assertNotNull(errorMsg);
     Assert.assertEquals(
-        errorMsg.get(),
+        errorMsg,
         "Failed to execute compute request as the field field is not allowed to be null for " + operator
             + " in value record.");
   }
@@ -163,8 +219,9 @@ public class ComputeUtilsTest {
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("field", 123);
 
-    Optional<String> errorMsg = ComputeUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, "field");
-    Assert.assertFalse(errorMsg.isPresent());
+    Schema.Field field = valueRecord.getSchema().getField("field");
+    String errorMsg = ComputeUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, field, "field");
+    Assert.assertNull(errorMsg);
   }
 
   @Test
@@ -175,8 +232,9 @@ public class ComputeUtilsTest {
     GenericRecord valueRecord = new GenericData.Record(schema);
     valueRecord.put("field", 123);
 
-    Optional<String> errorMsg = ComputeUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, "field");
-    Assert.assertFalse(errorMsg.isPresent());
+    Schema.Field field = valueRecord.getSchema().getField("field");
+    String errorMsg = ComputeUtils.validateNullableFieldAndGetErrorMsg(operator, valueRecord, field, "field");
+    Assert.assertNull(errorMsg);
   }
 
   private static class TestReadComputeOperator implements ReadComputeOperator {
@@ -202,9 +260,10 @@ public class ComputeUtilsTest {
 
     @Override
     public void compute(
-        int computeVersion,
         ComputeOperation operation,
-        GenericRecord inputRecord,
+        Schema.Field operatorInputField,
+        Schema.Field resultField,
+        GenericRecord inputValueRecord,
         GenericRecord outputRecord,
         Map<String, String> errorMap,
         Map<String, Object> sharedContext) {
@@ -216,7 +275,7 @@ public class ComputeUtilsTest {
     }
 
     @Override
-    public void putDefaultResult(GenericRecord outputRecord, String resultFieldName) {
+    public void putDefaultResult(GenericRecord outputRecord, Schema.Field field) {
     }
 
     @Override

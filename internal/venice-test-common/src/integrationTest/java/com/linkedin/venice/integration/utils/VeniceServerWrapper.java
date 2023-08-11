@@ -5,7 +5,9 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
+import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
@@ -35,7 +37,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
@@ -52,6 +54,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -78,7 +81,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   /**
    *  Possible config options which are not included in {@link com.linkedin.venice.ConfigKeys}.
-    */
+   */
   public static final String SERVER_ENABLE_SERVER_ALLOW_LIST = "server_enable_allow_list";
   public static final String SERVER_IS_AUTO_JOIN = "server_is_auto_join";
   public static final String SERVER_ENABLE_SSL = "server_enable_ssl";
@@ -192,6 +195,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
       boolean ssl = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SSL, "false"));
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
+      boolean isGrpcEnabled = Boolean.parseBoolean(featureProperties.getProperty(ENABLE_GRPC_READ_SERVER, "false"));
       ClientConfig consumerClientConfig = (ClientConfig) featureProperties.get(CLIENT_CONFIG_FOR_CONSUMER);
 
       /** Create config directory under {@link dataDirectory} */
@@ -246,8 +250,14 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         serverPropsBuilder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       }
 
+      serverPropsBuilder.put(ENABLE_GRPC_READ_SERVER, isGrpcEnabled);
+      if (isGrpcEnabled) {
+        serverPropsBuilder.put(GRPC_READ_SERVER_PORT, TestUtils.getFreePort());
+      }
+
       // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
-      Map<String, String> brokerDetails = pubSubBrokerWrapper.getAdditionalConfig();
+      Map<String, String> brokerDetails =
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper));
       for (Map.Entry<String, String> entry: brokerDetails.entrySet()) {
         if (clusterProps.containsKey(entry.getKey())) {
           // skip if the key is already present in cluster.properties
@@ -353,6 +363,14 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
    */
   public int getAdminPort() {
     return serverProps.getInt(ADMIN_PORT);
+  }
+
+  public String getGrpcAddress() {
+    return getHost() + ":" + getGrpcPort();
+  }
+
+  public int getGrpcPort() {
+    return serverProps.getInt(GRPC_READ_SERVER_PORT);
   }
 
   @Override

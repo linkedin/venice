@@ -66,8 +66,8 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -79,6 +79,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -237,6 +238,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           // This dummy parent controller won't support such requests until we make this config configurable.
           // go/inclusivecode deferred(Reference will be removed when clients have migrated)
           fabricAllowList = extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, "");
+        } else {
+          // child controller should at least know the urls or D2 ZK address of its local region
+          fabricAllowList = options.getExtraProperties().getProperty(LOCAL_REGION_NAME, options.getRegionName());
         }
 
         /**
@@ -314,7 +318,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         }
 
         // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
-        Map<String, String> brokerDetails = options.getKafkaBroker().getAdditionalConfig();
+        Map<String, String> brokerDetails =
+            PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(options.getKafkaBroker()));
         for (Map.Entry<String, String> entry: brokerDetails.entrySet()) {
           builder.putIfAbsent(entry.getKey(), entry.getValue());
         }

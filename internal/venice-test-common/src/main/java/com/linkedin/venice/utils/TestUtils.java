@@ -65,9 +65,9 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -82,7 +82,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
-import java.nio.file.Paths;
 import java.security.Permission;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -104,6 +103,8 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.avro.AvroRuntimeException;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -540,19 +541,14 @@ public class TestUtils {
     return new VeniceControllerMultiClusterConfig(configMap);
   }
 
-  public static Properties getPropertiesForControllerConfig() throws IOException {
-    String currentPath = Paths.get("").toAbsolutePath().toString();
-    if (currentPath.endsWith("venice-controller")) {
-      currentPath += "/..";
-    } else if (currentPath.endsWith("venice-test-common")) {
-      currentPath += "/../../services";
-    }
-    VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
-    VeniceProperties baseControllerProps =
-        Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties");
+  public static Properties getPropertiesForControllerConfig() {
     Properties properties = new Properties();
-    properties.putAll(clusterProps.toProperties());
-    properties.putAll(baseControllerProps.toProperties());
+    properties.put(ConfigKeys.CLUSTER_NAME, "test-cluster");
+    properties.put(ConfigKeys.CONTROLLER_NAME, "venice-controller");
+    properties.put(ConfigKeys.DEFAULT_REPLICA_FACTOR, "1");
+    properties.put(ConfigKeys.DEFAULT_NUMBER_OF_PARTITION, "1");
+    properties.put(ConfigKeys.ADMIN_PORT, TestUtils.getFreePort());
+    properties.put(ConfigKeys.ADMIN_SECURE_PORT, TestUtils.getFreePort());
     return properties;
   }
 
@@ -868,5 +864,14 @@ public class TestUtils {
       }
     }
     return aggregateConfigMap;
+  }
+
+  public static void checkMissingFieldInAvroRecord(GenericRecord record, String fieldName) {
+    try {
+      Assert.assertNull(record.get(fieldName));
+    } catch (AvroRuntimeException e) {
+      // But in Avro 1.10+, it throws instead...
+      Assert.assertEquals(e.getMessage(), "Not a valid schema field: " + fieldName);
+    }
   }
 }

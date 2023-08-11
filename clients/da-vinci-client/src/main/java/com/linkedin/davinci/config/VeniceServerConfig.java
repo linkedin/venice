@@ -5,12 +5,15 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOT
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DIV_PRODUCER_STATE_MAX_AGE_MS;
+import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.FAST_AVRO_FIELD_LIMIT_PER_METHOD;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
+import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
+import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT_STORE_LIST;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MLOCK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
@@ -120,14 +123,14 @@ import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -160,6 +163,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public static final int MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER = 3;
 
   private final int listenerPort;
+  private final int grpcPort;
+  private final boolean isGrpcEnabled;
   private final String listenerHostname;
   private final String dataBasePath;
   private final RocksDBServerConfig rocksDBServerConfig;
@@ -415,6 +420,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long ingestionMemoryLimit;
   private final boolean ingestionMlockEnabled;
+  private final Set<String> ingestionMemoryLimitStoreSet;
   private final List<String> forkedProcessJvmArgList;
 
   private final long divProducerStateMaxAgeMs;
@@ -429,6 +435,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     listenerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
+    isGrpcEnabled = serverProperties.getBoolean(ENABLE_GRPC_READ_SERVER, false);
+    grpcPort = isGrpcEnabled ? serverProperties.getInt(GRPC_READ_SERVER_PORT) : -1;
+
     dataBasePath = serverProperties.getString(
         DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
@@ -660,6 +669,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ingestionMemoryLimit = extractIngestionMemoryLimit(serverProperties, ingestionMode, forkedProcessJvmArgList);
     LOGGER.info("Ingestion memory limit: {} after subtracting other usages", ingestionMemoryLimit);
     ingestionMlockEnabled = serverProperties.getBoolean(INGESTION_MLOCK_ENABLED, false);
+    if (!serverProperties.getString(INGESTION_MEMORY_LIMIT_STORE_LIST, "").isEmpty()) {
+      ingestionMemoryLimitStoreSet =
+          serverProperties.getList(INGESTION_MEMORY_LIMIT_STORE_LIST, Collections.emptyList())
+              .stream()
+              .collect(Collectors.toSet());
+    } else {
+      ingestionMemoryLimitStoreSet = Collections.emptySet();
+    }
 
     this.divProducerStateMaxAgeMs =
         serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, KafkaDataIntegrityValidator.DISABLED);
@@ -759,6 +776,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getListenerPort() {
     return listenerPort;
+  }
+
+  public int getGrpcPort() {
+    return grpcPort;
+  }
+
+  public boolean isGrpcEnabled() {
+    return isGrpcEnabled;
   }
 
   public String getListenerHostname() {
@@ -1184,6 +1209,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isIngestionMlockEnabled() {
     return ingestionMlockEnabled;
+  }
+
+  public boolean enforceMemoryLimitInStore(String storeName) {
+    return ingestionMemoryLimitStoreSet.isEmpty() || ingestionMemoryLimitStoreSet.contains(storeName);
   }
 
   public long getDivProducerStateMaxAgeMs() {

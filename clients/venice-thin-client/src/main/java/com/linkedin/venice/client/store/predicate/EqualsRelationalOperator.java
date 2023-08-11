@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store.predicate;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import java.util.Objects;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -23,7 +24,11 @@ public class EqualsRelationalOperator implements Predicate {
     if (dataRecord == null) {
       return false;
     } else {
-      return Objects.deepEquals(dataRecord.get(fieldName), expectedValue);
+      Schema.Field field = dataRecord.getSchema().getField(fieldName);
+      if (field == null) {
+        return this.expectedValue == null;
+      }
+      return Objects.deepEquals(dataRecord.get(field.pos()), expectedValue);
     }
   }
 

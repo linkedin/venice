@@ -4,8 +4,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.utils.IndexedHashMap;
-import com.linkedin.venice.utils.IndexedMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -67,7 +65,7 @@ public class IndexedHashMapTest {
     }
 
     // Load from another map
-    com.linkedin.venice.utils.IndexedMap<String, Integer> indexedMap = new IndexedHashMap(map, list);
+    IndexedMap<String, Integer> indexedMap = new IndexedHashMap(map, list);
 
     final AtomicInteger index = new AtomicInteger(0);
 
@@ -120,7 +118,7 @@ public class IndexedHashMapTest {
   @Test(dataProvider = "listImplementations")
   public void testRemoveByIndex(List<Map.Entry<String, Integer>> list) {
     list.clear();
-    com.linkedin.venice.utils.IndexedMap<String, Integer> indexedMap = new IndexedHashMap(16, 0.75f, list);
+    IndexedMap<String, Integer> indexedMap = new IndexedHashMap(16, 0.75f, list);
 
     final int INITIAL_NUMBER_OF_ENTRIES = 100;
     for (int i = 0; i < INITIAL_NUMBER_OF_ENTRIES; i++) {
@@ -163,7 +161,7 @@ public class IndexedHashMapTest {
   @Test(dataProvider = "listImplementations")
   public void testMoveElement(List<Map.Entry<String, Integer>> list) {
     list.clear();
-    com.linkedin.venice.utils.IndexedMap<String, Integer> indexedMap = new IndexedHashMap(16, 0.75f, list);
+    IndexedMap<String, Integer> indexedMap = new IndexedHashMap(16, 0.75f, list);
 
     final int INITIAL_NUMBER_OF_ENTRIES = 100;
     for (int i = 0; i < INITIAL_NUMBER_OF_ENTRIES; i++) {
@@ -215,7 +213,7 @@ public class IndexedHashMapTest {
   @Test(dataProvider = "listImplementations")
   public void testPutByIndex(List<Map.Entry<String, Integer>> list) {
     list.clear();
-    com.linkedin.venice.utils.IndexedMap<String, Integer> indexedMap = new IndexedHashMap(16, 0.75f, list);
+    IndexedMap<String, Integer> indexedMap = new IndexedHashMap(16, 0.75f, list);
 
     final int INITIAL_NUMBER_OF_ENTRIES = 90;
     final int NUMBER_OF_ADDITIONAL_ENTRIES = 10;

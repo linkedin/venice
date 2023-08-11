@@ -15,7 +15,7 @@ import java.util.List;
  *    a. The latency shouldn't be affected since this strategy will still try to send request to the required healthy instances.
  *    b. The unhealthy instance will still receive any requests, so we could mark it healthy once it is recovered.
  */
-public class LeastLoadedClientRoutingStrategy implements ClientRoutingStrategy {
+public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrategy {
   private final InstanceHealthMonitor instanceHealthMonitor;
 
   public LeastLoadedClientRoutingStrategy(InstanceHealthMonitor instanceHealthMonitor) {

@@ -16,6 +16,7 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
+import com.linkedin.venice.fastclient.meta.AbstractClientRoutingStrategy;
 import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -102,6 +103,17 @@ public class TestClientSimulator implements Client {
   private int longTailRetryThresholdForSingleGetInMicroseconds = 0;
   private boolean longTailRetryEnabledForBatchGet = false;
   private int longTailRetryThresholdForBatchGetInMicroSeconds = 0;
+
+  private static class UnitTestRoutingStrategy extends AbstractClientRoutingStrategy {
+    @Override
+    public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
+      List<String> retReplicas = new ArrayList<>();
+      for (int i = 0; i < requiredReplicaCount && i < replicas.size(); i++) {
+        retReplicas.add(replicas.get(i));
+      }
+      return retReplicas;
+    }
+  }
 
   public TestClientSimulator() {
     // get()
@@ -601,13 +613,7 @@ public class TestClientSimulator implements Client {
       }
     };
 
-    metadata.setRoutingStrategy((requestId, replicas, requiredReplicaCount) -> {
-      List<String> retReplicas = new ArrayList<>();
-      for (int i = 0; i < requiredReplicaCount && i < replicas.size(); i++) {
-        retReplicas.add(replicas.get(i));
-      }
-      return retReplicas;
-    });
+    metadata.setRoutingStrategy(new UnitTestRoutingStrategy());
 
     return ClientFactory.getAndStartGenericStoreClient(metadata, clientConfig);
   }

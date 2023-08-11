@@ -27,7 +27,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -36,9 +36,9 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -73,6 +73,8 @@ public class DaVinciClusterAgnosticTest {
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
+    Properties parentControllerProps = new Properties();
+    parentControllerProps.put(OFFLINE_JOB_START_TIMEOUT_MS, "180000");
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         2,
@@ -81,7 +83,7 @@ public class DaVinciClusterAgnosticTest {
         3,
         1,
         3,
-        Optional.of(new VeniceProperties(Collections.singletonMap(OFFLINE_JOB_START_TIMEOUT_MS, "180000"))),
+        Optional.of(parentControllerProps),
         Optional.empty(),
         Optional.empty(),
         false);

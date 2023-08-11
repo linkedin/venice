@@ -389,7 +389,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ComputeUtils.checkResultSchema(
           computeResultSchema,
           computeRequestWrapper.getValueSchema(),
-          computeRequestWrapper.getComputeRequestVersion(),
           computeRequestWrapper.getOperations());
       computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
     }

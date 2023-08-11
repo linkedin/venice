@@ -1,12 +1,12 @@
 package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.collections.BiIntKeyCache;
 import java.nio.ByteBuffer;
@@ -59,8 +59,8 @@ public class RmdSerDe {
             rmdWithValueSchemaID.position(),
             rmdWithValueSchemaID.remaining());
     GenericRecord rmdRecord = getRmdDeserializer(valueSchemaId, valueSchemaId).deserialize(binaryDecoder);
-    rmdWithValueSchemaId.setValueSchemaID(valueSchemaId);
-    rmdWithValueSchemaId.setRmdProtocolVersionID(rmdVersionId);
+    rmdWithValueSchemaId.setValueSchemaId(valueSchemaId);
+    rmdWithValueSchemaId.setRmdProtocolVersionId(rmdVersionId);
     rmdWithValueSchemaId.setRmdRecord(rmdRecord);
   }
 

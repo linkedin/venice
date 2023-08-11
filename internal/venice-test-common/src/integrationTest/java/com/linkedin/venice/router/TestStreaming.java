@@ -33,7 +33,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.tehuti.MetricsUtils;
@@ -413,7 +413,7 @@ public class TestStreaming {
       String key = KEY_PREFIX + i;
       GenericRecord record = resultMap.get(key);
       Assert.assertEquals(record.get("int_field"), i);
-      Assert.assertNull(record.get("float_field"));
+      TestUtils.checkMissingFieldInAvroRecord(record, "float_field");
       if (i <= LAST_KEY_INDEX_WITH_NON_NULL_VALUE) {
         Assert.assertEquals("nullable_string_field" + i, record.get("nullable_string_field").toString());
       } else {

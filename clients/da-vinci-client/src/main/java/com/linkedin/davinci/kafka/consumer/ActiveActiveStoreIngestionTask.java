@@ -79,7 +79,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private static final Logger LOGGER = LogManager.getLogger(ActiveActiveStoreIngestionTask.class);
   private static final byte[] BINARY_DECODER_PARAM = new byte[16];
 
-  private final int rmdProtocolVersionID;
+  private final int rmdProtocolVersionId;
   private final MergeConflictResolver mergeConflictResolver;
   private final RmdSerDe rmdSerDe;
   private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
@@ -116,7 +116,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         isIsolatedIngestion,
         cacheBackend);
 
-    this.rmdProtocolVersionID = version.getRmdVersionId();
+    this.rmdProtocolVersionId = version.getRmdVersionId();
 
     this.aggVersionedIngestionStats = versionedIngestionStats;
     int knownKafkaClusterNumber = serverConfig.getKafkaClusterIdToUrlMap().size();
@@ -132,7 +132,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
         new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
 
-    this.rmdSerDe = new RmdSerDe(annotatedReadOnlySchemaRepository, rmdProtocolVersionID);
+    this.rmdSerDe = new RmdSerDe(annotatedReadOnlySchemaRepository, rmdProtocolVersionId);
     this.mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             annotatedReadOnlySchemaRepository,
@@ -305,7 +305,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
       return new RmdWithValueSchemaId(
           cachedRecord.getValueSchemaId(),
-          getRmdProtocolVersionID(),
+          getRmdProtocolVersionId(),
           cachedRecord.getReplicationMetadataRecord(),
           cachedRecord.getRmdManifest());
     }
@@ -650,17 +650,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (updatedValueBytes == null) {
       hostLevelIngestionStats.recordTombstoneCreatedDCR();
       aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-      partitionConsumptionState.setTransientRecord(
-          kafkaClusterId,
-          consumerRecord.getOffset(),
-          key,
-          valueSchemaId,
-          rmdRecord,
-          oldValueManifest,
-          oldRmdManifest);
+      partitionConsumptionState
+          .setTransientRecord(kafkaClusterId, consumerRecord.getOffset(), key, valueSchemaId, rmdRecord);
       Delete deletePayload = new Delete();
       deletePayload.schemaId = valueSchemaId;
-      deletePayload.replicationMetadataVersionId = rmdProtocolVersionID;
+      deletePayload.replicationMetadataVersionId = rmdProtocolVersionId;
       deletePayload.replicationMetadataPayload = updatedRmdBytes;
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction =
           (callback, sourceTopicOffset) -> veniceWriter.get()
@@ -669,7 +663,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                   callback,
                   sourceTopicOffset,
                   APP_DEFAULT_LOGICAL_TS,
-                  new DeleteMetadata(valueSchemaId, rmdProtocolVersionID, updatedRmdBytes),
+                  new DeleteMetadata(valueSchemaId, rmdProtocolVersionId, updatedRmdBytes),
                   oldValueManifest,
                   oldRmdManifest);
       LeaderProducedRecordContext leaderProducedRecordContext =
@@ -693,15 +687,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           updatedValueBytes.position(),
           valueLen,
           valueSchemaId,
-          rmdRecord,
-          oldValueManifest,
-          oldRmdManifest);
+          rmdRecord);
 
       Put updatedPut = new Put();
       updatedPut.putValue = ByteUtils
           .prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, mergeConflictResult.doesResultReuseInput());
       updatedPut.schemaId = valueSchemaId;
-      updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
+      updatedPut.replicationMetadataVersionId = rmdProtocolVersionId;
       updatedPut.replicationMetadataPayload = updatedRmdBytes;
 
       BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceToTopicFunction = getProduceToTopicFunction(
@@ -1196,7 +1188,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @return
    */
   @Override
-  protected boolean isTransientRecordBufferUsed() {
+  public boolean isTransientRecordBufferUsed() {
     return true;
   }
 
@@ -1247,7 +1239,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           }
 
           // Fall back to calculate offset lag in the old way
-          return (cachedKafkaMetadataGetter
+          return (cachedPubSubMetadataGetter
               .getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic, pcs.getUserPartition()) - 1)
               - pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress);
         })
@@ -1373,8 +1365,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     };
   }
 
-  int getRmdProtocolVersionID() {
-    return rmdProtocolVersionID;
+  int getRmdProtocolVersionId() {
+    return rmdProtocolVersionId;
   }
 
   protected BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> getProduceToTopicFunction(
@@ -1403,7 +1395,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               callback,
               leaderMetadataWrapper,
               APP_DEFAULT_LOGICAL_TS,
-              new PutMetadata(getRmdProtocolVersionID(), updatedRmdBytes),
+              new PutMetadata(getRmdProtocolVersionId(), updatedRmdBytes),
               oldValueManifest,
               oldRmdManifest);
     };

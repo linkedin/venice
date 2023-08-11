@@ -1222,6 +1222,11 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void addVersion(Version version, boolean isClonedVersion) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public void forceAddVersion(Version version, boolean isClonedVersion) {
     throw new UnsupportedOperationException();
   }
@@ -1290,6 +1295,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getMinCompactionLagSeconds() {
+    return this.delegate.getMinCompactionLagSeconds();
+  }
+
+  @Override
+  public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
     throw new UnsupportedOperationException();
   }
 

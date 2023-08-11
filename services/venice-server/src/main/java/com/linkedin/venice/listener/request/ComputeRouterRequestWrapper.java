@@ -3,7 +3,8 @@ package com.linkedin.venice.listener.request;
 import static com.linkedin.venice.compute.ComputeRequestWrapper.LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST;
 
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.ComputeUtils;
+import com.linkedin.venice.compute.protocol.request.ComputeRequest;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
@@ -20,17 +21,20 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
  * {@code ComputeRouterRequestWrapper} encapsulates a POST request for read-compute from routers.
  */
 public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<ComputeRouterRequestKeyV1> {
-  private final ComputeRequestWrapper computeRequestWrapper;
+  private static final RecordDeserializer<ComputeRouterRequestKeyV1> DESERIALIZER =
+      FastSerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeRouterRequestKeyV1.class);
+
+  private final ComputeRequest computeRequest;
   private int valueSchemaId = -1;
 
   private ComputeRouterRequestWrapper(
       String resourceName,
-      ComputeRequestWrapper computeRequestWrapper,
+      ComputeRequest computeRequest,
       Iterable<ComputeRouterRequestKeyV1> keys,
       HttpRequest request,
       String schemaId) {
     super(resourceName, keys, request);
-    this.computeRequestWrapper = computeRequestWrapper;
+    this.computeRequest = computeRequest;
     if (schemaId != null) {
       this.valueSchemaId = Integer.parseInt(schemaId);
     }
@@ -62,25 +66,17 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     byte[] requestContent = new byte[httpRequest.content().readableBytes()];
     httpRequest.content().readBytes(requestContent);
 
-    ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(apiVersion);
     BinaryDecoder decoder = OptimizedBinaryDecoderFactory.defaultFactory()
         .createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
-    computeRequestWrapper.deserialize(decoder);
+    ComputeRequest computeRequest = ComputeUtils.deserializeComputeRequest(decoder, null);
 
-    Iterable<ComputeRouterRequestKeyV1> keys = parseKeys(decoder);
+    Iterable<ComputeRouterRequestKeyV1> keys = DESERIALIZER.deserializeObjects(decoder);
     String schemaId = httpRequest.headers().get(HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID);
-    return new ComputeRouterRequestWrapper(resourceName, computeRequestWrapper, keys, httpRequest, schemaId);
+    return new ComputeRouterRequestWrapper(resourceName, computeRequest, keys, httpRequest, schemaId);
   }
 
-  private static Iterable<ComputeRouterRequestKeyV1> parseKeys(BinaryDecoder decoder) {
-    RecordDeserializer<ComputeRouterRequestKeyV1> deserializer =
-        FastSerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeRouterRequestKeyV1.class);
-
-    return deserializer.deserializeObjects(decoder);
-  }
-
-  public ComputeRequestWrapper getComputeRequest() {
-    return computeRequestWrapper;
+  public ComputeRequest getComputeRequest() {
+    return computeRequest;
   }
 
   public int getValueSchemaId() {

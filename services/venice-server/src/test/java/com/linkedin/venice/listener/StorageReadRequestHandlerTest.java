@@ -28,6 +28,8 @@ import com.linkedin.venice.client.store.AvroGenericReadComputeStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.ComputeUtils;
+import com.linkedin.venice.compute.protocol.request.ComputeRequest;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -458,13 +460,11 @@ public class StorageReadRequestHandlerTest {
         .execute(keySet);
     ArgumentCaptor<ComputeRequestWrapper> requestCaptor = ArgumentCaptor.forClass(ComputeRequestWrapper.class);
     verify(storeClient, times(1)).compute(requestCaptor.capture(), any(), any(), any(), anyLong());
-    ComputeRequestWrapper computeRequest = requestCaptor.getValue();
-    // During normal operation, StorageReadRequestHandler gets a request after Avro deserialization,
-    // which as a side effect converts String to Utf8.
-    // Here we simulate this by serializing the request and then deserializing it back.
-    computeRequest.deserialize(
+    ComputeRequestWrapper computeRequestWrapper = requestCaptor.getValue();
+    ComputeRequest computeRequest = ComputeUtils.deserializeComputeRequest(
         OptimizedBinaryDecoderFactory.defaultFactory()
-            .createOptimizedBinaryDecoder(ByteBuffer.wrap(computeRequest.serialize())));
+            .createOptimizedBinaryDecoder(ByteBuffer.wrap(computeRequestWrapper.serialize())),
+        null);
 
     ComputeRouterRequestWrapper request = mock(ComputeRouterRequestWrapper.class);
     doReturn(RequestType.COMPUTE).when(request).getRequestType();
