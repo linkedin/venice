@@ -116,7 +116,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -223,7 +222,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final SparseConcurrentList<Object> availableSchemaIds = new SparseConcurrentList<>();
   protected final SparseConcurrentList<Object> deserializedSchemaIds = new SparseConcurrentList<>();
   protected int idleCounter = 0;
-  private final ReentrantLock ingestionTaskActiveCheckLock = new ReentrantLock();
 
   private final StorageUtilizationManager storageUtilizationManager;
 

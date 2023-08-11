@@ -622,10 +622,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       Optional<LeaderFollowerStateType> leaderState) {
 
     final String topic = veniceStore.getStoreVersionName();
-    if (!isRunning()) {
-      LOGGER.info("Ignore start consumption for topic: {}, partition: {} as service is stopping.", topic, partitionId);
-      return;
-    }
 
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.get(topic);
@@ -635,6 +631,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         storeIngestionTask = createStoreIngestionTask(veniceStore, partitionId);
         topicNameToIngestionTaskMap.put(topic, storeIngestionTask);
         versionedIngestionStats.setIngestionTask(topic, storeIngestionTask);
+        if (!isRunning()) {
+          LOGGER.info(
+              "Ignore start consumption for topic: {}, partition: {} as service is stopping.",
+              topic,
+              partitionId);
+          return;
+        }
         ingestionExecutorService.submit(storeIngestionTask);
       }
 
