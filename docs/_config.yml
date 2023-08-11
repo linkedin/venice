@@ -4,3 +4,7 @@ nav_external_links:
   - title: Javadoc
     url: ./javadoc/index.html
     hide_icon: false
+
+exclude:
+  # javadoc/legal has some markdowns that get picked up by jekyll/just-the-docs
+  - javadoc/legal
