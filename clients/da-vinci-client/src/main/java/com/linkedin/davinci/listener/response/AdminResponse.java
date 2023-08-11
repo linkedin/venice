@@ -13,10 +13,12 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.ByteBufferToHexFormatJsonEncoder;
 import org.apache.avro.io.Encoder;
@@ -65,7 +67,19 @@ public class AdminResponse {
     try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
       GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(StoreVersionState.SCHEMA$);
       Encoder byteToHexJsonEncoder = new ByteBufferToHexFormatJsonEncoder(StoreVersionState.SCHEMA$, output);
-      avroDatumWriter.write(storeVersionState, byteToHexJsonEncoder);
+      StoreVersionState updatedState = storeVersionState;
+      if (storeVersionState.compressionDictionary != null && storeVersionState.compressionDictionary.hasRemaining()) {
+        // We don't want to dump compression dictionary since it is not readable
+        updatedState = new StoreVersionState();
+        for (Schema.Field field: StoreVersionState.SCHEMA$.getFields()) {
+          if (field.name().equals("compressionDictionary")) {
+            updatedState.put(field.pos(), ByteBuffer.wrap("ignored".getBytes()));
+          } else {
+            updatedState.put(field.pos(), storeVersionState.get(field.pos()));
+          }
+        }
+      }
+      avroDatumWriter.write(updatedState, byteToHexJsonEncoder);
       byteToHexJsonEncoder.flush();
       output.flush();
       responseRecord.storeVersionState = new String(output.toByteArray());
@@ -99,7 +113,7 @@ public class AdminResponse {
   }
 
   public int getResponseSchemaIdHeader() {
-    return AvroProtocolDefinition.SERVER_ADMIN_RESPONSE_V1.getCurrentProtocolVersion();
+    return AvroProtocolDefinition.SERVER_ADMIN_RESPONSE.getCurrentProtocolVersion();
   }
 
   public void setError(boolean error) {

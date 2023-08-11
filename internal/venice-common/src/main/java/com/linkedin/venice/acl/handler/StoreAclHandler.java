@@ -102,11 +102,18 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> im
       return;
     }
 
-    // Ignore ACL for requests to /metadata as there's no sensitive information in the response.
-    if (requestParts[1].equals(QueryAction.METADATA.toString().toLowerCase())) {
-      ReferenceCountUtil.retain(req);
-      ctx.fireChannelRead(req);
-      return;
+    /**
+     *  Skip ACL for requests to /metadata and /admin as there's no sensitive information in the response.
+     */
+    try {
+      QueryAction queryAction = QueryAction.valueOf(requestParts[1].toUpperCase());
+      if (queryAction.equals(QueryAction.METADATA) || queryAction.equals(QueryAction.ADMIN)) {
+        ReferenceCountUtil.retain(req);
+        ctx.fireChannelRead(req);
+        return;
+      }
+    } catch (IllegalArgumentException illegalArgumentException) {
+      throw new VeniceException("Unknown query action: " + requestParts[1]);
     }
 
     String storeName = extractStoreName(requestParts[2]);

@@ -4,6 +4,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.SERVER_ADMIN_RESPONSE;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
 
@@ -14,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -81,6 +83,7 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -100,6 +103,7 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -534,6 +538,9 @@ public class AdminTool {
           break;
         case REQUEST_BASED_METADATA:
           getRequestBasedMetadata(cmd);
+          break;
+        case DUMP_INGESTION_STATE:
+          dumpIngestionState(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -2850,6 +2857,54 @@ public class AdminTool {
               1),
           serverUrl,
           storeName);
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
+  private static void dumpIngestionState(CommandLine cmd) throws Exception {
+    String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String version = getRequiredArgument(cmd, Arg.VERSION);
+    String partition = getOptionalArgument(cmd, Arg.PARTITION);
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
+    if (clientConfig.isHttps()) {
+      if (!sslFactory.isPresent()) {
+        throw new VeniceException("HTTPS url requires admin tool to be executed with cert");
+      }
+      clientConfig.setSslFactory(sslFactory.get());
+    }
+    TransportClient transportClient = null;
+    try {
+      transportClient = ClientFactory.getTransportClient(clientConfig);
+      StringBuilder sb = new StringBuilder(QueryAction.ADMIN.toString().toLowerCase()).append("/")
+          .append(Version.composeKafkaTopic(storeName, Integer.parseInt(version)))
+          .append("/")
+          .append(ServerAdminAction.DUMP_INGESTION_STATE.toString().toLowerCase());
+      if (partition != null) {
+        sb.append("/").append(partition);
+      }
+      String requestUrl = sb.toString();
+      TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
+      int writerSchemaId = transportClientResponse.getSchemaId();
+      System.out.println("Writer schema id: " + writerSchemaId);
+      if (writerSchemaId == 1) {
+        /**
+         * The bug in {@link AvroProtocolDefinition} will let the current Venice Server return schema id `1`, while
+         * the specific record is generated from schema: 2.
+         */
+        writerSchemaId = 2;
+      }
+      InternalAvroSpecificSerializer<AdminResponseRecord> serializer = SERVER_ADMIN_RESPONSE.getSerializer();
+      /**
+       * Here, this tool doesn't handle schema evolution, and if the writer schema is not known in the admin tool,
+       * the following deserialization will fail, and we need to rebuild the admin tool.
+       */
+      AdminResponseRecord responseRecord = serializer.deserialize(transportClientResponse.getBody(), writerSchemaId);
+      // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
+      // Use the Avro record's toString() instead and pretty print it.
+      Object printObject = ObjectMapperFactory.getInstance().readValue(responseRecord.toString(), Object.class);
+      System.out.println(jsonWriter.writeValueAsString(printObject));
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
