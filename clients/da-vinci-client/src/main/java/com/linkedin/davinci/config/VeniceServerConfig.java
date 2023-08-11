@@ -67,6 +67,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_POLL_RETRY_BACKOFF_MS;
@@ -432,6 +433,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final PubSubClientsFactory pubSubClientsFactory;
   private final String routerPrincipalName;
 
+  private final int ingestionTaskMaxIdleCount;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -711,6 +714,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       throw new VeniceException(e);
     }
     routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "CN=venice-router");
+    ingestionTaskMaxIdleCount = serverProperties.getInt(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 10000);
   }
 
   long extractIngestionMemoryLimit(
@@ -1243,5 +1247,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getRouterPrincipalName() {
     return routerPrincipalName;
+  }
+
+  public int getIngestionTaskMaxIdleCount() {
+    return ingestionTaskMaxIdleCount;
   }
 }

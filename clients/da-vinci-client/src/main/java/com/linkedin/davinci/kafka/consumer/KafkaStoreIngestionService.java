@@ -519,7 +519,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return true;
   }
 
-  private StoreIngestionTask createConsumerTask(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId) {
+  private StoreIngestionTask createStoreIngestionTask(
+      VeniceStoreVersionConfig veniceStoreVersionConfig,
+      int partitionId) {
     String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
     int versionNumber = Version.parseVersionFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
 
@@ -620,20 +622,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       Optional<LeaderFollowerStateType> leaderState) {
 
     final String topic = veniceStore.getStoreVersionName();
+    if (!isRunning()) {
+      LOGGER.info("Ignore start consumption for topic: {}, partition: {} as service is stopping.", topic, partitionId);
+      return;
+    }
+
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-      if (consumerTask == null || !consumerTask.isRunning()) {
-        consumerTask = createConsumerTask(veniceStore, partitionId);
-        topicNameToIngestionTaskMap.put(topic, consumerTask);
-        versionedIngestionStats.setIngestionTask(topic, consumerTask);
-        if (!isRunning()) {
-          LOGGER.info(
-              "Ignoring Start consumption message as service is stopping. Topic {} Partition {}",
-              topic,
-              partitionId);
-          return;
-        }
-        ingestionExecutorService.submit(consumerTask);
+      StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.get(topic);
+      boolean shouldCreateNewIngestionTask =
+          (storeIngestionTask == null) || (!storeIngestionTask.isIngestionTaskActive());
+      if (shouldCreateNewIngestionTask) {
+        storeIngestionTask = createStoreIngestionTask(veniceStore, partitionId);
+        topicNameToIngestionTaskMap.put(topic, storeIngestionTask);
+        versionedIngestionStats.setIngestionTask(topic, storeIngestionTask);
+        ingestionExecutorService.submit(storeIngestionTask);
       }
 
       /**
@@ -660,7 +662,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
       updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
 
-      consumerTask.subscribePartition(
+      storeIngestionTask.subscribePartition(
           new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId),
           leaderState);
     }

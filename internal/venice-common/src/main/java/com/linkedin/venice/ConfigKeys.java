@@ -385,6 +385,8 @@ public class ConfigKeys {
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
   public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
       "store.writer.buffer.after.leader.logic.enabled";
+
+  public static final String SERVER_INGESTION_TASK_MAX_IDLE_COUNT = "server.ingestion.task.max.idle.count";
   public static final String STORE_WRITER_BUFFER_MEMORY_CAPACITY = "store.writer.buffer.memory.capacity";
   public static final String STORE_WRITER_BUFFER_NOTIFY_DELTA = "store.writer.buffer.notify.delta";
   public static final String SERVER_REST_SERVICE_STORAGE_THREAD_NUM = "server.rest.service.storage.thread.num";
