@@ -30,12 +30,15 @@ public class RequestBasedMetadataTest {
     RequestBasedMetadata requestBasedMetadata = null;
 
     try {
-      requestBasedMetadata = getMockMetaData(clientConfig, storeName);
+      requestBasedMetadata = RequestBasedMetadataTestUtils.getMockMetaData(clientConfig, storeName, true);
       assertEquals(requestBasedMetadata.getStoreName(), storeName);
       assertEquals(requestBasedMetadata.getCurrentStoreVersion(), CURRENT_VERSION);
       assertEquals(
           requestBasedMetadata.getReplicas(CURRENT_VERSION, 0),
-          Collections.singletonList(RequestBasedMetadataTestUtils.REPLICA_NAME));
+          Collections.singletonList(RequestBasedMetadataTestUtils.REPLICA1_NAME));
+      assertEquals(
+          requestBasedMetadata.getReplicas(CURRENT_VERSION, 1),
+          Collections.singletonList(RequestBasedMetadataTestUtils.REPLICA2_NAME));
       assertEquals(requestBasedMetadata.getKeySchema().toString(), KEY_SCHEMA);
       assertEquals(requestBasedMetadata.getValueSchema(1).toString(), VALUE_SCHEMA);
       assertEquals(requestBasedMetadata.getLatestValueSchemaId(), Integer.valueOf(1));
@@ -65,7 +68,7 @@ public class RequestBasedMetadataTest {
       RouterBackedSchemaReader routerBackedSchemaReader =
           RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader();
       ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName);
-      requestBasedMetadata = getMockMetaData(clientConfig, storeName, routerBackedSchemaReader);
+      requestBasedMetadata = getMockMetaData(clientConfig, storeName, routerBackedSchemaReader, true);
       int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
       verify(routerBackedSchemaReader, times(1)).getValueSchema(metadataResponseSchemaId);
       // A new metadata response schema should be fetched for subsequent refreshes
