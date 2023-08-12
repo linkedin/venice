@@ -1,11 +1,14 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA1_NAME;
+import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA2_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -22,6 +25,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -166,10 +170,10 @@ public class DispatchingAvroGenericStoreClientTest {
             serializeBatchGetResponse(BATCH_GET_PARTIAL_KEYS_1),
             mock(CompletableFuture.class));
         doReturn(batchGetValueFuture0).when(mockedTransportClient)
-            .post(eq("host1/storage/test_store_v1"), any(), any());
+            .post(eq(REPLICA1_NAME + "/storage/test_store_v1"), any(), any());
         batchGetValueFuture0.complete(batchGetResponse0);
         doReturn(batchGetValueFuture1).when(mockedTransportClient)
-            .post(eq("host2/storage/test_store_v1"), any(), any());
+            .post(eq(REPLICA2_NAME + "/storage/test_store_v1"), any(), any());
         batchGetValueFuture1.completeExceptionally(new VeniceClientException("Exception for client to return 503"));
       } else {
         batchGetResponse0 = new TransportClientResponseForRoute(
@@ -185,10 +189,10 @@ public class DispatchingAvroGenericStoreClientTest {
             serializeBatchGetResponse(BATCH_GET_PARTIAL_KEYS_2),
             mock(CompletableFuture.class));
         doReturn(batchGetValueFuture0).when(mockedTransportClient)
-            .post(eq("host1/storage/test_store_v1"), any(), any());
+            .post(eq(REPLICA1_NAME + "/storage/test_store_v1"), any(), any());
         batchGetValueFuture0.complete(batchGetResponse0);
         doReturn(batchGetValueFuture1).when(mockedTransportClient)
-            .post(eq("host2/storage/test_store_v1"), any(), any());
+            .post(eq(REPLICA2_NAME + "/storage/test_store_v1"), any(), any());
         batchGetValueFuture1.complete(batchGetResponse1);
       }
     }
@@ -323,8 +327,16 @@ public class DispatchingAvroGenericStoreClientTest {
 
     if (noAvailableReplicas) {
       assertTrue(metrics.get(metricPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
-      assertEquals(metrics.get(routeMetricsPrefix + "_host1--pending_request_count.Max").value(), 1.0);
-      assertEquals(metrics.get(routeMetricsPrefix + "_host2--pending_request_count.Max").value(), 1.0);
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertNotNull(metrics.get(routeMetricsPrefix + "_" + REPLICA1_NAME + "--pending_request_count.Max"));
+        assertEquals(
+            metrics.get(routeMetricsPrefix + "_" + REPLICA1_NAME + "--pending_request_count.Max").value(),
+            1.0);
+        assertNotNull(metrics.get(routeMetricsPrefix + "_" + REPLICA2_NAME + "--pending_request_count.Max"));
+        assertEquals(
+            metrics.get(routeMetricsPrefix + "_" + REPLICA2_NAME + "--pending_request_count.Max").value(),
+            1.0);
+      });
       assertEquals(metrics.get(routeMetricsPrefix + "--blocked_instance_count.Max").value(), 2.0);
       if (batchGet) {
         if (useStreamingBatchGetAsDefault) {
@@ -462,8 +474,6 @@ public class DispatchingAvroGenericStoreClientTest {
           (Map<String, String>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       if (useStreamingBatchGetAsDefault) {
         fail();
-        /* assertEquals(value.size(), 1);
-        assertTrue(BATCH_GET_VALUE_RESPONSE.get("test_key_2").contentEquals(value.get("test_key_2")));*/
       } else {
         // uses single get, so based on the mock, any key will return SINGLE_GET_VALUE_RESPONSE as the value.
         // also: batchGetRequestContext is not usable anymore
