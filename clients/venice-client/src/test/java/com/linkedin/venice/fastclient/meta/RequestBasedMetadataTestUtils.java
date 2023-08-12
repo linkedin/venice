@@ -26,13 +26,17 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 
 public class RequestBasedMetadataTestUtils {
   private static final int CURRENT_VERSION = 1;
-  public static final String REPLICA_NAME = "host1";
-  public static final String NEW_REPLICA_NAME = "host2";
+  public static final String REPLICA1_NAME = "host1";
+  public static final String REPLICA2_NAME = "host2";
+  public static final String NEW_REPLICA_NAME = "host3";
   public static final String KEY_SCHEMA = "\"string\"";
   public static final String VALUE_SCHEMA = "\"string\"";
   private static final byte[] DICTIONARY = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
@@ -48,28 +52,35 @@ public class RequestBasedMetadataTestUtils {
     return clientConfig;
   }
 
-  public static D2TransportClient getMockD2TransportClient(String storeName) {
+  public static D2TransportClient getMockD2TransportClient(String storeName, boolean changeMetadata) {
     D2TransportClient d2TransportClient = mock(D2TransportClient.class);
 
     VersionProperties versionProperties = new VersionProperties(
         CURRENT_VERSION,
         CompressionStrategy.ZSTD_WITH_DICT.getValue(),
-        1,
+        2,
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
         Collections.emptyMap(),
         1);
+    Map<CharSequence, List<CharSequence>> routeMap = new HashMap<>();
+    routeMap.put("0", Collections.singletonList(REPLICA1_NAME));
+    routeMap.put("1", Collections.singletonList(REPLICA2_NAME));
+    Map<CharSequence, Integer> helixGroupMap = new HashMap<>();
+    helixGroupMap.put(REPLICA1_NAME, 0);
+    helixGroupMap.put(REPLICA2_NAME, 1);
     MetadataResponseRecord metadataResponse = new MetadataResponseRecord(
         versionProperties,
         Collections.singletonList(CURRENT_VERSION),
         Collections.singletonMap("1", KEY_SCHEMA),
         Collections.singletonMap("1", VALUE_SCHEMA),
         1,
-        Collections.singletonMap("0", Collections.singletonList(REPLICA_NAME)),
-        Collections.singletonMap(REPLICA_NAME, 0));
+        routeMap,
+        helixGroupMap);
 
     byte[] metadataBody = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
-    metadataResponse.setRoutingInfo(Collections.singletonMap("0", Collections.singletonList(NEW_REPLICA_NAME)));
+    routeMap.put("0", Collections.singletonList(NEW_REPLICA_NAME));
+    metadataResponse.setRoutingInfo(routeMap);
     byte[] newMetadataBody = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
     int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
@@ -85,8 +96,13 @@ public class RequestBasedMetadataTestUtils {
     CompletableFuture<TransportClientResponse> completableDictionaryFuture =
         CompletableFuture.completedFuture(transportClientDictionaryResponse);
 
-    when(d2TransportClient.get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName)))
-        .thenReturn(completableMetadataFuture, completableMetadataFuture2);
+    if (changeMetadata) {
+      when(d2TransportClient.get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName)))
+          .thenReturn(completableMetadataFuture, completableMetadataFuture2);
+    } else {
+      when(d2TransportClient.get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName)))
+          .thenReturn(completableMetadataFuture);
+    }
     doReturn(completableDictionaryFuture).when(d2TransportClient)
         .get(eq(QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION));
 
@@ -121,16 +137,23 @@ public class RequestBasedMetadataTestUtils {
   }
 
   public static RequestBasedMetadata getMockMetaData(ClientConfig clientConfig, String storeName) {
-    return getMockMetaData(clientConfig, storeName, getMockRouterBackedSchemaReader());
+    return getMockMetaData(clientConfig, storeName, getMockRouterBackedSchemaReader(), false);
   }
 
   public static RequestBasedMetadata getMockMetaData(
       ClientConfig clientConfig,
       String storeName,
-      RouterBackedSchemaReader routerBackedSchemaReader) {
-    D2TransportClient d2TransportClient = RequestBasedMetadataTestUtils.getMockD2TransportClient(storeName);
-    D2ServiceDiscovery d2ServiceDiscovery =
-        RequestBasedMetadataTestUtils.getMockD2ServiceDiscovery(d2TransportClient, storeName);
+      boolean metadataChange) {
+    return getMockMetaData(clientConfig, storeName, getMockRouterBackedSchemaReader(), metadataChange);
+  }
+
+  public static RequestBasedMetadata getMockMetaData(
+      ClientConfig clientConfig,
+      String storeName,
+      RouterBackedSchemaReader routerBackedSchemaReader,
+      boolean metadataChange) {
+    D2TransportClient d2TransportClient = getMockD2TransportClient(storeName, metadataChange);
+    D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
     RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient);
     requestBasedMetadata.setMetadataResponseSchemaReader(routerBackedSchemaReader);
     requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);

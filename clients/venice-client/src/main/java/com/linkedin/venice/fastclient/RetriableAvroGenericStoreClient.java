@@ -189,6 +189,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           nonExistingKeys.add(key);
         } else {
           valueMap.put(key, value);
+          requestContext.successRequestKeyCount.incrementAndGet();
         }
       }
 
@@ -198,7 +199,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         if (exception.isPresent()) {
           streamingResponseFuture.completeExceptionally(exception.get());
         } else {
-          streamingResponseFuture.complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, true));
+          streamingResponseFuture
+              .complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, valueMap.size() == keys.size()));
         }
       }
     });

@@ -285,11 +285,17 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         };
       }
 
-      Consumer<MetricsRepository> fastClientStatsValidation = metricsRepository -> validateMetrics(
-          metricsRepository,
-          useStreamingBatchGetAsDefault,
-          batchGetKeySize,
-          batchGetKeySize);
+      Consumer<MetricsRepository> fastClientStatsValidation;
+      if (batchGet) {
+        fastClientStatsValidation = metricsRepository -> validateBatchGetMetrics(
+            metricsRepository,
+            useStreamingBatchGetAsDefault,
+            batchGetKeySize,
+            batchGetKeySize,
+            false);
+      } else {
+        fastClientStatsValidation = metricsRepository -> validateSingleGetMetrics(metricsRepository, false);
+      }
 
       runTest(
           clientConfigBuilder,
@@ -375,30 +381,34 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setDualReadEnabled(false);
+            .setDualReadEnabled(false)
+            .setUseStreamingBatchGetAsDefault(true);
 
-    Consumer<MetricsRepository> fastClientStatsValidation = metricsRepository -> {
-      metricsRepository.metrics().forEach((mName, metric) -> {
-        if (mName.contains("long_tail_retry_request")) {
-          assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
-        }
-      });
-    };
+    // single get
+    Consumer<MetricsRepository> fastClientStatsValidation =
+        metricsRepository -> validateSingleGetMetrics(metricsRepository, false);
 
-    // test both single and multiGet
     runTest(
         clientConfigBuilder,
         false,
-        2,
+        recordCnt,
         fastClientStatsValidation,
         m -> {},
         null,
         Optional.empty(),
         storeMetadataFetchMode);
+
+    // batch get
+    fastClientStatsValidation = metricsRepository -> validateBatchGetMetrics(
+        metricsRepository,
+        true, // testing batch get with useStreamingBatchGetAsDefault as true
+        recordCnt,
+        recordCnt,
+        false);
     runTest(
         clientConfigBuilder,
         true,
-        2,
+        recordCnt,
         fastClientStatsValidation,
         m -> {},
         null,
@@ -419,26 +429,16 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
 
     Consumer<MetricsRepository> fastClientStatsValidation;
-    String metricPrefix;
-    String log;
     if (batchGet) {
-      metricPrefix = "--multiget_";
-      log = "batch Get";
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(1);
+      fastClientStatsValidation =
+          metricsRepository -> validateBatchGetMetrics(metricsRepository, true, recordCnt, recordCnt, true);
     } else {
-      metricPrefix = "--";
-      log = "single Get";
       clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
+      fastClientStatsValidation = metricsRepository -> validateSingleGetMetrics(metricsRepository, true);
     }
-    fastClientStatsValidation = metricsRepository -> {
-      assertTrue(
-          metricsRepository.metrics()
-              .get("." + storeName + metricPrefix + "long_tail_retry_request.OccurrenceRate")
-              .value() > 0,
-          "Long tail retry for " + log + " should be triggered");
-    };
     runTest(
         clientConfigBuilder,
         batchGet,

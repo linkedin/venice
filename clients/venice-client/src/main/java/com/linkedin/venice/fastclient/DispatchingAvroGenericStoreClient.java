@@ -205,21 +205,24 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     List<CompletableFuture<TransportClientResponse>> transportFutures = new LinkedList<>();
     requestContext.requestSentTimestampNS = System.nanoTime();
     for (String route: routes) {
-      CompletableFuture<HttpStatus> routeRequestFuture =
-          metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, partitionId);
-      requestContext.routeRequestMap.put(route, routeRequestFuture);
+      CompletableFuture<HttpStatus> routeRequestFuture = null;
       try {
         String url = route + uri;
         CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(url);
+        routeRequestFuture =
+            metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, partitionId, transportFuture);
+        requestContext.routeRequestMap.put(route, routeRequestFuture);
+
         transportFutures.add(transportFuture);
+        CompletableFuture<HttpStatus> finalRouteRequestFuture = routeRequestFuture;
         transportFuture.whenCompleteAsync((response, throwable) -> {
           if (throwable != null) {
             HttpStatus statusCode = (throwable instanceof VeniceClientHttpException)
                 ? HttpStatus.fromCode(((VeniceClientHttpException) throwable).getHttpStatus())
                 : HttpStatus.S_503_SERVICE_UNAVAILABLE;
-            routeRequestFuture.complete(statusCode);
+            finalRouteRequestFuture.complete(statusCode);
           } else if (response == null) {
-            routeRequestFuture.complete(HttpStatus.S_404_NOT_FOUND);
+            finalRouteRequestFuture.complete(HttpStatus.S_404_NOT_FOUND);
             if (!receivedSuccessfulResponse.getAndSet(true)) {
               requestContext.requestSubmissionToResponseHandlingTime =
                   LatencyUtils.getLatencyInMS(timestampBeforeSendingRequest);
@@ -228,7 +231,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             }
           } else {
             try {
-              routeRequestFuture.complete(HttpStatus.S_200_OK);
+              finalRouteRequestFuture.complete(HttpStatus.S_200_OK);
               if (!receivedSuccessfulResponse.getAndSet(true)) {
                 requestContext.requestSubmissionToResponseHandlingTime =
                     LatencyUtils.getLatencyInMS(timestampBeforeSendingRequest);
@@ -257,6 +260,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         }, deserializationExecutor);
       } catch (Exception e) {
         LOGGER.error("Received exception while sending request to route: {}", route, e);
+        if (routeRequestFuture == null) {
+          // to update health data, create a future if the exception was thrown before it could be created
+          routeRequestFuture = metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, partitionId, null);
+          requestContext.routeRequestMap.put(route, routeRequestFuture);
+        }
         routeRequestFuture.complete(HttpStatus.S_503_SERVICE_UNAVAILABLE);
       }
     }
@@ -346,7 +354,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         if (exception.isPresent()) {
           streamingResponseFuture.completeExceptionally(exception.get());
         } else {
-          streamingResponseFuture.complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, true));
+          boolean isFullResponse = ((valueMap.size() + nonExistingKeys.size()) == keys.size());
+          streamingResponseFuture.complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, isFullResponse));
         }
       }
     });
@@ -437,7 +446,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         requestContext.setPartialResponseException(new VeniceClientException(errorMessage));
       }
 
-      /* Add this key into each route  we are going to send request to.
+      /* Add this key into each route we are going to send request to.
         Current implementation has only one replica/route count , so each key will go via one route.
         For loop is not necessary here but if in the future we send to multiple routes then the code below remains */
       for (String route: routes) {
@@ -455,10 +464,15 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       byte[] serializedKeys = serializeMultiGetRequest(requestContext.keysForRoutes(route));
       requestContext.recordRequestSerializationTime(route, getLatencyInNS(tsBeforeSerialization));
       requestContext.recordRequestSentTimeStamp(route);
-      transportClient.post(url, headers, serializedKeys).whenComplete((transportClientResponse, throwable) -> {
+      CompletableFuture<TransportClientResponse> routeFuture = transportClient.post(url, headers, serializedKeys);
+      CompletableFuture<HttpStatus> routeRequestFuture =
+          metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, 0, routeFuture);
+      requestContext.routeRequestMap.put(route, routeRequestFuture);
+
+      routeFuture.whenComplete((transportClientResponse, throwable) -> {
         requestContext.recordRequestSubmissionToResponseHandlingTime(route);
-        TransportClientResponseForRoute response =
-            TransportClientResponseForRoute.fromTransportClientWithRoute(transportClientResponse, route);
+        TransportClientResponseForRoute response = TransportClientResponseForRoute
+            .fromTransportClientWithRoute(transportClientResponse, route, routeRequestFuture);
         transportClientResponseCompletionHandler.accept(response, throwable);
       });
     }
@@ -476,6 +490,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     if (exception != null) {
       LOGGER.error("Exception received from transport. ExMsg: {}", exception.getMessage());
       requestContext.markCompleteExceptionally(transportClientResponse, exception);
+      HttpStatus statusCode = (exception instanceof VeniceClientHttpException)
+          ? HttpStatus.fromCode(((VeniceClientHttpException) exception).getHttpStatus())
+          : HttpStatus.S_503_SERVICE_UNAVAILABLE;
+      transportClientResponse.getRouteRequestFuture().complete(statusCode);
       return;
     }
     // deserialize records and find the status
@@ -522,6 +540,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       }
     }
     requestContext.markComplete(transportClientResponse);
+    transportClientResponse.getRouteRequestFuture().complete(HttpStatus.S_200_OK);
   }
 
   /* Batch get helper methods */
