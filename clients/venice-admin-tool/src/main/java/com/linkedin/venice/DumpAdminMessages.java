@@ -13,15 +13,16 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -55,12 +56,13 @@ public class DumpAdminMessages {
   }
 
   public static List<AdminOperationInfo> dumpAdminMessages(
-      String kafkaUrl,
+      String pubSubBrokerUrl,
+      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory,
       String clusterName,
       Properties consumerProperties,
       long startingOffset,
       int messageCnt) {
-    consumerProperties = getKafkaConsumerProperties(kafkaUrl, consumerProperties);
+    consumerProperties = getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     OptimizedKafkaValueSerializer valueDeserializer = new OptimizedKafkaValueSerializer();
@@ -68,7 +70,8 @@ public class DumpAdminMessages {
         valueDeserializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumerAdapter consumer = new ApacheKafkaConsumerAdapter(consumerProperties, pubSubDeserializer)) {
+    try (PubSubConsumerAdapter consumer = pubSubConsumerAdapterFactory
+        .create(new VeniceProperties(consumerProperties), false, pubSubDeserializer, "AdminMessageDumperConsumer")) {
       // include the message with startingOffset
       PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
           pubSubTopicRepository.getTopic(adminTopic),
@@ -119,11 +122,11 @@ public class DumpAdminMessages {
     }
   }
 
-  public static Properties getKafkaConsumerProperties(String kafkaUrl, Properties kafkaConsumerProperties) {
+  public static Properties getPubSubConsumerProperties(String kafkaUrl, Properties pubSubConsumerProperties) {
     // ssl related config will be provided by param: kafkaConsumerProperties
     final String securityProtocolConfig = "security.protocol";
     final String sslProtocol = "SSL";
-    String securityProtocol = kafkaConsumerProperties.getProperty(securityProtocolConfig);
+    String securityProtocol = pubSubConsumerProperties.getProperty(securityProtocolConfig);
     if (securityProtocol != null && securityProtocol.equals(sslProtocol)) {
       List<String> requiredSSLConfigList = new ArrayList<>();
       requiredSSLConfigList.add("ssl.key.password");
@@ -138,18 +141,18 @@ public class DumpAdminMessages {
       requiredSSLConfigList.add("ssl.truststore.password");
       requiredSSLConfigList.add("ssl.truststore.type");
       requiredSSLConfigList.forEach(configProperty -> {
-        if (kafkaConsumerProperties.getProperty(configProperty) == null) {
+        if (pubSubConsumerProperties.getProperty(configProperty) == null) {
           throw new VeniceException("Consumer config property: " + configProperty + " is required");
         }
       });
     }
 
-    kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-    kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
-    kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
-    kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    kafkaConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    pubSubConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+    pubSubConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
+    pubSubConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
+    pubSubConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    pubSubConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
 
-    return kafkaConsumerProperties;
+    return pubSubConsumerProperties;
   }
 }
