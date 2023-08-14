@@ -1170,12 +1170,17 @@ public class TestPushJobWithNativeReplication {
       key.setStoreName(storeName);
       key.setVersionNumber(1);
       GenericRecord value = (GenericRecord) client.get(key).get();
-      Map<Utf8, List<PushJobDetailsStatusTuple>> map = (HashMap) value.get("coloStatus");
+      HashMap<Utf8, List<PushJobDetailsStatusTuple>> map =
+          (HashMap<Utf8, List<PushJobDetailsStatusTuple>>) value.get("coloStatus");
       Assert.assertEquals(map.size(), 2);
       List<PushJobDetailsStatusTuple> status = map.get(new Utf8("dc-0"));
-      Assert.assertEquals(((GenericRecord) status.get(1)).get("status"), PushJobDetailsStatus.COMPLETED.getValue());
+      Assert.assertEquals(
+          ((GenericRecord) status.get(status.size() - 1)).get("status"),
+          PushJobDetailsStatus.COMPLETED.getValue());
       status = map.get(new Utf8("dc-1"));
-      Assert.assertEquals(((GenericRecord) status.get(1)).get("status"), PushJobDetailsStatus.COMPLETED.getValue());
+      Assert.assertEquals(
+          ((GenericRecord) status.get(status.size() - 1)).get("status"),
+          PushJobDetailsStatus.COMPLETED.getValue());
 
     }
   }
