@@ -17,7 +17,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.utils.TestUtils.getOffsetRecord;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
@@ -355,7 +355,7 @@ public abstract class StoreIngestionTaskTest {
   private static byte[] createReplicationMetadataWithValueSchemaId(long timestamp, long offset, int valueSchemaId) {
     GenericRecord replicationMetadataRecord = new GenericData.Record(REPLICATION_METADATA_SCHEMA);
     replicationMetadataRecord.put(TIMESTAMP_FIELD_NAME, timestamp);
-    replicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, Collections.singletonList(offset));
+    replicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, Collections.singletonList(offset));
 
     byte[] replicationMetadata = REPLICATION_METADATA_SERIALIZER.serialize(replicationMetadataRecord);
 

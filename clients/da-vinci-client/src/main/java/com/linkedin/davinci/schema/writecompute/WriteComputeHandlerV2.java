@@ -3,6 +3,7 @@ package com.linkedin.davinci.schema.writecompute;
 import static com.linkedin.davinci.schema.SchemaUtils.isArrayField;
 import static com.linkedin.davinci.schema.SchemaUtils.isMapField;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
 import com.linkedin.davinci.schema.merge.AvroCollectionElementComparator;
 import com.linkedin.davinci.schema.merge.CollectionFieldOperationHandler;
@@ -57,7 +58,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
       currRecordAndRmd.setValue(AvroSchemaUtils.createGenericRecord(currValueSchema));
     }
 
-    Object timestampObject = currRecordAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME);
+    Object timestampObject = currRecordAndRmd.getRmd().get(TIMESTAMP_FIELD_POS);
     if (!(timestampObject instanceof GenericRecord)) {
       throw new IllegalStateException(
           String.format(
@@ -77,14 +78,15 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
     final Schema writeComputeSchema = writeComputeRecord.getSchema();
     for (Schema.Field writeComputeField: writeComputeSchema.getFields()) {
       final String writeComputeFieldName = writeComputeField.name();
-      if (currRecordAndRmd.getValue().getSchema().getField(writeComputeFieldName) == null) {
+      Schema.Field currentValueField = currRecordAndRmd.getValue().getSchema().getField(writeComputeFieldName);
+      if (currentValueField == null) {
         throw new IllegalStateException(
             "Current value record must have a schema that has the same field names as the "
                 + "write compute schema because the current value's schema should be the schema that is used to generate "
                 + "the write-compute schema. Got missing field: " + writeComputeFieldName);
       }
 
-      Object writeComputeFieldValue = writeComputeRecord.get(writeComputeFieldName);
+      Object writeComputeFieldValue = writeComputeRecord.get(writeComputeField.pos());
       WriteComputeOperation operationType = WriteComputeOperation.getFieldOperationType(writeComputeFieldValue);
       switch (operationType) {
         case NO_OP_ON_FIELD:
@@ -94,7 +96,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
           UpdateResultStatus putResult = mergeRecordHelper.putOnField(
               currRecordAndRmd.getValue(),
               timestampRecord,
-              writeComputeFieldName,
+              currentValueField,
               writeComputeFieldValue,
               updateOperationTimestamp,
               coloID);
@@ -108,7 +110,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
               (GenericRecord) writeComputeFieldValue,
               updateOperationTimestamp,
               currRecordAndRmd.getValue(),
-              writeComputeFieldName);
+              currentValueField);
           notUpdated &= (collectionMergeResult.equals(UpdateResultStatus.NOT_UPDATED_AT_ALL));
           continue;
         default:
@@ -126,40 +128,41 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
       GenericRecord fieldWriteComputeRecord,
       long modifyTimestamp,
       GenericRecord currValueRecord,
-      String fieldName) {
-    if (isArrayField(currValueRecord, fieldName)) {
+      Schema.Field currentValueField) {
+    if (isArrayField(currentValueField.schema())) {
       return collectionFieldOperationHandler.handleModifyList(
           modifyTimestamp,
           new CollectionRmdTimestamp(fieldTimestampRecord),
           currValueRecord,
-          fieldName,
+          currentValueField,
           (List<Object>) fieldWriteComputeRecord.get(WriteComputeConstants.SET_UNION),
           (List<Object>) fieldWriteComputeRecord.get(WriteComputeConstants.SET_DIFF));
 
-    } else if (isMapField(currValueRecord, fieldName)) {
-      Object fieldValue = currValueRecord.get(fieldName);
+    } else if (isMapField(currentValueField.schema())) {
+      Object fieldValue = currValueRecord.get(currentValueField.pos());
       if (fieldValue != null && !(fieldValue instanceof IndexedHashMap)) {
         // if the current map field is not of IndexedHashMap type and is empty then replace this field with an empty
         // IndexedHashMap
         if (((Map) fieldValue).isEmpty()) {
-          currValueRecord.put(fieldName, new IndexedHashMap<>());
+          currValueRecord.put(currentValueField.pos(), new IndexedHashMap<>());
         } else {
           throw new IllegalStateException(
-              "Expect value of field " + fieldName + " to be an IndexedHashMap. Got: " + fieldValue.getClass());
+              "Expect value of field " + currentValueField.name() + " to be an IndexedHashMap. Got: "
+                  + fieldValue.getClass());
         }
       }
       return collectionFieldOperationHandler.handleModifyMap(
           modifyTimestamp,
           new CollectionRmdTimestamp(fieldTimestampRecord),
           currValueRecord,
-          fieldName,
+          currentValueField,
           (Map<String, Object>) fieldWriteComputeRecord.get(WriteComputeConstants.MAP_UNION),
           (List<String>) fieldWriteComputeRecord.get(WriteComputeConstants.MAP_DIFF));
     } else {
       throw new IllegalArgumentException(
           String.format(
               "Expect value field %s to be either a List or a Map. Got value record: %s",
-              fieldName,
+              currentValueField.name(),
               currValueRecord));
     }
   }

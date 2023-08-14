@@ -1,11 +1,11 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
-import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.RmdTimestampType.PER_FIELD_TIMESTAMP;
-import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_NAME;
-import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_NAME;
-import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_POS;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_POS;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_POS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
 import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.getFieldOperationType;
 
@@ -112,7 +112,7 @@ public class MergeConflictResolver {
               + "; schema ID = " + rmdWithValueSchemaID.getValueSchemaId());
     }
     final GenericRecord oldRmdRecord = rmdWithValueSchemaID.getRmdRecord();
-    final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_NAME);
+    final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_POS);
 
     /**
      * Ideally the "useFieldLevelTimestamp" flag should be sufficient to decide here. However, since current write compute
@@ -176,7 +176,7 @@ public class MergeConflictResolver {
     }
 
     final GenericRecord oldRmdRecord = rmdWithValueSchemaID.getRmdRecord();
-    final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_NAME);
+    final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_POS);
     /**
      * Ideally the "useFieldLevelTimestamp" flag should be sufficient to decide here. However, since current write compute
      * flag is a store-level config, when an A/A store enabled write compute feature, it will accept incoming UPDATE message
@@ -514,7 +514,7 @@ public class MergeConflictResolver {
     if (fieldTimestampObj instanceof Long) {
       oldFieldTimestamp = (Long) fieldTimestampObj;
     } else if (fieldTimestampObj instanceof GenericRecord) {
-      oldFieldTimestamp = (Long) ((GenericRecord) fieldTimestampObj).get(TOP_LEVEL_TS_FIELD_NAME);
+      oldFieldTimestamp = (Long) ((GenericRecord) fieldTimestampObj).get(TOP_LEVEL_TS_FIELD_POS);
     } else {
       throw new VeniceException(
           "Replication metadata field timestamp is expected to be either a long or a GenericRecord. " + "Got: "
@@ -538,10 +538,10 @@ public class MergeConflictResolver {
      * In such cases, the incoming PUT operation will be applied directly and we should store the updated RMD for it.
      */
     GenericRecord newRmd = newRmdCreator.apply(newValueSchemaID);
-    newRmd.put(TIMESTAMP_FIELD_NAME, putOperationTimestamp);
+    newRmd.put(TIMESTAMP_FIELD_POS, putOperationTimestamp);
     // A record which didn't come from an RT topic or has null metadata should have no offset vector.
     newRmd.put(
-        REPLICATION_CHECKPOINT_VECTOR_FIELD,
+        REPLICATION_CHECKPOINT_VECTOR_FIELD_POS,
         MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, newValueSourceBrokerID));
 
     if (useFieldLevelTimestamp) {
@@ -566,9 +566,9 @@ public class MergeConflictResolver {
      */
     final int valueSchemaID = storeSchemaCache.getSupersetOrLatestValueSchema().getId();
     GenericRecord newRmd = newRmdCreator.apply(valueSchemaID);
-    newRmd.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
+    newRmd.put(TIMESTAMP_FIELD_POS, deleteOperationTimestamp);
     newRmd.put(
-        REPLICATION_CHECKPOINT_VECTOR_FIELD,
+        REPLICATION_CHECKPOINT_VECTOR_FIELD_POS,
         MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, deleteOperationSourceBrokerID));
     if (useFieldLevelTimestamp) {
       Schema valueSchema = getValueSchema(valueSchemaID);
@@ -603,8 +603,8 @@ public class MergeConflictResolver {
         newValue = deserializeValue(oldValueBytes, writerSchema, readerValueSchemaEntry.getSchema());
       }
       GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaEntry.getId());
-      newRmd.put(TIMESTAMP_FIELD_NAME, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
-      newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<Long>());
+      newRmd.put(TIMESTAMP_FIELD_POS, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
+      newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS, new ArrayList<Long>());
       return new ValueAndRmd<>(Lazy.of(() -> newValue), newRmd);
     }
 
@@ -618,7 +618,7 @@ public class MergeConflictResolver {
   }
 
   private GenericRecord convertToPerFieldTimestampRmd(GenericRecord rmd, GenericRecord oldValueRecord) {
-    Object timestampObject = rmd.get(TIMESTAMP_FIELD_NAME);
+    Object timestampObject = rmd.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType timestampType = RmdUtils.getRmdTimestampType(timestampObject);
     switch (timestampType) {
       case PER_FIELD_TIMESTAMP:
@@ -628,7 +628,7 @@ public class MergeConflictResolver {
       case VALUE_LEVEL_TIMESTAMP:
         GenericRecord perFieldTimestampRecord =
             createPerFieldTimestampRecord(rmd.getSchema(), (long) timestampObject, oldValueRecord);
-        rmd.put(TIMESTAMP_FIELD_NAME, perFieldTimestampRecord);
+        rmd.put(TIMESTAMP_FIELD_POS, perFieldTimestampRecord);
         return rmd;
 
       default:
@@ -640,25 +640,25 @@ public class MergeConflictResolver {
       Schema rmdSchema,
       long fieldTimestamp,
       GenericRecord oldValueRecord) {
-    Schema perFieldTimestampRecordSchema = rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
+    Schema perFieldTimestampRecordSchema = rmdSchema.getFields().get(TIMESTAMP_FIELD_POS).schema().getTypes().get(1);
     // Per-field timestamp record schema should have default timestamp values.
     GenericRecord perFieldTimestampRecord = AvroSchemaUtils.createGenericRecord(perFieldTimestampRecordSchema);
     for (Schema.Field field: perFieldTimestampRecordSchema.getFields()) {
       Schema.Type timestampFieldType = field.schema().getType();
       switch (timestampFieldType) {
         case LONG:
-          perFieldTimestampRecord.put(field.name(), fieldTimestamp);
+          perFieldTimestampRecord.put(field.pos(), fieldTimestamp);
           continue;
 
         case RECORD:
           GenericRecord collectionFieldTimestampRecord = AvroSchemaUtils.createGenericRecord(field.schema());
           // Only need to set the top-level field timestamp on collection timestamp record.
-          collectionFieldTimestampRecord.put(TOP_LEVEL_TS_FIELD_NAME, fieldTimestamp);
+          collectionFieldTimestampRecord.put(TOP_LEVEL_TS_FIELD_POS, fieldTimestamp);
           // When a collection field metadata is created, its top-level colo ID is always -1.
-          collectionFieldTimestampRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, -1);
+          collectionFieldTimestampRecord.put(TOP_LEVEL_COLO_ID_FIELD_POS, -1);
           collectionFieldTimestampRecord
-              .put(PUT_ONLY_PART_LENGTH_FIELD_NAME, getCollectionFieldLen(oldValueRecord, field.name()));
-          perFieldTimestampRecord.put(field.name(), collectionFieldTimestampRecord);
+              .put(PUT_ONLY_PART_LENGTH_FIELD_POS, getCollectionFieldLen(oldValueRecord, field.name()));
+          perFieldTimestampRecord.put(field.pos(), collectionFieldTimestampRecord);
           continue;
 
         default:
@@ -702,10 +702,9 @@ public class MergeConflictResolver {
           "Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
     }
 
-    Object oldTimestampObject = rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
+    Object oldTimestampObject = rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_POS);
     Schema oldValueSchema = getValueSchema(rmdWithValueSchemaId.getValueSchemaId());
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(oldTimestampObject);
-    Set<String> toUpdateFieldNames;
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
         final long valueLevelTimestamp = (long) oldTimestampObject;

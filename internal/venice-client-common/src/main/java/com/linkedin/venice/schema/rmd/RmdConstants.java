@@ -10,8 +10,10 @@ public class RmdConstants {
   }
 
   // Replication metadata timestamp field name.
+  public static final int TIMESTAMP_FIELD_POS = 0;
   public static final String TIMESTAMP_FIELD_NAME = "timestamp";
 
   // Replication metadata checkpoint vector field name.
-  public static final String REPLICATION_CHECKPOINT_VECTOR_FIELD = "replication_checkpoint_vector";
+  public static final int REPLICATION_CHECKPOINT_VECTOR_FIELD_POS = 1;
+  public static final String REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME = "replication_checkpoint_vector";
 }

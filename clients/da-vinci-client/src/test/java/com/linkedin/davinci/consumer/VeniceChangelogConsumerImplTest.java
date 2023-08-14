@@ -352,7 +352,7 @@ public class VeniceChangelogConsumerImplTest {
       List<Long> replicationCheckpointVector) {
     final GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, 0L);
-    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, replicationCheckpointVector);
+    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, replicationCheckpointVector);
     ByteBuffer bytes =
         ByteBuffer.wrap(FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema).serialize(rmdRecord));
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope(

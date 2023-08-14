@@ -1,6 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
@@ -25,7 +25,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       long sourceOffsetOfNewValue,
       int newValueSourceBrokerID) {
     final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
-    final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
+    final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(tsObject);
 
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
@@ -49,7 +49,7 @@ public class MergeByteBuffer extends AbstractMerge<ByteBuffer> {
       long newValueSourceOffset,
       int newValueSourceBrokerID) {
     final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
-    final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
+    final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(tsObject);
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
       return deleteWithValueLevelTimestamp(

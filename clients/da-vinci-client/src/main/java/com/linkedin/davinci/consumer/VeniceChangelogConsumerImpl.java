@@ -718,7 +718,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           .getAvroGenericDeserializer(Schema.parse(replicationMetadataSchema.getSchemaStr()));
       GenericRecord replicationMetadataRecord = deserializer.deserialize(replicationMetadataPayload);
       GenericData.Array replicationCheckpointVector =
-          (GenericData.Array) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
+          (GenericData.Array) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
       List<Long> offsetVector = new ArrayList<>();
       for (Object o: replicationCheckpointVector) {
         offsetVector.add((Long) o);

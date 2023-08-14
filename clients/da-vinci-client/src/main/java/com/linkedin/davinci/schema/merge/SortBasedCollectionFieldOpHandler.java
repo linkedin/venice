@@ -35,11 +35,11 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       List<Object> newFieldValue,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName) {
+      Schema.Field currValueRecordField) {
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, true);
+    validateFieldSchemaType(currValueRecordField, Schema.Type.ARRAY, true);
 
     // Current list will be updated.
     final long currTopLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
@@ -55,14 +55,14 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     if (collectionFieldRmd.isInPutOnlyState()) {
       // This is to make sure we put the exact value when the new value is null.
-      currValueRecord.put(fieldName, newFieldValue);
+      currValueRecord.put(currValueRecordField.pos(), newFieldValue);
       collectionFieldRmd.setPutOnlyPartLength(toPutList.size());
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
     // The current list is NOT in the put-only state. So we need to de-dup the incoming list.
     deDupListFromEnd(toPutList);
 
-    List<Object> currElements = (List<Object>) currValueRecord.get(fieldName);
+    List<Object> currElements = (List<Object>) currValueRecord.get(currValueRecordField.pos());
     if (currElements == null) {
       currElements = Collections.emptyList();
     }
@@ -127,7 +127,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     });
 
     // Step 3: Set current elements and their active timestamps.
-    currValueRecord.put(fieldName, newElements);
+    currValueRecord.put(currValueRecordField.pos(), newElements);
     collectionFieldRmd.setActiveElementTimestamps(newActiveTimestamps);
 
     // Step 4: Set deleted elements and their deleted timestamps.
@@ -139,7 +139,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     });
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedElements, newDeletedTimestamps);
     if (collectionFieldRmd.isInPutOnlyState() && newFieldValue == null) {
-      currValueRecord.put(fieldName, null);
+      currValueRecord.put(currValueRecordField.pos(), null);
     }
     return collectionFieldRmd.isInPutOnlyState()
         ? UpdateResultStatus.COMPLETELY_UPDATED
@@ -165,11 +165,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   }
 
   private void validateFieldSchemaType(
-      GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       Schema.Type expectType,
       boolean nullableAllowed) {
-    final Schema fieldSchema = currValueRecord.getSchema().getField(fieldName).schema();
+    final Schema fieldSchema = currValueRecordField.schema();
     final Schema.Type fieldSchemaType = fieldSchema.getType();
     if (nullableAllowed && fieldSchemaType == Schema.Type.UNION) {
       validateFieldSchemaIsNullableType(fieldSchema, expectType);
@@ -177,7 +176,11 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     }
     if (fieldSchemaType != expectType) {
       throw new IllegalStateException(
-          String.format("Expect field %s to be of type %s. But got: %s", fieldName, expectType, fieldSchemaType));
+          String.format(
+              "Expect field %s to be of type %s. But got: %s",
+              currValueRecordField.name(),
+              expectType,
+              fieldSchemaType));
     }
   }
 
@@ -206,11 +209,11 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       IndexedHashMap<String, Object> newFieldValue,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName) {
+      Schema.Field currValueRecordField) {
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true);
+    validateFieldSchemaType(currValueRecordField, Schema.Type.MAP, true);
     collectionFieldRmd.setTopLevelFieldTimestamp(putTimestamp);
     collectionFieldRmd.setTopLevelColoID(coloID);
     IndexedHashMap<String, Object> toPutMap;
@@ -223,13 +226,14 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Current map will be updated.
     if (collectionFieldRmd.isInPutOnlyState()) {
       // This is to make sure we put the exact value when the new value is null.
-      currValueRecord.put(fieldName, newFieldValue);
+      currValueRecord.put(currValueRecordField.pos(), newFieldValue);
       collectionFieldRmd.setPutOnlyPartLength(toPutMap.size());
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
 
     // Handle Put on a map that is in the collection-merge state.
-    IndexedHashMap<String, Object> currMap = (IndexedHashMap<String, Object>) currValueRecord.get(fieldName);
+    IndexedHashMap<String, Object> currMap =
+        (IndexedHashMap<String, Object>) currValueRecord.get(currValueRecordField.pos());
     List<KeyValPair> currKeyValPairs = new ArrayList<>(currMap.size());
     currMap.forEach((key, value) -> currKeyValPairs.add(new KeyValPair(key, value)));
 
@@ -278,7 +282,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     });
 
     // Step 3: Set new map entries and new active timestamps.
-    currValueRecord.put(fieldName, newMap);
+    currValueRecord.put(currValueRecordField.pos(), newMap);
     collectionFieldRmd.setActiveElementTimestamps(newActiveTimestamps);
 
     // Step 4: Set deleted keys and their deleted timestamps.
@@ -291,7 +295,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedKeys, newDeletedTimestamps);
     if (collectionFieldRmd.isInPutOnlyState() && newFieldValue == null) {
-      currValueRecord.put(fieldName, null);
+      currValueRecord.put(currValueRecordField.pos(), null);
     }
     return collectionFieldRmd.isInPutOnlyState()
         ? UpdateResultStatus.COMPLETELY_UPDATED
@@ -304,11 +308,11 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final int coloID,
       CollectionRmdTimestamp collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName) {
+      Schema.Field currValueRecordField) {
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, true);
+    validateFieldSchemaType(currValueRecordField, Schema.Type.ARRAY, true);
     // Current list will be deleted (partially or completely).
     final int currPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     collectionFieldRmd.setTopLevelFieldTimestamp(deleteTimestamp);
@@ -317,7 +321,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     if (collectionFieldRmd.isInPutOnlyState()) {
       // Do not use Collections.empty() in case this field is modified later.
-      currValueRecord.put(fieldName, new ArrayList<>(0));
+      currValueRecord.put(currValueRecordField.pos(), new ArrayList<>(0));
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
 
@@ -326,7 +330,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     // Step 2: Remove all active elements with smaller or equal timestamps.
     final int removedActiveTimestampsCount = collectionFieldRmd.removeActiveTimestampsLowerOrEqualTo(deleteTimestamp);
-    List<Object> currList = (List<Object>) currValueRecord.get(fieldName);
+    List<Object> currList = (List<Object>) currValueRecord.get(currValueRecordField.pos());
 
     // All elements in the current put-only part should be removed.
     final int remainingElementsStartIdx = currPutOnlyPartLength + removedActiveTimestampsCount;
@@ -341,7 +345,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       remainingList.add(currListIterator.next());
     }
 
-    currValueRecord.put(fieldName, remainingList);
+    currValueRecord.put(currValueRecordField.pos(), remainingList);
     return collectionFieldRmd.isInPutOnlyState()
         ? UpdateResultStatus.COMPLETELY_UPDATED
         : UpdateResultStatus.PARTIALLY_UPDATED;
@@ -353,11 +357,11 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final int coloID,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName) {
+      Schema.Field currValueRecordField) {
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true);
+    validateFieldSchemaType(currValueRecordField, Schema.Type.MAP, true);
     // Handle Delete on a map that is in the collection-merge mode.
     final int originalPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     final long originalTopLevelFieldTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
@@ -366,7 +370,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     collectionFieldRmd.setPutOnlyPartLength(0); // No put-only part because it should be deleted completely.
 
     if (collectionFieldRmd.isInPutOnlyState()) {
-      currValueRecord.put(fieldName, new IndexedHashMap<>(0));
+      currValueRecord.put(currValueRecordField.pos(), new IndexedHashMap<>(0));
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
 
@@ -375,7 +379,8 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     // Step 2: Remove all active entries with smaller or equal timestamps.
     final int removedActiveTimestampsCount = collectionFieldRmd.removeActiveTimestampsLowerOrEqualTo(deleteTimestamp);
-    IndexedHashMap<String, Object> currMap = (IndexedHashMap<String, Object>) currValueRecord.get(fieldName);
+    IndexedHashMap<String, Object> currMap =
+        (IndexedHashMap<String, Object>) currValueRecord.get(currValueRecordField.pos());
 
     // All map entries in the current put-only part should be removed.
     final int remainingEntriesStartIdx = originalPutOnlyPartLength + removedActiveTimestampsCount;
@@ -389,7 +394,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       Map.Entry<String, Object> remainingEntry = currMap.getByIndex(i);
       remainingMap.put(remainingEntry.getKey(), remainingEntry.getValue());
     }
-    currValueRecord.put(fieldName, remainingMap);
+    currValueRecord.put(currValueRecordField.pos(), remainingMap);
     return collectionFieldRmd.isInPutOnlyState()
         ? UpdateResultStatus.COMPLETELY_UPDATED
         : UpdateResultStatus.PARTIALLY_UPDATED;
@@ -400,7 +405,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final long modifyTimestamp,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       List<Object> toAddElements,
       List<Object> toRemoveElements) {
     // When timestamps are the same, full put/delete on a collection field always takes precedence over collection
@@ -408,7 +413,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, true);
+    validateFieldSchemaType(currValueRecordField, Schema.Type.ARRAY, true);
     Set<Object> toAddElementSet = new HashSet<>(toAddElements);
     Set<Object> toRemoveElementSet = new HashSet<>(toRemoveElements);
     removeIntersectionElements(toAddElementSet, toRemoveElementSet);
@@ -421,7 +426,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
           modifyTimestamp,
           collectionFieldRmd,
           currValueRecord,
-          fieldName,
+          currValueRecordField,
           toAddElementSet,
           toRemoveElementSet);
     } else {
@@ -429,7 +434,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
           modifyTimestamp,
           collectionFieldRmd,
           currValueRecord,
-          fieldName,
+          currValueRecordField,
           toAddElementSet,
           toRemoveElementSet);
     }
@@ -439,7 +444,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final long modifyTimestamp,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       Set<Object> toAddElementSet,
       Set<Object> toRemoveElementSet) {
     if (!collectionFieldRmd.isInPutOnlyState()) {
@@ -448,7 +453,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (toAddElementSet.isEmpty() && toRemoveElementSet.isEmpty()) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    List<Object> currElements = (List<Object>) currValueRecord.get(fieldName);
+    List<Object> currElements = (List<Object>) currValueRecord.get(currValueRecordField.pos());
     if (currElements == null) {
       currElements = Collections.emptyList();
     } else {
@@ -499,7 +504,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       }
     }
 
-    final Comparator<Object> listElementComparator = getListElementComparator(currValueRecord, fieldName);
+    final Comparator<Object> listElementComparator = getListElementComparator(currValueRecordField.schema());
     sortElementAndTimestampList(deletedElementAndTsList, listElementComparator);
 
     // Step 3: Set new active elements and their active timestamps.
@@ -515,7 +520,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         activeElementAndTsList,
         newPutOnlyPartLength,
         currValueRecord,
-        fieldName,
+        currValueRecordField,
         collectionFieldRmd);
 
     // Step 4: Set new deleted elements and their deleted timestamps.
@@ -525,8 +530,8 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     return UpdateResultStatus.PARTIALLY_UPDATED;
   }
 
-  private Comparator<Object> getListElementComparator(GenericRecord currValueRecord, String fieldName) {
-    Supplier<Schema> elementSchemaSupplier = () -> getArraySchema(currValueRecord, fieldName).getElementType();
+  private Comparator<Object> getListElementComparator(Schema arrayFieldSchema) {
+    Supplier<Schema> elementSchemaSupplier = () -> getArraySchema(arrayFieldSchema).getElementType();
     // TODO: handle the situation where two elements have different schemas (e.g. element schema evolution). Assume
     // element schemas are always the same for now.
     return (o1, o2) -> this.avroElementComparator.compare(o1, o2, elementSchemaSupplier.get());
@@ -538,7 +543,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final long modifyTimestamp,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       Set<Object> toAddElementSet,
       Set<Object> toRemoveElementSet) {
     if (collectionFieldRmd.isInPutOnlyState()) {
@@ -548,7 +553,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
 
-    List<Object> currElements = (List<Object>) currValueRecord.get(fieldName);
+    List<Object> currElements = (List<Object>) currValueRecord.get(currValueRecordField.pos());
     if (currElements == null) {
       currElements = Collections.emptyList();
     }
@@ -632,7 +637,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     activeElementToTsMap.forEach((activeElement, activeTimestamp) -> {
       activeElementAndTsList.add(new ElementAndTimestamp(activeElement, activeTimestamp));
     });
-    final Comparator<Object> listElementComparator = getListElementComparator(currValueRecord, fieldName);
+    final Comparator<Object> listElementComparator = getListElementComparator(currValueRecordField.schema());
     sortElementAndTimestampList(
         // Only sort the collection-merge part of the list and leave the put-only part as is.
         activeElementAndTsList.subList(newPutOnlyPartLength, activeElementAndTsList.size()),
@@ -641,7 +646,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         activeElementAndTsList,
         newPutOnlyPartLength,
         currValueRecord,
-        fieldName,
+        currValueRecordField,
         collectionFieldRmd);
 
     // Step 4: Set new deleted elements and their deleted timestamps.
@@ -660,7 +665,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       List<ElementAndTimestamp> activeElementAndTsList,
       int newPutOnlyPartLength,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       CollectionRmdTimestamp<Object> collectionFieldRmd) {
     List<Object> newActiveElements = new ArrayList<>(activeElementAndTsList.size());
     PrimitiveLongList newActiveTimestamps =
@@ -674,7 +679,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       idx++;
     }
     collectionFieldRmd.setActiveElementTimestamps(newActiveTimestamps);
-    currValueRecord.put(fieldName, newActiveElements);
+    currValueRecord.put(currValueRecordField.pos(), newActiveElements);
     collectionFieldRmd.setPutOnlyPartLength(newPutOnlyPartLength);
   }
 
@@ -732,7 +737,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final long modifyTimestamp,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       Map<String, Object> newEntries,
       List<String> toRemoveKeys) {
     // When timestamps are the same, full put/delete on a collection field always takes precedence over collection
@@ -740,7 +745,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true);
+    validateFieldSchemaType(currValueRecordField, Schema.Type.MAP, true);
     if (toRemoveKeys.isEmpty() && newEntries.isEmpty()) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
@@ -752,7 +757,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
           modifyTimestamp,
           collectionFieldRmd,
           currValueRecord,
-          fieldName,
+          currValueRecordField,
           newEntries,
           toRemoveKeys);
     } else {
@@ -760,7 +765,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
           modifyTimestamp,
           collectionFieldRmd,
           currValueRecord,
-          fieldName,
+          currValueRecordField,
           newEntries,
           toRemoveKeys);
     }
@@ -770,7 +775,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final long modifyTimestamp,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       Map<String, Object> newEntries,
       List<String> toRemoveKeys) {
     if (!collectionFieldRmd.isInPutOnlyState()) {
@@ -779,7 +784,8 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (newEntries.isEmpty() && toRemoveKeys.isEmpty()) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    IndexedHashMap<String, Object> currMap = (IndexedHashMap<String, Object>) currValueRecord.get(fieldName);
+    IndexedHashMap<String, Object> currMap =
+        (IndexedHashMap<String, Object>) currValueRecord.get(currValueRecordField.pos());
     final IndexedHashMap<String, Object> putOnlyPartMap =
         currMap == null ? new IndexedHashMap<>() : new IndexedHashMap<>(currMap);
     final List<String> collectionMergePartKeys = new ArrayList<>();
@@ -805,7 +811,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         collectionMergePartKeys,
         newEntries,
         currValueRecord,
-        fieldName,
+        currValueRecordField,
         collectionFieldRmd,
         modifyTimestamp);
 
@@ -821,7 +827,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final List<String> collectionMergePartKeys,
       Map<String, Object> newEntries,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       final long modifyTimestamp) {
     final int newPutOnlyPartLength = putOnlyPartMap.size();
@@ -835,7 +841,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       newActiveTimestamps.add(modifyTimestamp);
     }
     collectionFieldRmd.setActiveElementTimestamps(newActiveTimestamps);
-    currValueRecord.put(fieldName, resMap);
+    currValueRecord.put(currValueRecordField.pos(), resMap);
     collectionFieldRmd.setPutOnlyPartLength(newPutOnlyPartLength);
   }
 
@@ -854,16 +860,18 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final long modifyTimestamp,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       Map<String, Object> newEntries,
       List<String> toRemoveKeys) {
     if (collectionFieldRmd.isInPutOnlyState()) {
-      throw new IllegalStateException("Expect map to be in the collection-merge state. Field name: " + fieldName);
+      throw new IllegalStateException(
+          "Expect map to be in the collection-merge state. Field name: " + currValueRecordField.name());
     }
     if (newEntries.isEmpty() && toRemoveKeys.isEmpty()) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    IndexedHashMap<String, Object> currMap = (IndexedHashMap<String, Object>) currValueRecord.get(fieldName);
+    IndexedHashMap<String, Object> currMap =
+        (IndexedHashMap<String, Object>) currValueRecord.get(currValueRecordField.pos());
     List<KeyValPair> currKeyValPairs = new ArrayList<>(currMap.size());
     currMap.forEach((key, value) -> currKeyValPairs.add(new KeyValPair(key, value)));
 
@@ -919,8 +927,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
             // Note that if the current active timestamp is equal to the modify timestamp, we compare value.
             Object currentValue = currMap.get(newKey);
             Object newValue = newKeyValue.getVal();
-            Schema fieldSchema = currValueRecord.getSchema().getField(fieldName).schema();
-            if (shouldUpdateMapFieldItemValueWithSameTs(currentValue, newValue, fieldSchema)) {
+            if (shouldUpdateMapFieldItemValueWithSameTs(currentValue, newValue, currValueRecordField.schema())) {
               activeEntriesToTsMap.remove(newKeyValue);
               activeEntriesToTsMap.put(newKeyValue, modifyTimestamp);
               updated = true;
@@ -979,7 +986,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         newActiveEntriesAndTsList,
         newPutOnlyPartLength,
         currValueRecord,
-        fieldName,
+        currValueRecordField,
         collectionFieldRmd);
 
     // Step 4: Set new deleted keys and their deleted timestamps.
@@ -993,8 +1000,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     return UpdateResultStatus.PARTIALLY_UPDATED;
   }
 
-  private Schema getArraySchema(GenericRecord currValueRecord, String arrayFieldName) {
-    Schema arrayFieldSchema = currValueRecord.getSchema().getField(arrayFieldName).schema();
+  private Schema getArraySchema(Schema arrayFieldSchema) {
     switch (arrayFieldSchema.getType()) {
       case ARRAY:
         return arrayFieldSchema;
@@ -1028,7 +1034,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       List<ElementAndTimestamp> activeElementAndTsList,
       final int newPutOnlyPartLength,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       CollectionRmdTimestamp<String> collectionFieldRmd) {
     Map<String, Object> newMap = new IndexedHashMap<>();
     PrimitiveLongList newActiveTimestamps =
@@ -1043,7 +1049,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       idx++;
     }
     collectionFieldRmd.setActiveElementTimestamps(newActiveTimestamps);
-    currValueRecord.put(fieldName, newMap);
+    currValueRecord.put(currValueRecordField.pos(), newMap);
     collectionFieldRmd.setPutOnlyPartLength(newPutOnlyPartLength);
   }
 
