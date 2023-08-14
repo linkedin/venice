@@ -5,6 +5,7 @@ import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.concurrent.ThreadSafe;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
 
@@ -27,7 +28,7 @@ public abstract class CollectionFieldOperationHandler {
       List<Object> newFieldValue,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName);
+      Schema.Field currValueRecordField);
 
   public abstract UpdateResultStatus handlePutMap(
       final long putTimestamp,
@@ -35,27 +36,27 @@ public abstract class CollectionFieldOperationHandler {
       IndexedHashMap<String, Object> newFieldValue,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName);
+      Schema.Field currValueRecordField);
 
   public abstract UpdateResultStatus handleDeleteList(
       final long deleteTimestamp,
       final int coloID,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName);
+      Schema.Field currValueRecordField);
 
   public abstract UpdateResultStatus handleDeleteMap(
       final long deleteTimestamp,
       final int coloID,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName);
+      Schema.Field currValueRecordField);
 
   public abstract UpdateResultStatus handleModifyList(
       final long modifyTimestamp,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       List<Object> newEntries,
       List<Object> toRemoveKeys);
 
@@ -63,7 +64,7 @@ public abstract class CollectionFieldOperationHandler {
       final long modifyTimestamp,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
-      String fieldName,
+      Schema.Field currValueRecordField,
       Map<String, Object> newEntries,
       List<String> toRemoveKeys);
 }

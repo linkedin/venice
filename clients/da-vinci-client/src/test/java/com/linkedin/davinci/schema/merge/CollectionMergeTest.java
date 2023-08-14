@@ -68,7 +68,7 @@ public class CollectionMergeTest {
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
-        NULLABLE_LIST_FIELD_NAME,
+        oldRecord.getSchema().getField(NULLABLE_LIST_FIELD_NAME),
         newListValue,
         2,
         1);
@@ -77,7 +77,7 @@ public class CollectionMergeTest {
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
-        LIST_FIELD_NAME,
+        oldRecord.getSchema().getField(LIST_FIELD_NAME),
         newListValue,
         2,
         1);
@@ -88,7 +88,7 @@ public class CollectionMergeTest {
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
-        NULLABLE_LIST_FIELD_NAME,
+        oldRecord.getSchema().getField(NULLABLE_LIST_FIELD_NAME),
         null,
         3,
         1);
@@ -99,8 +99,13 @@ public class CollectionMergeTest {
     List<Object> newEntries = Collections.singletonList("item3");
     List<Object> toRemoveKeys = new LinkedList<>();
     CollectionRmdTimestamp<Object> collectionRmdTimestamp = new CollectionRmdTimestamp<>(nullableListTsRecord);
-    resultStatus = handlerToTest
-        .handleModifyList(4L, collectionRmdTimestamp, oldRecord, NULLABLE_LIST_FIELD_NAME, newEntries, toRemoveKeys);
+    resultStatus = handlerToTest.handleModifyList(
+        4L,
+        collectionRmdTimestamp,
+        oldRecord,
+        oldRecord.getSchema().getField(NULLABLE_LIST_FIELD_NAME),
+        newEntries,
+        toRemoveKeys);
     Assert.assertEquals(UpdateResultStatus.PARTIALLY_UPDATED, resultStatus);
     Assert.assertEquals(((List<String>) oldRecord.get(NULLABLE_LIST_FIELD_NAME)).get(0), "item3");
 
@@ -108,7 +113,7 @@ public class CollectionMergeTest {
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
-        NULLABLE_LIST_FIELD_NAME,
+        oldRecord.getSchema().getField(NULLABLE_LIST_FIELD_NAME),
         newListValue,
         3,
         2);
@@ -117,7 +122,7 @@ public class CollectionMergeTest {
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
-        NULLABLE_LIST_FIELD_NAME,
+        oldRecord.getSchema().getField(NULLABLE_LIST_FIELD_NAME),
         null,
         3,
         3);
@@ -154,7 +159,7 @@ public class CollectionMergeTest {
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
-        NULLABLE_MAP_FIELD_NAME,
+        oldRecord.getSchema().getField(NULLABLE_MAP_FIELD_NAME),
         newMapValue,
         2,
         1);
@@ -163,7 +168,7 @@ public class CollectionMergeTest {
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
-        MAP_FIELD_NAME,
+        oldRecord.getSchema().getField(MAP_FIELD_NAME),
         newMapValue,
         2,
         1);
@@ -174,7 +179,7 @@ public class CollectionMergeTest {
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
-        NULLABLE_MAP_FIELD_NAME,
+        oldRecord.getSchema().getField(NULLABLE_MAP_FIELD_NAME),
         null,
         3,
         1);
@@ -185,8 +190,13 @@ public class CollectionMergeTest {
     Map<String, Object> newEntries = Collections.singletonMap("key2", 2);
     List<String> toRemoveKeys = new LinkedList<>();
     CollectionRmdTimestamp<String> collectionRmdTimestamp = new CollectionRmdTimestamp<>(nullableMapTsRecord);
-    resultStatus = handlerToTest
-        .handleModifyMap(4L, collectionRmdTimestamp, oldRecord, NULLABLE_MAP_FIELD_NAME, newEntries, toRemoveKeys);
+    resultStatus = handlerToTest.handleModifyMap(
+        4L,
+        collectionRmdTimestamp,
+        oldRecord,
+        oldRecord.getSchema().getField(NULLABLE_MAP_FIELD_NAME),
+        newEntries,
+        toRemoveKeys);
     Assert.assertEquals(UpdateResultStatus.PARTIALLY_UPDATED, resultStatus);
     Assert.assertEquals(((Map<String, Object>) oldRecord.get(NULLABLE_MAP_FIELD_NAME)).get("key2"), 2);
 
@@ -194,7 +204,7 @@ public class CollectionMergeTest {
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
-        NULLABLE_MAP_FIELD_NAME,
+        oldRecord.getSchema().getField(NULLABLE_MAP_FIELD_NAME),
         newMapValue,
         3,
         2);
@@ -203,7 +213,7 @@ public class CollectionMergeTest {
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
-        NULLABLE_MAP_FIELD_NAME,
+        oldRecord.getSchema().getField(NULLABLE_MAP_FIELD_NAME),
         null,
         3,
         3);
@@ -249,8 +259,13 @@ public class CollectionMergeTest {
     newEntries.put("key6", 2);
     newEntries.put("key7", 2);
     List<String> toRemoveKeys = new LinkedList<>();
-    handlerToTest
-        .handleModifyMap(3L, collectionMetadata, currValueRecord, NULLABLE_MAP_FIELD_NAME, newEntries, toRemoveKeys);
+    handlerToTest.handleModifyMap(
+        3L,
+        collectionMetadata,
+        currValueRecord,
+        currValueRecord.getSchema().getField(NULLABLE_MAP_FIELD_NAME),
+        newEntries,
+        toRemoveKeys);
 
     Map<String, Integer> updatedMap = (Map<String, Integer>) currValueRecord.get(NULLABLE_MAP_FIELD_NAME);
     Map<String, Integer> expectedMap = new HashMap<>();
@@ -285,7 +300,13 @@ public class CollectionMergeTest {
 
     List<Object> toAddItems = Arrays.asList("key1", "key2", "key3", "key4", "key5", "key6");
     List<Object> toRemoveItems = new LinkedList<>();
-    handlerToTest.handleModifyList(2L, collectionMetadata, currValueRecord, LIST_FIELD_NAME, toAddItems, toRemoveItems);
+    handlerToTest.handleModifyList(
+        2L,
+        collectionMetadata,
+        currValueRecord,
+        currValueRecord.getSchema().getField(LIST_FIELD_NAME),
+        toAddItems,
+        toRemoveItems);
 
     List<String> updatedMap = (List<String>) currValueRecord.get(LIST_FIELD_NAME);
     Assert.assertEquals(updatedMap, Arrays.asList("key1", "key2", "key3", "key4"));
@@ -307,7 +328,7 @@ public class CollectionMergeTest {
       timestampsRecord.put(field.name(), fieldRecord);
     }
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, timestampsRecord);
-    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<>());
+    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, new ArrayList<>());
     return rmdRecord;
   }
 }

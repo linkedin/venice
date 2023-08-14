@@ -1,7 +1,7 @@
 package com.linkedin.davinci.schema;
 
 import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_FIELD_NAME;
@@ -140,7 +140,7 @@ public class TestSchemaUtils {
     tsRecord.put(NULLABLE_LIST_FIELD_NAME, nullableListFieldTsRecord);
     tsRecord.put(NULLABLE_MAP_FIELD_NAME, nullableMapFieldTsRecord);
     rmdRecord.put(TIMESTAMP_FIELD_NAME, tsRecord);
-    rmdRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, Collections.emptyList());
+    rmdRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, Collections.emptyList());
     byte[] serializedBytes = getSerializer(rmdSchema).serialize(rmdRecord);
     GenericRecord deserializedValueRecord =
         getDeserializer(annotatedRmdSchema, annotatedRmdSchema).deserialize(serializedBytes);

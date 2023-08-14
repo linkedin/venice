@@ -1,7 +1,7 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
-import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
 import com.linkedin.davinci.schema.merge.ValueAndRmd;
 import java.util.List;
@@ -26,7 +26,7 @@ abstract class AbstractMerge<T> implements Merge<T> {
     if (oldTimestamp < putOperationTimestamp) {
       // New value wins
       oldValueAndRmd.setValue(newValue);
-      oldRmd.put(TIMESTAMP_FIELD_NAME, putOperationTimestamp);
+      oldRmd.put(TIMESTAMP_FIELD_POS, putOperationTimestamp);
       updateReplicationCheckpointVector(oldRmd, newValueSourceOffset, newValueSourceBrokerID);
 
     } else if (oldTimestamp == putOperationTimestamp) {
@@ -58,7 +58,7 @@ abstract class AbstractMerge<T> implements Merge<T> {
       oldValueAndRmd.setValue(null);
       // Still need to track the delete timestamp in order to reject future PUT record with lower replication timestamp
       final GenericRecord oldRmd = oldValueAndRmd.getRmd();
-      oldRmd.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
+      oldRmd.put(TIMESTAMP_FIELD_POS, deleteOperationTimestamp);
       updateReplicationCheckpointVector(oldRmd, newValueSourceOffset, newValueSourceBrokerID);
 
     } else {
@@ -72,9 +72,9 @@ abstract class AbstractMerge<T> implements Merge<T> {
       long newValueSourceOffset,
       int newValueSourceBrokerID) {
     oldRmd.put(
-        REPLICATION_CHECKPOINT_VECTOR_FIELD,
+        REPLICATION_CHECKPOINT_VECTOR_FIELD_POS,
         MergeUtils.mergeOffsetVectors(
-            (List<Long>) oldRmd.get(REPLICATION_CHECKPOINT_VECTOR_FIELD),
+            (List<Long>) oldRmd.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS),
             newValueSourceOffset,
             newValueSourceBrokerID));
   }

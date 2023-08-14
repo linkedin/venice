@@ -428,7 +428,7 @@ public class AvroSchemaUtils {
         // make a deep copy here since genericData caches each default value internally. If we
         // use what it returns, we will mutate the cache.
         newRecord.put(
-            originalField.name(),
+            originalField.pos(),
             GenericData.get()
                 .deepCopy(originalField.schema(), AvroCompatibilityHelper.getGenericDefaultValue(originalField)));
       } else {
