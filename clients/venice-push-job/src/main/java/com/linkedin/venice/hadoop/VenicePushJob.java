@@ -1294,6 +1294,7 @@ public class VenicePushJob implements AutoCloseable {
           RegionUtils.composeRegionList(candidateRegions),
           false);
     }
+    sendPushJobDetailsToController();
   }
 
   private PushJobHeartbeatSender createPushJobHeartbeatSender(final boolean sslEnabled) {
