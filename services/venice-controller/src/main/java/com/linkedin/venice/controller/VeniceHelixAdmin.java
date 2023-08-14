@@ -237,6 +237,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.HelixException;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.HelixPropertyFactory;
 import org.apache.helix.InstanceType;
@@ -4759,9 +4760,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
 
     List<String> instances = getStorageNodes(clusterName);
+    Map<String, List<String>> disabledPartitions;
     for (String instance: instances) {
-      Map<String, List<String>> disabledPartitions =
-          getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
+      try {
+        disabledPartitions = getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
+      } catch (HelixException helixException) {
+        LOGGER.warn(
+            "Failed to get disabled partition map in cluster {} for host {} ",
+            clusterName,
+            instance,
+            helixException);
+        continue;
+      }
       for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
         if (entry.getKey().equals(kafkaTopic)) {
           // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
