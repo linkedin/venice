@@ -2,7 +2,7 @@ package com.linkedin.davinci;
 
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
@@ -56,7 +56,7 @@ public class VersionBackend {
   private final boolean suppressLiveUpdates;
   private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
   private final Map<Integer, CompletableFuture<Void>> partitionFutures = new VeniceConcurrentHashMap<>();
-  private final int stopConsumptionWaitRetriesNum;
+  private final int stopConsumptionTimeoutInSeconds;
   private final StoreBackendStats storeBackendStats;
   private final AvroStoreDeserializerCache storeDeserializerCache;
   private final Lazy<VeniceCompressor> compressor;
@@ -91,8 +91,8 @@ public class VersionBackend {
         && this.config.getClusterProperties().getBoolean(PUSH_STATUS_STORE_ENABLED, false);
     this.heartbeatInterval = this.config.getClusterProperties()
         .getInt(PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS, DEFAULT_PUSH_STATUS_HEARTBEAT_INTERVAL_IN_SECONDS);
-    this.stopConsumptionWaitRetriesNum =
-        backend.getConfigLoader().getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 60);
+    this.stopConsumptionTimeoutInSeconds =
+        backend.getConfigLoader().getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 60);
     this.storeDeserializerCache = backend.getStoreOrThrow(store.getName()).getStoreDeserializerCache();
     this.compressor = Lazy.of(
         () -> backend.getCompressorFactory().getCompressor(version.getCompressionStrategy(), version.kafkaTopicName()));
@@ -352,7 +352,7 @@ public class VersionBackend {
         return;
       }
       completePartition(partition);
-      backend.getIngestionBackend().dropStoragePartitionGracefully(config, partition, stopConsumptionWaitRetriesNum);
+      backend.getIngestionBackend().dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds);
       partitionFutures.remove(partition);
     }
     tryStopHeartbeat();

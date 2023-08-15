@@ -3,13 +3,17 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
+import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -51,17 +55,26 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   private final AtomicLong leaderSessionId = new AtomicLong(0L);
 
   private final LeaderFollowerIngestionProgressNotifier notifier;
+  private final ParticipantStateTransitionStats threadPoolStats;
 
   public LeaderFollowerPartitionStateModel(
       VeniceIngestionBackend ingestionBackend,
-      VeniceStoreVersionConfig storeConfig,
+      VeniceStoreVersionConfig storeAndServerConfigs,
       int partition,
       LeaderFollowerIngestionProgressNotifier notifier,
       ReadOnlyStoreRepository metadataRepo,
       CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
-      String instanceName) {
-    super(ingestionBackend, metadataRepo, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);
+      String instanceName,
+      ParticipantStateTransitionStats threadPoolStats) {
+    super(
+        ingestionBackend,
+        metadataRepo,
+        storeAndServerConfigs,
+        partition,
+        partitionPushStatusAccessorFuture,
+        instanceName);
     this.notifier = notifier;
+    this.threadPoolStats = threadPoolStats;
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
@@ -108,7 +121,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     executeStateTransition(
         message,
         context,
-        () -> getIngestionBackend().promoteToLeader(getStoreConfig(), getPartition(), checker));
+        () -> getIngestionBackend().promoteToLeader(getStoreAndServerConfigs(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
@@ -117,7 +130,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     executeStateTransition(
         message,
         context,
-        () -> getIngestionBackend().demoteToStandby(getStoreConfig(), getPartition(), checker));
+        () -> getIngestionBackend().demoteToStandby(getStoreAndServerConfigs(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
@@ -127,7 +140,30 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
-    executeStateTransition(message, context, this::removePartitionFromStoreGracefully);
+    executeStateTransition(message, context, () -> {
+      boolean isCurrentVersion = false;
+      try {
+        String resourceName = message.getResourceName();
+        String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+        int version = Version.parseVersionFromKafkaTopicName(resourceName);
+        isCurrentVersion = getStoreRepo().getStoreOrThrow(storeName).getCurrentVersion() == version;
+      } catch (VeniceNoStoreException e) {
+        logger.warn("Failed to determine if the resource is current version", e);
+      }
+      if (isCurrentVersion) {
+        // Only do graceful drop for current version resources that are being queried
+        try {
+          this.threadPoolStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+          // Gracefully drop partition to drain the requests to this partition
+          Thread.sleep(TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds()));
+        } catch (InterruptedException e) {
+          throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
+        } finally {
+          this.threadPoolStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+        }
+      }
+      removePartitionFromStoreGracefully();
+    });
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.DROPPED_STATE)
