@@ -59,14 +59,20 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   public LeaderFollowerPartitionStateModel(
       VeniceIngestionBackend ingestionBackend,
-      VeniceStoreVersionConfig storeConfig,
+      VeniceStoreVersionConfig storeAndServerConfigs,
       int partition,
       LeaderFollowerIngestionProgressNotifier notifier,
       ReadOnlyStoreRepository metadataRepo,
       CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
       String instanceName,
       ParticipantStateTransitionStats threadPoolStats) {
-    super(ingestionBackend, metadataRepo, storeConfig, partition, partitionPushStatusAccessorFuture, instanceName);
+    super(
+        ingestionBackend,
+        metadataRepo,
+        storeAndServerConfigs,
+        partition,
+        partitionPushStatusAccessorFuture,
+        instanceName);
     this.notifier = notifier;
     this.threadPoolStats = threadPoolStats;
   }
@@ -115,7 +121,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     executeStateTransition(
         message,
         context,
-        () -> getIngestionBackend().promoteToLeader(getStoreConfig(), getPartition(), checker));
+        () -> getIngestionBackend().promoteToLeader(getStoreAndServerConfigs(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
@@ -124,7 +130,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
     executeStateTransition(
         message,
         context,
-        () -> getIngestionBackend().demoteToStandby(getStoreConfig(), getPartition(), checker));
+        () -> getIngestionBackend().demoteToStandby(getStoreAndServerConfigs(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
@@ -149,7 +155,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         try {
           this.threadPoolStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
           // Gracefully drop partition to drain the requests to this partition
-          Thread.sleep(TimeUnit.SECONDS.toMillis(getStoreConfig().getPartitionGracefulDropDelaySeconds()));
+          Thread.sleep(TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds()));
         } catch (InterruptedException e) {
           throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
         } finally {
