@@ -44,7 +44,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controller.datarecovery.DataRecoveryManager;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRepository;
@@ -351,8 +350,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final D2Client d2Client;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
   private final boolean usePushStatusStoreToReadServerIncrementalPushStatus;
-  private static final ByteBuffer EMPTY_PUSH_ZSTD_DICTIONARY =
-      ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
   private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
 
@@ -2453,19 +2450,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 clusterConfig,
                 useFastKafkaOperationTimeout);
 
-            ByteBuffer compressionDictionaryBuffer = null;
-            if (compressionDictionary != null) {
-              compressionDictionaryBuffer =
-                  ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
-            } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
-              // We can't use dictionary compression with no dictionary, so we generate a basic one
-              // TODO: It would be smarter to query it from the previous version and pass it along. However,
-              // the 'previous' version can mean different things in different colos, and ideally we'd want
-              // a consistent compressed result in all colos so as to make sure we don't confuse our consistency
-              // checking mechanisms. So this needs some (maybe) complicated reworking.
-              compressionDictionaryBuffer = EMPTY_PUSH_ZSTD_DICTIONARY;
-            }
-
             String sourceKafkaBootstrapServers = null;
 
             store = repository.getStore(storeName);
@@ -2585,6 +2569,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if (sendStartOfPush) {
+              ByteBuffer compressionDictionaryBuffer = null;
+              if (compressionDictionary != null) {
+                compressionDictionaryBuffer =
+                    ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
+              } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+                throw new VeniceException(
+                    "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
+              }
+
               final Version finalVersion = version;
               VeniceWriter veniceWriter = null;
               try {
