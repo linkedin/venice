@@ -22,6 +22,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.AggServerQuotaTokenBucketStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
+import com.linkedin.venice.stats.ServerConnectionStats;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import io.grpc.ServerInterceptor;
@@ -57,6 +58,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final VeniceServerConfig serverConfig;
   private final ReadQuotaEnforcementHandler quotaEnforcer;
   private final VeniceHttp2PipelineInitializerBuilder http2PipelineInitializerBuilder;
+  private final ServerConnectionStats serverConnectionStats;
   AggServerQuotaUsageStats quotaUsageStats;
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
   List<ServerInterceptor> aclInterceptors;
@@ -142,6 +144,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       LOGGER.info("HTTP2 inbound request isn't supported");
     }
     this.http2PipelineInitializerBuilder = new VeniceHttp2PipelineInitializerBuilder(serverConfig);
+
+    serverConnectionStats = new ServerConnectionStats(metricsRepository, "server_connection_stats");
   }
 
   /*
@@ -204,6 +208,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           pipeline.addLast(storeAclHandler.get());
         }
       }
+      ServerConnectionStatsHandler serverConnectionStatsHandler =
+          new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName());
+      pipeline.addLast(serverConnectionStatsHandler);
       pipeline
           .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
       if (quotaEnforcer != null) {
