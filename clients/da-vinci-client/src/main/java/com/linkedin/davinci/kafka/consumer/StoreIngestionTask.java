@@ -1435,15 +1435,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (action == null) {
         break;
       }
+      final long actionProcessStartTimeInMs = System.currentTimeMillis();
       try {
-        LOGGER.info("Starting consumer action {}", action);
+        LOGGER.info(
+            "Starting consumer action {}. Latency from creating action to starting action {}ms",
+            action,
+            LatencyUtils.getElapsedTimeInMs(action.getCreateTimestampInMs()));
         action.incrementAttempt();
         processConsumerAction(action, store);
         // Remove the action that is processed recently (not necessarily the head of consumerActionsQueue).
         if (consumerActionsQueue.remove(action)) {
           partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
         }
-        LOGGER.info("Finished consumer action {}", action);
+        LOGGER.info(
+            "Finished consumer action {} in {}ms",
+            action,
+            LatencyUtils.getElapsedTimeInMs(actionProcessStartTimeInMs));
       } catch (VeniceIngestionTaskKilledException | InterruptedException e) {
         throw e;
       } catch (Throwable e) {
@@ -1451,7 +1458,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           LOGGER.warn("Failed to process consumer action {}, will retry later.", action, e);
           return;
         }
-        LOGGER.error("Failed to execute consumer action {} after {} attempts.", action, action.getAttemptsCount(), e);
+        LOGGER.error(
+            "Failed to execute consumer action {} after {} attempts. Total elapsed time: {}ms",
+            action,
+            action.getAttemptsCount(),
+            LatencyUtils.getElapsedTimeInMs(actionProcessStartTimeInMs),
+            e);
         // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
         PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
 
