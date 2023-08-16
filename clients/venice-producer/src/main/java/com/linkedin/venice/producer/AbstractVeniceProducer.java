@@ -3,14 +3,13 @@ package com.linkedin.venice.producer;
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_THREAD_NUM;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
-import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.schema.SchemaData;
@@ -110,13 +109,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   }
 
   private VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse versionCreationResponse) {
-    Properties writerProps = new Properties();
+    Properties writerProps = producerConfigs.getPropertiesCopy();
 
     if (versionCreationResponse.isEnableSSL()) {
       writerProps.put(KAFKA_OVER_SSL, "true");
       writerProps.put(SSL_KAFKA_BOOTSTRAP_SERVERS, versionCreationResponse.getKafkaBootstrapServers());
-      writerProps.put(KAFKA_SECURITY_PROTOCOL, producerConfigs.getString(KAFKA_SECURITY_PROTOCOL));
-      writerProps.putAll(new SSLConfig(producerConfigs).getKafkaSSLConfig());
     } else {
       writerProps.put(KAFKA_BOOTSTRAP_SERVERS, versionCreationResponse.getKafkaBootstrapServers());
     }
@@ -147,7 +144,8 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   protected VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
       Properties properties,
       VeniceWriterOptions writerOptions) {
-    return new VeniceWriterFactory(properties).createVeniceWriter(writerOptions);
+    return new VeniceWriterFactory(properties, new ApacheKafkaProducerAdapterFactory(), null)
+        .createVeniceWriter(writerOptions);
   }
 
   protected RecordSerializer<Object> getSerializer(Schema schema) {

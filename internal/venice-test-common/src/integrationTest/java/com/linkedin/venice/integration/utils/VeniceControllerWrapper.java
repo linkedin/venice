@@ -39,10 +39,14 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
@@ -62,8 +66,8 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -75,6 +79,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -111,8 +116,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final MetricsRepository metricsRepository;
   private final String regionName;
 
-  private final PubSubClientsFactory pubSubClientsFactory;
-
   private VeniceControllerWrapper(
       String regionName,
       String serviceName,
@@ -124,8 +127,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       boolean isParent,
       List<ServiceDiscoveryAnnouncer> d2ServerList,
       String zkAddress,
-      MetricsRepository metricsRepository,
-      PubSubClientsFactory pubSubClientsFactory) {
+      MetricsRepository metricsRepository) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.configs = configs;
@@ -136,7 +138,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.d2ServerList = d2ServerList;
     this.metricsRepository = metricsRepository;
     this.regionName = regionName;
-    this.pubSubClientsFactory = pubSubClientsFactory;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(VeniceControllerCreateOptions options) {
@@ -164,6 +165,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         clusterToServerD2 = options.getClusterToServerD2();
       }
 
+      PubSubClientsFactory pubSubClientsFactory = options.getKafkaBroker().getPubSubClientsFactory();
       for (String clusterName: options.getClusterNames()) {
         VeniceProperties clusterProps = IntegrationTestUtils
             .getClusterProps(clusterName, options.getZkAddress(), options.getKafkaBroker(), options.isSslToKafka());
@@ -209,6 +211,16 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONCURRENT_INIT_ROUTINES_ENABLED, true)
             .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
+            .put(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true)
+            .put(
+                PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+                pubSubClientsFactory.getProducerAdapterFactory().getClass().getName())
+            .put(
+                PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+                pubSubClientsFactory.getConsumerAdapterFactory().getClass().getName())
+            .put(
+                PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
+                pubSubClientsFactory.getAdminAdapterFactory().getClass().getName())
             .put(extraProps.toProperties());
 
         if (sslEnabled) {
@@ -226,6 +238,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           // This dummy parent controller won't support such requests until we make this config configurable.
           // go/inclusivecode deferred(Reference will be removed when clients have migrated)
           fabricAllowList = extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, "");
+        } else {
+          // child controller should at least know the urls or D2 ZK address of its local region
+          fabricAllowList = options.getExtraProperties().getProperty(LOCAL_REGION_NAME, options.getRegionName());
         }
 
         /**
@@ -303,7 +318,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         }
 
         // Add additional config from PubSubBrokerWrapper to server.properties iff the key is not already present
-        Map<String, String> brokerDetails = options.getKafkaBroker().getAdditionalConfig();
+        Map<String, String> brokerDetails =
+            PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(options.getKafkaBroker()));
         for (Map.Entry<String, String> entry: brokerDetails.entrySet()) {
           builder.putIfAbsent(entry.getKey(), entry.getValue());
         }
@@ -339,7 +355,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           .setD2Client(d2Client)
           .setRouterClientConfig(consumerClientConfig.orElse(null))
           .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
-          .setPubSubClientsFactory(options.getKafkaBroker().getPubSubClientsFactory())
           .build();
       VeniceController veniceController = new VeniceController(ctx);
       return new VeniceControllerWrapper(
@@ -353,8 +368,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           options.isParent(),
           d2ServerList,
           options.getZkAddress(),
-          metricsRepository,
-          options.getKafkaBroker().getPubSubClientsFactory());
+          metricsRepository);
     };
   }
 
@@ -430,7 +444,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         new VeniceControllerContext.Builder().setPropertiesList(configs)
             .setServiceDiscoveryAnnouncers(d2ServerList)
             .setD2Client(d2Client)
-            .setPubSubClientsFactory(pubSubClientsFactory)
             .build());
   }
 

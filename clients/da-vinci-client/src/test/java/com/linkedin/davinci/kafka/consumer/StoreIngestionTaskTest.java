@@ -17,7 +17,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.utils.TestUtils.getOffsetRecord;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
@@ -77,7 +77,6 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
-import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -118,16 +117,17 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
@@ -355,7 +355,7 @@ public abstract class StoreIngestionTaskTest {
   private static byte[] createReplicationMetadataWithValueSchemaId(long timestamp, long offset, int valueSchemaId) {
     GenericRecord replicationMetadataRecord = new GenericData.Record(REPLICATION_METADATA_SCHEMA);
     replicationMetadataRecord.put(TIMESTAMP_FIELD_NAME, timestamp);
-    replicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, Collections.singletonList(offset));
+    replicationMetadataRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, Collections.singletonList(offset));
 
     byte[] replicationMetadata = REPLICATION_METADATA_SERIALIZER.serialize(replicationMetadataRecord);
 
@@ -1472,7 +1472,7 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
-    doThrow(new UnsubscribedTopicPartitionException(fooTopicPartition)).when(mockLocalKafkaConsumer)
+    doThrow(new PubSubUnsubscribedTopicPartitionException(fooTopicPartition)).when(mockLocalKafkaConsumer)
         .resetOffset(fooTopicPartition);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
@@ -1950,7 +1950,7 @@ public abstract class StoreIngestionTaskTest {
     return ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(number).array();
   }
 
-  @Test(dataProvider = "Two-True-and-False", invocationCount = 3, skipFailedInvocations = true, dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testDataValidationCheckPointing(boolean sortedInput, boolean isActiveActiveReplicationEnabled)
       throws Exception {
     final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
@@ -2186,10 +2186,10 @@ public abstract class StoreIngestionTaskTest {
     // intentionally not sending the EOP so that expectedSSTFileChecksum calculation does not get reset.
     // veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    Optional<CheckSum> checksum = CheckSum.getInstance(CheckSumType.MD5);
-    checksum.get().update(putKeyFoo);
-    checksum.get().update(SCHEMA_ID);
-    checksum.get().update(putValue);
+    CheckSum checksum = CheckSum.getInstance(CheckSumType.MD5);
+    checksum.update(putKeyFoo);
+    checksum.update(SCHEMA_ID);
+    checksum.update(putValue);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the Offset Manager
@@ -2208,7 +2208,7 @@ public abstract class StoreIngestionTaskTest {
           .beginBatchWrite(eq(deferredWritePartitionConfig), any(), checksumCaptor.capture());
       Optional<Supplier<byte[]>> checksumSupplier = checksumCaptor.getValue();
       Assert.assertTrue(checksumSupplier.isPresent());
-      Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.get().getCheckSum()));
+      Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.getCheckSum()));
     }, isActiveActiveReplicationEnabled);
   }
 
@@ -2982,6 +2982,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(KAFKA_BOOTSTRAP_SERVERS));
 
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getClusterProperties();
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
     doReturn(true).when(mockVeniceProperties).isEmpty();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
@@ -3084,6 +3085,7 @@ public abstract class StoreIngestionTaskTest {
         .getLocalStorageEngine(anyString());
     doReturn(mockStorageEngineRepository).when(builder).getStorageEngineRepository();
     VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(VeniceProperties.empty()).when(veniceServerConfig).getClusterProperties();
     doReturn(VeniceProperties.empty()).when(veniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     doReturn(VeniceProperties.empty()).when(veniceServerConfig).getKafkaConsumerConfigsForRemoteConsumption();
     doReturn(Object2IntMaps.emptyMap()).when(veniceServerConfig).getKafkaClusterUrlToIdMap();

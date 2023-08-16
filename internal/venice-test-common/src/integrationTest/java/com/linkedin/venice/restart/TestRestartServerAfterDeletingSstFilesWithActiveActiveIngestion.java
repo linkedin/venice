@@ -40,6 +40,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -50,7 +51,6 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.view.TestView;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -122,7 +122,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
         1,
         Optional.empty(),
         Optional.empty(),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(serverProperties),
         false);
 
     List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
@@ -266,7 +266,9 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
 
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        clusterWrapper.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl, pubSubProducerAdapterFactory);
 
     startKey += numKeys; // to have different version having different set of keys
     int endKey = startKey + numKeys;

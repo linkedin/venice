@@ -17,7 +17,6 @@ public class HttpConstants {
   public static final String HTTPS_POST = "POST";
 
   public static final String VENICE_STORE_VERSION = "X-VENICE-STORE-VERSION";
-  public static final String VENICE_PARTITION = "X-VENICE-PARTITION";
   public static final String VENICE_API_VERSION = "X-VENICE-API-VERSION";
   public static final String VENICE_SCHEMA_ID = "X-VENICE-SCHEMA-ID";
   public static final String VENICE_REQUEST_RCU = "X-VENICE-RCU";
@@ -34,6 +33,8 @@ public class HttpConstants {
   public static final String VENICE_COMPUTE_VALUE_SCHEMA_ID = "X-VENICE-COMPUTE-VALUE-SCHEMA-ID";
 
   public static final String VENICE_ALLOW_REDIRECT = "X-VENICE-ALLOW-REDIRECT";
+
+  public static final String VENICE_CLIENT_COMPUTE = "X-VENICE-CLIENT-COMPUTE";
 
   public static final int SC_MISDIRECTED_REQUEST = 421;
 

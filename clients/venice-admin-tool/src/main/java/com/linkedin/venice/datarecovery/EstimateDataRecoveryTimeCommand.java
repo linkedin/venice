@@ -45,13 +45,6 @@ public class EstimateDataRecoveryTimeCommand extends Command {
     this.result = result;
   }
 
-  public ControllerClient buildControllerClient(
-      String clusterName,
-      String discoveryUrls,
-      Optional<SSLFactory> sslFactory) {
-    return new ControllerClient(clusterName, discoveryUrls, sslFactory);
-  }
-
   @Override
   public void execute() {
     // get store's push + partition info

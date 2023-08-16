@@ -1,16 +1,11 @@
 package com.linkedin.venice.schema.rmd;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
-import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
-import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
-import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
 import org.antlr.v4.runtime.misc.NotNull;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -20,28 +15,6 @@ import org.apache.avro.generic.GenericRecord;
  * It borrows some methods from {@link com.linkedin.davinci.replication.merge.RmdSerDe}.
  */
 public class RmdUtils {
-  public static ByteBuffer serializeRmdRecord(final Schema valueSchema, GenericRecord rmdRecord) {
-    byte[] rmdBytes = getRmdSerializer(valueSchema).serialize(rmdRecord);
-    return ByteBuffer.wrap(rmdBytes);
-  }
-
-  private static RecordSerializer<GenericRecord> getRmdSerializer(final Schema valueSchema) {
-    return MapOrderingPreservingSerDeFactory.getSerializer(valueSchema);
-  }
-
-  public static GenericRecord deserializeRmdBytes(
-      final Schema writerSchema,
-      final Schema readerSchema,
-      final ByteBuffer rmdBytes) {
-    return getRmdDeserializer(writerSchema, readerSchema).deserialize(rmdBytes);
-  }
-
-  private static RecordDeserializer<GenericRecord> getRmdDeserializer(
-      final Schema writerSchema,
-      final Schema readerSchema) {
-    return MapOrderingPreservingSerDeFactory.getDeserializer(writerSchema, readerSchema);
-  }
-
   /**
    * Returns the type of union record given tsObject is. Right now it will be either root level long or
    * generic record of per field timestamp.
@@ -58,12 +31,12 @@ public class RmdUtils {
   }
 
   public static long extractOffsetVectorSumFromRmd(GenericRecord replicationMetadataRecord) {
-    Object offsetVectorObject = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
+    Object offsetVectorObject = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
     return sumOffsetVector(offsetVectorObject);
   }
 
   public static List<Long> extractOffsetVectorFromRmd(GenericRecord replicationMetadataRecord) {
-    Object offsetVector = (List<Long>) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
+    Object offsetVector = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
     if (offsetVector == null) {
       return Collections.emptyList();
     }
@@ -82,7 +55,7 @@ public class RmdUtils {
     if (replicationMetadataRecord == null) {
       return Collections.singletonList(0L);
     }
-    Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
+    Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = getRmdTimestampType(timestampObject);
 
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {

@@ -1,12 +1,12 @@
 package com.linkedin.davinci.replication.merge;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.collections.BiIntKeyCache;
 import java.nio.ByteBuffer;
@@ -44,11 +44,12 @@ public class RmdSerDe {
   }
 
   /**
-   * @param valueSchemaIdPrependedBytes The raw bytes with value schema ID prepended.
-   * @return A {@link RmdWithValueSchemaId} object composed by extracting the value schema ID from the
-   *    * header of the replication metadata.
+   * This method takes in the RMD bytes with prepended value schema ID and a {@link RmdWithValueSchemaId} container object.
+   * It will deserialize the RMD bytes into RMD record and fill the passed-in container.
    */
-  public RmdWithValueSchemaId deserializeValueSchemaIdPrependedRmdBytes(byte[] valueSchemaIdPrependedBytes) {
+  public void deserializeValueSchemaIdPrependedRmdBytes(
+      byte[] valueSchemaIdPrependedBytes,
+      RmdWithValueSchemaId rmdWithValueSchemaId) {
     Validate.notNull(valueSchemaIdPrependedBytes);
     ByteBuffer rmdWithValueSchemaID = ByteBuffer.wrap(valueSchemaIdPrependedBytes);
     final int valueSchemaId = rmdWithValueSchemaID.getInt();
@@ -58,7 +59,9 @@ public class RmdSerDe {
             rmdWithValueSchemaID.position(),
             rmdWithValueSchemaID.remaining());
     GenericRecord rmdRecord = getRmdDeserializer(valueSchemaId, valueSchemaId).deserialize(binaryDecoder);
-    return new RmdWithValueSchemaId(valueSchemaId, rmdVersionId, rmdRecord);
+    rmdWithValueSchemaId.setValueSchemaId(valueSchemaId);
+    rmdWithValueSchemaId.setRmdProtocolVersionId(rmdVersionId);
+    rmdWithValueSchemaId.setRmdRecord(rmdRecord);
   }
 
   /**

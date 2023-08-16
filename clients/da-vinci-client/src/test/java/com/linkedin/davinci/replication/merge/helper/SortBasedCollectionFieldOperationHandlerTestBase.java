@@ -10,12 +10,12 @@ import com.linkedin.davinci.replication.merge.helper.utils.MergeListOperation;
 import com.linkedin.davinci.replication.merge.helper.utils.MergeMapOperation;
 import com.linkedin.davinci.replication.merge.helper.utils.PutListOperation;
 import com.linkedin.davinci.replication.merge.helper.utils.PutMapOperation;
-import com.linkedin.venice.schema.merge.AvroCollectionElementComparator;
-import com.linkedin.venice.schema.merge.CollectionTimestampBuilder;
-import com.linkedin.venice.schema.merge.SortBasedCollectionFieldOpHandler;
+import com.linkedin.davinci.schema.merge.AvroCollectionElementComparator;
+import com.linkedin.davinci.schema.merge.CollectionTimestampBuilder;
+import com.linkedin.davinci.schema.merge.SortBasedCollectionFieldOpHandler;
+import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
-import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -172,7 +172,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           ((PutListOperation) op).getNewList(),
           (CollectionRmdTimestamp<Object>) collectionMetadata,
           currValueRecord,
-          op.getFieldName());
+          currValueRecord.getSchema().getField(op.getFieldName()));
 
     } else if (op instanceof PutMapOperation) {
       handlerToTest.handlePutMap(
@@ -181,14 +181,14 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           ((PutMapOperation) op).getNewMap(),
           (CollectionRmdTimestamp<String>) collectionMetadata,
           currValueRecord,
-          op.getFieldName());
+          currValueRecord.getSchema().getField(op.getFieldName()));
 
     } else if (op instanceof MergeListOperation) {
       handlerToTest.handleModifyList(
           op.getOpTimestamp(),
           (CollectionRmdTimestamp<Object>) collectionMetadata,
           currValueRecord,
-          op.getFieldName(),
+          currValueRecord.getSchema().getField(op.getFieldName()),
           ((MergeListOperation) op).getNewElements(),
           ((MergeListOperation) op).getToRemoveElements());
 
@@ -197,7 +197,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           op.getOpTimestamp(),
           (CollectionRmdTimestamp<String>) collectionMetadata,
           currValueRecord,
-          op.getFieldName(),
+          currValueRecord.getSchema().getField(op.getFieldName()),
           ((MergeMapOperation) op).getNewEntries(),
           ((MergeMapOperation) op).getToRemoveKeys());
 
@@ -207,7 +207,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           op.getOpColoID(),
           (CollectionRmdTimestamp<Object>) collectionMetadata,
           currValueRecord,
-          op.getFieldName());
+          currValueRecord.getSchema().getField(op.getFieldName()));
 
     } else if (op instanceof DeleteMapOperation) {
       handlerToTest.handleDeleteMap(
@@ -215,7 +215,7 @@ public class SortBasedCollectionFieldOperationHandlerTestBase {
           op.getOpColoID(),
           (CollectionRmdTimestamp<String>) collectionMetadata,
           currValueRecord,
-          op.getFieldName());
+          currValueRecord.getSchema().getField(op.getFieldName()));
     } else {
       throw new IllegalStateException("Unknown operation type: Got: " + op.getClass());
     }

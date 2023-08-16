@@ -206,7 +206,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
                 .dropStoragePartitionGracefully(
                     storeConfig,
                     partitionId,
-                    isolatedIngestionServer.getStopConsumptionWaitRetriesNum(),
+                    isolatedIngestionServer.getStopConsumptionTimeoutInSeconds(),
                     false);
             isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
           });

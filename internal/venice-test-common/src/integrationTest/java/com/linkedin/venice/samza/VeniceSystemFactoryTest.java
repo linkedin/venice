@@ -189,11 +189,12 @@ public class VeniceSystemFactoryTest {
     // property here.
     GenericRecord complexValueRecord = new GenericData.Record(Schema.parse(complexSchema));
     complexValueRecord.put("int_field", 200);
+    byte[] key = new byte[] { 0x3, 0x4, 0x5 };
+    byte[] value = new byte[] { 0xd, 0xe, 0xf };
     return new Object[][] {
-        { new byte[] { 0x3, 0x4, 0x5 }, ByteBuffer.wrap(new byte[] { 0x3, 0x4, 0x5 }), new byte[] { 0xd, 0xe, 0xf },
-            ByteBuffer.wrap(new byte[] { 0xd, 0xe, 0xf }), "\"bytes\"" },
+        { ByteBuffer.wrap(key), ByteBuffer.wrap(key), ByteBuffer.wrap(value), ByteBuffer.wrap(value), "\"bytes\"" },
         { "three", "three", "four", new Utf8("four"), "\"string\"" },
-        { complexKeyRecord, complexKeyRecord, complexValueRecord, complexValueRecord, complexSchema }, };
+        { complexKeyRecord, complexKeyRecord, complexValueRecord, complexValueRecord, complexSchema } };
   }
 
   /**

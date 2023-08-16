@@ -41,6 +41,7 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
@@ -52,7 +53,6 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ComplementSet;
-import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -389,7 +389,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ComputeUtils.checkResultSchema(
           computeResultSchema,
           computeRequestWrapper.getValueSchema(),
-          computeRequestWrapper.getComputeRequestVersion(),
           computeRequestWrapper.getOperations());
       computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
     }

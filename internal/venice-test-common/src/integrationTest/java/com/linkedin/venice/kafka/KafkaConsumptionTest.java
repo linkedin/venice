@@ -27,9 +27,9 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -107,7 +107,7 @@ public class KafkaConsumptionTest {
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100L,
                 MIN_COMPACTION_LAG,
-                localPubSubBroker.getAddress(),
+                localPubSubBroker,
                 pubSubTopicRepository)
             .getTopicManager();
     Cache cacheNothingCache = mock(Cache.class);
@@ -123,7 +123,7 @@ public class KafkaConsumptionTest {
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100L,
                 MIN_COMPACTION_LAG,
-                remotePubSubBroker.getAddress(),
+                remotePubSubBroker,
                 pubSubTopicRepository)
             .getTopicManager();
     Cache remoteCacheNothingCache = mock(Cache.class);
@@ -135,7 +135,6 @@ public class KafkaConsumptionTest {
   public void cleanUp() {
     topicManager.close();
     localPubSubBroker.close();
-
     remoteTopicManager.close();
     remotePubSubBroker.close();
   }
@@ -178,7 +177,8 @@ public class KafkaConsumptionTest {
     doReturn(clusterUrlToIdMap).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
 
     TopicExistenceChecker topicExistenceChecker = mock(TopicExistenceChecker.class);
-    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = IntegrationTestPushUtils.getVeniceConsumerFactory();
+    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
+        localPubSubBroker.getPubSubClientsFactory().getConsumerAdapterFactory();
     PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
@@ -276,7 +276,7 @@ public class KafkaConsumptionTest {
       PubSubBrokerWrapper pubSubBrokerWrapper) throws ExecutionException, InterruptedException {
     PubSubProducerAdapter producerAdapter = pubSubBrokerWrapper.getPubSubClientsFactory()
         .getProducerAdapterFactory()
-        .create(new VeniceProperties(new Properties()), "test-producer", pubSubBrokerWrapper.getAddress());
+        .create(VeniceProperties.empty(), "test-producer", pubSubBrokerWrapper.getAddress());
 
     final byte[] randomBytes = new byte[] { 0, 1 };
 

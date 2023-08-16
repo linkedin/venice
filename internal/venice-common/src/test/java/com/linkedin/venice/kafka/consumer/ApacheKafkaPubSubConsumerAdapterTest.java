@@ -14,7 +14,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -31,6 +30,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -99,7 +99,9 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
     PubSubTopic testTopic = pubSubTopicRepository.getTopic("test_topic_v1");
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(testTopic, 1);
     TopicPartition topicPartition = new TopicPartition(testTopic.getName(), pubSubTopicPartition.getPartitionNumber());
-    Assert.assertThrows(UnsubscribedTopicPartitionException.class, () -> consumer.resetOffset(pubSubTopicPartition));
+    Assert.assertThrows(
+        PubSubUnsubscribedTopicPartitionException.class,
+        () -> consumer.resetOffset(pubSubTopicPartition));
 
     // Test subscribe
     consumer.subscribe(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);
@@ -175,7 +177,7 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
             new TopicPartition("test", 42),
             Collections.singletonList(new ConsumerRecord<>("test", 42, 75, "key".getBytes(), "value".getBytes()))));
     doReturn(consumerRecords).when(consumer).poll(any());
-    new ApacheKafkaConsumerAdapter(consumer, new VeniceProperties(new Properties()), false, pubSubMessageDeserializer)
+    new ApacheKafkaConsumerAdapter(consumer, VeniceProperties.empty(), false, pubSubMessageDeserializer)
         .poll(Long.MAX_VALUE);
   }
 
@@ -193,7 +195,7 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(
         Collections.singletonMap(new TopicPartition("test", 42), Collections.singletonList(record)));
     doReturn(records).when(consumer).poll(any());
-    new ApacheKafkaConsumerAdapter(consumer, new VeniceProperties(new Properties()), false, pubSubMessageDeserializer)
+    new ApacheKafkaConsumerAdapter(consumer, VeniceProperties.empty(), false, pubSubMessageDeserializer)
         .poll(Long.MAX_VALUE);
   }
 
@@ -229,11 +231,8 @@ public class ApacheKafkaPubSubConsumerAdapterTest {
         Collections.singletonMap(new TopicPartition("test", 42), Collections.singletonList(record)));
     doReturn(records).when(consumer).poll(any());
 
-    ApacheKafkaConsumerAdapter consumerAdapter = new ApacheKafkaConsumerAdapter(
-        consumer,
-        new VeniceProperties(new Properties()),
-        false,
-        pubSubMessageDeserializer);
+    ApacheKafkaConsumerAdapter consumerAdapter =
+        new ApacheKafkaConsumerAdapter(consumer, VeniceProperties.empty(), false, pubSubMessageDeserializer);
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 42);
     // add partition to assignments

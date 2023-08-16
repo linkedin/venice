@@ -589,7 +589,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           keyBytes,
           ValueRecord.create(schemaId, valueBytes.array()).serialize());
       try {
-
         assembledRecord = processRecordBytes(
             recordDeserializer.get(),
             compressor,
@@ -604,7 +603,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 null,
                 readerSchemaId,
                 RawBytesStoreDeserializerCache.getInstance(),
-                compressor),
+                compressor,
+                null),
             pubSubTopicPartition,
             readerSchemaId);
 
@@ -618,7 +618,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         // null,
         // readerSchemaId,
         // deserializerCache,
-        // compressor);
+        // compressor, null);
       } catch (Exception ex) {
         // We might get an exception if we haven't persisted all the chunks for a given key. This
         // can actually happen if the client seeks to the middle of a chunked record either by
@@ -760,7 +760,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           .getAvroGenericDeserializer(Schema.parse(replicationMetadataSchema.getSchemaStr()));
       GenericRecord replicationMetadataRecord = deserializer.deserialize(replicationMetadataPayload);
       GenericData.Array replicationCheckpointVector =
-          (GenericData.Array) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
+          (GenericData.Array) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
       List<Long> offsetVector = new ArrayList<>();
       for (Object o: replicationCheckpointVector) {
         offsetVector.add((Long) o);

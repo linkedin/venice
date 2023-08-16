@@ -3,10 +3,12 @@ package com.linkedin.venice.router.stats;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.*;
 
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
+import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -56,17 +58,16 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor noAvailableReplicaAbortedRetryRequest;
   private final Sensor readQuotaUsageSensor;
   private final Sensor inFlightRequestSensor;
-  private Sensor keySizeSensor;
-
   private final AtomicInteger currentInFlightRequest;
   private final Sensor unavailableReplicaStreamingRequestSensor;
   private final Sensor allowedRetryRequestSensor;
   private final Sensor disallowedRetryRequestSensor;
   private final Sensor errorRetryAttemptTriggeredByPendingRequestCheckSensor;
   private final Sensor retryDelaySensor;
+  private final Sensor multiGetFallbackSensor;
   private final Sensor metaStoreShadowReadSensor;
-
-  private final boolean isKeyValueProfilingEnabled;
+  private Sensor keySizeSensor;
+  private final String systemStoreName;
 
   // QPS metrics
   public RouterHttpRequestStats(
@@ -76,7 +77,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
       ScatterGatherStats scatterGatherStats,
       boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
-
+    this.systemStoreName = VeniceSystemStoreUtils.extractSystemStoreType(storeName);
     Rate requestRate = new OccurrenceRate();
     Rate healthyRequestRate = new OccurrenceRate();
     Rate tardyRequestRate = new OccurrenceRate();
@@ -85,7 +86,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     unhealthySensor = registerSensor("unhealthy_request", new Count());
     unavailableReplicaStreamingRequestSensor = registerSensor("unavailable_replica_streaming_request", new Count());
     tardySensor = registerSensor("tardy_request", new Count(), tardyRequestRate);
-    this.isKeyValueProfilingEnabled = isKeyValueProfilingEnabled;
     healthyRequestRateSensor =
         registerSensor("healthy_request_ratio", new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
     tardyRequestRatioSensor =
@@ -138,6 +138,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
      * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS
      */
     requestUsageSensor = registerSensor("request_usage", new Total(), new OccurrenceRate());
+    multiGetFallbackSensor = registerSensor("multiget_fallback", new Total(), new OccurrenceRate());
 
     requestParsingLatencySensor = registerSensor("request_parse_latency", new Avg());
     requestRoutingLatencySensor = registerSensor("request_route_latency", new Avg());
@@ -299,6 +300,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     requestUsageSensor.record(usage);
   }
 
+  public void recordMultiGetFallback(int keyCount) {
+    multiGetFallbackSensor.record(keyCount);
+  }
+
   public void recordRequestParsingLatency(double latency) {
     requestParsingLatencySensor.record(latency);
   }
@@ -359,5 +364,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordMetaStoreShadowRead() {
     metaStoreShadowReadSensor.record();
+  }
+
+  @Override
+  protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
+    return super.registerSensor(systemStoreName == null ? sensorName : systemStoreName, null, stats);
   }
 }

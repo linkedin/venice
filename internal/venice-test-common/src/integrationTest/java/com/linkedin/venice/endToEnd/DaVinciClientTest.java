@@ -61,6 +61,7 @@ import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -116,6 +117,7 @@ public class DaVinciClientTest {
       "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}";
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
+  private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
 
   @BeforeClass
   public void setUp() {
@@ -127,6 +129,8 @@ public class DaVinciClientTest {
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
+    pubSubProducerAdapterFactory =
+        cluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
     D2ClientUtils.startClient(d2Client);
   }
 
@@ -358,7 +362,8 @@ public class DaVinciClientTest {
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        TestUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory);
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
@@ -743,7 +748,8 @@ public class DaVinciClientTest {
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        TestUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory);
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;

@@ -164,7 +164,7 @@ public class TestProduceWithSSL {
 
     // Re-push with Kafka Input Format
     props.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
-    props.setProperty(VenicePushJob.KAFKA_INPUT_BROKER_URL, cluster.getKafka().getSSLAddress());
+    props.setProperty(VenicePushJob.KAFKA_INPUT_BROKER_URL, cluster.getPubSubBrokerWrapper().getSSLAddress());
     TestWriteUtils.runPushJob("Test Kafka re-push job", props);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();

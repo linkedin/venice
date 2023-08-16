@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -42,8 +43,9 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   final private ChangeCaptureView internalView;
   private VeniceWriter veniceWriter;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
-
   private final int maxColoIdValue;
+
+  private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
 
   public ChangeCaptureViewWriter(
       VeniceConfigLoader props,
@@ -53,7 +55,9 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     super(props, store, keySchema, extraViewParameters);
     internalView = new ChangeCaptureView(props.getCombinedProperties().toProperties(), store, extraViewParameters);
     kafkaClusterUrlToIdMap = props.getVeniceServerConfig().getKafkaClusterUrlToIdMap();
+    pubSubProducerAdapterFactory = props.getVeniceServerConfig().getPubSubClientsFactory().getProducerAdapterFactory();
     maxColoIdValue = kafkaClusterUrlToIdMap.values().stream().max(Integer::compareTo).orElse(-1);
+
   }
 
   @Override
@@ -192,7 +196,8 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     if (veniceWriter != null) {
       return;
     }
-    veniceWriter = new VeniceWriterFactory(props).createVeniceWriter(buildWriterOptions(version));
+    veniceWriter = new VeniceWriterFactory(props, pubSubProducerAdapterFactory, null)
+        .createVeniceWriter(buildWriterOptions(version));
   }
 
   private ValueBytes constructValueBytes(ByteBuffer value, int schemaId) {

@@ -5,6 +5,7 @@ import static org.apache.avro.Schema.Type.RECORD;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.schema.SchemaAndToString;
 import com.linkedin.venice.client.store.predicate.AndPredicate;
 import com.linkedin.venice.client.store.predicate.EqualsRelationalOperator;
 import com.linkedin.venice.client.store.predicate.Predicate;
@@ -13,7 +14,6 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -32,22 +32,12 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
   }
 
   @Override
-  protected ComputeRequestWrapper generateComputeRequest(String resultSchemaStr) {
-    // Generate ComputeRequestWrapper object
-    ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(COMPUTE_REQUEST_VERSION);
-    computeRequestWrapper.setResultSchemaStr(resultSchemaStr);
-    computeRequestWrapper.setOperations(getComputeRequestOperations());
-    computeRequestWrapper.setValueSchema(latestValueSchema);
-    return computeRequestWrapper;
-  }
-
-  @Override
   public void executeWithFilter(
       Predicate requiredPrefixFields,
       StreamingCallback<GenericRecord, GenericRecord> callback) {
     byte[] prefixBytes = extractKeyPrefixBytesFromPredicate(requiredPrefixFields, storeClient.getKeySchema());
-    Pair<Schema, String> resultSchema = getResultSchema();
-    ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema.getSecond());
+    SchemaAndToString resultSchema = getResultSchema();
+    ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema);
     storeClient.computeWithKeyPrefixFilter(prefixBytes, computeRequestWrapper, callback);
   }
 

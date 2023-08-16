@@ -44,11 +44,11 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -56,6 +56,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.samza.config.MapConfig;
@@ -107,9 +108,9 @@ public class DataRecoveryTest {
         2,
         1,
         2,
-        Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(controllerProps),
+        Optional.of(serverProperties),
         false);
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
@@ -188,7 +189,40 @@ public class DataRecoveryTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  private void performDataRecoveryTest(
+      String storeName,
+      ControllerClient parentControllerClient,
+      ControllerClient destColoClient,
+      String src,
+      String dest,
+      int times,
+      int expectedStartVersionOnDest) throws ExecutionException, InterruptedException {
+    for (int version = expectedStartVersionOnDest; version < times + expectedStartVersionOnDest; version++) {
+      // Prepare dest fabric for data recovery.
+      Assert.assertFalse(
+          parentControllerClient.prepareDataRecovery(src, dest, storeName, VERSION_ID_UNSET, Optional.empty())
+              .isError());
+      // Initiate data recovery, a new version will be created in dest fabric.
+      Assert.assertFalse(
+          parentControllerClient.dataRecovery(src, dest, storeName, VERSION_ID_UNSET, false, true, Optional.empty())
+              .isError());
+      int finalVersion = version;
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        Assert.assertEquals(destColoClient.getStore(storeName).getStore().getCurrentVersion(), finalVersion);
+      });
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(childDatacenters.get(1).getClusters().get(clusterName).getRandomRouterURL()))) {
+        for (int i = 0; i < 10; i++) {
+          Object v = client.get(String.valueOf(i)).get();
+          Assert.assertNotNull(v, "Batch data should be consumed already in data center " + dest);
+          Assert.assertEquals(v.toString(), String.valueOf(i));
+        }
+      }
+    }
+  }
+
+  @Test(timeOut = 2 * TEST_TIMEOUT)
   public void testBatchOnlyDataRecovery() throws Exception {
     String storeName = Utils.getUniqueString("dataRecovery-store-batch");
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
@@ -220,38 +254,40 @@ public class DataRecoveryTest {
           false,
           -1);
       Assert.assertFalse(versionCreationResponse.isError());
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          childDatacenters.get(0).getKafkaBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
       TestUtils.writeBatchData(
           versionCreationResponse,
           STRING_SCHEMA,
           STRING_SCHEMA,
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
-          HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+          HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
+          pubSubProducerAdapterFactory);
       TestUtils.waitForNonDeterministicPushCompletion(
           versionCreationResponse.getKafkaTopic(),
           parentControllerClient,
           60,
           TimeUnit.SECONDS);
-      // Prepare dc-1 for data recovery
-      Assert.assertFalse(
-          parentControllerClient.prepareDataRecovery("dc-0", "dc-1", storeName, VERSION_ID_UNSET, Optional.empty())
-              .isError());
-      // Initiate data recovery, a new version will be created in dest fabric
-      Assert.assertFalse(
+
+      // Verify that if same data center are given as both src and dest to data recovery api, client response should
+      // have errors.
+      String sameFabricName = "dc-0";
+      Assert.assertTrue(
           parentControllerClient
-              .dataRecovery("dc-0", "dc-1", storeName, VERSION_ID_UNSET, false, true, Optional.empty())
+              .prepareDataRecovery(sameFabricName, sameFabricName, storeName, VERSION_ID_UNSET, Optional.empty())
               .isError());
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-        Assert.assertEquals(dc1Client.getStore(storeName).getStore().getCurrentVersion(), 2);
-      });
-      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName)
-              .setVeniceURL(childDatacenters.get(1).getClusters().get(clusterName).getRandomRouterURL()))) {
-        for (int i = 0; i < 10; i++) {
-          Object v = client.get(String.valueOf(i)).get();
-          Assert.assertNotNull(v, "Batch data should be consumed already in data center dc-1");
-          Assert.assertEquals(v.toString(), String.valueOf(i));
-        }
-      }
+      Assert.assertTrue(
+          parentControllerClient
+              .dataRecovery(sameFabricName, sameFabricName, storeName, VERSION_ID_UNSET, false, true, Optional.empty())
+              .isError());
+
+      /*
+       * Before data recovery, current version in dc-0 and dc-1 is 1.
+       * With two rounds of dc-0 -> dc-1 data recovery, current version in dc-1 changes to 2 and then 3.
+       * Then with two rounds of dc-1 -> dc-0 data recovery, current version in dc-0 becomes 3 and then 4.
+       */
+      performDataRecoveryTest(storeName, parentControllerClient, dc1Client, "dc-0", "dc-1", 2, 2);
+      performDataRecoveryTest(storeName, parentControllerClient, dc0Client, "dc-1", "dc-0", 2, 3);
     }
   }
 

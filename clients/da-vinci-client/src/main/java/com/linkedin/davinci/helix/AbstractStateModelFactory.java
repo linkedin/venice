@@ -3,6 +3,7 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -29,6 +30,7 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
   // a dedicated thread pool for state transition execution that all state model created by the
   // same factory would share. If it's null, Helix would use a shared thread pool.
   protected final ExecutorService executorService;
+  protected final ParticipantStateTransitionStats stateTransitionStats;
 
   protected CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
   protected final String instanceName;
@@ -37,12 +39,14 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
       VeniceIngestionBackend ingestionBackend,
       VeniceConfigLoader configService,
       ExecutorService executorService,
+      ParticipantStateTransitionStats stateTransitionStats,
       ReadOnlyStoreRepository storeMetadataRepo,
       CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
       String instanceName) {
     this.ingestionBackend = ingestionBackend;
     this.configService = configService;
     this.executorService = executorService;
+    this.stateTransitionStats = stateTransitionStats;
     this.storeMetadataRepo = storeMetadataRepo;
     this.partitionPushStatusAccessorFuture = partitionPushStatusAccessorFuture;
     this.instanceName = instanceName;
@@ -51,6 +55,14 @@ public abstract class AbstractStateModelFactory extends StateModelFactory<StateM
   @Override
   public ExecutorService getExecutorService(String resourceName) {
     return executorService;
+  }
+
+  /**
+   * Use the right state transition stats for the resource. By default, use the regular one; when
+   * dual state transition thread pool is enabled, use the future version stats for future version resource.
+   */
+  public ParticipantStateTransitionStats getStateTransitionStats(String resourceName) {
+    return stateTransitionStats;
   }
 
   /**

@@ -7,6 +7,7 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.controller.init.DelegatingClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedCheckerStats;
@@ -14,8 +15,8 @@ import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreV
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -26,6 +27,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -57,6 +59,22 @@ public class VeniceControllerService extends AbstractVeniceService {
       PubSubTopicRepository pubSubTopicRepository,
       PubSubClientsFactory pubSubClientsFactory) {
     this.multiClusterConfigs = multiClusterConfigs;
+
+    DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
+        new DelegatingClusterLeaderInitializationRoutine();
+    DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore =
+        new DelegatingClusterLeaderInitializationRoutine();
+
+    /**
+     * In child controller, we do not set these system stores up explicitly. The parent controller creates and
+     * configures them. They will get set up in child regions when the child controller consumes the corresponding
+     * messages from the admin channel.
+     */
+    if (!multiClusterConfigs.isParent()) {
+      initRoutineForPushJobDetailsSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+      initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+    }
+
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(
         multiClusterConfigs,
         metricsRepository,
@@ -66,7 +84,8 @@ public class VeniceControllerService extends AbstractVeniceService {
         accessController,
         icProvider,
         pubSubTopicRepository,
-        pubSubClientsFactory);
+        pubSubClientsFactory,
+        Arrays.asList(initRoutineForPushJobDetailsSystemStore, initRoutineForHeartbeatSystemStore));
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(
@@ -79,7 +98,9 @@ public class VeniceControllerService extends AbstractVeniceService {
           createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository),
           WriteComputeSchemaConverter.getInstance(),
           externalSupersetSchemaGenerator,
-          pubSubTopicRepository);
+          pubSubTopicRepository,
+          initRoutineForPushJobDetailsSystemStore,
+          initRoutineForHeartbeatSystemStore);
       LOGGER.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;

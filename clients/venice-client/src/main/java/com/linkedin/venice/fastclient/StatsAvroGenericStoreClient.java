@@ -155,24 +155,16 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
       clientStats.recordRequestKeyCount(numberOfKeys);
 
+      boolean exceptionReceived = false;
       if (throwable != null) {
         /**
-         * If the request (both original and retry) failed due to an exception,
-         * just increment the unhealthy counters as the other counters might not
-         * be useful, especially when the counters are currently common for
-         * healthy/unhealthy requests. No new unhealthy specific error
-         * counters for now apart from the below 2.
+         * If the request (both original and retry) failed due to an exception, its
+         * considered an unhealthy request: so only incrementing a subset of metrics.
          */
-        clientStats.recordUnhealthyRequest();
-        clientStats.recordUnhealthyLatency(latency);
-        if (throwable instanceof VeniceClientException) {
-          throw (VeniceClientException) throwable;
-        } else {
-          throw new VeniceClientException(throwable);
-        }
+        exceptionReceived = true;
       }
 
-      if (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND) {
+      if (exceptionReceived || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);
       } else {
@@ -184,45 +176,62 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         clientStats.recordNoAvailableReplicaRequest();
       }
 
-      // Record additional metrics
-      if (requestContext.requestSerializationTime > 0) {
-        clientStats.recordRequestSerializationTime(requestContext.requestSerializationTime);
+      if (!exceptionReceived) {
+        // Record additional metrics
+        if (requestContext.requestSerializationTime > 0) {
+          clientStats.recordRequestSerializationTime(requestContext.requestSerializationTime);
+        }
+        if (requestContext.requestSubmissionToResponseHandlingTime > 0) {
+          clientStats
+              .recordRequestSubmissionToResponseHandlingTime(requestContext.requestSubmissionToResponseHandlingTime);
+        }
+        if (requestContext.decompressionTime > 0) {
+          clientStats.recordResponseDecompressionTime(requestContext.decompressionTime);
+        }
+        if (requestContext.responseDeserializationTime > 0) {
+          clientStats.recordResponseDeserializationTime(requestContext.responseDeserializationTime);
+        }
+        clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get());
       }
-      if (requestContext.requestSubmissionToResponseHandlingTime > 0) {
-        clientStats
-            .recordRequestSubmissionToResponseHandlingTime(requestContext.requestSubmissionToResponseHandlingTime);
-      }
-      if (requestContext.decompressionTime > 0) {
-        clientStats.recordResponseDecompressionTime(requestContext.decompressionTime);
-      }
-      if (requestContext.responseDeserializationTime > 0) {
-        clientStats.recordResponseDeserializationTime(requestContext.responseDeserializationTime);
-      }
-      clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get());
 
-      /**
-       * Record some single-get specific metrics, and these metrics should be applied to other types of requests once
-       * the corresponding features are ready.
-        */
       if (requestContext instanceof GetRequestContext) {
         GetRequestContext getRequestContext = (GetRequestContext) requestContext;
 
         if (getRequestContext.longTailRetryRequestTriggered) {
           clientStats.recordLongTailRetryRequest();
+          clientStats.recordRetryRequestKeyCount(1);
         }
         if (getRequestContext.errorRetryRequestTriggered) {
           clientStats.recordErrorRetryRequest();
+          clientStats.recordRetryRequestKeyCount(1);
         }
-        if (getRequestContext.retryWin) {
-          clientStats.recordRetryRequestWin();
+        if (!exceptionReceived) {
+          if (getRequestContext.retryWin) {
+            clientStats.recordRetryRequestWin();
+            clientStats.recordRetryRequestSuccessKeyCount(1);
+          }
         }
       } else if (requestContext instanceof BatchGetRequestContext) {
         BatchGetRequestContext<K, V> batchGetRequestContext = (BatchGetRequestContext<K, V>) requestContext;
         if (batchGetRequestContext.longTailRetryTriggered) {
           clientStats.recordLongTailRetryRequest();
           clientStats.recordRetryRequestKeyCount(batchGetRequestContext.numberOfKeysSentInRetryRequest);
-          clientStats
-              .recordRetryRequestSuccessKeyCount(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get());
+          if (!exceptionReceived) {
+            clientStats
+                .recordRetryRequestSuccessKeyCount(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get());
+            if (batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0) {
+              clientStats.recordRetryRequestWin();
+            }
+          }
+        }
+      }
+
+      if (exceptionReceived) {
+        // throw an exception after incrementing some error related metrics
+        if (throwable instanceof VeniceClientException) {
+          throw (VeniceClientException) throwable;
+        } else {
+          throw new VeniceClientException(throwable);
         }
       }
 
@@ -277,9 +286,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     }
   }
 
-  private static class StatTrackingStreamingCallBack<K, V> extends StreamingCallback<K, V> {
+  private static class StatTrackingStreamingCallBack<K, V> implements StreamingCallback<K, V> {
     private final StreamingCallback<K, V> inner;
-    // This future is completed with number of keys whose value were successfully received.
+    // This future is completed with a number of keys whose values were successfully received.
     private final CompletableFuture<Void> statFuture;
     private final RequestContext requestContext;
 

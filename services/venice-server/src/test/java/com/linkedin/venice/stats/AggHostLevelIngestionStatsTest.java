@@ -10,6 +10,7 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.TehutiException;
 import io.tehuti.metrics.MetricsRepository;
@@ -63,7 +64,7 @@ public class AggHostLevelIngestionStatsTest {
     barStats.recordTotalRecordsConsumed();
     fooStats.recordTotalBytesConsumed(10);
     fooStats.recordTotalBytesConsumed(30);
-    time.addMilliseconds(1000);
+    time.addMilliseconds(LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS * Time.MS_PER_SECOND);
   }
 
   @AfterTest
@@ -74,14 +75,20 @@ public class AggHostLevelIngestionStatsTest {
   @Test
   public void testMetrics() {
     Assert.assertEquals(reporter.query("." + STORE_FOO + "--storage_quota_used.Avg").value(), 0.8);
-    Assert.assertEquals(reporter.query(".total--bytes_read_from_kafka_as_uncompressed_size.Rate").value(), 300d);
+    Assert.assertEquals(
+        reporter.query(".total--bytes_read_from_kafka_as_uncompressed_size.Rate").value(),
+        300d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
     Assert.assertEquals(reporter.query("." + STORE_FOO + "--global_store_disk_quota_allowed.Max").value(), 200d);
 
-    Assert.assertEquals(reporter.query(".total--records_consumed.Rate").value(), 2d);
+    Assert.assertEquals(
+        reporter.query(".total--records_consumed.Rate").value(),
+        2d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
     Assert.assertThrows(TehutiException.class, () -> reporter.query("." + STORE_FOO + "--records_consumed.Rate"));
     Assert.assertThrows(TehutiException.class, () -> reporter.query("." + STORE_BAR + "--records_consumed.Rate"));
 
-    Assert.assertEquals(reporter.query(".total--bytes_consumed.Rate").value(), 40d);
+    Assert.assertEquals(
+        reporter.query(".total--bytes_consumed.Rate").value(),
+        40d / LongAdderRateGauge.RATE_GAUGE_CACHE_DURATION_IN_SECONDS);
     Assert.assertThrows(TehutiException.class, () -> reporter.query("." + STORE_FOO + "--bytes_consumed.Rate"));
     Assert.assertThrows(TehutiException.class, () -> reporter.query("." + STORE_BAR + "--bytes_consumed.Rate"));
 

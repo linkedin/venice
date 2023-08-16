@@ -1,8 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.davinci.stats.IngestionStats;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -20,10 +21,10 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
 import java.util.Arrays;
@@ -77,7 +78,7 @@ public class NearlineE2ELatencyTest {
         REPLICATION_FACTOR,
         Optional.empty(),
         Optional.empty(),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(serverProperties),
         false);
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
@@ -124,12 +125,15 @@ public class NearlineE2ELatencyTest {
           false,
           -1);
       Assert.assertFalse(versionCreationResponse.isError());
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          childDatacenters.get(0).getKafkaBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
       TestUtils.writeBatchData(
           versionCreationResponse,
           STRING_SCHEMA,
           STRING_SCHEMA,
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
-          HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+          HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
+          pubSubProducerAdapterFactory);
       JobStatusQueryResponse response = parentControllerCli
           .queryDetailedJobStatus(versionCreationResponse.getKafkaTopic(), childDatacenters.get(0).getRegionName());
       Assert.assertFalse(response.isError());

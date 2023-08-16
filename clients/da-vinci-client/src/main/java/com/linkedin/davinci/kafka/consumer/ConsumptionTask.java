@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -191,8 +190,8 @@ class ConsumptionTask implements Runnable {
       // Defensive coding. Should never happen except in case of a regression.
       throw new IllegalStateException(
           "It is not allowed to set multiple " + ConsumedDataReceiver.class.getSimpleName() + " instances for the same "
-              + TopicPartition.class.getSimpleName() + " of a given consumer. Previous: " + previousConsumedDataReceiver
-              + ", New: " + consumedDataReceiver);
+              + "topic-partition of a given consumer. Previous: " + previousConsumedDataReceiver + ", New: "
+              + consumedDataReceiver);
     }
     synchronized (this) {
       notifyAll();

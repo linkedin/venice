@@ -42,13 +42,13 @@ import javax.annotation.Nonnull;
  * In {@link #scatter} function, only {@link RouterException} is expected, otherwise, the netty buffer leaking issue
  * will happen.
  * This vulnerability is related to Alpini since {@link ScatterGatherMode#scatter} only catches {@link RouterException} to
- * return the exceptional future, otherwise, that function will throw exception to miss the release operation in {@text com.linkedin.alpini.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
+ * return the exceptional future, otherwise, that function will throw exception to miss the release operation in {@link com.linkedin.alpini.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
  * Here are the details:
  * 1. If the current implementation of {@link #scatter} throws other exceptions than {@link RouterException}, {@link ScatterGatherMode#scatter}
  *    will rethrow the exception instead of returning an exceptional future.
- * 2. For long-tail retry, {@text com.linkedin.alpini.router.ScatterGatherRequestHandlerImpl#prepareRetry} will retain the request
+ * 2. For long-tail retry, {@link com.linkedin.alpini.router.ScatterGatherRequestHandlerImpl#prepareRetry} will retain the request
  *    every time, and it will try to release the request in the handling function of "_scatterGatherHelper.scatter" in
- *    {@text com.linkedin.alpini.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
+ *    {@link com.linkedin.alpini.router.ScatterGatherRequestHandlerImpl#prepareRetry}.
  * 3. If #1 happens, the handling function mentioned in #2 won't be invoked, which means the release won't happen, and this
  *    is causing the request leaking.
  * TODO: maybe we should improve DDS lib to catch all kinds of exception in {@link ScatterGatherMode#scatter} to avoid
@@ -275,10 +275,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
          */
         int keyCount = part.getPartitionKeys().size();
         try {
-          readRequestThrottler.mayThrottleRead(
-              storeName,
-              keyCount * readRequestThrottler.getReadCapacity(),
-              veniceInstance.getNodeId());
+          readRequestThrottler.mayThrottleRead(storeName, keyCount * readRequestThrottler.getReadCapacity());
         } catch (QuotaExceededException e) {
           /**
            * Exception thrown here won't go through {@link VeniceResponseAggregator}, and DDS lib will return an error response

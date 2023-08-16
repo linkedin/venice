@@ -1,6 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.SchemaUtils.annotateValueSchema;
+import static com.linkedin.davinci.schema.SchemaUtils.annotateValueSchema;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
@@ -11,15 +11,15 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
-import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
@@ -45,7 +45,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     final int oldValueSchemaId = 3;
     // Set up
     Schema partialUpdateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV1);
-    GenericRecord updateFieldPartialUpdateRecord = SchemaUtils.createGenericRecord(partialUpdateSchema);
+    GenericRecord updateFieldPartialUpdateRecord = AvroSchemaUtils.createGenericRecord(partialUpdateSchema);
     updateFieldPartialUpdateRecord.put("age", 66);
     updateFieldPartialUpdateRecord.put("name", "Venice");
     ByteBuffer writeComputeBytes = ByteBuffer.wrap(
@@ -82,7 +82,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         1);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     Assert.assertTrue(
-        ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD)).isEmpty(),
+        ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)).isEmpty(),
         "When the Update request is ignored, replication_checkpoint_vector should stay the same (empty).");
   }
 
@@ -98,7 +98,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
 
     // Note that a newer schema is used.
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV2);
-    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema);
+    GenericRecord updateFieldWriteComputeRecord = AvroSchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldWriteComputeRecord.put("age", 66);
     updateFieldWriteComputeRecord.put("name", "Venice");
     ByteBuffer writeComputeBytes = ByteBuffer.wrap(
@@ -135,7 +135,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         1);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     Assert.assertTrue(
-        ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD)).isEmpty(),
+        ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)).isEmpty(),
         "When the Update request is ignored, replication_checkpoint_vector should stay the same (empty).");
   }
 
@@ -146,7 +146,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     final int oldValueSchemaId = 3;
 
     // Set up old/current value.
-    GenericRecord oldValueRecord = SchemaUtils.createGenericRecord(personSchemaV1);
+    GenericRecord oldValueRecord = AvroSchemaUtils.createGenericRecord(personSchemaV1);
     oldValueRecord.put("age", 30);
     oldValueRecord.put("name", "Kafka");
     oldValueRecord.put("intArray", Arrays.asList(1, 2, 3));
@@ -207,7 +207,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
-        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
         Arrays.asList(0L, 1L));
 
     GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
@@ -257,7 +257,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     final int oldValueSchemaId = 3;
 
     // Set up old/current value.
-    GenericRecord oldValueRecord = SchemaUtils.createGenericRecord(personSchemaV1);
+    GenericRecord oldValueRecord = AvroSchemaUtils.createGenericRecord(personSchemaV1);
     oldValueRecord.put("age", 30);
     oldValueRecord.put("name", "Kafka");
     oldValueRecord.put("intArray", Arrays.asList(1, 2, 3));
@@ -319,7 +319,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
-        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
         Arrays.asList(0L, 1L));
 
     GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
@@ -413,7 +413,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     final int supersetValueSchemaId = 5;
 
     // Set up old/current value.
-    GenericRecord oldValueRecord = SchemaUtils.createGenericRecord(personSchemaV1);
+    GenericRecord oldValueRecord = AvroSchemaUtils.createGenericRecord(personSchemaV1);
     oldValueRecord.put("age", 30);
     oldValueRecord.put("name", "Kafka");
     oldValueRecord.put("intArray", Arrays.asList(1, 2, 3));
@@ -424,7 +424,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV2);
     Schema supersetWriteComputeSchema =
         WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(personSchemaV3);
-    GenericRecord updateFieldWriteComputeRecord = SchemaUtils.createGenericRecord(writeComputeSchema);
+    GenericRecord updateFieldWriteComputeRecord = AvroSchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldWriteComputeRecord.put("age", 66);
     updateFieldWriteComputeRecord.put("name", "Venice");
     updateFieldWriteComputeRecord.put("favoritePet", "a random stray cat");
@@ -483,7 +483,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
-        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
         Arrays.asList(0L, 1L));
 
     GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
@@ -560,7 +560,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     final int supersetValueSchemaId = 5;
 
     // Set up old/current value.
-    GenericRecord oldValueRecord = SchemaUtils.createGenericRecord(personSchemaV1);
+    GenericRecord oldValueRecord = AvroSchemaUtils.createGenericRecord(personSchemaV1);
     oldValueRecord.put("age", 30);
     oldValueRecord.put("name", "Kafka");
     oldValueRecord.put("intArray", Arrays.asList(1, 2, 3));
@@ -630,7 +630,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
-        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
         Arrays.asList(0L, 1L));
 
     GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);

@@ -100,14 +100,6 @@ public class ConfigKeys {
   public static final String KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES = "kafka.log.compaction.for.hybrid.stores";
 
   /**
-   * Whether to turn on Kafka's log compaction for the store-version topics of incremental push stores.
-   *
-   * Will take effect at topic creation time, and when the incremental push config for the store is turned on.
-   */
-  public static final String KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES =
-      "kafka.log.compaction.for.incremental.push.stores";
-
-  /**
    * For log compaction enabled topics, this config will define the minimum time a message will remain uncompacted in the log.
    */
   public static final String KAFKA_MIN_LOG_COMPACTION_LAG_MS = "kafka.min.log.compaction.lag.ms";
@@ -154,12 +146,6 @@ public class ConfigKeys {
   public static final String ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY = "enable.native.replication.for.batch.only";
 
   /**
-   * Cluster-level config to enable native replication for all incremental push stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH =
-      "enable.native.replication.for.incremental.push";
-
-  /**
    * Cluster-level config to enable native replication for all hybrid stores.
    */
   public static final String ENABLE_NATIVE_REPLICATION_FOR_HYBRID = "enable.native.replication.for.hybrid";
@@ -169,12 +155,6 @@ public class ConfigKeys {
    */
   public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY =
       "enable.native.replication.as.default.for.batch.only";
-
-  /**
-   * Cluster-level config to enable native replication for new incremental push stores.
-   */
-  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH =
-      "enable.native.replication.as.default.for.incremental.push";
 
   /**
    * Cluster-level config to enable native replication for new hybrid stores.
@@ -193,12 +173,6 @@ public class ConfigKeys {
    */
   public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE =
       "enable.active.active.replication.as.default.for.hybrid.store";
-
-  /**
-   * Cluster-level config to enable active-active replication for new incremental push stores.
-   */
-  public static final String ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE =
-      "enable.active.active.replication.as.default.for.incremental.push.store";
 
   /**
    * Sets the default for whether or not do schema validation for all stores
@@ -371,6 +345,8 @@ public class ConfigKeys {
 
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
+  public static final String GRPC_READ_SERVER_PORT = "grpc.read.server.port";
+  public static final String ENABLE_GRPC_READ_SERVER = "grpc.read.server.enabled";
 
   public static final String LISTENER_HOSTNAME = "listener.hostname";
 
@@ -402,7 +378,7 @@ public class ConfigKeys {
 
   /**
    * This config key is a misspelling. It is now considered deprecated.
-   * @deprecated Use {@link KAFKA_OVER_SSL}
+   * @deprecated Use {@link #KAFKA_OVER_SSL}
    */
   @Deprecated
   public static final String SSL_TO_KAFKA_LEGACY = ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
@@ -504,7 +480,7 @@ public class ConfigKeys {
 
   /**
    * This config is used to control how many times Kafka consumer would retry polling during ingestion
-   * when hitting {@literal org.apache.kafka.common.errors.RetriableException}.
+   * when RetriableException happens.
    */
   public static final String SERVER_KAFKA_POLL_RETRY_TIMES = "server.kafka.poll.retry.times";
 
@@ -632,7 +608,7 @@ public class ConfigKeys {
   /**
    * Number of retries allowed for stopConsumptionAndWait() API in StoreIngestionService.
    */
-  public static final String SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM = "server.stop.consumption.wait.retries.num";
+  public static final String SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS = "server.stop.consumption.timeout.in.seconds";
 
   /**
    * Service listening port number for main ingestion service.
@@ -772,6 +748,14 @@ public class ConfigKeys {
    */
   public static final String SERVER_SCHEMA_FAST_CLASS_WARMUP_TIMEOUT = "server.schema.fast.class.warmup.timeout";
 
+  /**
+   * The following 3 configs define controller url, d2 service name and d2 zk host in the region that server is located.
+   * Either url or d2 configs must be specified if {@link #SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED} is true.
+   */
+  public static final String LOCAL_CONTROLLER_URL = "local.controller.url";
+  public static final String LOCAL_CONTROLLER_D2_SERVICE_NAME = "local.controller.d2.service.name";
+  public static final String LOCAL_D2_ZK_HOST = "local.d2.zk.host";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
@@ -877,11 +861,6 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
 
   /**
-   * Enable per router per storage node throttler by distributing the store quota among the partitions and replicas.
-   */
-  public static final String ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED = "router.per.storage.node.throttler.enabled";
-
-  /**
    * This config is used to bound the pending request.
    * Without this config, the accumulated requests in Http Async Client could grow unlimitedly,
    * which would put Router in a non-recoverable state because of long GC pause introduced
@@ -909,11 +888,6 @@ public class ConfigKeys {
    */
   public static final String ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY =
       "router.helix.assisted.routing.group.selection.strategy";
-
-  /**
-   * The buffer we will add to the per storage node read quota. E.g 0.5 means 50% extra quota.
-   */
-  public static final String ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER = "router.per.storage.node.read.quota.buffer";
 
   public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
@@ -1138,10 +1112,12 @@ public class ConfigKeys {
       "native.replication.source.fabric.as.default.for.hybrid.stores";
 
   /**
-   * The default source fabric used for native replication for incremental push stores.
+   * We will use this config to determine whether we should enable incremental push for hybrid active-active user stores.
+   * If this config is set to true, we will enable incremental push for hybrid active-active user stores.
    */
-  public static final String NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES =
-      "native.replication.source.fabric.as.default.for.incremental.push.stores";
+  public static final String ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
+      "enable.incremental.push.for.hybrid.active.active.user.stores";
+
   /**
    * The highest priority source fabric selection config, specified in parent controller.
    */
@@ -1942,4 +1918,33 @@ public class ConfigKeys {
    * we want to do more optimization for non-mlock usage, we will ask the mlock user to enable this flag.
    */
   public static final String INGESTION_MLOCK_ENABLED = "ingestion.mlock.enabled";
+
+  /**
+   * Only applies the memory limiter to the stores listed in this config.
+   * This is mainly used for testing purpose since ultimately, we want to enforce memory limiter against
+   * all the stores to avoid node crash.
+   * Empty config means ingestion memory limiter will apply to all the stores.
+   */
+  public static final String INGESTION_MEMORY_LIMIT_STORE_LIST = "ingestion.memory.limit.store.list";
+
+  /**
+   * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
+   * can prevent OOMing in cases where there is a lot of historical churn in RT producers. The age of a given
+   * producer's state is defined as:
+   *
+   * most_recent_timestamp_of_all_producers - most_recent_timestamp_of_given_producer
+   *
+   * This math is computed within a single partition, not across partitions. If enabled, the clearing of old
+   * state will happen when subscribing to a partition (e.g. on server start up), and prior to syncing progress
+   * to disk (e.g. when {@link #SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE} is reached).
+   *
+   * Old state clearing is disabled if this config is set to -1.
+   */
+  public static final String DIV_PRODUCER_STATE_MAX_AGE_MS = "div.producer.state.max.age.ms";
+
+  public static final String PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS = "pub.sub.admin.adapter.factory.class";
+
+  public static final String PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS = "pub.sub.producer.adapter.factory.class";
+
+  public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
 }

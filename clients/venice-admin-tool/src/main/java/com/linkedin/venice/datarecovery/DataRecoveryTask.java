@@ -16,7 +16,7 @@ public class DataRecoveryTask implements Runnable {
   @Override
   public void run() {
     command.execute();
-    taskResult = new DataRecoveryTask.TaskResult(command.getResult());
+    taskResult = new DataRecoveryTask.TaskResult(getCommand().getResult());
   }
 
   /**
@@ -29,6 +29,10 @@ public class DataRecoveryTask implements Runnable {
 
   public TaskResult getTaskResult() {
     return taskResult;
+  }
+
+  public Command getCommand() {
+    return command;
   }
 
   public TaskParams getTaskParams() {

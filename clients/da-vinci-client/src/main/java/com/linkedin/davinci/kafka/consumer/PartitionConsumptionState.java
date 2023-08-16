@@ -12,12 +12,12 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
@@ -82,7 +82,7 @@ public class PartitionConsumptionState {
    */
   private boolean consumeRemotely;
 
-  private Optional<CheckSum> expectedSSTFileChecksum;
+  private CheckSum expectedSSTFileChecksum;
 
   private long latestMessageConsumptionTimestampInMs;
 
@@ -199,7 +199,7 @@ public class PartitionConsumptionState {
     this.isSubscribed = true;
     this.processedRecordSizeSinceLastSync = 0;
     this.leaderFollowerState = LeaderFollowerStateType.STANDBY;
-    this.expectedSSTFileChecksum = Optional.empty();
+    this.expectedSSTFileChecksum = null;
     /**
      * Initialize the latest consumption time with current time; otherwise, it's 0 by default
      * and leader will be promoted immediately.
@@ -417,7 +417,7 @@ public class PartitionConsumptionState {
   }
 
   public void finalizeExpectedChecksum() {
-    this.expectedSSTFileChecksum = Optional.empty();
+    this.expectedSSTFileChecksum = null;
   }
 
   /**
@@ -428,21 +428,23 @@ public class PartitionConsumptionState {
    * @param put
    */
   public void maybeUpdateExpectedChecksum(byte[] key, Put put) {
-    if (!expectedSSTFileChecksum.isPresent()) {
+    if (this.expectedSSTFileChecksum == null) {
       return;
     }
-    expectedSSTFileChecksum.get().update(key);
+    this.expectedSSTFileChecksum.update(key);
     ByteBuffer putValue = put.putValue;
-    expectedSSTFileChecksum.get().update(put.schemaId);
-    expectedSSTFileChecksum.get().update(putValue.array(), putValue.position(), putValue.remaining());
+    this.expectedSSTFileChecksum.update(put.schemaId);
+    this.expectedSSTFileChecksum.update(putValue.array(), putValue.position(), putValue.remaining());
   }
 
   public void resetExpectedChecksum() {
-    expectedSSTFileChecksum.get().reset();
+    if (this.expectedSSTFileChecksum != null) {
+      this.expectedSSTFileChecksum.reset();
+    }
   }
 
   public byte[] getExpectedChecksum() {
-    return expectedSSTFileChecksum.get().getCheckSum();
+    return this.expectedSSTFileChecksum == null ? null : this.expectedSSTFileChecksum.getCheckSum();
   }
 
   public long getLatestMessageConsumptionTimestampInMs() {
@@ -488,6 +490,7 @@ public class PartitionConsumptionState {
     if (replicationMetadataRecord != null) {
       transientRecord.setReplicationMetadataRecord(replicationMetadataRecord);
     }
+
     transientRecordMap.put(ByteArrayKey.wrap(key), transientRecord);
   }
 
@@ -562,7 +565,10 @@ public class PartitionConsumptionState {
     private final long kafkaConsumedOffset;
     private GenericRecord replicationMetadataRecord;
 
-    TransientRecord(
+    private ChunkedValueManifest valueManifest;
+    private ChunkedValueManifest rmdManifest;
+
+    public TransientRecord(
         byte[] value,
         int valueOffset,
         int valueLen,
@@ -575,6 +581,22 @@ public class PartitionConsumptionState {
       this.valueSchemaId = valueSchemaId;
       this.kafkaClusterId = kafkaClusterId;
       this.kafkaConsumedOffset = kafkaConsumedOffset;
+    }
+
+    public ChunkedValueManifest getRmdManifest() {
+      return rmdManifest;
+    }
+
+    public void setRmdManifest(ChunkedValueManifest rmdManifest) {
+      this.rmdManifest = rmdManifest;
+    }
+
+    public ChunkedValueManifest getValueManifest() {
+      return valueManifest;
+    }
+
+    public void setValueManifest(ChunkedValueManifest valueManifest) {
+      this.valueManifest = valueManifest;
     }
 
     public void setReplicationMetadataRecord(GenericRecord replicationMetadataRecord) {

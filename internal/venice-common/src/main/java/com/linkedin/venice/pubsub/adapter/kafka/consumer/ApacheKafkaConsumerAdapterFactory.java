@@ -1,7 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;

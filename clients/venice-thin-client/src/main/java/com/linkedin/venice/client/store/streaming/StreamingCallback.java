@@ -3,7 +3,7 @@ package com.linkedin.venice.client.store.streaming;
 import java.util.Optional;
 
 
-public abstract class StreamingCallback<K, V> {
+public interface StreamingCallback<K, V> {
   /**
    * This function will be invoked when some records are ready to be consumed.
    *
@@ -14,13 +14,13 @@ public abstract class StreamingCallback<K, V> {
    * @param key
    * @param value : could be null when key doesn't exist in Venice.
    */
-  public abstract void onRecordReceived(K key, V value);
+  void onRecordReceived(K key, V value);
 
   /**
    * This will be invoked when the callbacks are fully executed.
    *
    * @param exception Exception thrown when processing result from Venice.
    */
-  public abstract void onCompletion(Optional<Exception> exception);
+  void onCompletion(Optional<Exception> exception);
 
 }

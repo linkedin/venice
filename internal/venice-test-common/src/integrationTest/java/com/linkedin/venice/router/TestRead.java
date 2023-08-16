@@ -17,7 +17,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -31,6 +30,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
@@ -81,7 +81,6 @@ public abstract class TestRead {
   private static final int MAX_KEY_LIMIT = 20;
   private static final Logger LOGGER = LogManager.getLogger(TestRead.class);
   private VeniceClusterWrapper veniceCluster;
-  private ControllerClient controllerClient;
   private D2Client d2Client;
   private String storeVersionName;
   private int valueSchemaId;
@@ -94,9 +93,10 @@ public abstract class TestRead {
   private VeniceWriter<Object, Object, Object> veniceWriter;
   private static final String KEY_SCHEMA_STR = "\"string\"";
   private static final String VALUE_FIELD_NAME = "int_field";
+  private static final String UNUSED_FIELD_NAME = "unused_field";
   private static final String VALUE_SCHEMA_STR =
-      "{\n" + "\"type\": \"record\",\n" + "\"name\": \"test_value_schema\",\n" + "\"fields\": [\n" + "  {\"name\": \""
-          + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
+      "{\"type\": \"record\",\"name\": \"test_value_schema\",\"fields\": [{\"name\": \"" + UNUSED_FIELD_NAME
+          + "\", \"type\": \"int\"}, {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]}";
   private static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
   private static final String KEY_PREFIX = "key_";
 
@@ -179,14 +179,15 @@ public abstract class TestRead {
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // Update default quota
-    controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
     updateStore(0, MAX_KEY_LIMIT);
 
     // TODO: Make serializers parameterized so we test them all.
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
-
-    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    veniceWriter = TestUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory)
         .createVeniceWriter(
             new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
                 .setValueSerializer(valueSerializer)
@@ -227,6 +228,7 @@ public abstract class TestRead {
     for (int i = 0; i < 100; ++i) {
       GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
       record.put(VALUE_FIELD_NAME, i);
+      record.put(UNUSED_FIELD_NAME, -i);
       veniceWriter.put(KEY_PREFIX + i, record, valueSchemaId).get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP
@@ -244,11 +246,8 @@ public abstract class TestRead {
   }
 
   private void updateStore(long readQuota, int maxKeyLimit) {
-    controllerClient.updateStore(
-        storeName,
-        new UpdateStoreQueryParams().setReadQuotaInCU(readQuota)
-            .setReadComputationEnabled(true)
-            .setBatchGetLimit(maxKeyLimit));
+    veniceCluster
+        .updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(readQuota).setBatchGetLimit(maxKeyLimit));
   }
 
   @AfterClass(alwaysRun = true)
@@ -263,9 +262,8 @@ public abstract class TestRead {
     }
   }
 
-  @Test // (timeOut = 50 * Time.MS_PER_SECOND)
+  @Test(timeOut = 30 * Time.MS_PER_SECOND)
   public void testRead() throws Exception {
-    final String UNKNOWN_FIELD_NAME = "unknown_field";
     if (!isTestEnabled()) {
       return;
     }
@@ -273,151 +271,174 @@ public abstract class TestRead {
     double maxInflightRequestCount = getAggregateRouterMetricValue(".total--in_flight_request_count.Max");
     Assert.assertEquals(maxInflightRequestCount, 0.0, "There should be no in-flight requests yet!");
 
-    /**
-     * Test with {@link AvroGenericStoreClient}.
-     */
+    String UNKNOWN_FIELD_NAME = "unknown_field";
+    MetricsRepository clientMetrics = new MetricsRepository();
+
     try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setMetricsRepository(clientMetrics)
             .setProjectionFieldValidationEnabled(false))) {
-
-      // Run multiple rounds
-      int rounds = 100;
-      int cur = 0;
-      while (++cur <= rounds) {
-        Set<String> keySet = new HashSet<>();
-        for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
-          keySet.add(KEY_PREFIX + i);
-        }
-        keySet.add("unknown_key");
-        Map<String, GenericRecord> result = storeClient.batchGet(keySet).get();
-        Assert.assertEquals(result.size(), MAX_KEY_LIMIT - 1);
-        Map<String, ComputeGenericRecord> computeResult =
-            storeClient.compute().project(VALUE_FIELD_NAME, UNKNOWN_FIELD_NAME).execute(keySet).get();
-        Assert.assertEquals(computeResult.size(), MAX_KEY_LIMIT - 1);
-
-        for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
-          GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
-          record.put(VALUE_FIELD_NAME, i);
-          Assert.assertEquals(result.get(KEY_PREFIX + i), record);
-          Assert.assertEquals(computeResult.get(KEY_PREFIX + i).get(VALUE_FIELD_NAME), i);
-          Assert.assertNull(computeResult.get(KEY_PREFIX + i).get(UNKNOWN_FIELD_NAME));
-        }
-
-        /**
-         * Test simple get
-         */
-        String key = KEY_PREFIX + 2;
-        GenericRecord expectedValue = new GenericData.Record(VALUE_SCHEMA);
-        expectedValue.put(VALUE_FIELD_NAME, 2);
-        GenericRecord value = storeClient.get(key).get();
-        Assert.assertEquals(value, expectedValue);
-
-        // Test non-existing key
-        value = storeClient.get("unknown_key").get();
-        Assert.assertNull(value);
-      }
-
-      double maxInflightRequestCountAfterQueries = getAggregateRouterMetricValue(".total--in_flight_request_count.Max");
-      Assert.assertTrue(maxInflightRequestCountAfterQueries > 0.0, "There should be in-flight requests now!");
-
-      // Check retry requests
-      Assert.assertTrue(
-          getAggregateRouterMetricValue(".total--retry_count.LambdaStat") > 0,
-          "After " + rounds + " reads, there should be some single-get retry requests");
-      Assert.assertTrue(
-          getAggregateRouterMetricValue(".total--retry_delay.Avg") > 0,
-          "After " + rounds + " reads, there should be some single-get retry requests");
-      Assert.assertTrue(
-          getAggregateRouterMetricValue(".total--multiget_streaming_retry_count.LambdaStat") > 0,
-          "After " + rounds + " reads, there should be some batch-get retry requests");
-
-      // Check Router connection pool metrics
-      if (getStorageNodeClientType() == StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT) {
-        // TODO: add connection pool stats for netty client
-        Assert.assertTrue(
-            getAggregateRouterMetricValue(".connection_pool--total_max_connection_count.LambdaStat") > 0,
-            "Max connection count must be positive");
-        Assert.assertTrue(
-            getMaxRouterMetricValue(".connection_pool--connection_lease_request_latency.Max") > 0,
-            "Connection lease max latency should be positive");
-        assertEquals(
-            getAggregateRouterMetricValue(".connection_pool--total_active_connection_count.LambdaStat"),
-            0.0d,
-            "Active connection count should be 0 since test queries are finished");
-        assertEquals(
-            getAggregateRouterMetricValue(".connection_pool--total_pending_connection_request_count.LambdaStat"),
-            0.0d,
-            "Pending connection request count should be 0 since test queries are finished");
-        Assert.assertTrue(
-            getAggregateRouterMetricValue(".connection_pool--total_idle_connection_count.LambdaStat") > 0,
-            "There should be some idle connections since test queries are finished");
-
-        Assert.assertTrue(
-            getAggregateRouterMetricValue(".localhost--max_connection_count.Gauge") > 0,
-            "Max connection count must be positive");
-        assertEquals(
-            getAggregateRouterMetricValue(".localhost--active_connection_count.Gauge"),
-            0.0d,
-            "Active connection count should be 0 since test queries are finished");
-        assertEquals(
-            getAggregateRouterMetricValue(".localhost--pending_connection_request_count.Gauge"),
-            0.0d,
-            "Pending connection request count should be 0 since test queries are finished");
-        Assert.assertTrue(
-            getAggregateRouterMetricValue(".localhost--idle_connection_count.Gauge") > 0,
-            "There should be some idle connections since test queries are finished");
-      }
-
-      Assert.assertTrue(getAggregateRouterMetricValue(".localhost--response_waiting_time.50thPercentile") > 0);
-      Assert.assertTrue(
-          getAggregateRouterMetricValue(".localhost--multiget_streaming_response_waiting_time.50thPercentile") > 0);
-
-      Assert.assertTrue(getAggregateRouterMetricValue(".localhost--request.Count") > 0);
-      Assert.assertTrue(getAggregateRouterMetricValue(".localhost--multiget_streaming_request.Count") > 0);
-
-      // Each round:
-      // 1. We do MAX_KEY_LIMIT * 2 because we do a batch get and a batch compute
-      // 2. And then + 2 because we also do two single get requests
-      double expectedLookupCount = rounds * (MAX_KEY_LIMIT * 2 + 2.0);
-      Assert.assertEquals(getAggregateRouterMetricValue(".total--request_usage.Total"), expectedLookupCount, 0.0001);
-      Assert.assertEquals(
-          getAggregateRouterMetricValue(".total--read_quota_usage_kps.Total"),
-          expectedLookupCount,
-          0.0001);
-
-      // following 2 asserts fails with HTTP/2 probably due to http2 frames, needs to validate on venice-p
-      if (!isRouterHttp2ClientEnabled()) {
-        Assert.assertEquals(getMaxServerMetricValue(".total--multiget_request_part_count.Max"), 1.0);
-        Assert.assertEquals(getMaxServerMetricValue(".total--compute_request_part_count.Max"), 1.0);
-      }
-      // Verify storage node metrics
-      Assert.assertTrue(getMaxServerMetricValue(".total--records_consumed.Rate") > 0.0);
-
-      Assert.assertTrue(getMaxServerMetricValue(".total--multiget_request_size_in_bytes.Max") > 0.0);
-      Assert.assertTrue(getMaxServerMetricValue(".total--compute_request_size_in_bytes.Max") > 0.0);
-      for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
-        Map<String, ? extends Metric> metrics = veniceServerWrapper.getMetricsRepository().metrics();
-        metrics.forEach((mName, metric) -> {
-          if (mName.startsWith(String.format(".%s_current--disk_usage_in_bytes.", storeName))) {
-            double value = metric.value();
-            Assert.assertNotEquals(
-                value,
-                (double) StatsErrorCode.NULL_BDB_ENVIRONMENT.code,
-                "Got a NULL_BDB_ENVIRONMENT!");
-            Assert.assertNotEquals(
-                value,
-                (double) StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code,
-                "Got NULL_STORAGE_ENGINE_STATS!");
-            Assert.assertTrue(value > 0.0, "Disk usage for current version should be positive. Got: " + value);
+      double expectedLookupCount = 0;
+      for (boolean readComputeEnabled: new boolean[] { true, false }) {
+        veniceCluster
+            .updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(readComputeEnabled));
+        // Run multiple rounds
+        int rounds = 100;
+        for (int cur = 0; cur < rounds; ++cur) {
+          Set<String> keySet = new HashSet<>();
+          for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
+            keySet.add(KEY_PREFIX + i);
           }
-        });
+          keySet.add("unknown_key");
+
+          Map<String, ComputeGenericRecord> computeResult =
+              storeClient.compute().project(VALUE_FIELD_NAME, UNKNOWN_FIELD_NAME).execute(keySet).get();
+          Assert.assertEquals(computeResult.size(), MAX_KEY_LIMIT - 1);
+
+          Map<String, GenericRecord> result = storeClient.batchGet(keySet).get();
+          Assert.assertEquals(result.size(), MAX_KEY_LIMIT - 1);
+
+          for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
+            GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
+            record.put(VALUE_FIELD_NAME, i);
+            record.put(UNUSED_FIELD_NAME, -i);
+            Assert.assertEquals(result.get(KEY_PREFIX + i), record);
+            Assert.assertEquals(computeResult.get(KEY_PREFIX + i).get(VALUE_FIELD_NAME), i);
+            TestUtils.checkMissingFieldInAvroRecord(computeResult.get(KEY_PREFIX + i), UNUSED_FIELD_NAME);
+            TestUtils.checkMissingFieldInAvroRecord(computeResult.get(KEY_PREFIX + i), UNKNOWN_FIELD_NAME);
+          }
+
+          // Test simple get
+          String key = KEY_PREFIX + 2;
+          GenericRecord expectedValue = new GenericData.Record(VALUE_SCHEMA);
+          expectedValue.put(VALUE_FIELD_NAME, 2);
+          expectedValue.put(UNUSED_FIELD_NAME, -2);
+          GenericRecord value = storeClient.get(key).get();
+          Assert.assertEquals(value, expectedValue);
+
+          // Test non-existing key
+          value = storeClient.get("unknown_key").get();
+          Assert.assertNull(value);
+        }
+
+        double maxInflightRequestCountAfterQueries =
+            getAggregateRouterMetricValue(".total--in_flight_request_count.Max");
+        Assert.assertTrue(maxInflightRequestCountAfterQueries > 0.0, "There should be in-flight requests now!");
+
+        // Check retry requests
+        Assert.assertTrue(
+            getAggregateRouterMetricValue(".total--retry_count.LambdaStat") > 0,
+            "After " + rounds + " reads, there should be some single-get retry requests");
+        Assert.assertTrue(
+            getAggregateRouterMetricValue(".total--retry_delay.Avg") > 0,
+            "After " + rounds + " reads, there should be some single-get retry requests");
+        Assert.assertTrue(
+            getAggregateRouterMetricValue(".total--multiget_streaming_retry_count.LambdaStat") > 0,
+            "After " + rounds + " reads, there should be some batch-get retry requests");
+
+        // Check Router connection pool metrics
+        if (getStorageNodeClientType() == StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT) {
+          // TODO: add connection pool stats for netty client
+          Assert.assertTrue(
+              getAggregateRouterMetricValue(".connection_pool--total_max_connection_count.LambdaStat") > 0,
+              "Max connection count must be positive");
+          Assert.assertTrue(
+              getMaxRouterMetricValue(".connection_pool--connection_lease_request_latency.Max") > 0,
+              "Connection lease max latency should be positive");
+          assertEquals(
+              getAggregateRouterMetricValue(".connection_pool--total_active_connection_count.LambdaStat"),
+              0.0d,
+              "Active connection count should be 0 since test queries are finished");
+          assertEquals(
+              getAggregateRouterMetricValue(".connection_pool--total_pending_connection_request_count.LambdaStat"),
+              0.0d,
+              "Pending connection request count should be 0 since test queries are finished");
+          Assert.assertTrue(
+              getAggregateRouterMetricValue(".connection_pool--total_idle_connection_count.LambdaStat") > 0,
+              "There should be some idle connections since test queries are finished");
+
+          Assert.assertTrue(
+              getAggregateRouterMetricValue(".localhost--max_connection_count.Gauge") > 0,
+              "Max connection count must be positive");
+          assertEquals(
+              getAggregateRouterMetricValue(".localhost--active_connection_count.Gauge"),
+              0.0d,
+              "Active connection count should be 0 since test queries are finished");
+          assertEquals(
+              getAggregateRouterMetricValue(".localhost--pending_connection_request_count.Gauge"),
+              0.0d,
+              "Pending connection request count should be 0 since test queries are finished");
+          Assert.assertTrue(
+              getAggregateRouterMetricValue(".localhost--idle_connection_count.Gauge") > 0,
+              "There should be some idle connections since test queries are finished");
+        }
+
+        Assert.assertTrue(getAggregateRouterMetricValue(".localhost--response_waiting_time.50thPercentile") > 0);
+        Assert.assertTrue(
+            getAggregateRouterMetricValue(".localhost--multiget_streaming_response_waiting_time.50thPercentile") > 0);
+
+        Assert.assertTrue(getAggregateRouterMetricValue(".localhost--request.Count") > 0);
+        Assert.assertTrue(getAggregateRouterMetricValue(".localhost--multiget_streaming_request.Count") > 0);
+
+        // Each round:
+        // 1. We do MAX_KEY_LIMIT * 2 because we do a batch get and a batch compute
+        // 2. And then + 2 because we also do two single get requests
+        expectedLookupCount += rounds * (MAX_KEY_LIMIT * 2 + 2.0);
+        Assert.assertEquals(getAggregateRouterMetricValue(".total--request_usage.Total"), expectedLookupCount, 0.0001);
+        Assert.assertEquals(
+            getAggregateRouterMetricValue(".total--read_quota_usage_kps.Total"),
+            expectedLookupCount,
+            0.0001);
+
+        // following 2 asserts fails with HTTP/2 probably due to http2 frames, needs to validate on venice-p
+        if (!isRouterHttp2ClientEnabled()) {
+          Assert.assertEquals(getMaxServerMetricValue(".total--multiget_request_part_count.Max"), 1.0);
+          if (readComputeEnabled) {
+            Assert.assertEquals(getMaxServerMetricValue(".total--compute_request_part_count.Max"), 1.0);
+            Assert.assertTrue(
+                getMaxServerMetricValue(".total--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
+            Assert.assertEquals(getAggregateRouterMetricValue(".total--compute_multiget_fallback.Total"), 0.0);
+            Assert.assertEquals(
+                clientMetrics.getMetric("." + storeName + "--compute_streaming_multiget_fallback.OccurrenceRate")
+                    .value(),
+                0.0);
+          } else {
+            Assert.assertEquals(
+                getAggregateRouterMetricValue(".total--compute_multiget_fallback.Total"),
+                (double) MAX_KEY_LIMIT);
+            Assert.assertTrue(
+                clientMetrics.getMetric("." + storeName + "--compute_streaming_multiget_fallback.OccurrenceRate")
+                    .value() > 0);
+          }
+        }
+
+        // Verify storage node metrics
+        Assert.assertTrue(getMaxServerMetricValue(".total--records_consumed.Rate") > 0.0);
+        Assert.assertTrue(getMaxServerMetricValue(".total--multiget_request_size_in_bytes.Max") > 0.0);
+        Assert.assertTrue(getMaxServerMetricValue(".total--compute_request_size_in_bytes.Max") > 0.0);
+
+        for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
+          Map<String, ? extends Metric> metrics = veniceServerWrapper.getMetricsRepository().metrics();
+          metrics.forEach((mName, metric) -> {
+            if (mName.startsWith(String.format(".%s_current--disk_usage_in_bytes.", storeName))) {
+              double value = metric.value();
+              Assert.assertNotEquals(
+                  value,
+                  (double) StatsErrorCode.NULL_BDB_ENVIRONMENT.code,
+                  "Got a NULL_BDB_ENVIRONMENT!");
+              Assert.assertNotEquals(
+                  value,
+                  (double) StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code,
+                  "Got NULL_STORAGE_ENGINE_STATS!");
+              Assert.assertTrue(value > 0.0, "Disk usage for current version should be positive. Got: " + value);
+            }
+          });
+        }
       }
 
-      /**
-       * Test batch get limit
-       */
+      // Test batch get limit
       Set<String> keySet = new HashSet<>();
       for (int i = 0; i < MAX_KEY_LIMIT + 1; ++i) {
         keySet.add(KEY_PREFIX + i);
@@ -441,7 +462,6 @@ public abstract class TestRead {
       });
 
       // Single get quota test
-
       int throttledRequestsForSingleGet =
           (int) getAggregateRouterMetricValue(".total--multiget_throttled_request.Count");
       Assert.assertEquals(
@@ -534,7 +554,6 @@ public abstract class TestRead {
       }
 
       long runTimeForBatchGetMs = System.currentTimeMillis() - startTimeForBatchGet;
-
       /**
        * TODO: Figure out why this step takes way longer in {@link TestReadForHttpClient5} than in
        *       {@link TestReadForApacheAsyncClient}... Make {@link shortCicuitAfterFirstQuotaExceededException} false

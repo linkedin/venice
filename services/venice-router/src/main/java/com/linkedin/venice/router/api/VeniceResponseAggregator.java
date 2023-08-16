@@ -198,15 +198,16 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
        */
       finalResponse = buildStreamingResponse(gatheredResponses, storeName, versionNumber);
     } else {
+      Optional<Map<CharSequence, String>> optionalHeaders = venicePath.getResponseHeaders();
       switch (requestType) {
         case SINGLE_GET:
           finalResponse = gatheredResponses.get(0);
           break;
         case MULTI_GET:
-          finalResponse = processMultiGetResponses(gatheredResponses, storeName, versionNumber);
+          finalResponse = processMultiGetResponses(gatheredResponses, storeName, versionNumber, optionalHeaders);
           break;
         case COMPUTE:
-          finalResponse = processComputeResponses(gatheredResponses, storeName);
+          finalResponse = processComputeResponses(gatheredResponses, storeName, optionalHeaders);
           break;
         default:
           throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
@@ -286,8 +287,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       List<FullHttpResponse> gatheredResponses,
       String storeName,
       int version) {
-    // Validate the consistency of compression strategy across all the gathered responses
-    validateAndExtractCompressionStrategy(gatheredResponses, storeName, version);
+    CompressionStrategy compressionStrategy = null;
+
     /**
      * If every sub-response is good, return {@link SuccessfulStreamingResponse} to indicate that,
      * otherwise, return the first error response.
@@ -296,7 +297,9 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       if (!subResponse.status().equals(OK)) {
         return subResponse;
       }
+      compressionStrategy = validateAndExtractCompressionStrategy(storeName, version, compressionStrategy, subResponse);
     }
+
     return new SuccessfulStreamingResponse();
   }
 
@@ -326,35 +329,36 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     return getCompressionStrategy(response.headers().get(VENICE_COMPRESSION_STRATEGY));
   }
 
+  /** Compression strategy should be consistent across all records for a specific store version */
   private CompressionStrategy validateAndExtractCompressionStrategy(
-      List<FullHttpResponse> responses,
       String storeName,
-      int version) {
-    CompressionStrategy compressionStrategy = null;
-    for (FullHttpResponse response: responses) {
-      CompressionStrategy responseCompression = getResponseCompressionStrategy(response);
-      if (compressionStrategy == null) {
-        compressionStrategy = responseCompression;
-      }
-      if (responseCompression != compressionStrategy) {
-        // Compression strategy should be consistent across all records for a specific store version
-        String errorMsg = String.format(
-            "Inconsistent compression strategy returned. Store: %s; Version: %d, ExpectedCompression: %d, ResponseCompression: %d",
-            storeName,
-            version,
-            compressionStrategy.getValue(),
-            responseCompression.getValue());
-        throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-            Optional.of(storeName),
-            Optional.of(RequestType.MULTI_GET),
-            BAD_GATEWAY,
-            errorMsg);
-      }
+      int version,
+      CompressionStrategy compressionStrategy,
+      HttpResponse response) {
+    CompressionStrategy responseCompression = getResponseCompressionStrategy(response);
+    if (responseCompression == compressionStrategy) {
+      return responseCompression;
+    } else if (compressionStrategy == null) {
+      return responseCompression;
+    } else {
+      String errorMsg = String.format(
+          "Inconsistent compression strategy returned. Store: %s; Version: %d, ExpectedCompression: %d, ResponseCompression: %d",
+          storeName,
+          version,
+          compressionStrategy.getValue(),
+          responseCompression.getValue());
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+          Optional.of(storeName),
+          Optional.of(RequestType.MULTI_GET),
+          BAD_GATEWAY,
+          errorMsg);
     }
-    return compressionStrategy;
   }
 
-  protected FullHttpResponse processComputeResponses(List<FullHttpResponse> responses, String storeName) {
+  protected FullHttpResponse processComputeResponses(
+      List<FullHttpResponse> responses,
+      String storeName,
+      Optional<Map<CharSequence, String>> optionalHeaders) {
     /**
      * Here we will check the consistency of the following headers among all the responses:
      * 1. {@link HttpHeaderNames.CONTENT_TYPE}
@@ -390,12 +394,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
 
     FullHttpResponse computeResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
-    COMPUTE_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
-      computeResponse.headers().add(headerName, headerValue);
-    });
-    computeResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
-    computeResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
-    computeResponse.headers().add(VENICE_REQUEST_RCU, totalRequestRcu);
+    COMPUTE_VALID_HEADER_MAP.forEach(computeResponse.headers()::set);
+    optionalHeaders.ifPresent(headers -> headers.forEach(computeResponse.headers()::set));
+    computeResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+    computeResponse.headers().set(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+    computeResponse.headers().set(VENICE_REQUEST_RCU, totalRequestRcu);
     return computeResponse;
   }
 
@@ -410,16 +413,19 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
   /**
    * If a part of a multi-get request fails, the entire request should fail from the client's perspective.
-   * @param responses Subset of responses from the SN to be concatenated to form the response to the client.
+   * @param responses Subset of responses from the SN to be concatenated to form the response to the client (guaranteed not empty).
    * @return The concatenated response that should be sent to the client along with some content-related headers.
    */
-  protected FullHttpResponse processMultiGetResponses(List<FullHttpResponse> responses, String storeName, int version) {
+  protected FullHttpResponse processMultiGetResponses(
+      List<FullHttpResponse> responses,
+      String storeName,
+      int version,
+      Optional<Map<CharSequence, String>> optionalHeaders) {
     long decompressedSize = 0;
     long decompressionTimeInNs = 0;
     int totalRequestRcu = 0;
     CompositeByteBuf content = Unpooled.compositeBuffer();
-    // Venice only supports either compression of the whole database or no compression at all.
-    CompressionStrategy responseCompression = validateAndExtractCompressionStrategy(responses, storeName, version);
+    CompressionStrategy compressionStrategy = null;
 
     for (FullHttpResponse response: responses) {
       if (response.status() != OK) {
@@ -427,6 +433,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         // Return error response directly for now.
         return response;
       }
+      compressionStrategy = validateAndExtractCompressionStrategy(storeName, version, compressionStrategy, response);
 
       content.addComponent(true, response.content());
 
@@ -472,12 +479,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
 
     FullHttpResponse multiGetResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
-    MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
-      multiGetResponse.headers().add(headerName, headerValue);
-    });
-    multiGetResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
-    multiGetResponse.headers().add(VENICE_COMPRESSION_STRATEGY, responseCompression.getValue());
-    multiGetResponse.headers().add(VENICE_REQUEST_RCU, totalRequestRcu);
+    MULTI_GET_VALID_HEADER_MAP.forEach(multiGetResponse.headers()::set);
+    optionalHeaders.ifPresent(headers -> headers.forEach(multiGetResponse.headers()::set));
+    multiGetResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+    multiGetResponse.headers().set(VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
+    multiGetResponse.headers().set(VENICE_REQUEST_RCU, totalRequestRcu);
     return multiGetResponse;
   }
 }

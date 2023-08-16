@@ -10,7 +10,6 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
@@ -37,7 +36,6 @@ public class VeniceControllerContextTest {
     ClientConfig routerClientConfig = mock(ClientConfig.class);
     ICProvider icProvider = mock(ICProvider.class);
     SupersetSchemaGenerator externalSupersetSchemaGenerator = mock(SupersetSchemaGenerator.class);
-    PubSubClientsFactory pubSubClientsFactory = mock(PubSubClientsFactory.class);
 
     VeniceControllerContext veniceControllerContext =
         new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
@@ -47,7 +45,6 @@ public class VeniceControllerContextTest {
             .setRouterClientConfig(routerClientConfig)
             .setIcProvider(icProvider)
             .setExternalSupersetSchemaGenerator(externalSupersetSchemaGenerator)
-            .setPubSubClientsFactory(pubSubClientsFactory)
             .setMetricsRepository(null)
             .setServiceDiscoveryAnnouncers(null)
             .build();
@@ -60,6 +57,5 @@ public class VeniceControllerContextTest {
     assertEquals(veniceControllerContext.getD2Client(), d2Client);
     assertEquals(veniceControllerContext.getRouterClientConfig(), routerClientConfig);
     assertEquals(veniceControllerContext.getIcProvider(), icProvider);
-    assertEquals(veniceControllerContext.getPubSubClientsFactory(), pubSubClientsFactory);
   }
 }

@@ -1,8 +1,7 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V2;
-
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.streaming.DelegatingTrackingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.transport.TransportClient;
@@ -44,15 +43,13 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
 
     byte[] serializedComputeRequest = serializeComputeRequest(computeRequestWrapper, keys);
 
-    Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
-        ? COMPUTE_HEADER_MAP_FOR_STREAMING_V2
-        : COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
+    Map<String, String> headerMap = COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
 
     getTransportClient().streamPost(
         getComputeRequestPath(),
         headerMap,
         serializedComputeRequest,
-        new BlackHoleStreamingCallback<>(keys.size(), callback),
+        new BlackHoleStreamingCallback<>(keys.size(), DelegatingTrackingCallback.wrap(callback)),
         keys.size());
   }
 
@@ -69,21 +66,16 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
   /**
    * BlackHole streaming callback for batch-get/compute.
    *
-   * All data chunk returned from Venice Routers will be dropped directly without any deserialization work; when all
+   * All data chunks returned from Venice Routers will be dropped directly without any deserialization work; when all
    * the chunks have been returned, invoke callbacks so that metrics are reported.
    */
-  private class BlackHoleStreamingCallback<ENVELOPE, K, V> implements TransportClientStreamingCallback {
-    private final int keySize;
-    private final StreamingCallback<K, V> callback;
+  private class BlackHoleStreamingCallback<K, V> implements TransportClientStreamingCallback {
+    private final int keyCount;
+    private final TrackingStreamingCallback<K, V> callback;
 
-    private Optional<TrackingStreamingCallback> trackingStreamingCallback = Optional.empty();
-
-    public BlackHoleStreamingCallback(int keySize, StreamingCallback<K, V> callback) {
-      this.keySize = keySize;
+    public BlackHoleStreamingCallback(int keyCount, TrackingStreamingCallback<K, V> callback) {
+      this.keyCount = keyCount;
       this.callback = callback;
-      if (callback instanceof TrackingStreamingCallback) {
-        trackingStreamingCallback = Optional.of((TrackingStreamingCallback) callback);
-      }
     }
 
     @Override
@@ -102,9 +94,8 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
       if (exception.isPresent()) {
         completedException = Optional.of(exception.get());
       }
+      callback.onDeserializationCompletion(completedException, keyCount, 0);
       callback.onCompletion(completedException);
-      final Optional<Exception> finalCompletedException = completedException;
-      trackingStreamingCallback.ifPresent(t -> t.onDeserializationCompletion(finalCompletedException, keySize, 0));
     }
   }
 }

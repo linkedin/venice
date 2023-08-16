@@ -41,10 +41,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaReader;
@@ -74,7 +71,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -82,7 +78,6 @@ import org.apache.logging.log4j.Logger;
 public class DaVinciBackend implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciBackend.class);
 
-  private final ZkClient zkClient;
   private final VeniceConfigLoader configLoader;
   private final SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -124,7 +119,6 @@ public class DaVinciBackend implements Closeable {
       }
       storeRepository = (SubscriptionBasedReadOnlyStoreRepository) readOnlyStoreRepository;
       schemaRepository = veniceMetadataRepositoryBuilder.getSchemaRepo();
-      zkClient = veniceMetadataRepositoryBuilder.getZkClient();
 
       VeniceProperties backendProps = backendConfig.getClusterProperties();
 
@@ -187,8 +181,9 @@ public class DaVinciBackend implements Closeable {
           true,
           functionToCheckWhetherStorageEngineShouldBeKeptOrNot(managedClients));
       storageService.start();
-
-      VeniceWriterFactory writerFactory = new VeniceWriterFactory(backendProps.toProperties());
+      PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
+      VeniceWriterFactory writerFactory =
+          new VeniceWriterFactory(backendProps.toProperties(), pubSubClientsFactory.getProducerAdapterFactory(), null);
       String instanceName = Utils.getHostName() + "_" + Utils.getPid();
       int derivedSchemaID = backendProps.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1);
       pushStatusStoreWriter = new PushStatusStoreWriter(writerFactory, instanceName, derivedSchemaID);
@@ -225,10 +220,6 @@ public class DaVinciBackend implements Closeable {
       cacheBackend = cacheConfig
           .map(objectCacheConfig -> new ObjectCacheBackend(clientConfig, objectCacheConfig, schemaRepository));
 
-      PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
-          new ApacheKafkaProducerAdapterFactory(),
-          new ApacheKafkaConsumerAdapterFactory(),
-          new ApacheKafkaAdminAdapterFactory());
       ingestionService = new KafkaStoreIngestionService(
           storageService.getStorageEngineRepository(),
           configLoader,
@@ -459,9 +450,6 @@ public class DaVinciBackend implements Closeable {
       ingestionBackend.close();
       ingestionService.stop();
       storageService.stop();
-      if (zkClient != null) {
-        zkClient.close();
-      }
       metricsRepository.close();
       storeRepository.clear();
       schemaRepository.clear();

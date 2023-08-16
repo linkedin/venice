@@ -1,6 +1,5 @@
 package com.linkedin.venice.unit.kafka.consumer;
 
-import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -9,6 +8,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.MockInMemoryAdminAdapter;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
@@ -80,7 +80,7 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   @Override
   public synchronized void resetOffset(PubSubTopicPartition pubSubTopicPartition) {
     if (!hasSubscription(pubSubTopicPartition)) {
-      throw new UnsubscribedTopicPartitionException(pubSubTopicPartition);
+      throw new PubSubUnsubscribedTopicPartitionException(pubSubTopicPartition);
     }
     delegate.resetOffset(pubSubTopicPartition);
     offsets.put(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);

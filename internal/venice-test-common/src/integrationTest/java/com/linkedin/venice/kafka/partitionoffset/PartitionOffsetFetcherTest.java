@@ -4,12 +4,12 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -40,11 +40,14 @@ public class PartitionOffsetFetcherTest {
   @Test
   public void testGetPartitionLatestOffsetAndRetry() {
 
-    PubSubAdminAdapterFactory pubSubAdminAdapterFactory = IntegrationTestPushUtils.getVeniceAdminFactory();
+    PubSubAdminAdapterFactory pubSubAdminAdapterFactory =
+        pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory();
+    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
+        pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory();
     Properties properties = new Properties();
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     try (PartitionOffsetFetcher fetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
-        IntegrationTestPushUtils.getVeniceConsumerFactory(),
+        pubSubConsumerAdapterFactory,
         new VeniceProperties(properties),
         pubSubBrokerWrapper.getAddress(),
         Lazy.of(() -> pubSubAdminAdapterFactory.create(new VeniceProperties(properties), pubSubTopicRepository)),
@@ -54,7 +57,7 @@ public class PartitionOffsetFetcherTest {
       PubSubTopicPartition pubSubTopicPartition =
           new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
       Assert.assertThrows(
-          TopicDoesNotExistException.class,
+          PubSubTopicDoesNotExistException.class,
           () -> fetcher.getPartitionLatestOffsetAndRetry(pubSubTopicPartition, 1));
     }
   }

@@ -41,7 +41,7 @@ public class AbstractTestAdminSparkServer {
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "false");
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "false");
     VeniceControllerCreateOptions options =
-        new VeniceControllerCreateOptions.Builder(cluster.getClusterName(), parentZk, cluster.getKafka())
+        new VeniceControllerCreateOptions.Builder(cluster.getClusterName(), parentZk, cluster.getPubSubBrokerWrapper())
             .replicationFactor(1)
             .childControllers(new VeniceControllerWrapper[] { cluster.getLeaderVeniceController() })
             .extraProperties(extraProperties)

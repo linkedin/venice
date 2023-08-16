@@ -1,6 +1,6 @@
 package com.linkedin.davinci.replication.merge.helper.utils;
 
-import com.linkedin.venice.utils.IndexedHashMap;
+import com.linkedin.davinci.utils.IndexedHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;

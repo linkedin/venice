@@ -23,6 +23,8 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   private int attempts = 0;
 
+  private long createTimestampInMs = System.currentTimeMillis();
+
   public ConsumerAction(ConsumerActionType type, PubSubTopicPartition topicPartition, int sequenceNumber) {
     this(type, topicPartition, sequenceNumber, null, Optional.empty());
   }
@@ -92,10 +94,15 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     return leaderState;
   }
 
+  public long getCreateTimestampInMs() {
+    return createTimestampInMs;
+  }
+
   @Override
   public String toString() {
     return "KafkaTaskMessage{" + "type=" + type + ", topic='" + getTopic() + '\'' + ", partition=" + getPartition()
-        + ", attempts=" + attempts + ", sequenceNumber=" + sequenceNumber + '}';
+        + ", attempts=" + attempts + ", sequenceNumber=" + sequenceNumber + ", createdTimestampInMs="
+        + createTimestampInMs + '}';
   }
 
   @Override

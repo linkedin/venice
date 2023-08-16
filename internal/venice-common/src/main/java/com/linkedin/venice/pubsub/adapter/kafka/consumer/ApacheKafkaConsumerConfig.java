@@ -36,7 +36,8 @@ public class ApacheKafkaConsumerConfig {
   private final Properties consumerProperties;
 
   public ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
-    this.consumerProperties = veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties();
+    this.consumerProperties =
+        getValidConsumerProperties(veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties());
     if (consumerName != null) {
       consumerProperties.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerName);
     }
@@ -55,5 +56,15 @@ public class ApacheKafkaConsumerConfig {
 
   public Properties getConsumerProperties() {
     return consumerProperties;
+  }
+
+  public static Properties getValidConsumerProperties(Properties extractedProperties) {
+    Properties validProperties = new Properties();
+    extractedProperties.forEach((configKey, configVal) -> {
+      if (ConsumerConfig.configNames().contains(configKey)) {
+        validProperties.put(configKey, configVal);
+      }
+    });
+    return validProperties;
   }
 }

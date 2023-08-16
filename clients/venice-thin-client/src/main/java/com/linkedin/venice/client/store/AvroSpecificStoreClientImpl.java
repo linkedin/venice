@@ -41,6 +41,19 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord> extends Ab
     super.start();
   }
 
+  /**
+   * To avoid cycle dependency, we need to initialize another store client for schema reader.
+   * @return
+   * @throws VeniceClientException
+   */
+  @Override
+  protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
+    return new AvroSpecificStoreClientImpl<K, V>(
+        getTransportClient().getCopyIfNotUsableInCallback(),
+        false,
+        ClientConfig.defaultSpecificClientConfig(getStoreName(), valueClass));
+  }
+
   @Override
   public RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
     SchemaReader schemaReader = getSchemaReader();

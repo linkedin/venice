@@ -1,45 +1,46 @@
 package com.linkedin.venice.compute;
 
-import static com.linkedin.venice.compute.ComputeOperationUtils.CACHED_SQUARED_L2_NORM_KEY;
+import static com.linkedin.venice.compute.ComputeUtils.CACHED_SQUARED_L2_NORM_KEY;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
 public class CosineSimilarityOperator implements ReadComputeOperator {
   @Override
   public void compute(
-      int computeRequestVersion,
       ComputeOperation op,
-      GenericRecord valueRecord,
+      Schema.Field operatorInputField,
+      Schema.Field resultField,
+      GenericRecord inputValueRecord,
       GenericRecord resultRecord,
       Map<String, String> computationErrorMap,
       Map<String, Object> context) {
     CosineSimilarity cosineSimilarity = (CosineSimilarity) op.operation;
     try {
-      List<Float> valueVector =
-          ComputeOperationUtils.getNullableFieldValueAsList(valueRecord, cosineSimilarity.field.toString());
+      List<Float> valueVector = ComputeUtils.getNullableFieldValueAsList(inputValueRecord, operatorInputField);
       List<Float> cosSimilarityParam = cosineSimilarity.cosSimilarityParam;
 
       if (valueVector.size() == 0 || cosSimilarityParam.size() == 0) {
-        putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), null);
+        putResult(resultRecord, resultField, null);
         return;
       } else if (valueVector.size() != cosSimilarityParam.size()) {
-        putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), 0.0f);
+        putResult(resultRecord, resultField, 0.0f);
         computationErrorMap.put(
-            cosineSimilarity.resultFieldName.toString(),
+            resultField.name(),
             "Failed to compute because size of dot product parameter is: " + cosineSimilarity.cosSimilarityParam.size()
                 + " while the size of value vector(" + cosineSimilarity.field.toString() + ") is: "
                 + valueVector.size());
         return;
       }
 
-      float dotProductResult = ComputeOperationUtils.dotProduct(cosSimilarityParam, valueVector);
-      float valueVectorSquaredL2Norm = ComputeOperationUtils.squaredL2Norm(valueVector);
+      float dotProductResult = ComputeUtils.dotProduct(cosSimilarityParam, valueVector);
+      float valueVectorSquaredL2Norm = ComputeUtils.squaredL2Norm(valueVector);
       float cosSimilarityParamSquaredL2Norm;
       // Build the context as we go though all the computations
       // The following caching is assuming the float vector is immutable, which is the case for compute.
@@ -55,19 +56,19 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
         cosSimilarityParamSquaredL2Norm = cachedResult;
       } else {
         // Cache the computed result
-        cosSimilarityParamSquaredL2Norm = ComputeOperationUtils.squaredL2Norm(cosSimilarityParam);
+        cosSimilarityParamSquaredL2Norm = ComputeUtils.squaredL2Norm(cosSimilarityParam);
         cachedSquareL2Norm.put(cosSimilarityParam, cosSimilarityParamSquaredL2Norm);
       }
 
       // write to result record
       double cosineSimilarityResult =
           dotProductResult / Math.sqrt(valueVectorSquaredL2Norm * cosSimilarityParamSquaredL2Norm);
-      putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), (float) cosineSimilarityResult);
+      putResult(resultRecord, resultField, (float) cosineSimilarityResult);
     } catch (Exception e) {
-      putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), 0.0f);
+      putResult(resultRecord, resultField, 0.0f);
       String msg = e.getClass().getSimpleName() + " : "
           + (e.getMessage() == null ? "Failed to execute cosine similarity operator." : e.getMessage());
-      computationErrorMap.put(cosineSimilarity.resultFieldName.toString(), msg);
+      computationErrorMap.put(resultField.name(), msg);
     }
   }
 

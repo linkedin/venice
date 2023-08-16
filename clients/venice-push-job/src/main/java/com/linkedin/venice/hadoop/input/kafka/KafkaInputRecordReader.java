@@ -1,14 +1,14 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
+import com.linkedin.venice.chunking.ChunkKeyValueTransformerImpl;
+import com.linkedin.venice.chunking.RawKeyBytesAndChunkedKeySuffix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
-import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformer;
-import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformerImpl;
-import com.linkedin.venice.hadoop.input.kafka.chunk.RawKeyBytesAndChunkedKeySuffix;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -22,7 +22,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -86,6 +85,11 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordIterator;
 
   private final Reporter reporter;
+  /**
+   * Whether the consumer being used in this class is owned or not, and this is used to decide
+   * whether the consumer should be closed when closing {@link KafkaInputRecordReader}.
+   */
+  private boolean ownedConsumer = true;
 
   public KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter) {
     this(
@@ -101,6 +105,11 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
                 new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
             null),
         PUBSUB_TOPIC_REPOSITORY);
+  }
+
+  public KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter, PubSubConsumerAdapter consumer) {
+    this(split, job, reporter, consumer, PUBSUB_TOPIC_REPOSITORY);
+    this.ownedConsumer = false;
   }
 
   /** For unit tests */
@@ -133,6 +142,10 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
      * Not accurate since the topic partition could be log compacted.
      */
     this.maxNumberOfRecords = endingOffset - startingOffset;
+    // In case the Kafka Consumer is passed by the caller, we will unsubscribe all the existing subscriptions first
+    if (!ownedConsumer) {
+      this.consumer.batchUnsubscribe(this.consumer.getAssignment());
+    }
     this.consumer.subscribe(pubSubTopicPartition, currentOffset);
     this.reporter = reporter;
     LOGGER.info(
@@ -244,16 +257,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     if (this.chunkKeyValueTransformer == null) {
       this.chunkKeyValueTransformer = new ChunkKeyValueTransformerImpl(keySchema);
     }
-    ChunkKeyValueTransformer.KeyType keyType;
-    if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
-      keyType = ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK;
-    } else if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-      keyType = ChunkKeyValueTransformer.KeyType.WITH_CHUNK_MANIFEST;
-    } else if (schemaId > 0 || messageType == MessageType.DELETE) {
-      keyType = ChunkKeyValueTransformer.KeyType.WITH_FULL_VALUE;
-    } else {
-      throw new VeniceException("Cannot categorize key type with schema ID: " + schemaId);
-    }
+    ChunkKeyValueTransformer.KeyType keyType = ChunkKeyValueTransformer.getKeyType(messageType, schemaId);
     return chunkKeyValueTransformer.splitChunkedKey(compositeKeyBytes, keyType);
   }
 
@@ -274,7 +278,9 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
   @Override
   public void close() {
-    this.consumer.close();
+    if (ownedConsumer) {
+      this.consumer.close();
+    }
   }
 
   @Override

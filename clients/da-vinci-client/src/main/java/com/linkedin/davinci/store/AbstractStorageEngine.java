@@ -683,7 +683,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (partition == null) {
       VeniceException e = new PersistenceFailureException(
           "Partition: " + partitionId + " of store: " + getStoreName() + " does not exist");
-      LOGGER.error("Msg: {} Cause: {}", e.getMessage(), e.getCause());
+      LOGGER.error("Failed to get the partition with msg: {}", e.getMessage());
       throw e;
     }
     return partition;

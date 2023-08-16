@@ -5,7 +5,7 @@ import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -41,10 +41,7 @@ import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -151,7 +148,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private IsolatedIngestionRequestClient reportClient;
   private IsolatedIngestionRequestClient metricClient;
   private volatile long heartbeatTimeInMs = System.currentTimeMillis();
-  private int stopConsumptionWaitRetriesNum;
+  private int stopConsumptionTimeoutInSeconds;
   private DefaultIngestionBackend ingestionBackend;
   private final RemoteIngestionRepairService repairService;
 
@@ -332,8 +329,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     return storeVersionStateSerializer;
   }
 
-  public int getStopConsumptionWaitRetriesNum() {
-    return stopConsumptionWaitRetriesNum;
+  public int getStopConsumptionTimeoutInSeconds() {
+    return stopConsumptionTimeoutInSeconds;
   }
 
   public Map<String, Double> getMetricsMap() {
@@ -534,8 +531,13 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         VeniceStoreVersionConfig storeConfig = getConfigLoader().getStoreConfig(topicName);
         // Make sure partition is not consuming, so we can safely close the rocksdb partition
         long startTimeInMs = System.currentTimeMillis();
-        getStoreIngestionService()
-            .stopConsumptionAndWait(storeConfig, partitionId, 1, stopConsumptionWaitRetriesNum, false);
+        final int stopConsumptionWaitIntervalInSeconds = 1;
+        getStoreIngestionService().stopConsumptionAndWait(
+            storeConfig,
+            partitionId,
+            stopConsumptionWaitIntervalInSeconds,
+            stopConsumptionTimeoutInSeconds / stopConsumptionWaitIntervalInSeconds,
+            false);
         // Close all RocksDB sub-Partitions in Ingestion Service.
         getStorageService().closeStorePartition(storeConfig, partitionId);
         LOGGER.info(
@@ -625,8 +627,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   private void initializeIsolatedIngestionServer() {
-    stopConsumptionWaitRetriesNum =
-        configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 180);
+    stopConsumptionTimeoutInSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 180);
 
     // Initialize D2Client.
     String d2ZkHosts = configLoader.getCombinedProperties().getString(D2_ZK_HOSTS_ADDRESS);
@@ -737,10 +739,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     boolean isDaVinciClient = veniceMetadataRepositoryBuilder.isDaVinciClient();
-    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
-        new ApacheKafkaProducerAdapterFactory(),
-        new ApacheKafkaConsumerAdapterFactory(),
-        new ApacheKafkaAdminAdapterFactory());
+    PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
 
     // Create KafkaStoreIngestionService
     storeIngestionService = new KafkaStoreIngestionService(

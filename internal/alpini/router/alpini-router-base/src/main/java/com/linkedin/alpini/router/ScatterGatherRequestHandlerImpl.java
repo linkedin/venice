@@ -53,7 +53,7 @@ import javax.annotation.Nonnull;
 /**
  * @author Antony T Curtis {@literal <acurtis@linkedin.com>}
  */
-public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<K>, K, R, CHC, BHS extends BasicRequest, HR, HRS, SCATTER_GATHER_HELPER extends ScatterGatherHelper<H, P, K, R, BHS, HR, HRS>>
+public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<K>, K, R, CHC, BHS extends BasicRequest, HR, HRS extends HttpResponseStatus, SCATTER_GATHER_HELPER extends ScatterGatherHelper<H, P, K, R, BHS, HR, HRS>>
     extends ScatterGatherRequestHandler<H, P, K, R> {
   /** Use a named thread factory for the cancel threads */
   private static final ThreadFactory CANCEL_FACTORY = new NamedThreadFactory("scatterGather-cancel");
@@ -679,7 +679,7 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
         boolean isRequestRetriable = isRequestRetriable(path, role, retryStatus);
 
         // Indicate the current request is a retry request
-        path.setRetryRequest();
+        path.setRetryRequest(retryStatus);
 
         HostHealthMonitor<H> healthMonitor =
             _scatterGatherHelper.isEnableRetryRequestAlwaysUseADifferentHost() ? (H host, String partName) ->

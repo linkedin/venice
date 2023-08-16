@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -42,7 +41,6 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
     props.setProperty(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, "true");
     props.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "dc-batch");
     props.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "dc-hybrid");
-    props.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, "dc-incremental-push");
     return props;
   }
 
@@ -104,9 +102,7 @@ public class TestClusterLevelConfigForNativeReplication extends AbstractTestVeni
         new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
             .setHybridRewindSeconds(1L)
             .setHybridOffsetLagThreshold(10));
-    Assert.assertEquals(
-        veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(),
-        "dc-incremental-push");
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getNativeReplicationSourceFabric(), "dc-hybrid");
 
     // Set topic original topic manager back
     veniceAdmin.setTopicManagerRepository(originalTopicManagerRepository);

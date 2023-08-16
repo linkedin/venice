@@ -11,7 +11,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -70,7 +69,7 @@ public class RealTimeTopicSwitcherRewindTest {
   }
 
   @Test
-  public void testStartBufferReplayRewindFromEOP() throws TopicException {
+  public void testStartBufferReplayRewindFromEOP() {
     final Store store = TestUtils.createTestStore(Utils.getUniqueString("store"), "owner", 1);
     final long REWIND_TIME_IN_SECONDS = 5;
     final long VERSION_CREATION_TIME_MS = 15000;
@@ -104,7 +103,7 @@ public class RealTimeTopicSwitcherRewindTest {
   }
 
   @Test
-  public void testStartBufferRewindFromSOP() throws TopicException {
+  public void testStartBufferRewindFromSOP() {
     final Store store = TestUtils.createTestStore(Utils.getUniqueString("store"), "owner", 1);
     final long REWIND_TIME_IN_SECONDS = 5;
     final long VERSION_CREATION_TIME_MS = 15000;
