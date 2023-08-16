@@ -109,14 +109,16 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       List<Version> versions = store.getVersions();
 
       // For new versions, download dictionary.
-      dictionaryDownloadCandidates.addAll(
-          versions.stream()
-              .filter(
-                  version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                      && version.getStatus() == VersionStatus.ONLINE)
-              .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
-              .map(Version::kafkaTopicName)
-              .collect(Collectors.toList()));
+      List test = versions.stream()
+          .filter(
+              version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
+                  && version.getStatus() == VersionStatus.ONLINE)
+          .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
+          .map(Version::kafkaTopicName)
+          .collect(Collectors.toList());
+
+      dictionaryDownloadCandidates.addAll(test);
+      // dictionaryDownloadCandidates.addAll(test);
 
       // For versions that went into non ONLINE states, delete dictionary.
       versions.stream()
@@ -183,7 +185,6 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     dictionaryRetrievalTimeMs = routerConfig.getDictionaryRetrievalTimeMs();
 
     executor = Executors.newScheduledThreadPool(routerConfig.getRouterDictionaryProcessingThreads());
-
     // This thread is the consumer and it waits for an item to be put in the "dictionaryDownloadCandidates" queue.
     Runnable runnable = () -> {
       while (true) {
@@ -454,5 +455,18 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     downloadingDictionaryFutures.forEach(
         (topic, future) -> future
             .completeExceptionally(new InterruptedException("Dictionary download thread stopped")));
+
+    // Shutdown the internal clean up executor of redundant exception filter.
+    redundantExceptionFilter.shutdown();
+  }
+
+  // Visible for testing
+  public StoreDataChangedListener getStoreChangeListener() {
+    return storeChangeListener;
+  }
+
+  // Visible for testing
+  public RedundantExceptionFilter getRedundantExceptionFilter() {
+    return redundantExceptionFilter;
   }
 }
