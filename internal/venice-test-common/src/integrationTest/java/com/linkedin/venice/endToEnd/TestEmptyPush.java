@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -88,10 +89,9 @@ public class TestEmptyPush {
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       writeEmptyAvroFileWithUserSchema(inputDir);
 
-      // First empty push with dict compression enabled.
       Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
       vpjProperties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, Boolean.toString(sendControlMessageDirectly));
-      // TestWriteUtils.runPushJob("Test Batch push job", vpjProperties);
+      vpjProperties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, Boolean.toString(true));
       runVPJ(vpjProperties, 1, controllerClient);
       ByteBuffer dict = getDictFromTopic(Version.composeKafkaTopic(storeName, 1), vpjProperties);
       assertNotNull(dict, "Dict shouldn't be null for the empty push with CompressionStrategy as ZSTD_WITH_DICT");

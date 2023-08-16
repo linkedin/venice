@@ -443,28 +443,12 @@ public class VenicePushJobTest {
     new VenicePushJob(PUSH_JOB_ID, props);
   }
 
-  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testShouldBuildDictionaryWithoutInputRecords(
+  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testShouldBuildZstdCompressionDictionary(
       boolean compressionMetricCollectionEnabled,
       boolean isSourceKafka,
-      boolean isIncrementalPush) {
-    VenicePushJob.PushJobSetting pushJobSetting = new VenicePushJob.PushJobSetting();
-    VenicePushJob.StoreSetting storeSetting = new VenicePushJob.StoreSetting();
-    pushJobSetting.compressionMetricCollectionEnabled = compressionMetricCollectionEnabled;
-    pushJobSetting.isSourceKafka = isSourceKafka;
-    pushJobSetting.isIncrementalPush = isIncrementalPush;
-
-    for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
-      storeSetting.compressionStrategy = compressionStrategy;
-      assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, false));
-    }
-  }
-
-  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testShouldBuildDictionaryWithInputRecords(
-      boolean compressionMetricCollectionEnabled,
-      boolean isSourceKafka,
-      boolean isIncrementalPush) {
+      boolean isIncrementalPush,
+      boolean inputFileHasRecords) {
     VenicePushJob.PushJobSetting pushJobSetting = new VenicePushJob.PushJobSetting();
     VenicePushJob.StoreSetting storeSetting = new VenicePushJob.StoreSetting();
     pushJobSetting.compressionMetricCollectionEnabled = compressionMetricCollectionEnabled;
@@ -475,13 +459,17 @@ public class VenicePushJobTest {
       storeSetting.compressionStrategy = compressionStrategy;
 
       if (isSourceKafka || isIncrementalPush) {
-        assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-      } else if (compressionMetricCollectionEnabled) {
-        assertTrue(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
+        assertFalse(
+            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
       } else if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        assertTrue(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
+        assertTrue(
+            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
+      } else if (compressionMetricCollectionEnabled && inputFileHasRecords) {
+        assertTrue(
+            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
       } else {
-        assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
+        assertFalse(
+            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
       }
     }
   }

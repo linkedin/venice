@@ -1532,9 +1532,8 @@ public class VenicePushJob implements AutoCloseable {
               storeSetting.compressionStrategy);
         } else {
           LOGGER.info("No compression dictionary will be generated as there are no records");
+          return false;
         }
-        // This returns false for both the cases as we will not build a dictionary from input data
-        return false;
       }
 
       LOGGER.info(
@@ -1881,59 +1880,62 @@ public class VenicePushJob implements AutoCloseable {
 
       return Optional.ofNullable(compressionDictionary);
     } else {
-      /**
-       * Special handling for empty push with CompressionStrategy configured as ZSTD_WITH_DICT
-       */
-      if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && !inputFileHasRecords) {
-        if (storeSetting.hybridStoreConfig != null) {
-          /**
-           * For hybrid store: Push Job will try to train a dict based on the records of the current version, and
-           * it won't work for the very first version, and the following versions will work.
-           */
-          String storeName = getPushJobSetting().storeName;
-          try {
-            // Get the latest version
-            RepushInfoResponse repushInfoResponse = ControllerClient.retryableRequest(
-                controllerClient,
-                pushJobSetting.controllerRetries,
-                c -> c.getRepushInfo(storeName, Optional.empty()));
-            if (repushInfoResponse.isError()) {
-              throw new VeniceException(
-                  "Could not get repush info for store " + storeName + " with error: " + repushInfoResponse.getError());
-            }
-            int sourceVersion = repushInfoResponse.getRepushInfo().getVersion().getNumber();
-            String sourceTopicName = Version.composeKafkaTopic(storeName, sourceVersion);
-            String sourceKafkaUrl = repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
-            LOGGER.info(
-                "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
-                sourceTopicName,
-                sourceKafkaUrl);
-            paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
-                .setTopicName(sourceTopicName)
-                .setSourceVersionCompressionStrategy(
-                    repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
-            KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
-            compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
+      if (isZstdDictCreationRequired) {
+        if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && !inputFileHasRecords) {
+          // Special handling for empty push with ZSTD_WITH_DICT
+          if (storeSetting.hybridStoreConfig != null) {
+            /**
+             * For hybrid store: Push Job will try to train a dict based on the records of the current version, and
+             * it won't work for the very first version, and the following versions will work.
+             */
+            String storeName = getPushJobSetting().storeName;
+            try {
+              // Get the latest version
+              RepushInfoResponse repushInfoResponse = ControllerClient.retryableRequest(
+                  controllerClient,
+                  pushJobSetting.controllerRetries,
+                  c -> c.getRepushInfo(storeName, Optional.empty()));
+              if (repushInfoResponse.isError()) {
+                throw new VeniceException(
+                    "Could not get repush info for store " + storeName + " with error: "
+                        + repushInfoResponse.getError());
+              }
+              int sourceVersion = repushInfoResponse.getRepushInfo().getVersion().getNumber();
+              String sourceTopicName = Version.composeKafkaTopic(storeName, sourceVersion);
+              String sourceKafkaUrl = repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
+              LOGGER.info(
+                  "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
+                  sourceTopicName,
+                  sourceKafkaUrl);
+              paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
+                  .setTopicName(sourceTopicName)
+                  .setSourceVersionCompressionStrategy(
+                      repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
+              KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
+              compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
 
-            return Optional.of(compressionDictionary);
-          } catch (Exception e) {
-            LOGGER.warn(
-                "Encountered an exception when trying to build a dict from an existing version for an empty push to a hybrid store: "
-                    + storeName + ", so the push job will use a default dict",
-                e);
+              return Optional.of(compressionDictionary);
+            } catch (Exception e) {
+              LOGGER.warn(
+                  "Encountered an exception when trying to build a dict from an existing version for an empty push to a hybrid store: "
+                      + storeName + ", so the push job will use a default dict",
+                  e);
+            }
           }
+
+          /**
+           * ZSTD_WITH_DICT needs a dictionary even if there is no input data, so we generate a basic one based \
+           * on synthetic data.
+           *
+           * TODO: It would be smarter to query it from the previous version and pass it along. However,
+           *  the 'previous' version can mean different things in different colos, and ideally we'd want
+           *  a consistent compressed result in all colos so as to make sure we don't confuse our consistency
+           *  checking mechanisms. So this needs some (maybe) complicated reworking
+           */
+          compressionDictionary = ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
+          return Optional.of(compressionDictionary);
         }
 
-        // We can't use dictionary compression with no dictionary, so we generate a basic one
-        // TODO: It would be smarter to query it from the previous version and pass it along. However,
-        // the 'previous' version can mean different things in different colos, and ideally we'd want
-        // a consistent compressed result in all colos so as to make sure we don't confuse our consistency
-        // checking mechanisms. So this needs some (maybe) complicated reworking.
-        compressionDictionary = ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
-        return Optional.of(compressionDictionary);
-      }
-
-      if (isZstdDictCreationRequired) {
         if (!pushJobSetting.useMapperToBuildDict) {
           LOGGER.info("Training Zstd dictionary");
           compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
