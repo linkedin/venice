@@ -145,6 +145,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP = "kafka.source.key.schema";
   public static final String EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = "extended.schema.validity.check.enabled";
   public static final boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
+  public static final String UPDATE_SCHEMA_STRING_PROP = "update.schema";
 
   // Vson input configs
   // Vson files store key/value schema on file header. key / value fields are optional
@@ -152,6 +153,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String FILE_KEY_SCHEMA = "key.schema";
   public static final String FILE_VALUE_SCHEMA = "value.schema";
   public static final String INCREMENTAL_PUSH = "incremental.push";
+  public static final String PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT = "partial.update.with.new.input.format";
 
   // veniceReducer will not fail fast and override the previous key if this is true and duplicate keys incur.
   public static final String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
@@ -485,6 +487,7 @@ public class VenicePushJob implements AutoCloseable {
     String sourceGridFabric;
     int batchNumBytes;
     boolean isIncrementalPush;
+    boolean isPartialUpdateWithNewInputFormat;
     Optional<String> incrementalPushVersion = Optional.empty();
     boolean isDuplicateKeyAllowed;
     boolean enablePushJobStatusUpload;
@@ -680,6 +683,8 @@ public class VenicePushJob implements AutoCloseable {
     }
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
+    pushJobSettingToReturn.isPartialUpdateWithNewInputFormat =
+        props.getBoolean(PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     pushJobSettingToReturn.enableReducerSpeculativeExecution =
@@ -2308,11 +2313,25 @@ public class VenicePushJob implements AutoCloseable {
 
     SchemaResponse getValueSchemaIdResponse;
 
+    LOGGER.info(
+        "DEBUGGING JLLIU VALIDATE SETTING: {} {}",
+        setting.enableWriteCompute,
+        setting.isPartialUpdateWithNewInputFormat);
     if (setting.enableWriteCompute) {
-      getValueSchemaIdResponse = ControllerClient.retryableRequest(
-          controllerClient,
-          setting.controllerRetries,
-          c -> c.getValueOrDerivedSchemaId(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
+      // With new input format, we will need to use the latest update schema to generate partial update record.
+      if (setting.isPartialUpdateWithNewInputFormat) {
+        getValueSchemaIdResponse = ControllerClient.retryableRequest(
+            controllerClient,
+            setting.controllerRetries,
+            c -> c.getLatestUpdateSchema(setting.storeName));
+        // Update the schema to be the update schema of the superset schema.
+        pushJobSchemaInfo.setValueSchemaString(getValueSchemaIdResponse.getSchemaStr());
+      } else {
+        getValueSchemaIdResponse = ControllerClient.retryableRequest(
+            controllerClient,
+            setting.controllerRetries,
+            c -> c.getValueOrDerivedSchemaId(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
+      }
     } else {
       getValueSchemaIdResponse = ControllerClient.retryableRequest(
           controllerClient,
@@ -2408,6 +2427,7 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     if (jobSetting.enableWriteCompute && (!storeSetting.isIncrementalPushEnabled || !jobSetting.isIncrementalPush)) {
+      LOGGER.info("DEBUGGING: {} {}", storeSetting.isIncrementalPushEnabled, jobSetting.isIncrementalPush);
       throw new VeniceException("Write compute is only available for incremental push jobs.");
     }
 
@@ -3035,10 +3055,15 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSchemaInfo.isAvro()) {
         jobConf.set(SCHEMA_STRING_PROP, pushJobSchemaInfo.getFileSchemaString());
         jobConf.set(AvroJob.INPUT_SCHEMA, pushJobSchemaInfo.getFileSchemaString());
+        if (getPushJobSetting().isPartialUpdateWithNewInputFormat) {
+          jobConf.setBoolean(PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT, true);
+          jobConf.set(UPDATE_SCHEMA_STRING_PROP, pushJobSchemaInfo.getValueSchemaString());
+        }
         jobConf.setClass("avro.serialization.data.model", GenericData.class, GenericData.class);
         jobConf.setInputFormat(AvroInputFormat.class);
         jobConf.setMapperClass(VeniceAvroMapper.class);
         jobConf.setBoolean(VSON_PUSH, false);
+        LOGGER.info("DEBUGGING JOB CONFIG: {}", jobConf.toString());
       } else {
         jobConf.setInputFormat(VsonSequenceFileInputFormat.class);
         jobConf.setMapperClass(VeniceVsonMapper.class);

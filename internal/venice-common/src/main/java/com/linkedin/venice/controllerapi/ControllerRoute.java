@@ -174,6 +174,7 @@ public enum ControllerRoute {
       "/get_value_or_derived_schema_id", HttpMethod.POST, Arrays.asList(NAME, DERIVED_SCHEMA)
   ),
   REMOVE_DERIVED_SCHEMA("/remove_derived_schema", HttpMethod.POST, Arrays.asList(NAME, SCHEMA_ID, DERIVED_SCHEMA_ID)),
+  GET_LATEST_UPDATE_SCHEMA("/get_latest_update_schema", HttpMethod.GET, Collections.emptyList()),
   // go/inclusivecode deprecated (alias="/leader_controller)
   @Deprecated
   MASTER_CONTROLLER("/master_controller", HttpMethod.GET, Collections.emptyList()),
