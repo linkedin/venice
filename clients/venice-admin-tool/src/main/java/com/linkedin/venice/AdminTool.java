@@ -1423,11 +1423,12 @@ public class AdminTool {
 
   private static void dumpAdminMessages(CommandLine cmd) {
     Properties consumerProperties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+    consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
+    PubSubConsumerAdapter consumer = getConsumer(consumerProperties);
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
-        getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS),
-        PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory(),
+        consumer,
         getRequiredArgument(cmd, Arg.CLUSTER),
-        consumerProperties,
         Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)),
         Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
     printObject(adminMessages);

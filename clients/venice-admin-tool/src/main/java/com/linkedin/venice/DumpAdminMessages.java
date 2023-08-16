@@ -13,17 +13,12 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -56,70 +51,58 @@ public class DumpAdminMessages {
   }
 
   public static List<AdminOperationInfo> dumpAdminMessages(
-      String pubSubBrokerUrl,
-      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory,
+      PubSubConsumerAdapter consumer,
       String clusterName,
-      Properties consumerProperties,
       long startingOffset,
       int messageCnt) {
-    consumerProperties = getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    OptimizedKafkaValueSerializer valueDeserializer = new OptimizedKafkaValueSerializer();
-    PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
-        valueDeserializer,
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumerAdapter consumer = pubSubConsumerAdapterFactory
-        .create(new VeniceProperties(consumerProperties), false, pubSubDeserializer, "AdminMessageDumperConsumer")) {
-      // include the message with startingOffset
-      PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
-          pubSubTopicRepository.getTopic(adminTopic),
-          AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-      consumer.subscribe(adminTopicPartition, startingOffset - 1);
-      AdminOperationSerializer deserializer = new AdminOperationSerializer();
-      List<AdminOperationInfo> adminOperations = new ArrayList<>();
-      int curMsgCnt = 0;
-      DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
-      dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-      KafkaMessageEnvelope messageEnvelope = null;
-
-      while (curMsgCnt < messageCnt) {
-        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
-            consumer.poll(1000); // 1 second
-        if (records.isEmpty()) {
-          break;
-        }
-        Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator =
-            Utils.iterateOnMapOfLists(records);
-        while (recordsIterator.hasNext()) {
-          PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordsIterator.next();
-          messageEnvelope = record.getValue();
-          // check message type
-          MessageType messageType = MessageType.valueOf(messageEnvelope);
-          if (messageType.equals(MessageType.PUT)) {
-            if (++curMsgCnt > messageCnt) {
-              break;
-            }
-            Put put = (Put) messageEnvelope.payloadUnion;
-            AdminOperation adminMessage = deserializer.deserialize(put.putValue, put.schemaId);
-            AdminOperationInfo adminOperationInfo = new AdminOperationInfo();
-            adminOperationInfo.offset = record.getOffset();
-            adminOperationInfo.schemaId = put.schemaId;
-            adminOperationInfo.adminOperation = adminMessage.toString();
-            adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();
-            adminOperationInfo.publishTimeStamp =
-                dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
-            adminOperationInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
-            adminOperations.add(adminOperationInfo);
+    // include the message with startingOffset
+    PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(adminTopic),
+        AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    consumer.subscribe(adminTopicPartition, startingOffset - 1);
+    AdminOperationSerializer deserializer = new AdminOperationSerializer();
+    List<AdminOperationInfo> adminOperations = new ArrayList<>();
+    int curMsgCnt = 0;
+    DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+    dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+    KafkaMessageEnvelope messageEnvelope = null;
+    while (curMsgCnt < messageCnt) {
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
+          consumer.poll(1000); // 1 second
+      if (records.isEmpty()) {
+        break;
+      }
+      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator =
+          Utils.iterateOnMapOfLists(records);
+      while (recordsIterator.hasNext()) {
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordsIterator.next();
+        messageEnvelope = record.getValue();
+        // check message type
+        MessageType messageType = MessageType.valueOf(messageEnvelope);
+        if (messageType.equals(MessageType.PUT)) {
+          if (++curMsgCnt > messageCnt) {
+            break;
           }
-        }
-        if (curMsgCnt > messageCnt) {
-          break;
+          Put put = (Put) messageEnvelope.payloadUnion;
+          AdminOperation adminMessage = deserializer.deserialize(put.putValue, put.schemaId);
+          AdminOperationInfo adminOperationInfo = new AdminOperationInfo();
+          adminOperationInfo.offset = record.getOffset();
+          adminOperationInfo.schemaId = put.schemaId;
+          adminOperationInfo.adminOperation = adminMessage.toString();
+          adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();
+          adminOperationInfo.publishTimeStamp =
+              dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
+          adminOperationInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
+          adminOperations.add(adminOperationInfo);
         }
       }
-      return adminOperations;
+      if (curMsgCnt > messageCnt) {
+        break;
+      }
     }
+    return adminOperations;
   }
 
   public static Properties getPubSubConsumerProperties(String kafkaUrl, Properties pubSubConsumerProperties) {
