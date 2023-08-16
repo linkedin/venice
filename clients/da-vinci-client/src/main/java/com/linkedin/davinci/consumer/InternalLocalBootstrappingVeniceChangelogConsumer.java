@@ -53,7 +53,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 
-public class BootstrappingVeniceChangelogConsumerImpl<K, V> extends VeniceChangelogConsumerImpl<K, V>
+class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChangelogConsumerImpl<K, V>
     implements BootstrappingVeniceChangelogConsumer<K, V> {
   private final StorageService storageService;
   private final StorageMetadataService storageMetadataService;
@@ -73,7 +73,7 @@ public class BootstrappingVeniceChangelogConsumerImpl<K, V> extends VeniceChange
 
   boolean isStarted = false;
 
-  public BootstrappingVeniceChangelogConsumerImpl(
+  public InternalLocalBootstrappingVeniceChangelogConsumer(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
       String fileSystemPath) {
