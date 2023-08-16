@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.api;
 
 import static com.linkedin.venice.HttpConstants.HTTP_GET;
+import static com.linkedin.venice.utils.RedundantExceptionFilter.DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS;
 import static org.apache.http.HttpStatus.SC_OK;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -20,6 +21,7 @@ import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
@@ -137,6 +139,27 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     }
   };
 
+  enum LogLevel {
+    INFO, WARN
+  };
+
+  private final RedundantExceptionFilter redundantExceptionFilter = new RedundantExceptionFilter(
+      RedundantExceptionFilter.DEFAULT_BITSET_SIZE,
+      DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
+
+  private void logWithRedundantFilter(LogLevel logLevel, String msg) {
+    if (!redundantExceptionFilter.isRedundantException(msg)) {
+      switch (logLevel) {
+        case INFO:
+          LOGGER.info(msg);
+          break;
+        case WARN:
+          LOGGER.warn(msg);
+          break;
+      }
+    }
+  }
+
   /**
    *
    * @param onlineInstanceFinder OnlineInstanceFinder used to identify which storage node needs to be queried
@@ -204,7 +227,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     String instanceUrl = instance.getUrl(sslFactory.isPresent());
 
-    LOGGER.info("Downloading dictionary for resource: {} from: {}", kafkaTopic, instanceUrl);
+    logWithRedundantFilter(
+        LogLevel.INFO,
+        "Downloading dictionary for resource: " + kafkaTopic + " from: " + instanceUrl);
 
     VeniceMetaDataRequest request = new VeniceMetaDataRequest(
         instance,
@@ -242,8 +267,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
                 + e.getMessage());
       }
 
-      LOGGER.warn(exception.getMessage());
-
+      logWithRedundantFilter(LogLevel.WARN, exception.getMessage());
       throw exception;
     }, executor);
   }
@@ -252,7 +276,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     try {
       int code = response.getStatusCode();
       if (code != SC_OK) {
-        LOGGER.warn("Dictionary fetch returns {} for {}", code, instanceUrl);
+        logWithRedundantFilter(LogLevel.WARN, "Dictionary fetch returns " + code + " for " + instanceUrl);
       } else {
         ByteBuf byteBuf = response.getContentInByteBuf();
         byte[] bytes = new byte[byteBuf.readableBytes()];
@@ -260,7 +284,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         return bytes;
       }
     } catch (IOException e) {
-      LOGGER.warn("Dictionary fetch HTTP response error: {} for {}", e.getMessage(), instanceUrl);
+      logWithRedundantFilter(
+          LogLevel.WARN,
+          "Dictionary fetch HTTP response error: " + e.getMessage() + " for " + instanceUrl);
     }
 
     return null;
@@ -278,7 +304,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         return onlineInstances.get((int) (Math.random() * onlineInstances.size()));
       }
     } catch (Exception e) {
-      LOGGER.warn("Exception caught in getting online instances for resource: {}. {}", kafkaTopic, e.getMessage());
+      logWithRedundantFilter(
+          LogLevel.WARN,
+          "Exception caught in getting online instances for resource: " + kafkaTopic + ". " + e.getMessage());
     }
 
     return null;
@@ -324,7 +352,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         .filter(Objects::nonNull)
         .collect(Collectors.toList());
 
-    LOGGER.info("Beginning dictionary fetch for {}", storeTopics);
+    logWithRedundantFilter(LogLevel.INFO, "Beginning dictionary fetch for " + storeTopics);
 
     CompletableFuture[] dictionaryDownloadFutureArray = filteredTopics.stream()
         .map(this::fetchCompressionDictionary)
@@ -334,7 +362,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     try {
       CompletableFuture.allOf(dictionaryDownloadFutureArray).get(dictionaryRetrievalTimeMs, TimeUnit.MILLISECONDS);
     } catch (Exception e) {
-      LOGGER.warn("Dictionary fetch failed. Store topics were: {}. {}", storeTopics, e.getMessage());
+      logWithRedundantFilter(
+          LogLevel.WARN,
+          "Dictionary fetch failed. Store topics were: " + storeTopics + ". " + e.getMessage());
       return false;
     }
     return true;
@@ -353,10 +383,10 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               if (exception instanceof InterruptedException) {
                 LOGGER.warn("{}. Will not retry dictionary download.", exception.getMessage());
               } else {
-                LOGGER.warn(
-                    "Exception encountered when asynchronously downloading dictionary for resource: {}. {}",
-                    kafkaTopic,
-                    exception.getMessage());
+                logWithRedundantFilter(
+                    LogLevel.WARN,
+                    "Exception encountered when asynchronously downloading dictionary for resource: " + kafkaTopic
+                        + ". " + exception.getMessage());
 
                 // Wait for future to be added before removing it
                 while (downloadingDictionaryFutures.remove(kafkaTopic) == null) {
