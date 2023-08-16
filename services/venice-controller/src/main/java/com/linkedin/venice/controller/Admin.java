@@ -407,6 +407,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber);
 
+  void rollForwardToFutureVersion(String clusterName, String storeName);
+
   void rollbackToBackupVersion(String clusterName, String storeName);
 
   void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber);
