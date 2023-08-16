@@ -196,6 +196,7 @@ import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
@@ -237,6 +238,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.HelixException;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.HelixPropertyFactory;
 import org.apache.helix.InstanceType;
@@ -293,6 +295,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       ExecutionStatus.COMPLETED,
       ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
       ExecutionStatus.ARCHIVED);
+
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceHelixAdmin.class);
   private static final int RECORD_COUNT = 10;
@@ -4759,9 +4764,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
 
     List<String> instances = getStorageNodes(clusterName);
+    Map<String, List<String>> disabledPartitions;
     for (String instance: instances) {
-      Map<String, List<String>> disabledPartitions =
-          getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
+      try {
+        disabledPartitions = getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
+      } catch (HelixException helixException) {
+        String msg = "Failed to get disabled partition map in cluster " + clusterName + " for host " + instance;
+        if (!EXCEPTION_FILTER.isRedundantException(msg)) {
+          LOGGER.warn(msg, helixException);
+        }
+        continue;
+      }
       for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
         if (entry.getKey().equals(kafkaTopic)) {
           // clean up disabled partition map, so that it does not grow indefinitely with dropped resources
