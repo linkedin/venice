@@ -196,6 +196,7 @@ import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
@@ -294,6 +295,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       ExecutionStatus.COMPLETED,
       ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
       ExecutionStatus.ARCHIVED);
+
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceHelixAdmin.class);
   private static final int RECORD_COUNT = 10;
@@ -4765,11 +4769,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       try {
         disabledPartitions = getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
       } catch (HelixException helixException) {
-        LOGGER.warn(
-            "Failed to get disabled partition map in cluster {} for host {} ",
-            clusterName,
-            instance,
-            helixException);
+        String msg = "Failed to get disabled partition map in cluster " + clusterName + " for host " + instance;
+        if (!EXCEPTION_FILTER.isRedundantException(msg)) {
+          LOGGER.warn(msg, helixException);
+        }
         continue;
       }
       for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
