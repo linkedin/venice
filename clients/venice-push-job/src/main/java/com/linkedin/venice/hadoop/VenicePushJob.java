@@ -2426,7 +2426,6 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     if (jobSetting.enableWriteCompute && (!storeSetting.isIncrementalPushEnabled || !jobSetting.isIncrementalPush)) {
-      LOGGER.info("DEBUGGING: {} {}", storeSetting.isIncrementalPushEnabled, jobSetting.isIncrementalPush);
       throw new VeniceException("Write compute is only available for incremental push jobs.");
     }
 
