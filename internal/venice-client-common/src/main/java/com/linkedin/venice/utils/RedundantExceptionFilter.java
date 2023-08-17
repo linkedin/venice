@@ -19,6 +19,10 @@ public class RedundantExceptionFilter {
   private BitSet activeBitset;
   private BitSet oldBitSet;
 
+  public RedundantExceptionFilter() {
+    this(DEFAULT_BITSET_SIZE, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
+  }
+
   public RedundantExceptionFilter(int bitSetSize, long noRedundantExceptionDurationMs) {
     this.bitSetSize = bitSetSize;
     activeBitset = new BitSet(bitSetSize);

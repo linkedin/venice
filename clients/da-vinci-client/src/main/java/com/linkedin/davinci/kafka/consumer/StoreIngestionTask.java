@@ -2290,6 +2290,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         newStoreVersionState.chunked = startOfPush.chunked;
         newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
         newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
+        if (startOfPush.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
+          if (startOfPush.compressionDictionary == null) {
+            throw new VeniceException(
+                "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
+          }
+        }
         newStoreVersionState.batchConflictResolutionPolicy = startOfPush.timestampPolicy;
         newStoreVersionState.startOfPushTimestamp = startOfPushKME.producerMetadata.messageTimestamp;
 

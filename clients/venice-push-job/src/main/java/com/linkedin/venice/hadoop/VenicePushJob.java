@@ -1882,7 +1882,10 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       if (isZstdDictCreationRequired) {
         if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && !inputFileHasRecords) {
-          // Special handling for empty push with ZSTD_WITH_DICT
+          /**
+           * Special handling for empty push with ZSTD_WITH_DICT: This compression strategy needs a dictionary even if
+           * there is no input data, so we generate a dictionary either based on synthetic data or from the current version.
+           */
           if (storeSetting.hybridStoreConfig != null) {
             /**
              * For hybrid store: Push Job will try to train a dict based on the records of the current version, and
@@ -1924,13 +1927,7 @@ public class VenicePushJob implements AutoCloseable {
           }
 
           /**
-           * ZSTD_WITH_DICT needs a dictionary even if there is no input data, so we generate a basic one based \
-           * on synthetic data.
-           *
-           * TODO: It would be smarter to query it from the previous version and pass it along. However,
-           *  the 'previous' version can mean different things in different colos, and ideally we'd want
-           *  a consistent compressed result in all colos so as to make sure we don't confuse our consistency
-           *  checking mechanisms. So this needs some (maybe) complicated reworking
+           * For Batch only store or first push to a hybrid store: Build dictionary based on synthetic data
            */
           compressionDictionary = ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
           return Optional.of(compressionDictionary);

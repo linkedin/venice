@@ -37,6 +37,22 @@ public class TestRedundantExceptionFilter {
   }
 
   @Test
+  public void testIsRedundantExceptionWithUpdateRedundancyFlag() {
+    RedundantExceptionFilter filter = new RedundantExceptionFilter();
+    String msg = "testLogException";
+    // First time check the msg with updateRedundancy as false
+    Assert.assertFalse(filter.isRedundantException(msg, false));
+    // Second time check the msg: should not be redundant as updateRedundancy was false
+    Assert.assertFalse(filter.isRedundantException(msg));
+    // third time check the msg: should be redundant as updateRedundancy was true
+    Assert.assertTrue(filter.isRedundantException(msg));
+
+    filter.clearBitSet();
+    // Fourth time check the msg: should not be redundant due to clearBitSet
+    Assert.assertFalse(filter.isRedundantException(msg, false));
+  }
+
+  @Test
   public void testClear() {
     long duration = 10000000;
     RedundantExceptionFilter filter =
