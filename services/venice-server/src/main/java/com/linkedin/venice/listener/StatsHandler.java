@@ -1,7 +1,5 @@
 package com.linkedin.venice.listener;
 
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.read.RequestType;
@@ -14,6 +12,9 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import it.unimi.dsi.fastutil.ints.IntList;
+
+import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 
 public class StatsHandler extends ChannelDuplexHandler {

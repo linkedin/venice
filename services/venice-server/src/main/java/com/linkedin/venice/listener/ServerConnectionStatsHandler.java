@@ -11,11 +11,11 @@ import javax.net.ssl.SSLPeerUnverifiedException;
 
 public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
   private final ServerConnectionStats serverConnectionStats;
-  private final String routerPrincialName;
+  private final String routerPrincipalName;
 
   public ServerConnectionStatsHandler(ServerConnectionStats serverConnectionStats, String routerPrincipalName) {
     this.serverConnectionStats = serverConnectionStats;
-    this.routerPrincialName = routerPrincipalName;
+    this.routerPrincipalName = routerPrincipalName;
   }
 
   @Override
@@ -27,7 +27,7 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
       return;
     }
     String principalName = getPrincipal(sslHandler);
-    if (principalName.contains(routerPrincialName)) {
+    if (principalName.contains(routerPrincipalName)) {
       serverConnectionStats.incrementRouterConnectionCount();
     } else {
       serverConnectionStats.incrementClientConnectionCount();
@@ -43,10 +43,10 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
       return;
     }
     String principalName = getPrincipal(sslHandler);
-    if (principalName.contains(routerPrincialName)) {
-      serverConnectionStats.incrementRouterConnectionCount();
+    if (principalName.contains(routerPrincipalName)) {
+      serverConnectionStats.decrementRouterConnectionCount();
     } else {
-      serverConnectionStats.incrementClientConnectionCount();
+      serverConnectionStats.decrementClientConnectionCount();
     }
   }
 

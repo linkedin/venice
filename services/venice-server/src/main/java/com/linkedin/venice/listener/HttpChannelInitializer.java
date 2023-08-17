@@ -169,6 +169,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       ch.pipeline().addLast(sslInitializer);
     }
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
+      ServerConnectionStatsHandler serverConnectionStatsHandler =
+          new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName());
+      pipeline.addLast(serverConnectionStatsHandler);
       StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
       pipeline.addLast(statsHandler);
       if (whetherNeedServerCodec) {
@@ -208,9 +211,6 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           pipeline.addLast(storeAclHandler.get());
         }
       }
-      ServerConnectionStatsHandler serverConnectionStatsHandler =
-          new ServerConnectionStatsHandler(serverConnectionStats, serverConfig.getRouterPrincipalName());
-      pipeline.addLast(serverConnectionStatsHandler);
       pipeline
           .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.getStoreToEarlyTerminationThresholdMSMap()));
       if (quotaEnforcer != null) {
