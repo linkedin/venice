@@ -62,6 +62,7 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> impleme
    */
   byte[] getValueBytes(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
     avroValue = getAvroValue(inputKey, inputValue);
+
     if (avroValue == null) {
       return null;
     }

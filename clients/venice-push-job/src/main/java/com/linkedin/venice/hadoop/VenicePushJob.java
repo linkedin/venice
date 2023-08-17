@@ -684,11 +684,6 @@ public class VenicePushJob implements AutoCloseable {
     }
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
-    /*
-    pushJobSettingToReturn.isPartialUpdateWithNewInputFormat =
-        props.getBoolean(PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT, false);
-    
-     */
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     pushJobSettingToReturn.enableReducerSpeculativeExecution =
