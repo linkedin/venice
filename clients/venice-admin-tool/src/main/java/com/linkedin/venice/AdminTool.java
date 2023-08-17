@@ -85,9 +85,11 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -162,6 +164,11 @@ public class AdminTool {
   private static final String SUCCESS = "success";
 
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+
+  private static final PubSubClientsFactory PUB_SUB_CLIENTS_FACTORY = new PubSubClientsFactory(
+      new ApacheKafkaProducerAdapterFactory(),
+      new ApacheKafkaConsumerAdapterFactory(),
+      new ApacheKafkaAdminAdapterFactory());
 
   private static ControllerClient controllerClient;
   private static Optional<SSLFactory> sslFactory = Optional.empty();
@@ -1396,8 +1403,8 @@ public class AdminTool {
         .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollingInterval)
         .setTopicMinLogCompactionLagMs(0L)
         .setLocalKafkaBootstrapServers(kafkaBootstrapServer)
-        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
-        .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
+        .setPubSubConsumerAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory())
+        .setPubSubAdminAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getAdminAdapterFactory())
         .setPubSubTopicRepository(pubSubTopicRepository)
         .build()) {
       TopicManager topicManager = topicManagerRepository.getTopicManager();
@@ -1416,10 +1423,12 @@ public class AdminTool {
 
   private static void dumpAdminMessages(CommandLine cmd) {
     Properties consumerProperties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+    consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
+    PubSubConsumerAdapter consumer = getConsumer(consumerProperties);
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
-        getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS),
+        consumer,
         getRequiredArgument(cmd, Arg.CLUSTER),
-        consumerProperties,
         Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)),
         Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
     printObject(adminMessages);
@@ -2993,7 +3002,7 @@ public class AdminTool {
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    return new ApacheKafkaConsumerAdapterFactory()
+    return PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory()
         .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "admin-tool-topic-dumper");
   }
 
