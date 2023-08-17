@@ -3,14 +3,17 @@ package com.linkedin.venice.producer.online;
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.producer.AbstractVeniceProducer;
 import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
@@ -20,7 +23,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -42,26 +44,50 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
   private final ICProvider icProvider;
 
   OnlineVeniceProducer(
-      InternalAvroStoreClient<K, V> storeClient,
-      SchemaReader kmeSchemaReader,
+      ClientConfig storeClientConfig,
       VeniceProperties producerConfigs,
       MetricsRepository metricsRepository,
       ICProvider icProvider) {
-    this.storeClient = storeClient;
-    this.storeName = storeClient.getStoreName();
-    this.icProvider = icProvider;
-
     Duration schemaRefreshPeriod;
     if (producerConfigs.containsKey(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS)) {
       schemaRefreshPeriod =
           Duration.ofSeconds(producerConfigs.getLong(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS));
     } else {
-      schemaRefreshPeriod = ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD;
+      schemaRefreshPeriod = storeClientConfig.getSchemaRefreshPeriod();
     }
 
-    this.schemaReader =
-        new RouterBackedSchemaReader(storeClient, Optional.empty(), Optional.empty(), schemaRefreshPeriod, icProvider);
-    configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
+    AvroGenericStoreClient<K, V> tempStoreClient = ClientFactory.getAndStartAvroClient(storeClientConfig);
+
+    if (!(tempStoreClient instanceof InternalAvroStoreClient)) {
+      throw new IllegalStateException(
+          "Store client must be of type " + InternalAvroStoreClient.class.getCanonicalName() + ". Got "
+              + getClass().getCanonicalName());
+    }
+
+    this.storeClient = (InternalAvroStoreClient<K, V>) tempStoreClient;
+    this.storeName = storeClient.getStoreName();
+    this.icProvider = icProvider;
+
+    ClientConfig clientConfigForSchemaReader =
+        ClientConfig.cloneConfig(storeClientConfig).setSchemaRefreshPeriod(schemaRefreshPeriod);
+
+    this.schemaReader = ClientFactory.getSchemaReader(clientConfigForSchemaReader, icProvider);
+    ClientConfig<KafkaMessageEnvelope> kmeClientConfig = ClientConfig.cloneConfig(storeClientConfig)
+        .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
+        .setSpecificValueClass(KafkaMessageEnvelope.class);
+
+    try (SchemaReader kmeSchemaReader = ClientFactory.getSchemaReader(kmeClientConfig, icProvider)) {
+      configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
+    } catch (Throwable e) {
+      // When using D2TransportClient, the threads that D2 creates are non-daemon threads which hold up graceful
+      // termination of the "main" thread. This is especially problematic for the shell producer.
+      Utils.closeQuietlyWithErrorLogged(this);
+      if (e instanceof RuntimeException) {
+        throw (RuntimeException) e;
+      } else {
+        throw new VeniceException(e);
+      }
+    }
   }
 
   @Override
@@ -94,7 +120,7 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
       if (icProvider != null) {
         responseFuture = icProvider.call(this.getClass().getCanonicalName(), () -> storeClient.getRaw(requestPath));
       } else {
-        responseFuture = (CompletableFuture<byte[]>) storeClient.getRaw(requestPath);
+        responseFuture = storeClient.getRaw(requestPath);
       }
       response = RetryUtils.executeWithMaxAttempt(
           () -> responseFuture.get(),
@@ -113,8 +139,10 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
 
   @Override
   public void close() throws IOException {
-    super.close();
-    Utils.closeQuietlyWithErrorLogged(schemaReader);
-    Utils.closeQuietlyWithErrorLogged(storeClient);
+    if (!isClosed()) {
+      super.close();
+      Utils.closeQuietlyWithErrorLogged(schemaReader);
+      Utils.closeQuietlyWithErrorLogged(storeClient);
+    }
   }
 }
