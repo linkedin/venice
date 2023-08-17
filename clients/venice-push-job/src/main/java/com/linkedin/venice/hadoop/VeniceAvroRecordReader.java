@@ -30,7 +30,6 @@ import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericDatumReader;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.mapred.AvroWrapper;
 import org.apache.hadoop.fs.FileSystem;
@@ -128,13 +127,13 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
     if (!generatePartialUpdateRecordFromInput) {
       return valueObject;
     }
-    if (!(valueObject instanceof GenericRecord)) {
-      throw new VeniceException("Retrieved record is not a Avro record");
+    if (!(valueObject instanceof IndexedRecord)) {
+      throw new VeniceException("Retrieved record is not a Avro indexed record");
     }
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
-    GenericRecord genericRecordValue = (GenericRecord) valueObject;
-    for (Schema.Field field: genericRecordValue.getSchema().getFields()) {
-      updateBuilder.setNewFieldValue(field.name(), genericRecordValue.get(field.pos()));
+    IndexedRecord indexedRecordValue = (IndexedRecord) valueObject;
+    for (Schema.Field field: indexedRecordValue.getSchema().getFields()) {
+      updateBuilder.setNewFieldValue(field.name(), indexedRecordValue.get(field.pos()));
     }
     return updateBuilder.build();
   }
