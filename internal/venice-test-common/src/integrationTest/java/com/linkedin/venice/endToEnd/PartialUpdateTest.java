@@ -6,7 +6,6 @@ import static com.linkedin.venice.hadoop.VenicePushJob.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.hadoop.VenicePushJob.PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT;
 import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
@@ -287,7 +286,6 @@ public class PartialUpdateTest {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties vpjProperties =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-    vpjProperties.put(PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT, true);
     vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
     vpjProperties.put(INCREMENTAL_PUSH, true);
 
@@ -298,9 +296,7 @@ public class PartialUpdateTest {
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
               .setWriteComputationEnabled(true)
-              // .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
-              // .setRmdChunkingEnabled(true)
               .setIncrementalPushEnabled(true)
               .setHybridRewindSeconds(10L)
               .setHybridOffsetLagThreshold(2L);

@@ -67,6 +67,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -683,8 +684,11 @@ public class VenicePushJob implements AutoCloseable {
     }
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
+    /*
     pushJobSettingToReturn.isPartialUpdateWithNewInputFormat =
         props.getBoolean(PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT, false);
+    
+     */
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     pushJobSettingToReturn.enableReducerSpeculativeExecution =
@@ -2312,75 +2316,70 @@ public class VenicePushJob implements AutoCloseable {
         .info("Validating value schema: {} for store: {}", pushJobSchemaInfo.getValueSchemaString(), setting.storeName);
 
     SchemaResponse getValueSchemaIdResponse;
-
-    LOGGER.info(
-        "DEBUGGING JLLIU VALIDATE SETTING: {} {}",
-        setting.enableWriteCompute,
-        setting.isPartialUpdateWithNewInputFormat);
     if (setting.enableWriteCompute) {
-      // With new input format, we will need to use the latest update schema to generate partial update record.
-      if (setting.isPartialUpdateWithNewInputFormat) {
+      if (!isUpdateSchema(pushJobSchemaInfo.getValueSchemaString())) {
+        // With new input format, we will need to use the latest update schema to generate partial update record.
         getValueSchemaIdResponse = ControllerClient.retryableRequest(
             controllerClient,
             setting.controllerRetries,
             c -> c.getLatestUpdateSchema(setting.storeName));
         // Update the schema to be the update schema of the superset schema.
         pushJobSchemaInfo.setValueSchemaString(getValueSchemaIdResponse.getSchemaStr());
+        pushJobSetting.isPartialUpdateWithNewInputFormat = true;
       } else {
         getValueSchemaIdResponse = ControllerClient.retryableRequest(
             controllerClient,
             setting.controllerRetries,
-            c -> c.getValueOrDerivedSchemaId(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
+            c -> c.getValueSchemaID(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
       }
-    } else {
-      getValueSchemaIdResponse = ControllerClient.retryableRequest(
-          controllerClient,
-          setting.controllerRetries,
-          c -> c.getValueSchemaID(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
-    }
-    if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
-      MultiSchemaResponse response = controllerClient.getAllValueSchema(setting.storeName);
-      if (response.isError()) {
-        LOGGER.error("Failed to fetch all value schemas, so they will not be printed.");
-      } else {
-        LOGGER.info("All currently registered value schemas:");
-        for (MultiSchemaResponse.Schema schema: response.getSchemas()) {
-          LOGGER.info("Schema {}: {}", schema.getId(), schema.getSchemaStr());
-        }
-      }
-      throw new VeniceException(
-          "Failed to validate value schema for store: " + setting.storeName + "\nError from the server: "
-              + getValueSchemaIdResponse.getError() + "\nSchema for the data file: "
-              + pushJobSchemaInfo.getValueSchemaString());
-    }
 
-    if (getValueSchemaIdResponse.isError() && schemaAutoRegisterFromPushJobEnabled) {
-      LOGGER.info(
-          "Auto registering value schema: {} for store: {}",
-          pushJobSchemaInfo.getValueSchemaString(),
-          setting.storeName);
-      SchemaResponse addValueSchemaResponse = ControllerClient.retryableRequest(
-          controllerClient,
-          setting.controllerRetries,
-          c -> c.addValueSchema(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
-      if (addValueSchemaResponse.isError()) {
+      if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
+        MultiSchemaResponse response = controllerClient.getAllValueSchema(setting.storeName);
+        if (response.isError()) {
+          LOGGER.error("Failed to fetch all value schemas, so they will not be printed.");
+        } else {
+          LOGGER.info("All currently registered value schemas:");
+          for (MultiSchemaResponse.Schema schema: response.getSchemas()) {
+            LOGGER.info("Schema {}: {}", schema.getId(), schema.getSchemaStr());
+          }
+        }
         throw new VeniceException(
-            "Failed to auto-register value schema for store: " + setting.storeName + "\nError from the server: "
-                + addValueSchemaResponse.getError() + "\nSchema for the data file: "
+            "Failed to validate value schema for store: " + setting.storeName + "\nError from the server: "
+                + getValueSchemaIdResponse.getError() + "\nSchema for the data file: "
                 + pushJobSchemaInfo.getValueSchemaString());
       }
-      // Add value schema successfully
-      setSchemaIdPropInSchemaInfo(pushJobSchemaInfo, addValueSchemaResponse, setting.enableWriteCompute);
 
-    } else {
-      // Get value schema ID successfully
-      setSchemaIdPropInSchemaInfo(pushJobSchemaInfo, getValueSchemaIdResponse, setting.enableWriteCompute);
+      if (getValueSchemaIdResponse.isError() && schemaAutoRegisterFromPushJobEnabled) {
+        LOGGER.info(
+            "Auto registering value schema: {} for store: {}",
+            pushJobSchemaInfo.getValueSchemaString(),
+            setting.storeName);
+        SchemaResponse addValueSchemaResponse = ControllerClient.retryableRequest(
+            controllerClient,
+            setting.controllerRetries,
+            c -> c.addValueSchema(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
+        if (addValueSchemaResponse.isError()) {
+          throw new VeniceException(
+              "Failed to auto-register value schema for store: " + setting.storeName + "\nError from the server: "
+                  + addValueSchemaResponse.getError() + "\nSchema for the data file: "
+                  + pushJobSchemaInfo.getValueSchemaString());
+        }
+        // Add value schema successfully
+        setSchemaIdPropInSchemaInfo(pushJobSchemaInfo, addValueSchemaResponse, setting.enableWriteCompute);
+      } else {
+        // Get value schema ID successfully
+        setSchemaIdPropInSchemaInfo(pushJobSchemaInfo, getValueSchemaIdResponse, setting.enableWriteCompute);
+      }
+      LOGGER.info(
+          "Got schema id: {} for value schema: {} of store: {}",
+          pushJobSchemaInfo.getValueSchemaId(),
+          pushJobSchemaInfo.getValueSchemaString(),
+          setting.storeName);
     }
-    LOGGER.info(
-        "Got schema id: {} for value schema: {} of store: {}",
-        pushJobSchemaInfo.getValueSchemaId(),
-        pushJobSchemaInfo.getValueSchemaString(),
-        setting.storeName);
+  }
+
+  boolean isUpdateSchema(String schemaString) {
+    return schemaString.contains(WriteComputeOperation.NO_OP_ON_FIELD.name());
   }
 
   private void setSchemaIdPropInSchemaInfo(

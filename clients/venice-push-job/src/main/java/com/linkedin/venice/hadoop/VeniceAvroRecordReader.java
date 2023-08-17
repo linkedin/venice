@@ -139,14 +139,11 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
       throw new VeniceException("Retrieved record is not a Avro record");
     }
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
-    // TODO: Is it going to be GenericRecord?
     GenericRecord genericRecordValue = (GenericRecord) valueObject;
     for (Schema.Field field: genericRecordValue.getSchema().getFields()) {
       updateBuilder.setNewFieldValue(field.name(), genericRecordValue.get(field.pos()));
     }
-    GenericRecord result = updateBuilder.build();
-    LOGGER.info("DEBUGGING GET AVRO UPDATE: {}", result);
-    return result;
+    return updateBuilder.build();
   }
 
   public Schema getFileSchema() {
