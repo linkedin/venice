@@ -1528,7 +1528,7 @@ public class VenicePushJob implements AutoCloseable {
       if (!inputFileHasRecords) {
         if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info(
-              "A default compression dictionary will be generated as there are no input records with compression strategy {}",
+              "compression strategy is {} with no input records: dictionary will be generated from synthetic data or current version data for hybrid stores",
               storeSetting.compressionStrategy);
         } else {
           LOGGER.info("No compression dictionary will be generated as there are no records");
@@ -1891,6 +1891,9 @@ public class VenicePushJob implements AutoCloseable {
              * For hybrid store: Push Job will try to train a dict based on the records of the current version, and
              * it won't work for the very first version, and the following versions will work.
              */
+            LOGGER.info(
+                "compression strategy is {} for hybrid store with no input records: Attempt to generate dictionary from current version data",
+                storeSetting.compressionStrategy);
             String storeName = getPushJobSetting().storeName;
             try {
               // Get the latest version
@@ -1929,6 +1932,9 @@ public class VenicePushJob implements AutoCloseable {
           /**
            * For Batch only store or first push to a hybrid store: Build dictionary based on synthetic data
            */
+          LOGGER.info(
+              "compression strategy is {} with no input records: Generating dictionary from synthetic data",
+              storeSetting.compressionStrategy);
           compressionDictionary = ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
           return Optional.of(compressionDictionary);
         }
