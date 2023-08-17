@@ -3062,7 +3062,6 @@ public class VenicePushJob implements AutoCloseable {
         jobConf.setInputFormat(AvroInputFormat.class);
         jobConf.setMapperClass(VeniceAvroMapper.class);
         jobConf.setBoolean(VSON_PUSH, false);
-        LOGGER.info("DEBUGGING JOB CONFIG: {}", jobConf.toString());
       } else {
         jobConf.setInputFormat(VsonSequenceFileInputFormat.class);
         jobConf.setMapperClass(VeniceVsonMapper.class);

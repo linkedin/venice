@@ -23,7 +23,6 @@ import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -96,8 +95,6 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
 
   public VeniceAvroRecordReader(VeniceProperties props) {
     super(props.getString(TOPIC_PROP));
-    LOGGER.info("DEBUGGING PROPS: {}", props.toString(true));
-    LOGGER.info("DEBUGGING STACKTRACE: {}", Arrays.toString(Thread.currentThread().getStackTrace()));
     this.fileSchema = AvroSchemaParseUtils.parseSchemaFromJSON(
         props.getString(SCHEMA_STRING_PROP),
         props.getBoolean(EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED, DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED));
@@ -109,11 +106,7 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
       this.updateSchema =
           AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(props.getString(UPDATE_SCHEMA_STRING_PROP));
     }
-    if (updateSchema != null) {
-      LOGGER.info("DEBUGGING: UPDATE SCHEMA" + updateSchema.toString(true));
-    }
     setupSchema(props.getString(KEY_FIELD_PROP), props.getString(VALUE_FIELD_PROP));
-    LOGGER.info("DEBUGGING PROPS: " + props.toString(true));
   }
 
   @Override
