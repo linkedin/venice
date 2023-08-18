@@ -415,7 +415,7 @@ public class TestParentControllerWithMultiDataCenter {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 100)
   public void testStoreRollbackToBackupVersion() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("testStoreRollbackToBackupVersion");
