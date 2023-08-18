@@ -1869,10 +1869,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public void rollForwardToFutureVersion(String clusterName, String storeName) {
     setCurrentVersionInChildRegions(clusterName, storeName, store -> {
       Optional<Version> version = store.getVersions().stream().max(Comparable::compareTo);
-      if (version.isEmpty()) {
-        return Store.NON_EXISTING_VERSION;
-      }
-      return version.get().getNumber();
+      return version.map(Version::getNumber).orElse(Store.NON_EXISTING_VERSION);
     });
   }
 
