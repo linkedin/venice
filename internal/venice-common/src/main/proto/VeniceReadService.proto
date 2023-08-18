@@ -12,12 +12,12 @@ message VeniceClientRequest {
   uint32 partition = 1;
   string keyString = 2;           // used for single get
   bytes  keyBytes = 3;            // used for batch get
-  sint32 requestTimeoutInNS = 4;
   string resourceName = 5;
-  string storeName = 6;
   bool   isStreamingRequest = 7;
   bool   isRetryRequest = 8;
   bool   isBatchRequest = 9;
+
+  string method = 10;
 }
 
 message VeniceServerResponse {
@@ -26,4 +26,7 @@ message VeniceServerResponse {
   uint32 compressionStrategy = 3;
   uint32 responseRCU = 4;
   bool   isStreamingResponse = 5;
+
+  uint32 errorCode = 6;
+  string errorMessage = 7;
 }

@@ -8,12 +8,15 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
+import io.grpc.ServerInterceptor;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -102,5 +105,47 @@ public class HttpChannelInitializerTest {
         storeAccessController,
         requestHandler);
     initializer.initChannel(ch);
+  }
+
+  @Test
+  public void initGrpcRequestProcessor() {
+    SSLConfig sslConfig = new SSLConfig();
+    doReturn(sslConfig).when(sslFactory).getSSLConfig();
+    HttpChannelInitializer initializer = new HttpChannelInitializer(
+        storeMetadataRepository,
+        customizedViewRepository,
+        metricsRepository,
+        sslFactoryOptional,
+        sslHandshakeExecutor,
+        serverConfig,
+        accessController,
+        storeAccessController,
+        requestHandler);
+
+    VeniceServerGrpcRequestProcessor processor = initializer.initGrpcRequestProcessor();
+    Assert.assertNotNull(processor);
+  }
+
+  @Test
+  public void initGprcHandlersTestInterceptors() {
+    SSLConfig sslConfig = new SSLConfig();
+    doReturn(sslConfig).when(sslFactory).getSSLConfig();
+    HttpChannelInitializer initializer = new HttpChannelInitializer(
+        storeMetadataRepository,
+        customizedViewRepository,
+        metricsRepository,
+        sslFactoryOptional,
+        sslHandshakeExecutor,
+        serverConfig,
+        accessController,
+        storeAccessController,
+        requestHandler);
+
+    List<ServerInterceptor> interceptors = initializer.initGrpcInterceptors();
+    Assert.assertNotNull(interceptors);
+    Assert.assertEquals(interceptors.size(), 3);
+    Assert.assertTrue(interceptors.get(0) instanceof VerifySslHandler);
+    Assert.assertTrue(interceptors.get(1) instanceof ServerAclHandler);
+    Assert.assertTrue(interceptors.get(2) instanceof ServerStoreAclHandler);
   }
 }

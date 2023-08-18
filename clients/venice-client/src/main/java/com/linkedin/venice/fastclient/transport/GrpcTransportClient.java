@@ -1,17 +1,29 @@
 package com.linkedin.venice.fastclient.transport;
 
 import com.google.protobuf.ByteString;
+import com.linkedin.venice.HttpMethod;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.fastclient.GrpcClientConfig;
+import com.linkedin.venice.grpc.GrpcErrorCodes;
+import com.linkedin.venice.grpc.GrpcSslUtils;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceReadServiceGrpc;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.grpc.ChannelCredentials;
+import io.grpc.Grpc;
+import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
+import io.grpc.TlsChannelCredentials;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.util.Map;
@@ -27,13 +39,39 @@ public class GrpcTransportClient extends InternalTransportClient {
   private final Map<String, String> nettyAddressToGrpcAddressMap;
   // we cache stubs to avoid creating a new stub for each request, improves performance
   private final VeniceConcurrentHashMap<ManagedChannel, VeniceReadServiceGrpc.VeniceReadServiceStub> stubCache;
-  private final TransportClient r2TransportClient; // used for non-storage related requests
+  // TODO: remove this transport client once non-storage related operations are supported over gRPC
+  private final TransportClient r2TransportClientForNonStorageOps; // used for non-storage related requests
+  private final GrpcClientConfig grpcClientConfig;
+  private final SSLFactory sslFactory;
+  private ChannelCredentials channelCredentials = InsecureChannelCredentials.create();
 
-  public GrpcTransportClient(ClientConfig clientConfig) {
+  public GrpcTransportClient(GrpcClientConfig grpcClientConfig) {
+    this.grpcClientConfig = grpcClientConfig;
+
     serverGrpcChannels = new VeniceConcurrentHashMap<>();
     stubCache = new VeniceConcurrentHashMap<>();
-    nettyAddressToGrpcAddressMap = clientConfig.getNettyServerToGrpcAddressMap();
-    this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
+
+    nettyAddressToGrpcAddressMap = grpcClientConfig.getNettyServerToGrpcAddressMap();
+    r2TransportClientForNonStorageOps = new R2TransportClient(grpcClientConfig.getR2Client());
+
+    sslFactory = grpcClientConfig.getSslFactory();
+
+    if (sslFactory != null) {
+      initChannelCredentials();
+    }
+  }
+
+  private void initChannelCredentials() {
+    try {
+      TlsChannelCredentials.Builder tlsBuilder = TlsChannelCredentials.newBuilder()
+          .keyManager(GrpcSslUtils.getKeyManagers(sslFactory))
+          .trustManager(GrpcSslUtils.getTrustManagers(sslFactory));
+      channelCredentials = tlsBuilder.build();
+    } catch (Exception e) {
+      throw new VeniceClientException(
+          "Failed to initialize SSL channel credentials for Venice gRPC Transport Client",
+          e);
+    }
   }
 
   protected ManagedChannel getChannel(String serverAddress) {
@@ -43,7 +81,7 @@ public class GrpcTransportClient extends InternalTransportClient {
 
     return serverGrpcChannels.computeIfAbsent(
         serverAddress,
-        k -> ManagedChannelBuilder.forTarget(nettyAddressToGrpcAddressMap.get(k)).usePlaintext().build());
+        k -> Grpc.newChannelBuilder(nettyAddressToGrpcAddressMap.get(k), channelCredentials).build());
   }
 
   protected VeniceReadServiceGrpc.VeniceReadServiceStub getStub(ManagedChannel channel) {
@@ -69,7 +107,7 @@ public class GrpcTransportClient extends InternalTransportClient {
       entry.getValue().shutdown();
     }
 
-    r2TransportClient.close();
+    r2TransportClientForNonStorageOps.close();
   }
 
   public CompletableFuture<TransportClientResponse> handleRequest(
@@ -86,12 +124,14 @@ public class GrpcTransportClient extends InternalTransportClient {
           "performing unsupported gRPC transport client action ({}), passing request to R2 client",
           requestParts[3]);
       return isSingleGet
-          ? r2TransportClient.get(requestPath, headers)
-          : r2TransportClient.post(requestPath, headers, requestBody);
+          ? r2TransportClientForNonStorageOps.get(requestPath, headers)
+          : r2TransportClientForNonStorageOps.post(requestPath, headers, requestBody);
     }
     ManagedChannel channel = getChannel(requestParts[2]);
-    VeniceClientRequest.Builder requestBuilder =
-        VeniceClientRequest.newBuilder().setResourceName(requestParts[4]).setIsBatchRequest(!isSingleGet);
+    VeniceClientRequest.Builder requestBuilder = VeniceClientRequest.newBuilder()
+        .setResourceName(requestParts[4])
+        .setIsBatchRequest(!isSingleGet)
+        .setMethod(isSingleGet ? HttpMethod.GET.name() : HttpMethod.POST.name());
 
     if (isSingleGet) {
       requestBuilder.setKeyString(requestParts[6]);
@@ -107,7 +147,6 @@ public class GrpcTransportClient extends InternalTransportClient {
   }
 
   private static class GrpcTransportClientCallback {
-    // start exception handling
     private final CompletableFuture<TransportClientResponse> valueFuture;
     private final VeniceReadServiceGrpc.VeniceReadServiceStub clientStub;
     private final VeniceClientRequest request;
@@ -127,6 +166,10 @@ public class GrpcTransportClient extends InternalTransportClient {
       clientStub.get(request, new StreamObserver<VeniceServerResponse>() {
         @Override
         public void onNext(VeniceServerResponse value) {
+          if (value.getErrorCode() != GrpcErrorCodes.OK) {
+            handleResponseError(value);
+            return;
+          }
           valueFuture.complete(
               new TransportClientResponse(
                   value.getSchemaId(),
@@ -136,7 +179,7 @@ public class GrpcTransportClient extends InternalTransportClient {
 
         @Override
         public void onError(Throwable t) {
-          valueFuture.completeExceptionally(t);
+          handleGrpcError(t);
         }
 
         @Override
@@ -155,17 +198,20 @@ public class GrpcTransportClient extends InternalTransportClient {
       clientStub.batchGet(request, new StreamObserver<VeniceServerResponse>() {
         @Override
         public void onNext(VeniceServerResponse value) {
+          if (value.getErrorCode() != GrpcErrorCodes.OK) {
+            handleResponseError(value);
+            return;
+          }
           valueFuture.complete(
               new TransportClientResponse(
                   value.getSchemaId(),
                   CompressionStrategy.valueOf(value.getCompressionStrategy()),
                   value.getData().toByteArray()));
-          LOGGER.debug("Performing BatchGet in gRPC");
         }
 
         @Override
         public void onError(Throwable t) {
-          valueFuture.completeExceptionally(t);
+          handleGrpcError(t);
         }
 
         @Override
@@ -175,6 +221,68 @@ public class GrpcTransportClient extends InternalTransportClient {
       });
 
       return valueFuture;
+    }
+
+    // used for errors that are raised within the gRPC handler pipeline
+    private void handleResponseError(VeniceServerResponse response) {
+      int statusCode = response.getErrorCode();
+      String errorMessage = response.getErrorMessage();
+      Exception exception;
+
+      switch (statusCode) {
+        case GrpcErrorCodes.BAD_REQUEST:
+          exception = new VeniceClientHttpException(errorMessage, statusCode);
+          break;
+        case GrpcErrorCodes.TOO_MANY_REQUESTS:
+          exception = new VeniceClientRateExceededException(errorMessage);
+          break;
+        case GrpcErrorCodes.KEY_NOT_FOUND:
+          valueFuture.complete(null);
+          return;
+        default:
+          exception = new VeniceClientException(
+              String
+                  .format("An unexpected error occurred with status code: %d, message: %s", statusCode, errorMessage));
+          break;
+      }
+
+      valueFuture.completeExceptionally(exception);
+    }
+
+    // used for errors raised during the gRPC call itself
+    private void handleGrpcError(Throwable t) {
+      LOGGER.debug("gRPC error occurred", t);
+
+      if (t instanceof StatusRuntimeException) {
+        StatusRuntimeException statusRuntimeException = (StatusRuntimeException) t;
+        Status status = statusRuntimeException.getStatus();
+        Status.Code statusCode = status.getCode();
+
+        String errorMessage =
+            status.getDescription() != null ? status.getDescription() : statusRuntimeException.getMessage();
+        int statusCodeValue = statusCode.value();
+        LOGGER.error("gRPC error occurred with status code: {}, message: {}", statusCodeValue, errorMessage);
+        Exception exception;
+        switch (statusCode) {
+          case PERMISSION_DENIED:
+          case UNAUTHENTICATED:
+          case INVALID_ARGUMENT:
+            // these errors are purposefully raised by the server, and we provide a more specific message when they
+            // occur
+            exception = new VeniceClientHttpException(errorMessage, statusCodeValue);
+            break;
+          default:
+            exception = new VeniceClientException(
+                String.format(
+                    "An unexpected gRPC error occurred with status code: %d, message: %s",
+                    statusCodeValue,
+                    errorMessage));
+            break;
+        }
+        valueFuture.completeExceptionally(exception);
+      } else {
+        valueFuture.completeExceptionally(new VeniceException("A gRPC error occurred when completing this request", t));
+      }
     }
   }
 }

@@ -84,7 +84,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * gRPC servers when we make a request to receive Metadata from a server to obtain information in order to successfully
    * route requests to the correct server/partition
    */
-  private final Map<String, String> nettyServerToGrpcAddressMap;
+  private final GrpcClientConfig grpcClientConfig;
 
   private ClientConfig(
       String storeName,
@@ -117,17 +117,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       String clusterDiscoveryD2Service,
       boolean useStreamingBatchGetAsDefault,
       boolean useGrpc,
-      Map<String, String> nettyServerToGrpcAddressMap) {
+      GrpcClientConfig grpcClientConfig) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
-    if (r2Client == null) {
+    if (r2Client == null && !useGrpc) {
       throw new VeniceClientException("r2Client param shouldn't be null");
     }
-    if (useGrpc && nettyServerToGrpcAddressMap == null) {
+    if (useGrpc && grpcClientConfig == null) {
       throw new UnsupportedOperationException(
-          "we require a mapping of netty server addresses to grpc server addresses to use a gRPC enabled client");
+          "we require additional gRPC related configs when we create a gRPC enabled client");
     }
+
     this.r2Client = r2Client;
     this.storeName = storeName;
     this.statsPrefix = (statsPrefix == null ? "" : statsPrefix);
@@ -239,11 +240,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     this.useGrpc = useGrpc;
-    if (this.useGrpc) {
-      LOGGER.info("Using gRPC for Venice Fast Client");
-    }
-
-    this.nettyServerToGrpcAddressMap = this.useGrpc ? nettyServerToGrpcAddressMap : null;
+    this.grpcClientConfig = grpcClientConfig;
   }
 
   public String getStoreName() {
@@ -367,8 +364,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return useGrpc;
   }
 
-  public Map<String, String> getNettyServerToGrpcAddressMap() {
-    return nettyServerToGrpcAddressMap;
+  public GrpcClientConfig getGrpcClientConfig() {
+    return grpcClientConfig;
   }
 
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
@@ -419,7 +416,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private String clusterDiscoveryD2Service;
     private boolean useStreamingBatchGetAsDefault = false;
     private boolean useGrpc = false;
-    private Map<String, String> nettyServerToGrpcAddressMap = null;
+    private GrpcClientConfig grpcClientConfig = null;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -582,9 +579,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setNettyServerToGrpcAddressMap(
-        Map<String, String> nettyServerToGrpcAddressMap) {
-      this.nettyServerToGrpcAddressMap = nettyServerToGrpcAddressMap;
+    public ClientConfigBuilder<K, V, T> setGrpcClientConfig(GrpcClientConfig grpcClientConfig) {
+      this.grpcClientConfig = grpcClientConfig;
       return this;
     }
 
@@ -619,7 +615,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
           .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
           .setUseGrpc(useGrpc)
-          .setNettyServerToGrpcAddressMap(nettyServerToGrpcAddressMap);
+          .setGrpcClientConfig(grpcClientConfig);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -654,7 +650,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           clusterDiscoveryD2Service,
           useStreamingBatchGetAsDefault,
           useGrpc,
-          nettyServerToGrpcAddressMap);
+          grpcClientConfig);
     }
   }
 }

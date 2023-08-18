@@ -39,7 +39,6 @@ public class StoreAclHandlerTest {
   private HttpRequest req;
   private StoreAclHandler aclHandler;
   private Store store;
-
   private boolean[] hasAccess = { false };
   private boolean[] hasAcl = { false };
   private boolean[] hasStore = { false };

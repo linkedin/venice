@@ -24,6 +24,8 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.charset.StandardCharsets;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /***
@@ -32,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 
 public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
   private final StatsHandler statsHandler;
+  private static final Logger LOGGER = LogManager.getLogger(OutboundHttpWrapperHandler.class);
 
   public OutboundHttpWrapperHandler(StatsHandler handler) {
     super();
@@ -50,22 +53,9 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     try {
       if (msg instanceof ReadResponse) {
         ReadResponse obj = (ReadResponse) msg;
-        statsHandler.setDatabaseLookupLatency(obj.getDatabaseLookupLatency());
-        statsHandler.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
-        statsHandler.setStorageExecutionQueueLen(obj.getStorageExecutionQueueLen());
-        statsHandler.setSuccessRequestKeyCount(obj.getRecordCount());
-        statsHandler.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
-        statsHandler.setReadComputeLatency(obj.getReadComputeLatency());
-        statsHandler.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
-        statsHandler.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
-        statsHandler.setDotProductCount(obj.getDotProductCount());
-        statsHandler.setCosineSimilarityCount(obj.getCosineSimilarityCount());
-        statsHandler.setHadamardProductCount(obj.getHadamardProductCount());
-        statsHandler.setCountOperatorCount(obj.getCountOperatorCount());
-        statsHandler.setKeySizeList(obj.getKeySizeList());
-        statsHandler.setValueSizeList(obj.getValueSizeList());
-        statsHandler.setValueSize(obj.getValueSize());
-        statsHandler.setReadComputeOutputSize(obj.getReadComputeOutputSize());
+        ServerStatsContext statsContext = statsHandler.getServerStatsContext();
+        setStats(statsContext, obj);
+
         compressionStrategy = obj.getCompressionStrategy();
         if (obj.isFound()) {
           body = obj.getResponseBody();
@@ -161,5 +151,24 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
      *  writeAndFlush may have some performance issue since it will call the actual send every time.
      */
     ctx.writeAndFlush(response);
+  }
+
+  public void setStats(ServerStatsContext statsContext, ReadResponse obj) {
+    statsContext.setDatabaseLookupLatency(obj.getDatabaseLookupLatency());
+    statsContext.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
+    statsContext.setStorageExecutionQueueLen(obj.getStorageExecutionQueueLen());
+    statsContext.setSuccessRequestKeyCount(obj.getRecordCount());
+    statsContext.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
+    statsContext.setReadComputeLatency(obj.getReadComputeLatency());
+    statsContext.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
+    statsContext.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
+    statsContext.setDotProductCount(obj.getDotProductCount());
+    statsContext.setCosineSimilarityCount(obj.getCosineSimilarityCount());
+    statsContext.setHadamardProductCount(obj.getHadamardProductCount());
+    statsContext.setCountOperatorCount(obj.getCountOperatorCount());
+    statsContext.setKeySizeList(obj.getKeySizeList());
+    statsContext.setValueSizeList(obj.getValueSizeList());
+    statsContext.setValueSize(obj.getValueSize());
+    statsContext.setReadComputeOutputSize(obj.getReadComputeOutputSize());
   }
 }

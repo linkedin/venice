@@ -347,6 +347,7 @@ public class ConfigKeys {
   public static final String LISTENER_PORT = "listener.port";
   public static final String GRPC_READ_SERVER_PORT = "grpc.read.server.port";
   public static final String ENABLE_GRPC_READ_SERVER = "grpc.read.server.enabled";
+  public static final String GRPC_SERVER_WORKER_THREAD_COUNT = "grpc.server.worker.thread.count";
 
   public static final String LISTENER_HOSTNAME = "listener.hostname";
 
