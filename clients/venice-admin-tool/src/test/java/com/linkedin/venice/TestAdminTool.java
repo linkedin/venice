@@ -1,10 +1,12 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
@@ -258,5 +260,28 @@ public class TestAdminTool {
             AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion() + 1);
     AdminTool
         .getAndPrintRequestBasedMetadata(transportClient, () -> controllerClient, "http://localhost:7036", storeName);
+  }
+
+  @Test
+  public void testAdminToolDumpIngestionState() throws Exception {
+    String storeName = "test-store1";
+    String version = "1";
+
+    TransportClient transportClient = mock(TransportClient.class);
+    CompletableFuture<TransportClientResponse> completableFuture = mock(CompletableFuture.class);
+    TransportClientResponse response = mock(TransportClientResponse.class);
+    RecordSerializer<AdminResponseRecord> adminResponseSerializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(AdminResponseRecord.SCHEMA$);
+    AdminResponseRecord record = new AdminResponseRecord();
+    record.partitionConsumptionStates = Collections.emptyList();
+    record.storeVersionState = null;
+    record.serverConfigs = null;
+
+    byte[] responseByte = adminResponseSerializer.serialize(record);
+    doReturn(responseByte).when(response).getBody();
+    doReturn(AvroProtocolDefinition.SERVER_ADMIN_RESPONSE.getCurrentProtocolVersion()).when(response).getSchemaId();
+    doReturn(response).when(completableFuture).get();
+    doReturn(completableFuture).when(transportClient).get(anyString());
+    AdminTool.dumpIngestionState(transportClient, storeName, version, null);
   }
 }

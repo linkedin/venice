@@ -2838,16 +2838,9 @@ public class AdminTool {
     String url = getRequiredArgument(cmd, Arg.URL);
     String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
     String storeName = getRequiredArgument(cmd, Arg.STORE);
-    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
-    if (clientConfig.isHttps()) {
-      if (!sslFactory.isPresent()) {
-        throw new VeniceException("HTTPS url requires admin tool to be executed with cert");
-      }
-      clientConfig.setSslFactory(sslFactory.get());
-    }
     TransportClient transportClient = null;
     try {
-      transportClient = ClientFactory.getTransportClient(clientConfig);
+      transportClient = getTransportClientForServer(storeName, serverUrl);
       getAndPrintRequestBasedMetadata(
           transportClient,
           () -> ControllerClientFactory.discoverAndConstructControllerClient(
@@ -2862,11 +2855,7 @@ public class AdminTool {
     }
   }
 
-  private static void dumpIngestionState(CommandLine cmd) throws Exception {
-    String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
-    String version = getRequiredArgument(cmd, Arg.VERSION);
-    String partition = getOptionalArgument(cmd, Arg.PARTITION);
+  private static TransportClient getTransportClientForServer(String storeName, String serverUrl) {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
     if (clientConfig.isHttps()) {
       if (!sslFactory.isPresent()) {
@@ -2874,40 +2863,53 @@ public class AdminTool {
       }
       clientConfig.setSslFactory(sslFactory.get());
     }
+    return ClientFactory.getTransportClient(clientConfig);
+  }
+
+  private static void dumpIngestionState(CommandLine cmd) throws Exception {
     TransportClient transportClient = null;
     try {
-      transportClient = ClientFactory.getTransportClient(clientConfig);
-      StringBuilder sb = new StringBuilder(QueryAction.ADMIN.toString().toLowerCase()).append("/")
-          .append(Version.composeKafkaTopic(storeName, Integer.parseInt(version)))
-          .append("/")
-          .append(ServerAdminAction.DUMP_INGESTION_STATE.toString().toLowerCase());
-      if (partition != null) {
-        sb.append("/").append(partition);
-      }
-      String requestUrl = sb.toString();
-      TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
-      int writerSchemaId = transportClientResponse.getSchemaId();
-      System.out.println("Writer schema id: " + writerSchemaId);
-      if (writerSchemaId == 1) {
-        /**
-         * The bug in {@link AvroProtocolDefinition} will let the current Venice Server return schema id `1`, while
-         * the specific record is generated from schema: 2.
-         */
-        writerSchemaId = 2;
-      }
-      InternalAvroSpecificSerializer<AdminResponseRecord> serializer = SERVER_ADMIN_RESPONSE.getSerializer();
-      /**
-       * Here, this tool doesn't handle schema evolution, and if the writer schema is not known in the admin tool,
-       * the following deserialization will fail, and we need to rebuild the admin tool.
-       */
-      AdminResponseRecord responseRecord = serializer.deserialize(transportClientResponse.getBody(), writerSchemaId);
-      // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
-      // Use the Avro record's toString() instead and pretty print it.
-      Object printObject = ObjectMapperFactory.getInstance().readValue(responseRecord.toString(), Object.class);
-      System.out.println(jsonWriter.writeValueAsString(printObject));
+      transportClient =
+          getTransportClientForServer(getRequiredArgument(cmd, Arg.STORE), getRequiredArgument(cmd, Arg.SERVER_URL));
+      dumpIngestionState(
+          transportClient,
+          getRequiredArgument(cmd, Arg.STORE),
+          getRequiredArgument(cmd, Arg.VERSION),
+          getOptionalArgument(cmd, Arg.PARTITION));
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
+  }
+
+  static void dumpIngestionState(TransportClient transportClient, String storeName, String version, String partition)
+      throws Exception {
+    StringBuilder sb = new StringBuilder(QueryAction.ADMIN.toString().toLowerCase()).append("/")
+        .append(Version.composeKafkaTopic(storeName, Integer.parseInt(version)))
+        .append("/")
+        .append(ServerAdminAction.DUMP_INGESTION_STATE.toString().toLowerCase());
+    if (partition != null) {
+      sb.append("/").append(partition);
+    }
+    String requestUrl = sb.toString();
+    TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
+    int writerSchemaId = transportClientResponse.getSchemaId();
+    if (writerSchemaId == 1) {
+      /**
+       * The bug in {@link AvroProtocolDefinition} will let the current Venice Server return schema id `1`, while
+       * the specific record is generated from schema: 2.
+       */
+      writerSchemaId = 2;
+    }
+    InternalAvroSpecificSerializer<AdminResponseRecord> serializer = SERVER_ADMIN_RESPONSE.getSerializer();
+    /**
+     * Here, this tool doesn't handle schema evolution, and if the writer schema is not known in the admin tool,
+     * the following deserialization will fail, and we need to rebuild the admin tool.
+     */
+    AdminResponseRecord responseRecord = serializer.deserialize(transportClientResponse.getBody(), writerSchemaId);
+    // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
+    // Use the Avro record's toString() instead and pretty print it.
+    Object printObject = ObjectMapperFactory.getInstance().readValue(responseRecord.toString(), Object.class);
+    System.out.println(jsonWriter.writeValueAsString(printObject));
   }
 
   static void getAndPrintRequestBasedMetadata(

@@ -28,6 +28,7 @@ import org.apache.avro.io.Encoder;
  * This class stores all the information required for answering a server admin request.
  */
 public class AdminResponse {
+  public static final ByteBuffer IGNORED_COMPRESSION_DICT = ByteBuffer.wrap("ignored".getBytes());
   private boolean isError;
   private String message;
   private final AdminResponseRecord responseRecord;
@@ -60,6 +61,22 @@ public class AdminResponse {
     responseRecord.partitionConsumptionStates.add(snapshot);
   }
 
+  static StoreVersionState suppressCompressionDict(StoreVersionState storeVersionState) {
+    StoreVersionState updatedState = storeVersionState;
+    if (storeVersionState.compressionDictionary != null && storeVersionState.compressionDictionary.hasRemaining()) {
+      // We don't want to dump compression dictionary since it is not readable
+      updatedState = new StoreVersionState();
+      for (Schema.Field field: StoreVersionState.SCHEMA$.getFields()) {
+        if (field.name().equals("compressionDictionary")) {
+          updatedState.put(field.pos(), IGNORED_COMPRESSION_DICT);
+        } else {
+          updatedState.put(field.pos(), storeVersionState.get(field.pos()));
+        }
+      }
+    }
+    return updatedState;
+  }
+
   /**
    * Add store version state metadata into the admin response record
    */
@@ -67,19 +84,7 @@ public class AdminResponse {
     try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
       GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(StoreVersionState.SCHEMA$);
       Encoder byteToHexJsonEncoder = new ByteBufferToHexFormatJsonEncoder(StoreVersionState.SCHEMA$, output);
-      StoreVersionState updatedState = storeVersionState;
-      if (storeVersionState.compressionDictionary != null && storeVersionState.compressionDictionary.hasRemaining()) {
-        // We don't want to dump compression dictionary since it is not readable
-        updatedState = new StoreVersionState();
-        for (Schema.Field field: StoreVersionState.SCHEMA$.getFields()) {
-          if (field.name().equals("compressionDictionary")) {
-            updatedState.put(field.pos(), ByteBuffer.wrap("ignored".getBytes()));
-          } else {
-            updatedState.put(field.pos(), storeVersionState.get(field.pos()));
-          }
-        }
-      }
-      avroDatumWriter.write(updatedState, byteToHexJsonEncoder);
+      avroDatumWriter.write(suppressCompressionDict(storeVersionState), byteToHexJsonEncoder);
       byteToHexJsonEncoder.flush();
       output.flush();
       responseRecord.storeVersionState = new String(output.toByteArray());
@@ -112,7 +117,7 @@ public class AdminResponse {
     return serializer.serialize(this.responseRecord);
   }
 
-  public int getResponseSchemaIdHeader() {
+  public static int getResponseSchemaIdHeader() {
     return AvroProtocolDefinition.SERVER_ADMIN_RESPONSE.getCurrentProtocolVersion();
   }
 
