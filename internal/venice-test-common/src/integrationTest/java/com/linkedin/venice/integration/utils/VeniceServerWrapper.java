@@ -170,8 +170,9 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
       boolean isGrpcEnabled = Boolean.parseBoolean(featureProperties.getProperty(ENABLE_GRPC_READ_SERVER, "false"));
       int numGrpcWorkerThreads = Integer.parseInt(
-          featureProperties
-              .getProperty(GRPC_SERVER_WORKER_THREAD_COUNT, Integer.toString(Runtime.getRuntime().availableProcessors())));
+          featureProperties.getProperty(
+              GRPC_SERVER_WORKER_THREAD_COUNT,
+              Integer.toString(Runtime.getRuntime().availableProcessors())));
       ClientConfig consumerClientConfig = (ClientConfig) featureProperties.get(CLIENT_CONFIG_FOR_CONSUMER);
 
       /** Create config directory under {@link dataDirectory} */
