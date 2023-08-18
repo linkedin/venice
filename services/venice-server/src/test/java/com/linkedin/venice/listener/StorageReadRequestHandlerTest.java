@@ -4,10 +4,12 @@ import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -33,6 +35,10 @@ import com.linkedin.venice.compute.protocol.request.ComputeRequest;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.grpc.GrpcErrorCodes;
+import com.linkedin.venice.listener.grpc.GrpcRequestContext;
+import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
+import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
@@ -54,6 +60,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.protocols.VeniceClientRequest;
+import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -508,5 +516,23 @@ public class StorageReadRequestHandlerTest {
       }
     }
     Assert.assertEquals(computeResponse.getReadComputeOutputSize(), expectedReadComputeOutputSize);
+  }
+
+  @Test
+  public void testGrpcRead() {
+    VeniceClientRequest request =
+        VeniceClientRequest.newBuilder().setIsBatchRequest(true).setResourceName("testStore_v1").build();
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
+    GrpcRequestContext ctx = new GrpcRequestContext(request, builder, null);
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    GrpcStorageReadRequestHandler grpcReadRequestHandler = spy(new GrpcStorageReadRequestHandler(requestHandler));
+    VeniceServerGrpcHandler mockNextHandler = mock(VeniceServerGrpcHandler.class);
+    grpcReadRequestHandler.addNextHandler(mockNextHandler);
+    doNothing().when(mockNextHandler).processRequest(any());
+    grpcReadRequestHandler.processRequest(ctx); // will cause np exception
+
+    Assert.assertEquals(builder.getErrorCode(), GrpcErrorCodes.INTERNAL_ERROR);
+    Assert.assertEquals(builder.getErrorMessage(), "Internal Error");
   }
 }

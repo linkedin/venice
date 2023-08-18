@@ -76,7 +76,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     this(
         metadata,
         config,
-        config.useGrpc() ? new GrpcTransportClient(config) : new R2TransportClient(config.getR2Client()));
+        config.useGrpc()
+            ? new GrpcTransportClient(config.getGrpcClientConfig())
+            : new R2TransportClient(config.getR2Client()));
   }
 
   // Visible for testing
