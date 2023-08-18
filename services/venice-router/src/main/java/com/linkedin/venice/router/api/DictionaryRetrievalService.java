@@ -63,8 +63,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class DictionaryRetrievalService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(DictionaryRetrievalService.class);
-  private static final long MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS = 100;
-  private static final long MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS = 5 * Time.MS_PER_SECOND;
+  static final long MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS = 100;
+  static final long MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS = 5 * Time.MS_PER_SECOND;
   private final OnlineInstanceFinder onlineInstanceFinder;
   private final Optional<SSLFactory> sslFactory;
   private final ReadOnlyStoreRepository metadataRepository;
@@ -75,7 +75,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
   // Shared queue between producer and consumer where topics whose dictionaries have to be downloaded are put in.
   private final BlockingQueue<String> dictionaryDownloadCandidates = new LinkedBlockingQueue<>();
-  private final VeniceConcurrentHashMap<String, Long> fetchDelayTimeinMs = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, Long> fetchDelayTimeinMsMap = new VeniceConcurrentHashMap<>();
 
   // This map is used as a collection of futures that were created to download dictionaries for each store version.
   // The future's status also acts as an indicator of which dictionaries are currently active in memory.
@@ -400,13 +400,13 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
                 // Schedule with exponential delay
                 long currDelayTimeMs, nextDelayTimeMs;
-                if (fetchDelayTimeinMs.containsKey(kafkaTopic)) {
-                  currDelayTimeMs = fetchDelayTimeinMs.get(kafkaTopic);
+                if (fetchDelayTimeinMsMap.containsKey(kafkaTopic)) {
+                  currDelayTimeMs = fetchDelayTimeinMsMap.get(kafkaTopic);
                 } else {
                   currDelayTimeMs = MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS;
                 }
                 nextDelayTimeMs = Math.min(currDelayTimeMs * 2, MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS);
-                fetchDelayTimeinMs.put(kafkaTopic, nextDelayTimeMs);
+                fetchDelayTimeinMsMap.put(kafkaTopic, nextDelayTimeMs);
 
                 scheduledDictionaryFetchFutures.put(
                     kafkaTopic,
@@ -449,7 +449,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       scheduledFuture.cancel(true);
     }
     dictionaryDownloadCandidates.remove(kafkaTopic);
-    fetchDelayTimeinMs.remove(kafkaTopic);
+    fetchDelayTimeinMsMap.remove(kafkaTopic);
     compressorFactory.removeVersionSpecificCompressor(kafkaTopic);
   }
 
@@ -486,5 +486,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   // Visible for testing
   RedundantExceptionFilter getRedundantExceptionFilter() {
     return redundantExceptionFilter;
+  }
+
+  VeniceConcurrentHashMap<String, Long> getFetchDelayTimeinMsMap() {
+    return fetchDelayTimeinMsMap;
   }
 }
