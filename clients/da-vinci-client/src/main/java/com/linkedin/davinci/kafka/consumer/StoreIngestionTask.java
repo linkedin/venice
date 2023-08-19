@@ -2204,6 +2204,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     lastConsumerException = e;
   }
 
+  // visible for testing
+  Exception getLastConsumerException() {
+    return lastConsumerException;
+  }
+
   public void setLastStoreIngestionException(Exception e) {
     lastStoreIngestionException.set(e);
   }

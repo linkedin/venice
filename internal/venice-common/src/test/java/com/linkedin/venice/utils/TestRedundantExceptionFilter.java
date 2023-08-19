@@ -50,6 +50,24 @@ public class TestRedundantExceptionFilter {
     filter.clearBitSet();
     // Fourth time check the msg: should not be redundant due to clearBitSet
     Assert.assertFalse(filter.isRedundantException(msg, false));
+
+    // The below functions sets updateRedundancy as true by default, so the second time is redundant
+    HttpResponseStatus status = HttpResponseStatus.NOT_FOUND;
+    Exception e = new RouterException(HttpResponseStatus.class, status, status.code(), "test", false);
+    // First time
+    Assert.assertFalse(filter.isRedundantException(msg, e));
+    // second time
+    Assert.assertTrue(filter.isRedundantException(msg, e));
+    filter.clearBitSet();
+    Assert.assertFalse(filter.isRedundantException(msg, e));
+
+    String storeName = "testStore";
+    // First time
+    Assert.assertFalse(filter.isRedundantException(storeName, String.valueOf(status.code())));
+    // second time
+    Assert.assertTrue(filter.isRedundantException(storeName, String.valueOf(status.code())));
+    filter.clearBitSet();
+    Assert.assertFalse(filter.isRedundantException(storeName, String.valueOf(status.code())));
   }
 
   @Test

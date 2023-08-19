@@ -46,7 +46,7 @@ public class TestDictionaryRetrievalService {
   Version version;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     onlineInstanceFinder = mock(OnlineInstanceFinder.class);
     routerConfig = mock(VeniceRouterConfig.class);
     metadataRepository = mock(ReadOnlyStoreRepository.class);
