@@ -126,8 +126,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) {
     long startTimeInNS = System.nanoTime();
-    CompletableFuture<VeniceResponseMap<K, V>> innerFuture = super.streamingBatchGet(requestContext, keys);
-    return recordMetrics(requestContext, keys.size(), innerFuture, startTimeInNS, clientStatsForBatchGet);
+    CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGetFuture = super.streamingBatchGet(requestContext, keys);
+    recordMetrics(requestContext, keys.size(), streamingBatchGetFuture, startTimeInNS, clientStatsForBatchGet);
+    return streamingBatchGetFuture;
   }
 
   private <R> CompletableFuture<R> recordMetrics(
