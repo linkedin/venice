@@ -382,7 +382,7 @@ public class StorageReadRequestHandlerTest {
         expectedPartitionId);
     Assert.assertEquals(
         adminResponse.getResponseSchemaIdHeader(),
-        AvroProtocolDefinition.SERVER_ADMIN_RESPONSE_V1.getCurrentProtocolVersion());
+        AvroProtocolDefinition.SERVER_ADMIN_RESPONSE.getCurrentProtocolVersion());
   }
 
   @Test
