@@ -83,11 +83,11 @@ public class RedundantExceptionFilter {
     cleanerExecutor.shutdownNow();
   }
 
-  private int getIndex(String key) {
+  protected int getIndex(String key) {
     return Math.abs((key).hashCode() % bitSetSize);
   }
 
-  private boolean isRedundant(int index, boolean updateRedundancy) {
+  protected boolean isRedundant(int index, boolean updateRedundancy) {
     if (!activeBitset.get(index)) {
       // It's possible that we found the bit was not set, then activeBitset is changed, and we set the bit in the new
       // set. But it doesn't matter.
