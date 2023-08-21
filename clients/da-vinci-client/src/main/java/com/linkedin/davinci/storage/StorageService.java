@@ -397,8 +397,12 @@ public class StorageService extends AbstractVeniceService {
   public synchronized void removeStorageEngine(String kafkaTopic) {
     AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
-      LOGGER.warn("Storage engine {} does not exist, ignoring remove request.", kafkaTopic);
-      return;
+      LOGGER.warn("Storage engine {} does not exist, trying to reopen storage for .", kafkaTopic);
+      storageEngine = openStorageEngine(kafkaTopic);
+      if (storageEngine == null) {
+        LOGGER.warn(" Could not retrieve storage engine for {}, ignoring remove request.", kafkaTopic);
+        return;
+      }
     }
     storageEngine.drop();
 
@@ -407,6 +411,20 @@ public class StorageService extends AbstractVeniceService {
 
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
     factory.removeStorageEngine(storageEngine);
+  }
+
+  AbstractStorageEngine openStorageEngine(String storeName) {
+    VeniceStoreVersionConfig storeConfig = configLoader.getStoreConfig(storeName);
+    storeConfig.setRestoreDataPartitions(false);
+    storeConfig.setRestoreMetadataPartition(false);
+    AbstractStorageEngine storageEngine;
+
+    try {
+      storageEngine = openStore(storeConfig, () -> null);
+    } catch (Exception e) {
+      return null;
+    }
+    return storageEngine;
   }
 
   /**
