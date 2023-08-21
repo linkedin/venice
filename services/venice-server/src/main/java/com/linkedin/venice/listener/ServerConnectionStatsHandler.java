@@ -27,7 +27,7 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
       return;
     }
     String principalName = getPrincipal(sslHandler);
-    if (principalName.contains(routerPrincipalName)) {
+    if (principalName.equals(routerPrincipalName)) {
       serverConnectionStats.incrementRouterConnectionCount();
     } else {
       serverConnectionStats.incrementClientConnectionCount();
@@ -43,7 +43,7 @@ public class ServerConnectionStatsHandler extends ChannelInboundHandlerAdapter {
       return;
     }
     String principalName = getPrincipal(sslHandler);
-    if (principalName.contains(routerPrincipalName)) {
+    if (principalName.equals(routerPrincipalName)) {
       serverConnectionStats.decrementRouterConnectionCount();
     } else {
       serverConnectionStats.decrementClientConnectionCount();

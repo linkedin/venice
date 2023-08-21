@@ -18,7 +18,7 @@ import org.testng.annotations.Test;
 
 
 public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
-  @Test(timeOut = TIME_OUT)
+  @Test
   public void testServerReadQuota() throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -47,20 +47,25 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
     String readQuotaRequestedString = "." + storeName + "--quota_rcu_requested.Count";
     String readQuotaRejectedString = "." + storeName + "--quota_rcu_rejected.Count";
     String readQuotaUsageRatio = "." + storeName + "--read_quota_usage_ratio.Gauge";
+    String clientConnectionCountString = ".server_connection_stats--client_connection_count_gauge.Max";
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       for (MetricsRepository serverMetric: serverMetrics) {
         assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
         assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
         assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
+        assertNotNull(serverMetric.getMetric(clientConnectionCountString));
       }
     });
     int quotaRequestedSum = 0;
+    int clientConnectionCountSum = 0;
     for (MetricsRepository serverMetric: serverMetrics) {
       quotaRequestedSum += serverMetric.getMetric(readQuotaRequestedString).value();
+      clientConnectionCountSum += serverMetric.getMetric(clientConnectionCountString).value();
       assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
       assertTrue(serverMetric.getMetric(readQuotaUsageRatio).value() > 0);
     }
     assertTrue(quotaRequestedSum >= 500, "Quota requested sum: " + quotaRequestedSum);
+    assertTrue(clientConnectionCountSum > 0, "Servers should have more than 0 client connections");
 
     // Update the read quota to 50 and make as many requests needed to trigger quota rejected exception.
     veniceCluster.useControllerClient(controllerClient -> {

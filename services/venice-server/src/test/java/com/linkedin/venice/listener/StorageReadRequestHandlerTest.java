@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.any;
@@ -47,6 +48,7 @@ import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
+import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
@@ -533,5 +535,25 @@ public class StorageReadRequestHandlerTest {
 
     assertEquals(builder.getErrorCode(), GrpcErrorCodes.INTERNAL_ERROR);
     assertTrue(builder.getErrorMessage().contains("Internal Error"));
+  }
+
+  @Test
+  public void testMisRoutedStoreVersion() throws Exception {
+    String storeName = "testStore";
+    // The request should throw NPE when the handler is trying to handleSingleGetRequest due to null partition and key.
+    RouterRequest request = mock(GetRouterRequest.class);
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(SINGLE_GET).when(request).getRequestType();
+    doReturn(Version.composeKafkaTopic(storeName, 1)).when(request).getResourceName();
+    doReturn(storeName).when(request).getStoreName();
+    Store store = mock(Store.class);
+    doReturn(Optional.empty()).when(store).getVersion(anyInt());
+    doReturn(store).when(storeRepository).getStore(storeName);
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+    ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
+        ArgumentCaptor.forClass(HttpShortcutResponse.class);
+    verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
+    Assert.assertTrue(shortcutResponseArgumentCaptor.getValue().isMisroutedStoreVersion());
   }
 }

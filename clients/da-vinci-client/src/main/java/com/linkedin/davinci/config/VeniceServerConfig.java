@@ -710,7 +710,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       LOGGER.error("Failed to create an instance of pub sub clients factory", e);
       throw new VeniceException(e);
     }
-    routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "venice-router");
+    routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "CN=venice-router");
   }
 
   long extractIngestionMemoryLimit(

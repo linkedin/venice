@@ -67,10 +67,17 @@ public class ServerStatsContextTest {
 
     ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
     context.setRequestType(RequestType.SINGLE_GET);
+    context.setMisroutedStoreVersion(true);
     context.errorRequest(stats, 12.3);
 
+    verify(stats).recordErrorRequest();
+    verify(stats).recordErrorRequestLatency(12.3);
+    verify(stats).recordMisroutedStoreVersionRequest();
+
+    context.errorRequest(null, 12.3);
     verify(singleGetStats).recordErrorRequest();
     verify(singleGetStats).recordErrorRequestLatency(12.3);
+    verify(singleGetStats).recordMisroutedStoreVersionRequest();
   }
 
   @Test

@@ -2,6 +2,7 @@ package com.linkedin.venice.stats;
 
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Max;
 
 
 public class ServerConnectionStats extends AbstractVeniceStats {
@@ -16,8 +17,8 @@ public class ServerConnectionStats extends AbstractVeniceStats {
 
   public ServerConnectionStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    routerConnectionCountSensor = registerSensorIfAbsent(ROUTER_CONNECTION_COUNT_GAUGE, new Gauge());
-    clientConnectionCountSensor = registerSensorIfAbsent(CLIENT_CONNECTION_COUNT_GAUGE, new Gauge());
+    routerConnectionCountSensor = registerSensorIfAbsent(ROUTER_CONNECTION_COUNT_GAUGE, new Gauge(), new Max());
+    clientConnectionCountSensor = registerSensorIfAbsent(CLIENT_CONNECTION_COUNT_GAUGE, new Gauge(), new Max());
   }
 
   public void incrementRouterConnectionCount() {
