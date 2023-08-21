@@ -66,7 +66,7 @@ public class AdminResponse {
     if (storeVersionState.compressionDictionary != null && storeVersionState.compressionDictionary.hasRemaining()) {
       // We don't want to dump compression dictionary since it is not readable
       updatedState = new StoreVersionState();
-      for (Schema.Field field: StoreVersionState.SCHEMA$.getFields()) {
+      for (Schema.Field field: StoreVersionState.getClassSchema().getFields()) {
         if (field.name().equals("compressionDictionary")) {
           updatedState.put(field.pos(), IGNORED_COMPRESSION_DICT);
         } else {
