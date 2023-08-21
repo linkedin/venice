@@ -7,6 +7,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
@@ -23,17 +24,17 @@ public class TestRedundantExceptionFilter {
       String store1 = "testLogException1";
       HttpResponseStatus status = HttpResponseStatus.NOT_FOUND;
       HttpResponseStatus status1 = HttpResponseStatus.TOO_MANY_REQUESTS;
-      Exception e = new VeniceException("testException");
+      Exception e = new VeniceHttpException(status.code(), "testException");
       assertFalse(filter.isRedundantException(store, e), "This is the first time we see this exception.");
       assertFalse(filter.isRedundantException(store1, e), "This is the first time we see this exception.");
-      assertFalse(
+      assertTrue(
           filter.isRedundantException(store, String.valueOf(status.code())),
-          "This is the first time we see this exception.");
+          "This is the second time we see this exception.");
       assertFalse(
           filter.isRedundantException(store1, String.valueOf(status1.code())),
           "This is the first time we see this exception.");
       assertTrue(
-          filter.isRedundantException(store, String.valueOf(status.code())),
+          filter.isRedundantException(store1, String.valueOf(status1.code())),
           "This is the second time we see this exception.");
       // After duration the filter's bitset will be cleaned up.
       TestUtils.waitForNonDeterministicCompletion(
@@ -62,19 +63,17 @@ public class TestRedundantExceptionFilter {
       assertFalse(filter.isRedundantException(msg, false));
 
       // The below functions sets updateRedundancy as true by default, so the second time is redundant
-      HttpResponseStatus status = HttpResponseStatus.NOT_FOUND;
-      Exception e = new VeniceException("testException");
-      // First time
-      assertFalse(filter.isRedundantException(msg, e));
-      // second time
-      assertTrue(filter.isRedundantException(msg, e));
-      filter.clearBitSet();
-      assertFalse(filter.isRedundantException(msg, e));
-
       String storeName = "testStore";
+      HttpResponseStatus status = HttpResponseStatus.NOT_FOUND;
+      Exception e = new VeniceHttpException(status.code(), "testException");
       // First time
-      assertFalse(filter.isRedundantException(storeName, String.valueOf(status.code())));
+      assertFalse(filter.isRedundantException(storeName, e));
       // second time
+      assertTrue(filter.isRedundantException(storeName, e));
+      filter.clearBitSet();
+      assertFalse(filter.isRedundantException(storeName, e));
+
+      // Second time: as its same status code
       assertTrue(filter.isRedundantException(storeName, String.valueOf(status.code())));
       filter.clearBitSet();
       assertFalse(filter.isRedundantException(storeName, String.valueOf(status.code())));
@@ -90,9 +89,9 @@ public class TestRedundantExceptionFilter {
         new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, duration);
     try {
       String store = "testClear";
-      HttpResponseStatus status = HttpResponseStatus.NOT_FOUND;
       Exception e = new VeniceException("testException");
       filter.isRedundantException(store, e);
+      assertTrue(filter.isRedundantException(store, e));
       filter.clearBitSet();
       assertFalse(filter.isRedundantException(store, e));
     } finally {
