@@ -403,6 +403,7 @@ public class StorageService extends AbstractVeniceService {
         LOGGER.warn(" Could not retrieve storage engine for {}, ignoring remove request.", kafkaTopic);
         return;
       }
+      storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
     }
     storageEngine.drop();
 
