@@ -490,7 +490,7 @@ public class VenicePushJob implements AutoCloseable {
     String sourceGridFabric;
     int batchNumBytes;
     boolean isIncrementalPush;
-    boolean isPartialUpdateWithNewInputFormat;
+    boolean generatePartialUpdateRecordFromInput;
     Optional<String> incrementalPushVersion = Optional.empty();
     boolean isDuplicateKeyAllowed;
     boolean enablePushJobStatusUpload;
@@ -2356,7 +2356,7 @@ public class VenicePushJob implements AutoCloseable {
             pushJobSchemaInfo.getValueSchemaString(),
             latestUpdateSchema.getSchemaStr());
         pushJobSchemaInfo.setValueSchemaString(latestUpdateSchema.getSchemaStr());
-        pushJobSetting.isPartialUpdateWithNewInputFormat = true;
+        pushJobSetting.generatePartialUpdateRecordFromInput = true;
       } else {
         getValueSchemaIdResponse = ControllerClient.retryableRequest(
             controllerClient,
@@ -3088,7 +3088,7 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSchemaInfo.isAvro()) {
         jobConf.set(SCHEMA_STRING_PROP, pushJobSchemaInfo.getFileSchemaString());
         jobConf.set(AvroJob.INPUT_SCHEMA, pushJobSchemaInfo.getFileSchemaString());
-        if (getPushJobSetting().isPartialUpdateWithNewInputFormat) {
+        if (getPushJobSetting().generatePartialUpdateRecordFromInput) {
           jobConf.setBoolean(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, true);
           jobConf.set(UPDATE_SCHEMA_STRING_PROP, pushJobSchemaInfo.getValueSchemaString());
         }
