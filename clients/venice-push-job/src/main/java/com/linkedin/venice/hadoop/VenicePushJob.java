@@ -1935,7 +1935,7 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info(
               "compression strategy is {} with no input records: Generating dictionary from synthetic data",
               storeSetting.compressionStrategy);
-          compressionDictionary = ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
+          compressionDictionary = ZstdWithDictCompressor.EMPTY_PUSH_ZSTD_DICTIONARY;
           return Optional.of(compressionDictionary);
         }
 

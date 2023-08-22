@@ -2579,8 +2579,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // so we generate a dictionary based on synthetic data. This is done in vpj driver
                 // as well, but this code will be triggered in cases like Samza batch push job
                 // which is independent of the vpj flow.
-                compressionDictionaryBuffer =
-                    ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
+                compressionDictionaryBuffer = ZstdWithDictCompressor.EMPTY_PUSH_ZSTD_DICTIONARY;
               }
 
               final Version finalVersion = version;
