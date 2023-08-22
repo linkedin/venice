@@ -31,9 +31,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v3
@@ -60,14 +57,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   UnitTestsAndCodeCoverage:
@@ -76,9 +73,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
@@ -105,14 +99,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   AvroCompatibilityTests:
@@ -121,9 +115,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
@@ -150,14 +141,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsA:
@@ -166,9 +157,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -195,14 +183,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsB:
@@ -211,9 +199,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -240,14 +225,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsC:
@@ -256,9 +241,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -285,14 +267,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsD:
@@ -301,9 +283,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -330,14 +309,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsE:
@@ -346,9 +325,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -375,14 +351,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsF:
@@ -391,9 +367,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -420,14 +393,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsG:
@@ -436,9 +409,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -465,14 +435,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsH:
@@ -481,9 +451,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -510,14 +477,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsI:
@@ -526,9 +493,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -555,14 +519,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsJ:
@@ -571,9 +535,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -600,14 +561,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsK:
@@ -616,9 +577,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -645,14 +603,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsL:
@@ -661,9 +619,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -690,14 +645,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsM:
@@ -706,9 +661,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -735,14 +687,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsN:
@@ -751,9 +703,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -780,14 +729,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsO:
@@ -796,9 +745,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -825,14 +771,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsP:
@@ -841,9 +787,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -870,14 +813,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsQ:
@@ -886,9 +829,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -915,14 +855,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   IntegrationTestsZ:
@@ -931,9 +871,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -960,14 +897,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   AlpiniUnitTests:
@@ -977,9 +914,6 @@ jobs:
         jdk: [11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     outputs:
       alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
     steps:
@@ -1033,14 +967,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   AlpiniFunctionalTests:
@@ -1050,9 +984,6 @@ jobs:
         jdk: [11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     outputs:
       alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
     steps:
@@ -1106,14 +1037,14 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
   DummyStep:
@@ -1122,9 +1053,6 @@ jobs:
       matrix:
         jdk: [11, 17]
     runs-on: ubuntu-latest
-    env:
-      ARTIFACTS_DIR: ${{ github.job }}-artifacts
-      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     needs: [ValidateGradleWrapper, StaticAnalysis, UnitTestsAndCodeCoverage, AvroCompatibilityTests, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ, AlpiniUnitTests, AlpiniFunctionalTests]
     timeout-minutes: 120
     steps:
@@ -1152,13 +1080,13 @@ jobs:
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
-          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
         if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: $ARTIFACTS_TARBALL
+          path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
 
