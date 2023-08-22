@@ -11,7 +11,7 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
-import static com.linkedin.venice.utils.AvroSchemaUtils.validateSubsetValueSchema;
+import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
@@ -75,7 +75,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
-import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
@@ -2330,7 +2330,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         int supersetSchemaId = storeResponse.getStore().getLatestSuperSetValueSchemaId();
         MultiSchemaResponse.Schema supersetSchema =
-            AvroSchemaUtils.getSupersetSchemaFromSchemaResponse(multiSchemaResponse, supersetSchemaId);
+            AvroSupersetSchemaUtils.getSupersetSchemaFromSchemaResponse(multiSchemaResponse, supersetSchemaId);
         if (supersetSchema == null) {
           throw new VeniceException("Superset schema not found for store: " + setting.storeName);
         }
@@ -2341,7 +2341,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         // With new input format, we will need to use the latest update schema to generate partial update record.
         MultiSchemaResponse.Schema latestUpdateSchema =
-            AvroSchemaUtils.getLatestUpdateSchemaFromSchemaResponse(multiSchemaResponse, supersetSchemaId);
+            AvroSupersetSchemaUtils.getLatestUpdateSchemaFromSchemaResponse(multiSchemaResponse, supersetSchemaId);
         if (latestUpdateSchema == null) {
           throw new VeniceException("Latest update schema not found for store: " + setting.storeName);
         }

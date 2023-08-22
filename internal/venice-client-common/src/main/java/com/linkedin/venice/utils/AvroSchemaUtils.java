@@ -9,11 +9,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.AvroSchemaVerifier;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.AvroSchemaParseUtils;
-import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -474,54 +471,4 @@ public class AvroSchemaUtils {
     }
   }
 
-  public static MultiSchemaResponse.Schema getSupersetSchemaFromSchemaResponse(
-      MultiSchemaResponse schemaResponse,
-      int supersetSchemaId) {
-    for (MultiSchemaResponse.Schema schema: schemaResponse.getSchemas()) {
-      if (schema.getId() != supersetSchemaId) {
-        continue;
-      }
-      if (schema.getDerivedSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-        continue;
-      }
-      if (schema.getRmdValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
-        continue;
-      }
-      return schema;
-    }
-    return null;
-  }
-
-  public static MultiSchemaResponse.Schema getLatestUpdateSchemaFromSchemaResponse(
-      MultiSchemaResponse schemaResponse,
-      int supersetSchemaId) {
-    MultiSchemaResponse.Schema updateSchema = null;
-    for (MultiSchemaResponse.Schema schema: schemaResponse.getSchemas()) {
-      if (schema.getId() != supersetSchemaId) {
-        continue;
-      }
-      if (schema.getDerivedSchemaId() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-        continue;
-      }
-      if (updateSchema == null || schema.getDerivedSchemaId() > updateSchema.getDerivedSchemaId()) {
-        updateSchema = schema;
-      }
-    }
-    return updateSchema;
-  }
-
-  public static boolean validateSubsetValueSchema(String subsetValueSchemaStr, String supersetSchemaStr) {
-    Schema subsetValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(subsetValueSchemaStr);
-    Schema supersetSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(supersetSchemaStr);
-    for (Schema.Field field: subsetValueSchema.getFields()) {
-      Schema.Field fieldInSupersetSchema = supersetSchema.getField(field.name());
-      if (fieldInSupersetSchema == null) {
-        return false;
-      }
-      if (!field.equals(fieldInSupersetSchema)) {
-        return false;
-      }
-    }
-    return true;
-  }
 }
