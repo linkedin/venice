@@ -76,6 +76,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
@@ -166,6 +167,7 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -203,6 +205,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -1085,6 +1088,27 @@ public abstract class StoreIngestionTaskTest {
     return new PubSubTopicPartitionOffset(
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partition),
         offset);
+  }
+
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testMissingZstdDictionary() throws Exception {
+    doAnswer(invocation -> {
+      Function<StoreVersionState, StoreVersionState> mapFunction = invocation.getArgument(1);
+      StoreVersionState result = mapFunction.apply(null);
+      return result;
+    }).when(mockStorageMetadataService).computeStoreVersionState(anyString(), any());
+
+    localVeniceWriter.broadcastStartOfPush(false, false, CompressionStrategy.ZSTD_WITH_DICT, new HashMap<>());
+
+    runTest(Utils.setOf(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Assert.assertNotNull(storeIngestionTaskUnderTest.getLastConsumerException());
+        Assert.assertTrue(
+            storeIngestionTaskUnderTest.getLastConsumerException()
+                .getMessage()
+                .contains("compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT"));
+      });
+    }, true);
   }
 
   /**

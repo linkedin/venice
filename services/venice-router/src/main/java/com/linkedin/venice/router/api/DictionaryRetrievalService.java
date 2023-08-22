@@ -20,10 +20,13 @@ import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
+import io.tehuti.utils.Time;
 import java.io.IOException;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -36,9 +39,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -58,7 +63,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class DictionaryRetrievalService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(DictionaryRetrievalService.class);
-  private static final int DEFAULT_DICTIONARY_DOWNLOAD_INTERVAL_IN_MS = 100;
+  static final long MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS = 100;
+  static final long MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS = 5 * Time.MS_PER_SECOND;
   private final OnlineInstanceFinder onlineInstanceFinder;
   private final Optional<SSLFactory> sslFactory;
   private final ReadOnlyStoreRepository metadataRepository;
@@ -69,6 +75,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
   // Shared queue between producer and consumer where topics whose dictionaries have to be downloaded are put in.
   private final BlockingQueue<String> dictionaryDownloadCandidates = new LinkedBlockingQueue<>();
+  private final VeniceConcurrentHashMap<String, Long> fetchDelayTimeinMsMap = new VeniceConcurrentHashMap<>();
 
   // This map is used as a collection of futures that were created to download dictionaries for each store version.
   // The future's status also acts as an indicator of which dictionaries are currently active in memory.
@@ -79,6 +86,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   // 4) If an entry doesn't exists for the topic, the version is unknown since it could have been retired/new or it
   // doesn't exist at all.
   private final VeniceConcurrentHashMap<String, CompletableFuture<Void>> downloadingDictionaryFutures =
+      new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, ScheduledFuture> scheduledDictionaryFetchFutures =
       new VeniceConcurrentHashMap<>();
 
   private final int dictionaryRetrievalTimeMs;
@@ -137,6 +146,22 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     }
   };
 
+  private final RedundantExceptionFilter redundantExceptionFilter = new RedundantExceptionFilter();
+
+  private void logWithRedundantFilter(Level logLevel, String msg) {
+    if (!redundantExceptionFilter.isRedundantException(msg)) {
+      if (logLevel == Level.DEBUG) {
+        LOGGER.debug(msg);
+      } else if (logLevel == Level.WARN) {
+        LOGGER.warn(msg);
+      } else if (logLevel == Level.ERROR) {
+        LOGGER.error(msg);
+      } else {
+        LOGGER.info(msg);
+      }
+    }
+  }
+
   /**
    *
    * @param onlineInstanceFinder OnlineInstanceFinder used to identify which storage node needs to be queried
@@ -160,7 +185,6 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     dictionaryRetrievalTimeMs = routerConfig.getDictionaryRetrievalTimeMs();
 
     executor = Executors.newScheduledThreadPool(routerConfig.getRouterDictionaryProcessingThreads());
-
     // This thread is the consumer and it waits for an item to be put in the "dictionaryDownloadCandidates" queue.
     Runnable runnable = () -> {
       while (true) {
@@ -204,7 +228,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     String instanceUrl = instance.getUrl(sslFactory.isPresent());
 
-    LOGGER.info("Downloading dictionary for resource: {} from: {}", kafkaTopic, instanceUrl);
+    logWithRedundantFilter(Level.INFO, "Downloading dictionary for resource: " + kafkaTopic + " from: " + instanceUrl);
 
     VeniceMetaDataRequest request = new VeniceMetaDataRequest(
         instance,
@@ -242,8 +266,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
                 + e.getMessage());
       }
 
-      LOGGER.warn(exception.getMessage());
-
+      logWithRedundantFilter(Level.WARN, exception.getMessage());
       throw exception;
     }, executor);
   }
@@ -252,7 +275,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     try {
       int code = response.getStatusCode();
       if (code != SC_OK) {
-        LOGGER.warn("Dictionary fetch returns {} for {}", code, instanceUrl);
+        logWithRedundantFilter(Level.WARN, "Dictionary fetch returns " + code + " for " + instanceUrl);
       } else {
         ByteBuf byteBuf = response.getContentInByteBuf();
         byte[] bytes = new byte[byteBuf.readableBytes()];
@@ -260,7 +283,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         return bytes;
       }
     } catch (IOException e) {
-      LOGGER.warn("Dictionary fetch HTTP response error: {} for {}", e.getMessage(), instanceUrl);
+      logWithRedundantFilter(
+          Level.WARN,
+          "Dictionary fetch HTTP response error: " + e.getMessage() + " for " + instanceUrl);
     }
 
     return null;
@@ -278,7 +303,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         return onlineInstances.get((int) (Math.random() * onlineInstances.size()));
       }
     } catch (Exception e) {
-      LOGGER.warn("Exception caught in getting online instances for resource: {}. {}", kafkaTopic, e.getMessage());
+      logWithRedundantFilter(
+          Level.WARN,
+          "Exception caught in getting online instances for resource: " + kafkaTopic + ". " + e.getMessage());
     }
 
     return null;
@@ -315,16 +342,19 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       return true;
     }
 
+    logWithRedundantFilter(Level.INFO, "Beginning dictionary fetch for " + storeTopics);
+
     List<Version> filteredTopics = dictionaryDownloadTopics.stream()
         .map(
-            topic -> metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(topic))
-                .getVersion(Version.parseVersionFromKafkaTopicName(topic)))
+            topic -> new AbstractMap.SimpleEntry<>(
+                topic,
+                metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(topic))))
+        .filter(entry -> entry.getValue() != null)
+        .map(entry -> entry.getValue().getVersion(Version.parseVersionFromKafkaTopicName(entry.getKey())))
         .filter(Optional::isPresent)
         .map(Optional::get)
         .filter(Objects::nonNull)
         .collect(Collectors.toList());
-
-    LOGGER.info("Beginning dictionary fetch for {}", storeTopics);
 
     CompletableFuture[] dictionaryDownloadFutureArray = filteredTopics.stream()
         .map(this::fetchCompressionDictionary)
@@ -334,7 +364,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     try {
       CompletableFuture.allOf(dictionaryDownloadFutureArray).get(dictionaryRetrievalTimeMs, TimeUnit.MILLISECONDS);
     } catch (Exception e) {
-      LOGGER.warn("Dictionary fetch failed. Store topics were: {}. {}", storeTopics, e.getMessage());
+      logWithRedundantFilter(
+          Level.WARN,
+          "Dictionary fetch failed. Store topics were: " + storeTopics + ". " + e.getMessage());
       return false;
     }
     return true;
@@ -353,23 +385,35 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               if (exception instanceof InterruptedException) {
                 LOGGER.warn("{}. Will not retry dictionary download.", exception.getMessage());
               } else {
-                LOGGER.warn(
-                    "Exception encountered when asynchronously downloading dictionary for resource: {}. {}",
-                    kafkaTopic,
-                    exception.getMessage());
+                logWithRedundantFilter(
+                    Level.WARN,
+                    "Exception encountered when asynchronously downloading dictionary for resource: " + kafkaTopic
+                        + ". " + exception.getMessage());
 
                 // Wait for future to be added before removing it
                 while (downloadingDictionaryFutures.remove(kafkaTopic) == null) {
-                  if (!Utils.sleep(DEFAULT_DICTIONARY_DOWNLOAD_INTERVAL_IN_MS)) {
+                  if (!Utils.sleep(MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS)) {
                     LOGGER.warn("Got InterruptedException. Will not retry dictionary download.");
                     return null;
                   }
                 }
 
-                executor.schedule(
-                    () -> dictionaryDownloadCandidates.add(kafkaTopic),
-                    DEFAULT_DICTIONARY_DOWNLOAD_INTERVAL_IN_MS,
-                    TimeUnit.MILLISECONDS);
+                // Schedule with exponential delay
+                long currDelayTimeMs, nextDelayTimeMs;
+                if (fetchDelayTimeinMsMap.containsKey(kafkaTopic)) {
+                  currDelayTimeMs = fetchDelayTimeinMsMap.get(kafkaTopic);
+                } else {
+                  currDelayTimeMs = MIN_DICTIONARY_DOWNLOAD_DELAY_TIME_MS;
+                }
+                nextDelayTimeMs = Math.min(currDelayTimeMs * 2, MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS);
+                fetchDelayTimeinMsMap.put(kafkaTopic, nextDelayTimeMs);
+
+                scheduledDictionaryFetchFutures.put(
+                    kafkaTopic,
+                    executor.schedule(
+                        () -> dictionaryDownloadCandidates.add(kafkaTopic),
+                        currDelayTimeMs,
+                        TimeUnit.MILLISECONDS));
               }
             } else {
               initCompressorFromDictionary(version, dictionary);
@@ -400,7 +444,12 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     if (dictionaryFutureForTopic != null && !dictionaryFutureForTopic.isDone()) {
       dictionaryFutureForTopic.completeExceptionally(e);
     }
+    ScheduledFuture scheduledFuture = scheduledDictionaryFetchFutures.remove(kafkaTopic);
+    if (scheduledFuture != null && !scheduledFuture.isDone()) {
+      scheduledFuture.cancel(true);
+    }
     dictionaryDownloadCandidates.remove(kafkaTopic);
+    fetchDelayTimeinMsMap.remove(kafkaTopic);
     compressorFactory.removeVersionSpecificCompressor(kafkaTopic);
   }
 
@@ -424,5 +473,22 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     downloadingDictionaryFutures.forEach(
         (topic, future) -> future
             .completeExceptionally(new InterruptedException("Dictionary download thread stopped")));
+
+    // Shutdown the internal clean up executor of redundant exception filter.
+    redundantExceptionFilter.shutdown();
+  }
+
+  // Visible for testing
+  StoreDataChangedListener getStoreChangeListener() {
+    return storeChangeListener;
+  }
+
+  // Visible for testing
+  RedundantExceptionFilter getRedundantExceptionFilter() {
+    return redundantExceptionFilter;
+  }
+
+  VeniceConcurrentHashMap<String, Long> getFetchDelayTimeinMsMap() {
+    return fetchDelayTimeinMsMap;
   }
 }

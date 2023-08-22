@@ -33,6 +33,9 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   private final byte[] dictionary;
   private final int level;
 
+  public static final ByteBuffer EMPTY_PUSH_ZSTD_DICTIONARY =
+      ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
+
   public ZstdWithDictCompressor(final byte[] dictionary, int level) {
     super(CompressionStrategy.ZSTD_WITH_DICT);
     this.dictionary = dictionary;
