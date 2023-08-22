@@ -2328,6 +2328,11 @@ public class VenicePushJob implements AutoCloseable {
         if (multiSchemaResponse.isError()) {
           throw new VeniceException("Unable to retrieve schemas for store: " + setting.storeName);
         }
+        /**
+         * For now, we will issue a separated call to controller to retrieve superset schema ID to identify the latest
+         * update schema for partial update enabled store. In the future, we should include superset schema ID in the
+         * MultiSchemaResponse for different purpose.
+         */
         int supersetSchemaId = storeResponse.getStore().getLatestSuperSetValueSchemaId();
         MultiSchemaResponse.Schema supersetSchema =
             AvroSupersetSchemaUtils.getSupersetSchemaFromSchemaResponse(multiSchemaResponse, supersetSchemaId);
