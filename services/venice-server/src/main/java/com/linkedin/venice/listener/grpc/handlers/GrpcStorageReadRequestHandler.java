@@ -55,7 +55,7 @@ public class GrpcStorageReadRequestHandler extends VeniceServerGrpcHandler {
       ctx.setError();
       ctx.getVeniceServerResponseBuilder()
           .setErrorCode(GrpcErrorCodes.INTERNAL_ERROR)
-          .setErrorMessage(e.getMessage() != null ? e.getMessage() : "Internal Error");
+          .setErrorMessage(String.format("Internal Error: %s", e.getMessage()));
     }
 
     if (!ctx.hasError() && response != null) {

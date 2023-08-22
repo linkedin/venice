@@ -2,10 +2,12 @@
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        jdk: [11]
-    runs-on: ${{ matrix.os }}
+        jdk: [11, 17]
+    runs-on: ubuntu-latest
     timeout-minutes: $TimeOut
+    env:
+      ARTIFACTS_DIR: ${{ github.job }}-artifacts
+      LOG_TARBALL: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
     outputs:
       alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
     steps:
@@ -59,12 +61,12 @@
         run: |
           mkdir ${{ github.job }}-artifacts
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
-          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+          rsync -R --files-from=artifacts.list . $ARTIFACTS_DIR
+          tar -zcvf $ARTIFACTS_TARBALL $ARTIFACTS_DIR
       - name: Upload Build Artifacts
         if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
-          path: ${{ github.job }}-artifacts.tar.gz
+          path: $ARTIFACTS_TARBALL
           retention-days: 30

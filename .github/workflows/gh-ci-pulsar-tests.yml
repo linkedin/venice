@@ -8,9 +8,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        jdk: [11]
-    runs-on: ${{ matrix.os }}
+        jdk: [11, 17]
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3

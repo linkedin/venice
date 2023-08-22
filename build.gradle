@@ -94,7 +94,7 @@ ext.libraries = [
     mail: 'javax.mail:mail:1.4.4',
     mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
     mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
-    mockito: 'org.mockito:mockito-core:3.3.3',
+    mockito: 'org.mockito:mockito-core:5.5.0',
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
     pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
