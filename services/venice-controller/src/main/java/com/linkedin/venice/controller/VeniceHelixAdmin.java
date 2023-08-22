@@ -44,6 +44,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controller.datarecovery.DataRecoveryManager;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRepository;
@@ -2574,8 +2575,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 compressionDictionaryBuffer =
                     ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
               } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
-                throw new VeniceException(
-                    "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
+                // This compression strategy needs a dictionary even if there is no input data,
+                // so we generate a dictionary based on synthetic data. This is done in vpj driver
+                // as well, but this code will be triggered in cases like Samza batch push job
+                // which is independent of the vpj flow.
+                compressionDictionaryBuffer =
+                    ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
               }
 
               final Version finalVersion = version;
