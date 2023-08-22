@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT;
 import static com.linkedin.venice.hadoop.VenicePushJob.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.UPDATE_SCHEMA_STRING_PROP;
@@ -31,7 +31,7 @@ public class TestVeniceAvroRecordReader {
     Properties properties = new Properties();
     properties.put(TOPIC_PROP, "test_store_rt");
     properties.put(SCHEMA_STRING_PROP, STRING_RECORD_SCHEMA_STRING);
-    properties.put(PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT, true);
+    properties.put(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, true);
     properties.put(UPDATE_SCHEMA_STRING_PROP, updateSchema);
     properties.put(KEY_FIELD_PROP, "key");
     properties.put(VALUE_FIELD_PROP, "value");

@@ -3,8 +3,8 @@ package com.linkedin.venice.hadoop;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.ETL_VALUE_SCHEMA_TRANSFORMATION;
 import static com.linkedin.venice.hadoop.VenicePushJob.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT;
 import static com.linkedin.venice.hadoop.VenicePushJob.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.UPDATE_SCHEMA_STRING_PROP;
@@ -100,7 +100,7 @@ public class VeniceAvroRecordReader extends AbstractVeniceRecordReader<AvroWrapp
 
     this.etlValueSchemaTransformation = ETLValueSchemaTransformation
         .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name()));
-    this.generatePartialUpdateRecordFromInput = props.getBoolean(PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT, false);
+    this.generatePartialUpdateRecordFromInput = props.getBoolean(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, false);
     if (generatePartialUpdateRecordFromInput) {
       this.updateSchema =
           AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(props.getString(UPDATE_SCHEMA_STRING_PROP));

@@ -156,7 +156,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String FILE_KEY_SCHEMA = "key.schema";
   public static final String FILE_VALUE_SCHEMA = "value.schema";
   public static final String INCREMENTAL_PUSH = "incremental.push";
-  public static final String PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT = "partial.update.with.new.input.format";
+  public static final String GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT = "generate.partial.update.record.from.input";
 
   // veniceReducer will not fail fast and override the previous key if this is true and duplicate keys incur.
   public static final String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
@@ -3089,7 +3089,7 @@ public class VenicePushJob implements AutoCloseable {
         jobConf.set(SCHEMA_STRING_PROP, pushJobSchemaInfo.getFileSchemaString());
         jobConf.set(AvroJob.INPUT_SCHEMA, pushJobSchemaInfo.getFileSchemaString());
         if (getPushJobSetting().isPartialUpdateWithNewInputFormat) {
-          jobConf.setBoolean(PARTIAL_UPDATE_WITH_NEW_INPUT_FORMAT, true);
+          jobConf.setBoolean(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, true);
           jobConf.set(UPDATE_SCHEMA_STRING_PROP, pushJobSchemaInfo.getValueSchemaString());
         }
         jobConf.setClass("avro.serialization.data.model", GenericData.class, GenericData.class);
