@@ -12,7 +12,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VALUE_SCHEMA
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_REPLICATION_METADATA_SCHEMAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_LATEST_UPDATE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_OR_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_SCHEMA_ID;
@@ -440,45 +439,6 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
 
-      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
-    };
-  }
-
-  public Route getLatestUpdateSchema(Admin admin) {
-    return (request, response) -> {
-      SchemaResponse responseObject = new SchemaResponse();
-      response.type(HttpConstants.JSON);
-      try {
-        // No ACL check on getting store metadata
-        AdminSparkServer.validateParams(request, GET_LATEST_UPDATE_SCHEMA.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
-        responseObject.setName(request.queryParams(NAME));
-        Store store = admin.getStore(responseObject.getCluster(), responseObject.getName());
-        if (store == null) {
-          throw new VeniceNoStoreException("Store does not exist for " + responseObject.getName());
-        }
-        if (store.getLatestSuperSetValueSchemaId() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-          throw new InvalidVeniceSchemaException("Superset schema not found for store: " + responseObject.getName());
-        }
-        DerivedSchemaEntry latestUpdateSchemaEntry = null;
-        for (DerivedSchemaEntry entry: admin.getDerivedSchemas(responseObject.getCluster(), responseObject.getName())) {
-          if (entry.getValueSchemaID() == store.getLatestSuperSetValueSchemaId()) {
-            if (latestUpdateSchemaEntry == null || entry.getId() > latestUpdateSchemaEntry.getId()) {
-              latestUpdateSchemaEntry = entry;
-            }
-          }
-        }
-
-        if (latestUpdateSchemaEntry == null) {
-          throw new VeniceException("Update schema does not exist for store: " + responseObject.getName());
-        }
-        responseObject.setId(latestUpdateSchemaEntry.getValueSchemaID());
-        responseObject.setDerivedSchemaId(latestUpdateSchemaEntry.getId());
-        responseObject.setSchemaStr(latestUpdateSchemaEntry.getSchema().toString());
-      } catch (Throwable e) {
-        responseObject.setError(e);
-        AdminSparkServer.handleError(new VeniceException(e), request, response);
-      }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
   }

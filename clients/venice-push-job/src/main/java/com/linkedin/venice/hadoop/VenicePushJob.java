@@ -11,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static com.linkedin.venice.utils.AvroSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
@@ -74,6 +75,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
@@ -2313,17 +2315,47 @@ public class VenicePushJob implements AutoCloseable {
     SchemaResponse getValueSchemaIdResponse;
     if (setting.enableWriteCompute) {
       if (!isUpdateSchema(pushJobSchemaInfo.getValueSchemaString())) {
-        // With new input format, we will need to use the latest update schema to generate partial update record.
-        getValueSchemaIdResponse = ControllerClient.retryableRequest(
+        MultiSchemaResponse multiSchemaResponse = ControllerClient.retryableRequest(
             controllerClient,
             setting.controllerRetries,
-            c -> c.getLatestUpdateSchema(setting.storeName));
+            c -> c.getAllValueAndDerivedSchema(setting.storeName));
+        StoreResponse storeResponse = ControllerClient
+            .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
+
+        if (storeResponse.isError()) {
+          throw new VeniceException("Store does not exist: " + setting.storeName);
+        }
+        if (multiSchemaResponse.isError()) {
+          throw new VeniceException("Unable to retrieve schemas for store: " + setting.storeName);
+        }
+        int supersetSchemaId = storeResponse.getStore().getLatestSuperSetValueSchemaId();
+        MultiSchemaResponse.Schema supersetSchema =
+            AvroSchemaUtils.getSupersetSchemaFromSchemaResponse(multiSchemaResponse, supersetSchemaId);
+        if (supersetSchema == null) {
+          throw new VeniceException("Superset schema not found for store: " + setting.storeName);
+        }
+        if (!validateSubsetValueSchema(pushJobSchemaInfo.getValueSchemaString(), supersetSchema.getSchemaStr())) {
+          throw new VeniceException(
+              "Input value schema is not subset of superset schema. Input value schema: "
+                  + pushJobSchemaInfo.getValueSchemaString() + " , superset schema: " + supersetSchema.getSchemaStr());
+        }
+        // With new input format, we will need to use the latest update schema to generate partial update record.
+        MultiSchemaResponse.Schema latestUpdateSchema =
+            AvroSchemaUtils.getLatestUpdateSchemaFromSchemaResponse(multiSchemaResponse, supersetSchemaId);
+        if (latestUpdateSchema == null) {
+          throw new VeniceException("Latest update schema not found for store: " + setting.storeName);
+        }
+        // Create a dummy schema response to make sure existing check logics went through.
+        getValueSchemaIdResponse = new SchemaResponse();
+        getValueSchemaIdResponse.setSchemaStr(latestUpdateSchema.getSchemaStr());
+        getValueSchemaIdResponse.setId(latestUpdateSchema.getId());
+        getValueSchemaIdResponse.setDerivedSchemaId(latestUpdateSchema.getDerivedSchemaId());
         // Update the schema to be the update schema of the superset schema.
         LOGGER.info(
             "Detect partial update input format as: {}, using latest update schema: {}",
             pushJobSchemaInfo.getValueSchemaString(),
-            getValueSchemaIdResponse.getSchemaStr());
-        pushJobSchemaInfo.setValueSchemaString(getValueSchemaIdResponse.getSchemaStr());
+            latestUpdateSchema.getSchemaStr());
+        pushJobSchemaInfo.setValueSchemaString(latestUpdateSchema.getSchemaStr());
         pushJobSetting.isPartialUpdateWithNewInputFormat = true;
       } else {
         getValueSchemaIdResponse = ControllerClient.retryableRequest(

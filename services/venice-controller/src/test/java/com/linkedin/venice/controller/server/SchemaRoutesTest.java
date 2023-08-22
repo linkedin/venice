@@ -5,8 +5,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
-import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING;
-import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING_V2;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -23,11 +21,7 @@ import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
-import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
-import org.apache.logging.log4j.LogManager;
 import org.testng.annotations.Test;
 import spark.Request;
 import spark.Response;
@@ -110,32 +104,4 @@ public class SchemaRoutesTest {
     verify(response, times(0)).status(anyInt()); // no error
   }
 
-  @Test
-  public void testGetLatestUpdateSchema() throws Exception {
-    String cluster = "cluster_name";
-    String store = "store_name";
-    Admin admin = mock(Admin.class);
-    Request request = mock(Request.class);
-    Response response = mock(Response.class);
-    doReturn(cluster).when(request).queryParams(CLUSTER);
-    doReturn(store).when(request).queryParams(NAME);
-    Store storeObj = mock(Store.class);
-    when(storeObj.getLatestSuperSetValueSchemaId()).thenReturn(2);
-    doReturn(true).when(admin).isLeaderControllerFor("cluster_name");
-
-    doReturn(storeObj).when(admin).getStore(cluster, store);
-    DerivedSchemaEntry entry1 = new DerivedSchemaEntry(1, 1, NESTED_SCHEMA_STRING);
-    DerivedSchemaEntry entry2 = new DerivedSchemaEntry(2, 1, NESTED_SCHEMA_STRING_V2);
-    List<SchemaEntry> schemaEntries = new ArrayList<>();
-    schemaEntries.add(entry1);
-    schemaEntries.add(entry2);
-    doReturn(schemaEntries).when(admin).getDerivedSchemas(cluster, store);
-
-    SchemaRoutes schemaRoutes = new SchemaRoutes(false, Optional.empty());
-    Route route = schemaRoutes.getLatestUpdateSchema(admin);
-    Object result = route.handle(request, response);
-    LogManager.getLogger().info("Result: {}", result);
-
-    verify(response, times(0)).status(anyInt()); // no error
-  }
 }
