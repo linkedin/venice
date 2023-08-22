@@ -86,6 +86,10 @@ public class ChunkAssembler {
           // Ignore older entries since a more recent manifest is discovered.
           continue;
         }
+        if (reusedMapperValue.schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
+          // Ignore all the chunk cleanup messages.
+          continue;
+        }
         /**
          * The latest event is a delete event.
          */
