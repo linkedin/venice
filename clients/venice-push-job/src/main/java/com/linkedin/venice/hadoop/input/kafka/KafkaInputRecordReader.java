@@ -244,7 +244,12 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         Put put = (Put) kafkaMessageEnvelope.payloadUnion;
         return put.schemaId;
       case DELETE:
-        return -1;
+        /**
+         * The chunk cleanup message will use schema id: {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#CHUNK},
+         * so we will extract the schema id from the payload, instead of -1.
+         */
+        Delete delete = (Delete) kafkaMessageEnvelope.payloadUnion;
+        return delete.schemaId;
       default:
         throw new IOException("Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition);
     }

@@ -475,8 +475,8 @@ public class PartialUpdateTest {
    * This integration test performs a few actions to test RMD chunking logic:
    * (1) Send a bunch of large UPDATE messages to make sure eventually the key's value + RMD size greater than 1MB and
    * thus trigger chunking / RMD chunking.
-   * (2) Run a KIF repush to make sure it handles RMD chunks correctly.
-   * (3) Send a DELETE message to partially delete some of the items in the map field.
+   * (2) Run a KIF re-push to make sure it handles RMD chunks correctly.
+   * (3) Send a DELETE message to partially delete some items in the map field.
    * (4) Send a DELETE message to fully delete the record.
    */
   @Test(timeOut = TEST_TIMEOUT_MS * 4)
@@ -651,7 +651,6 @@ public class PartialUpdateTest {
           throw new VeniceException(e);
         }
       });
-
       // Validate RMD bytes after PUT requests.
       String kafkaTopic_v2 = Version.composeKafkaTopic(storeName, 2);
       validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
