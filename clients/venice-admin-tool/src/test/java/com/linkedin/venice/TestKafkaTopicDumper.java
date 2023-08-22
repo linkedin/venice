@@ -82,24 +82,24 @@ public class TestKafkaTopicDumper {
     int firstChunkSequenceNumber = 1;
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage1 =
         getChunkedRecord(serializedKey, firstChunkSegmentNumber, firstChunkSequenceNumber, 0, 0, pubSubTopicPartition);
-    String dirstChunkMetadataLog = kafkaTopicDumper.getChunkMetadataLog(pubSubMessage1);
+    String firstChunkMetadataLog = kafkaTopicDumper.getChunkMetadataLog(pubSubMessage1);
     Assert.assertEquals(
-        dirstChunkMetadataLog,
-        " ChunkMd=(type:WITH_VALUE_CHUNK, FirstChunkMd=(guid:00000000000000000000000000000000,seg:1,seq:1))");
+        firstChunkMetadataLog,
+        " ChunkMd=(type:WITH_VALUE_CHUNK, ChunkIndex: 0, FirstChunkMd=(guid:00000000000000000000000000000000,seg:1,seq:1))");
 
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage2 =
         getChunkedRecord(serializedKey, firstChunkSegmentNumber, firstChunkSequenceNumber, 1, 0, pubSubTopicPartition);
     String secondChunkMetadataLog = kafkaTopicDumper.getChunkMetadataLog(pubSubMessage2);
     Assert.assertEquals(
         secondChunkMetadataLog,
-        " ChunkMd=(type:WITH_VALUE_CHUNK, FirstChunkMd=(guid:00000000000000000000000000000000,seg:1,seq:1))");
+        " ChunkMd=(type:WITH_VALUE_CHUNK, ChunkIndex: 1, FirstChunkMd=(guid:00000000000000000000000000000000,seg:1,seq:1))");
 
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage3 =
         getChunkedRecord(serializedKey, firstChunkSegmentNumber, firstChunkSequenceNumber, 2, 0, pubSubTopicPartition);
     String thirdChunkMetadataLog = kafkaTopicDumper.getChunkMetadataLog(pubSubMessage3);
     Assert.assertEquals(
         thirdChunkMetadataLog,
-        " ChunkMd=(type:WITH_VALUE_CHUNK, FirstChunkMd=(guid:00000000000000000000000000000000,seg:1,seq:1))");
+        " ChunkMd=(type:WITH_VALUE_CHUNK, ChunkIndex: 2, FirstChunkMd=(guid:00000000000000000000000000000000,seg:1,seq:1))");
 
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage4 =
         getChunkValueManifestRecord(serializedKey, pubSubMessage1, firstChunkSequenceNumber, pubSubTopicPartition);
