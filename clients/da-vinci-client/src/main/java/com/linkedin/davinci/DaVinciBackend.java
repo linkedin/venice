@@ -190,7 +190,7 @@ public class DaVinciBackend implements Closeable {
       String clusterName = backendConfig.getClusterName();
       writerFactoryMap.put(clusterName, writerFactory);
       pushStatusStoreWriter =
-          new PushStatusStoreWriter(writerFactoryMap, instanceName, derivedSchemaID, s -> clusterName);
+          new PushStatusStoreWriter(writerFactoryMap, instanceName, derivedSchemaID, s -> Optional.of(clusterName));
 
       SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
           ClientConfig.cloneConfig(clientConfig)

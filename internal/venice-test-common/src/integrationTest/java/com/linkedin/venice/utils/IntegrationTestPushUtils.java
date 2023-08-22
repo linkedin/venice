@@ -376,20 +376,19 @@ public class IntegrationTestPushUtils {
     String pubSubBootstrapServers = pubSubBrokerWrapper.getAddress();
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
-    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap = new HashMap<>();
-    pubSubClientsFactoryMap.put(clusterName, pubSubBrokerWrapper.getPubSubClientsFactory());
+    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap =
+        Collections.singletonMap(clusterName, pubSubBrokerWrapper.getPubSubClientsFactory());
 
     return TopicManagerRepository.builder()
         .setPubSubProperties(k -> new VeniceProperties(properties))
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setLocalKafkaBootstrapServers(pubSubBootstrapServers)
-        .setPubSubConsumerAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory())
-        .setPubSubAdminAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory())
+        .setDefaultPubSubClientsFactory(pubSubBrokerWrapper.getPubSubClientsFactory())
         .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
         .setKafkaOperationTimeoutMs(kafkaOperationTimeoutMs)
         .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollIntervalMs)
         .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
-        .setClusterNameSupplier(s -> clusterName)
+        .setClusterNameSupplier(s -> Optional.of(clusterName))
         .build();
   }
 

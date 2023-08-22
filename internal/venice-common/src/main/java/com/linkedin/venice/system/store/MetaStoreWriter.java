@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -39,6 +40,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -454,8 +456,11 @@ public class MetaStoreWriter implements Closeable {
           .setChunkingEnabled(false)
           .setPartitionCount(1)
           .build();
-
-      return writerFactoryMap.get(clusterNameSupplier.get(rtTopic)).createVeniceWriter(options);
+      Optional<String> clusterName = clusterNameSupplier.get(rtTopic);
+      if (!clusterName.isPresent()) {
+        throw new PubSubClientException("Failed to get cluster name for topic: " + rtTopic);
+      }
+      return writerFactoryMap.get(clusterName.get()).createVeniceWriter(options);
     });
   }
 
@@ -510,6 +515,6 @@ public class MetaStoreWriter implements Closeable {
   }
 
   public interface ClusterNameSupplier {
-    String get(PubSubTopic pubSubTopic);
+    Optional<String> get(PubSubTopic pubSubTopic);
   }
 }

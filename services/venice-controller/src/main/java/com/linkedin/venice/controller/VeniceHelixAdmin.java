@@ -519,8 +519,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
         .setPubSubProperties(this::getPubSubSSLPropertiesFromControllerConfig)
-        .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
-        .setPubSubConsumerAdapterFactory(veniceConsumerFactory)
+        .setDefaultPubSubClientsFactory(pubSubClientsFactory)
         .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
         .setClusterNameSupplier(this::discoverClusterFromStore)
         .build();
@@ -702,29 +701,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private String discoverClusterFromStore(PubSubTopic pubSubTopic) {
+  private Optional<String> discoverClusterFromStore(PubSubTopic pubSubTopic) {
     if (pubSubTopic.getPubSubTopicType().equals(PubSubTopicType.ADMIN_TOPIC)) {
-      return AdminTopicUtils.getClusterNameFromTopicName(pubSubTopic.getName());
+      return Optional.of(AdminTopicUtils.getClusterNameFromTopicName(pubSubTopic.getName()));
     }
     String storeName = pubSubTopic.getStoreName();
     if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
-      String clusterName;
-      if (storeName.equals(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())) {
-        clusterName = multiClusterConfigs.getSystemSchemaClusterName();
-        return clusterName;
-      } else if (storeName.equals(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName())) {
-        clusterName = multiClusterConfigs.getSystemSchemaClusterName();
-        return clusterName;
+      if (storeName.equals(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())
+          || storeName.equals(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName())) {
+        return Optional.of(multiClusterConfigs.getSystemSchemaClusterName());
       }
     }
 
     try {
       String clusterName = discoverCluster(pubSubTopic.getStoreName()).getFirst();
-      LOGGER.info("Discovered cluster {} from store for topic {}", clusterName, pubSubTopic);
-      return clusterName;
+      LOGGER.debug("Discovered cluster {} from store for topic {}", clusterName, pubSubTopic);
+      return Optional.of(clusterName);
     } catch (VeniceNoStoreException e) {
-      LOGGER.error("Failed to discover cluster from store for topic {}", pubSubTopic, e);
-      return null;
+      LOGGER.debug("Failed to discover cluster from store for topic {}", pubSubTopic, e);
+      return Optional.empty();
     }
   }
 

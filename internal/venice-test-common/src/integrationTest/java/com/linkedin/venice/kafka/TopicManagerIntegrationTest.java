@@ -39,7 +39,7 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     topicManager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
-                500L,
+                1000L,
                 100L,
                 MIN_COMPACTION_LAG,
                 pubSubBrokerWrapper,

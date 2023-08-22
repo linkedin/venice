@@ -5,12 +5,8 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPA
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -18,6 +14,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
@@ -82,8 +79,7 @@ public class TopicManagerRepository implements Closeable {
     private long kafkaOperationTimeoutMs = DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
     private long topicDeletionStatusPollIntervalMs = DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
-    private PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
-    private PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
+    private PubSubClientsFactory defaultPubSubClientsFactory;
     private Map<String, PubSubClientsFactory> pubSubClientsFactoryMap;
     private PubSubTopicRepository pubSubTopicRepository;
     private MetricsRepository metricsRepository;
@@ -131,16 +127,12 @@ public class TopicManagerRepository implements Closeable {
       return pubSubTopicRepository;
     }
 
-    public PubSubAdminAdapterFactory<PubSubAdminAdapter> getPubSubAdminAdapterFactory() {
-      return pubSubAdminAdapterFactory;
-    }
-
-    public PubSubConsumerAdapterFactory<PubSubConsumerAdapter> getPubSubConsumerAdapterFactory() {
-      return pubSubConsumerAdapterFactory;
-    }
-
     public Map<String, PubSubClientsFactory> getPubSubClientsFactoryMap() {
       return pubSubClientsFactoryMap;
+    }
+
+    public PubSubClientsFactory getPubSubClientsFactory() {
+      return defaultPubSubClientsFactory;
     }
 
     public SSLPropertiesSupplier getPubSubProperties() {
@@ -175,14 +167,8 @@ public class TopicManagerRepository implements Closeable {
       return set(() -> this.pubSubTopicRepository = pubSubTopicRepository);
     }
 
-    public Builder setPubSubAdminAdapterFactory(
-        PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory) {
-      return set(() -> this.pubSubAdminAdapterFactory = pubSubAdminAdapterFactory);
-    }
-
-    public Builder setPubSubConsumerAdapterFactory(
-        PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory) {
-      return set(() -> this.pubSubConsumerAdapterFactory = pubSubConsumerAdapterFactory);
+    public Builder setDefaultPubSubClientsFactory(PubSubClientsFactory pubSubClientsFactory) {
+      return set(() -> this.defaultPubSubClientsFactory = pubSubClientsFactory);
     }
 
     public Builder setPubSubClientsFactoryMap(Map<String, PubSubClientsFactory> pubSubClientsFactoryMap) {
@@ -203,6 +189,6 @@ public class TopicManagerRepository implements Closeable {
   }
 
   public interface ClusterNameSupplier {
-    String get(PubSubTopic pubSubTopic);
+    Optional<String> get(PubSubTopic pubSubTopic);
   }
 }

@@ -3,6 +3,7 @@ package com.linkedin.venice.pushstatushelper;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -11,6 +12,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -51,8 +53,11 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
           .setChunkingEnabled(false)
           .setPartitionCount(1)
           .build();
-      String clusterName = clusterNameSupplier.get(pubSubTopicRepository.getTopic(rtTopic));
-      return writerFactoryMap.get(clusterName).createVeniceWriter(options);
+      Optional<String> clusterName = clusterNameSupplier.get(pubSubTopicRepository.getTopic(rtTopic));
+      if (!clusterName.isPresent()) {
+        throw new PubSubClientException("Failed to get cluster name for topic: " + rtTopic);
+      }
+      return writerFactoryMap.get(clusterName.get()).createVeniceWriter(options);
     });
   }
 

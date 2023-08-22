@@ -41,8 +41,6 @@ public class TestDictionaryUtils {
   private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  private final String clusterName = "test_cluster";
-
   private String getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
     PubSubTopic pubSubTopic =
@@ -68,6 +66,7 @@ public class TestDictionaryUtils {
     mockTime = new TestMockTime();
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setMockTime(mockTime).setRegionName(STANDALONE_REGION_NAME).build());
+    String clusterName = "test_cluster";
     manager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(

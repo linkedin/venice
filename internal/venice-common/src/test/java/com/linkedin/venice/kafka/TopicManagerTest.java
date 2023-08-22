@@ -63,9 +63,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -112,24 +112,21 @@ public class TopicManagerTest {
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
     doReturn(mockInMemoryConsumer).when(pubSubConsumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory = mock(PubSubProducerAdapterFactory.class);
-    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap = Collections.singletonMap(
-        clusterName,
-        new PubSubClientsFactory(
-            pubSubProducerAdapterFactory,
-            pubSubConsumerAdapterFactory,
-            pubSubAdminAdapterFactory));
+    PubSubClientsFactory pubSubClientsFactory =
+        new PubSubClientsFactory(pubSubProducerAdapterFactory, pubSubConsumerAdapterFactory, pubSubAdminAdapterFactory);
+    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap =
+        Collections.singletonMap(clusterName, pubSubClientsFactory);
 
     topicManager = TopicManagerRepository.builder()
         .setPubSubProperties(k -> VeniceProperties.empty())
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setLocalKafkaBootstrapServers("localhost:1234")
-        .setPubSubConsumerAdapterFactory(pubSubConsumerAdapterFactory)
-        .setPubSubAdminAdapterFactory(pubSubAdminAdapterFactory)
+        .setDefaultPubSubClientsFactory(pubSubClientsFactory)
         .setKafkaOperationTimeoutMs(500L)
         .setTopicDeletionStatusPollIntervalMs(100L)
         .setTopicMinLogCompactionLagMs(MIN_COMPACTION_LAG)
         .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
-        .setClusterNameSupplier(s -> clusterName)
+        .setClusterNameSupplier(s -> Optional.of(clusterName))
         .build()
         .getTopicManager();
   }
@@ -544,22 +541,21 @@ public class TopicManagerTest {
     PubSubProducerAdapterFactory producerAdapterFactory = mock(PubSubProducerAdapterFactory.class);
     doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
     doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
-    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap = new HashMap<>();
-    pubSubClientsFactoryMap.put(
-        clusterName,
-        new PubSubClientsFactory(producerAdapterFactory, consumerAdapterFactory, adminAdapterFactory));
 
+    PubSubClientsFactory pubSubClientsFactory =
+        new PubSubClientsFactory(producerAdapterFactory, consumerAdapterFactory, adminAdapterFactory);
+    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap =
+        Collections.singletonMap(clusterName, pubSubClientsFactory);
     try (TopicManager topicManagerForThisTest = TopicManagerRepository.builder()
         .setPubSubProperties(k -> VeniceProperties.empty())
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setLocalKafkaBootstrapServers(localPubSubBrokerAddress)
-        .setPubSubAdminAdapterFactory(adminAdapterFactory)
-        .setPubSubConsumerAdapterFactory(consumerAdapterFactory)
+        .setDefaultPubSubClientsFactory(pubSubClientsFactory)
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
         .setTopicDeletionStatusPollIntervalMs(100)
         .setTopicMinLogCompactionLagMs(MIN_COMPACTION_LAG)
         .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
-        .setClusterNameSupplier(s -> clusterName)
+        .setClusterNameSupplier(s -> Optional.of(clusterName))
         .build()
         .getTopicManager()) {
       Assert.assertThrows(

@@ -309,21 +309,19 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
-    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap = new HashMap<>();
-    pubSubClientsFactoryMap.put(serverConfig.getClusterName(), pubSubClientsFactory);
-
+    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap =
+        Collections.singletonMap(serverConfig.getClusterName(), pubSubClientsFactory);
     this.topicManagerRepository = TopicManagerRepository.builder()
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setMetricsRepository(metricsRepository)
         .setLocalKafkaBootstrapServers(serverConfig.getKafkaBootstrapServers())
-        .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
+        .setDefaultPubSubClientsFactory(pubSubClientsFactory)
         .setTopicDeletionStatusPollIntervalMs(DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS)
         .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
         .setPubSubProperties(this::getPubSubSSLPropertiesFromServerConfig)
-        .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
         .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
-        .setClusterNameSupplier(s -> serverConfig.getClusterName())
+        .setClusterNameSupplier(s -> Optional.of(serverConfig.getClusterName()))
         .build();
 
     VeniceNotifier notifier = new LogNotifier();
@@ -339,7 +337,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           metastoreWriterFactoryMap,
           zkSharedSchemaRepository.get(),
           pubSubTopicRepository,
-          s -> serverConfig.getClusterName());
+          s -> Optional.of(serverConfig.getClusterName()));
       this.metaSystemStoreReplicaStatusNotifier = new MetaSystemStoreReplicaStatusNotifier(
           serverConfig.getClusterName(),
           metaStoreWriter,

@@ -273,7 +273,7 @@ public class PushStatusStoreTest {
             clusterName,
             cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory());
         PushStatusStoreRecordDeleter statusStoreDeleter =
-            new PushStatusStoreRecordDeleter(writerFactoryMap, s -> clusterName);
+            new PushStatusStoreRecordDeleter(writerFactoryMap, s -> Optional.of(clusterName));
 
         // After deleting the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status

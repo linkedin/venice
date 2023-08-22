@@ -1,6 +1,8 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
-import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.SystemTime;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -8,8 +10,8 @@ import java.util.Optional;
 
 public class PartitionOffsetFetcherFactory {
   public static PartitionOffsetFetcher createDefaultPartitionOffsetFetcher(
-      TopicManager.ConsumerSupplier consumerSupplier,
-      TopicManager.AdminSupplier adminSupplier,
+      ConsumerSupplier consumerSupplier,
+      AdminSupplier adminSupplier,
       String pubSubBootstrapServers,
       long kafkaOperationTimeoutMs,
       Optional<MetricsRepository> optionalMetricsRepository) {
@@ -28,5 +30,13 @@ public class PartitionOffsetFetcherFactory {
     } else {
       return partitionOffsetFetcher;
     }
+  }
+
+  public interface AdminSupplier {
+    PubSubAdminAdapter get(PubSubTopic pubSubTopic);
+  }
+
+  public interface ConsumerSupplier {
+    PubSubConsumerAdapter get(PubSubTopic pubSubTopic);
   }
 }

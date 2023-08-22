@@ -16,11 +16,11 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
@@ -47,22 +47,17 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
 
   protected Map<TopicPartition, Long> getLatestOffsets(JobConf config) {
     VeniceProperties consumerProperties = KafkaInputUtils.getConsumerProperties(config);
-    String clusterName = "cluster_name";
     PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
         new ApacheKafkaProducerAdapterFactory(),
         new ApacheKafkaConsumerAdapterFactory(),
         new ApacheKafkaAdminAdapterFactory());
-    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap =
-        Collections.singletonMap(clusterName, pubSubClientsFactory);
 
     try (TopicManagerRepository topicManagerRepository = TopicManagerRepository.builder()
         .setPubSubProperties(k -> consumerProperties)
         .setLocalKafkaBootstrapServers(config.get(KAFKA_INPUT_BROKER_URL))
         .setPubSubTopicRepository(pubSubTopicRepository)
-        .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
-        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
-        .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
-        .setClusterNameSupplier(s -> clusterName)
+        .setDefaultPubSubClientsFactory(pubSubClientsFactory)
+        .setClusterNameSupplier(s -> Optional.empty())
         .build()) {
       try (TopicManager topicManager = topicManagerRepository.getTopicManager()) {
         String topic = config.get(KAFKA_INPUT_TOPIC);

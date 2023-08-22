@@ -49,12 +49,12 @@ public class VeniceWriterTest {
   private TopicManager topicManager;
   private PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory;
   private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
-  private final String clusterName = "test_cluster";
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
+    String clusterName = "test_cluster";
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     pubSubConsumerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory();
     pubSubProducerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();

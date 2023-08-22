@@ -1410,8 +1410,7 @@ public class AdminTool {
         .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollingInterval)
         .setTopicMinLogCompactionLagMs(0L)
         .setLocalKafkaBootstrapServers(kafkaBootstrapServer)
-        .setPubSubConsumerAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory())
-        .setPubSubAdminAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getAdminAdapterFactory())
+        .setDefaultPubSubClientsFactory(PUB_SUB_CLIENTS_FACTORY)
         .setPubSubTopicRepository(pubSubTopicRepository)
         .build()) {
       TopicManager topicManager = topicManagerRepository.getTopicManager();

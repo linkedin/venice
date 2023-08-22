@@ -176,6 +176,6 @@ public class PushStatusStoreWriter implements AutoCloseable {
   }
 
   public interface ClusterNameSupplier {
-    String get(PubSubTopic pubSubTopic);
+    Optional<String> get(PubSubTopic pubSubTopic);
   }
 }
