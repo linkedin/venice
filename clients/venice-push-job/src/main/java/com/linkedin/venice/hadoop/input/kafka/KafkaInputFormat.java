@@ -8,12 +8,15 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -44,12 +47,22 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
 
   protected Map<TopicPartition, Long> getLatestOffsets(JobConf config) {
     VeniceProperties consumerProperties = KafkaInputUtils.getConsumerProperties(config);
+    String clusterName = "cluster_name";
+    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
+        new ApacheKafkaProducerAdapterFactory(),
+        new ApacheKafkaConsumerAdapterFactory(),
+        new ApacheKafkaAdminAdapterFactory());
+    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap =
+        Collections.singletonMap(clusterName, pubSubClientsFactory);
+
     try (TopicManagerRepository topicManagerRepository = TopicManagerRepository.builder()
         .setPubSubProperties(k -> consumerProperties)
         .setLocalKafkaBootstrapServers(config.get(KAFKA_INPUT_BROKER_URL))
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
         .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
+        .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
+        .setClusterNameSupplier(s -> clusterName)
         .build()) {
       try (TopicManager topicManager = topicManagerRepository.getTopicManager()) {
         String topic = config.get(KAFKA_INPUT_TOPIC);

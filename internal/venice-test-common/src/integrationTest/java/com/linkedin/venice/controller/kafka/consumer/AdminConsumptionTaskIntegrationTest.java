@@ -65,7 +65,8 @@ public class AdminConsumptionTaskIntegrationTest {
                     100,
                     0l,
                     pubSubBrokerWrapper,
-                    pubSubTopicRepository)
+                    pubSubTopicRepository,
+                    clusterName)
                 .getTopicManager()) {
       PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
       topicManager.createTopic(adminTopic, 1, 1, true);

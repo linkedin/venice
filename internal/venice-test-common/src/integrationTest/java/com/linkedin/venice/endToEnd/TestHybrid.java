@@ -202,7 +202,8 @@ public class TestHybrid {
                     100,
                     0l,
                     venice.getPubSubBrokerWrapper(),
-                    venice.getPubSubTopicRepository())
+                    venice.getPubSubTopicRepository(),
+                    venice.getClusterName())
                 .getTopicManager()) {
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
@@ -335,7 +336,8 @@ public class TestHybrid {
                       100,
                       0l,
                       venice.getPubSubBrokerWrapper(),
-                      sharedVenice.getPubSubTopicRepository())
+                      sharedVenice.getPubSubTopicRepository(),
+                      venice.getClusterName())
                   .getTopicManager()) {
 
         Cache cacheNothingCache = Mockito.mock(Cache.class);
@@ -1169,7 +1171,8 @@ public class TestHybrid {
                       100L,
                       MIN_COMPACTION_LAG,
                       venice.getPubSubBrokerWrapper(),
-                      sharedVenice.getPubSubTopicRepository())
+                      sharedVenice.getPubSubTopicRepository(),
+                      venice.getClusterName())
                   .getTopicManager()) {
 
         ControllerResponse response = controllerClient.updateStore(

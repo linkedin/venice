@@ -54,6 +54,7 @@ import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controller.init.PerClusterInternalRTStoreInitializationRoutine;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
+import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
@@ -153,6 +154,7 @@ import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -406,6 +408,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final Object LIVENESS_HEARTBEAT_CLIENT_LOCK = new Object();
   private AvroSpecificStoreClient<BatchJobHeartbeatKey, BatchJobHeartbeatValue> livenessHeartbeatStoreClient = null;
+  private Map<String, PubSubConsumerAdapterFactory> consumerFactoryMap;
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -491,6 +494,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
     this.adapterSerializer = new HelixAdapterSerializer();
 
+    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap = new HashMap<>(multiClusterConfigs.getClusters().size());
+    Map<String, VeniceWriterFactory> veniceWriterFactoryMap = new HashMap<>(multiClusterConfigs.getClusters().size());
+    this.consumerFactoryMap = new HashMap<>(multiClusterConfigs.getClusters().size());
+    for (String clusterName: multiClusterConfigs.getClusters()) {
+      PubSubClientsFactory clusterPubSubClientsFactory =
+          multiClusterConfigs.getControllerConfig(clusterName).getPubSubClientsFactory();
+      pubSubClientsFactoryMap.put(clusterName, clusterPubSubClientsFactory);
+      veniceWriterFactoryMap.put(
+          clusterName,
+          new VeniceWriterFactory(
+              commonConfig.getProps().toProperties(),
+              clusterPubSubClientsFactory.getProducerAdapterFactory(),
+              null));
+      consumerFactoryMap.put(clusterName, clusterPubSubClientsFactory.getConsumerAdapterFactory());
+    }
+
     this.veniceConsumerFactory = pubSubClientsFactory.getConsumerAdapterFactory();
     this.topicManagerRepository = TopicManagerRepository.builder()
         .setPubSubTopicRepository(pubSubTopicRepository)
@@ -502,6 +521,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         .setPubSubProperties(this::getPubSubSSLPropertiesFromControllerConfig)
         .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
         .setPubSubConsumerAdapterFactory(veniceConsumerFactory)
+        .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
+        .setClusterNameSupplier(this::discoverClusterFromStore)
         .build();
 
     this.allowlistAccessor = new ZkAllowlistAccessor(zkClient, adapterSerializer);
@@ -519,7 +540,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         null);
     this.realTimeTopicSwitcher = new RealTimeTopicSwitcher(
         topicManagerRepository.getTopicManager(),
-        veniceWriterFactory,
+        veniceWriterFactoryMap,
         commonConfig.getProps(),
         pubSubTopicRepository);
     this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
@@ -536,10 +557,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds()));
       pushStatusStoreWriter = Optional.of(
           new PushStatusStoreWriter(
-              veniceWriterFactory,
+              veniceWriterFactoryMap,
               controllerName,
-              commonConfig.getProps().getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1)));
-      pushStatusStoreDeleter = Optional.of(new PushStatusStoreRecordDeleter(veniceWriterFactory));
+              commonConfig.getProps().getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1),
+              this::discoverClusterFromStore));
+      pushStatusStoreDeleter =
+          Optional.of(new PushStatusStoreRecordDeleter(veniceWriterFactoryMap, this::discoverClusterFromStore));
     } else {
       pushStatusStoreReader = Optional.empty();
       pushStatusStoreWriter = Optional.empty();
@@ -560,9 +583,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         commonConfig.getRefreshIntervalForZkReconnectInMs());
     metaStoreWriter = new MetaStoreWriter(
         topicManagerRepository.getTopicManager(),
-        veniceWriterFactory,
+        veniceWriterFactoryMap,
         zkSharedSchemaRepository,
-        pubSubTopicRepository);
+        pubSubTopicRepository,
+        this::discoverClusterFromStore);
     metaStoreReader = new MetaStoreReader(d2Client, commonConfig.getClusterDiscoveryD2ServiceName());
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
@@ -675,6 +699,32 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         public void handleDeletedInstances(Set<Instance> deletedInstances) {
         }
       });
+    }
+  }
+
+  private String discoverClusterFromStore(PubSubTopic pubSubTopic) {
+    if (pubSubTopic.getPubSubTopicType().equals(PubSubTopicType.ADMIN_TOPIC)) {
+      return AdminTopicUtils.getClusterNameFromTopicName(pubSubTopic.getName());
+    }
+    String storeName = pubSubTopic.getStoreName();
+    if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
+      String clusterName;
+      if (storeName.equals(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())) {
+        clusterName = multiClusterConfigs.getSystemSchemaClusterName();
+        return clusterName;
+      } else if (storeName.equals(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName())) {
+        clusterName = multiClusterConfigs.getSystemSchemaClusterName();
+        return clusterName;
+      }
+    }
+
+    try {
+      String clusterName = discoverCluster(pubSubTopic.getStoreName()).getFirst();
+      LOGGER.info("Discovered cluster {} from store for topic {}", clusterName, pubSubTopic);
+      return clusterName;
+    } catch (VeniceNoStoreException e) {
+      LOGGER.error("Failed to discover cluster from store for topic {}", pubSubTopic, e);
+      return null;
     }
   }
 
@@ -2113,6 +2163,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
       topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
       createBatchTopics(
+          clusterName,
           version,
           version.getPushType(),
           getTopicManager(),
@@ -2156,12 +2207,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * TODO: Today, this only creates Kafka topics for each view associated for the store version. We today only have kafka
    * based views.  But eventually as views get more complex, we would need to augment this function.
    *
+   * @param clusterName the cluster name
    * @param params default parameters for the resources to be created that may be overridden depending on the behavior
    *               of each specific view associated to the store
    * @param store the store to create these resources for
    * @param version the store version to create these resources for
    */
-  private void constructViewResources(Properties params, Store store, int version) {
+  private void constructViewResources(String clusterName, Properties params, Store store, int version) {
     Map<String, ViewConfig> viewConfigs = store.getViewConfigs();
     if (viewConfigs == null || viewConfigs.isEmpty()) {
       return;
@@ -2192,7 +2244,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void cleanUpViewResources(Properties params, Store store, int version) {
+  private void cleanUpViewResources(String clusterName, Properties params, Store store, int version) {
     Map<String, ViewConfig> viewConfigs = store.getViewConfigs();
     if (viewConfigs == null || viewConfigs.isEmpty()) {
       return;
@@ -2217,6 +2269,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void createBatchTopics(
+      String clusterName,
       Version version,
       PushType pushType,
       TopicManager topicManager,
@@ -2455,6 +2508,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
             createBatchTopics(
+                clusterName,
                 version,
                 pushType,
                 getTopicManager(),
@@ -2553,7 +2607,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             veniceViewProperties.put(KAFKA_REPLICATION_FACTOR, clusterConfig.getKafkaReplicationFactor());
             veniceViewProperties.put(ETERNAL_TOPIC_RETENTION_ENABLED, true);
 
-            constructViewResources(veniceViewProperties, store, version.getNumber());
+            constructViewResources(clusterName, veniceViewProperties, store, version.getNumber());
 
             repository.updateStore(store);
             LOGGER.info("Add version: {} for store: {}", version.getNumber(), storeName);
@@ -2572,6 +2626,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         + " and version: " + version.getNumber() + " in cluster: " + clusterName);
               }
               createBatchTopics(
+                  clusterName,
                   version,
                   pushType,
                   getTopicManager(sourceKafkaBootstrapServers),
@@ -3154,7 +3209,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (deletedVersion.get().getPushType().isStreamReprocessing()) {
             truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, versionNumber));
           }
-          cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
+          cleanUpViewResources(clusterName, new Properties(), store, deletedVersion.get().getNumber());
         }
         if (store.isDaVinciPushStatusStoreEnabled() && pushStatusStoreDeleter.isPresent()) {
           pushStatusStoreDeleter.get()
@@ -3647,7 +3702,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(versionNumber);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+      realTimeTopicSwitcher.transmitVersionSwapMessage(clusterName, store, previousVersion, versionNumber);
       return store;
     });
   }
@@ -3665,7 +3720,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(futureVersion);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, futureVersion);
+      realTimeTopicSwitcher.transmitVersionSwapMessage(clusterName, store, previousVersion, futureVersion);
       return store;
     });
   }
@@ -3686,7 +3741,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
+      realTimeTopicSwitcher.transmitVersionSwapMessage(clusterName, store, previousVersion, backupVersion);
       return store;
     });
   }
@@ -6543,8 +6598,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return a <code>PubSubClientFactory</code> object used by the Venice controller to create Pubsub clients.
    */
   @Override
-  public PubSubConsumerAdapterFactory getVeniceConsumerFactory() {
-    return veniceConsumerFactory;
+  public Map<String, PubSubConsumerAdapterFactory> getVeniceConsumerFactoryMap() {
+    return this.consumerFactoryMap;
   }
 
   @Override

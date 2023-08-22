@@ -48,8 +48,8 @@ public class VeniceWriterTest {
   private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager topicManager;
   private PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory;
-
   private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
+  private final String clusterName = "test_cluster";
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
@@ -58,9 +58,16 @@ public class VeniceWriterTest {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     pubSubConsumerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory();
     pubSubProducerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
-    topicManager = IntegrationTestPushUtils
-        .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100L, 0L, pubSubBrokerWrapper, pubSubTopicRepository)
-        .getTopicManager();
+    topicManager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                0L,
+                pubSubBrokerWrapper,
+                pubSubTopicRepository,
+                clusterName)
+            .getTopicManager();
   }
 
   @AfterClass

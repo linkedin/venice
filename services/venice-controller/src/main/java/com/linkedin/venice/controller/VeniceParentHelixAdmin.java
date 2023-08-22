@@ -4016,11 +4016,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getVeniceConsumerFactory()
+   * @see VeniceHelixAdmin#getVeniceConsumerFactoryMap() ()
    */
   @Override
-  public PubSubConsumerAdapterFactory getVeniceConsumerFactory() {
-    return getVeniceHelixAdmin().getVeniceConsumerFactory();
+  public Map<String, PubSubConsumerAdapterFactory> getVeniceConsumerFactoryMap() {
+    return getVeniceHelixAdmin().getVeniceConsumerFactoryMap();
   }
 
   @Override
@@ -4089,7 +4089,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#isTopicTruncated(String)
+   * @see VeniceHelixAdmin#isTopicTruncated( String)
    */
   @Override
   public boolean isTopicTruncated(String kafkaTopicName) {
@@ -4113,7 +4113,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#truncateKafkaTopic(String)
+   * @see VeniceHelixAdmin#truncateKafkaTopic( String)
    */
   @Override
   public boolean truncateKafkaTopic(String kafkaTopicName) {

@@ -3522,6 +3522,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(databaseSyncBytesIntervalForDeferredWriteMode).when(storeConfig)
         .getDatabaseSyncBytesIntervalForDeferredWriteMode();
     doReturn(false).when(storeConfig).isReadOnlyForBatchOnlyStoreEnabled();
+    // doReturn(clusterName).when(storeConfig).getClusterName();
     storeVersionConfigOverride.accept(storeConfig);
     return storeConfig;
   }

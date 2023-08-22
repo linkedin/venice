@@ -679,7 +679,7 @@ public abstract class AbstractPushMonitorTest {
     // Check hybrid push status
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
-    verify(realTimeTopicSwitcher, never()).switchToRealTimeTopic(any(), any(), any(), any(), anyList());
+    verify(realTimeTopicSwitcher, never()).switchToRealTimeTopic(any(), any(), any(), any(), any(), anyList());
     Assert.assertEquals(
         monitor.getOfflinePushOrThrow(topic).getCurrentStatus(),
         ExecutionStatus.STARTED,
@@ -689,6 +689,7 @@ public abstract class AbstractPushMonitorTest {
     replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
     monitor.onPartitionStatusChange(topic, partitionStatus);
     verify(realTimeTopicSwitcher, times(1)).switchToRealTimeTopic(
+        eq(clusterName),
         eq(Version.composeRealTimeTopic(store.getName())),
         eq(topic),
         eq(store),
@@ -705,7 +706,7 @@ public abstract class AbstractPushMonitorTest {
     monitor.setRealTimeTopicSwitcher(realTimeTopicSwitcher);
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Should not send SOBR again
-    verify(realTimeTopicSwitcher, never()).switchToRealTimeTopic(any(), any(), any(), any(), anyList());
+    verify(realTimeTopicSwitcher, never()).switchToRealTimeTopic(any(), any(), any(), any(), any(), anyList());
   }
 
   @Test
@@ -758,6 +759,7 @@ public abstract class AbstractPushMonitorTest {
     }
     // Only send one SOBR
     verify(realTimeTopicSwitcher, only()).switchToRealTimeTopic(
+        eq(clusterName),
         eq(Version.composeRealTimeTopic(store.getName())),
         eq(topic),
         eq(store),

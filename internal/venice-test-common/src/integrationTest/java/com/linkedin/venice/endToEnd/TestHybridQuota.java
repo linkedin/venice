@@ -138,7 +138,8 @@ public class TestHybridQuota {
                     100L,
                     0L,
                     sharedVenice.getPubSubBrokerWrapper(),
-                    sharedVenice.getPubSubTopicRepository())
+                    sharedVenice.getPubSubTopicRepository(),
+                    sharedVenice.getClusterName())
                 .getTopicManager()) {
 
       // Setting the hybrid store quota here will cause the VPJ push failed.

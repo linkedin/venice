@@ -37,6 +37,7 @@ public class TestKafkaInputFormat {
   private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager manager;
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private String clusterName = "test_cluster";
 
   @BeforeClass
   public void setUp() {
@@ -48,7 +49,8 @@ public class TestKafkaInputFormat {
                 100L,
                 24 * Time.MS_PER_HOUR,
                 pubSubBrokerWrapper,
-                pubSubTopicRepository)
+                pubSubTopicRepository,
+                clusterName)
             .getTopicManager();
   }
 

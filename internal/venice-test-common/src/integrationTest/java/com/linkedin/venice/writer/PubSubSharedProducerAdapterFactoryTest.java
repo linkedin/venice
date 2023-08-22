@@ -50,14 +50,22 @@ public class PubSubSharedProducerAdapterFactoryTest {
   private TopicManager topicManager;
   private PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory;
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final String clusterName = "test_cluster";
 
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     pubSubConsumerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory();
-    topicManager = IntegrationTestPushUtils
-        .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0L, pubSubBrokerWrapper, pubSubTopicRepository)
-        .getTopicManager();
+    topicManager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100,
+                0L,
+                pubSubBrokerWrapper,
+                pubSubTopicRepository,
+                clusterName)
+            .getTopicManager();
   }
 
   @AfterClass

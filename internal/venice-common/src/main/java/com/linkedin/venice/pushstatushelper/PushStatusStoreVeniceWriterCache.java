@@ -2,6 +2,7 @@ package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -21,13 +22,19 @@ import org.apache.logging.log4j.Logger;
 public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreVeniceWriterCache.class);
 
-  private final VeniceWriterFactory writerFactory;
+  private final Map<String, VeniceWriterFactory> writerFactoryMap;
   // Local cache of VeniceWriters.
   private final Map<String, VeniceWriter> veniceWriters = new VeniceConcurrentHashMap<>();
+  private final PushStatusStoreWriter.ClusterNameSupplier clusterNameSupplier;
+
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   // writerFactory Used for instantiating VeniceWriter
-  public PushStatusStoreVeniceWriterCache(VeniceWriterFactory writerFactory) {
-    this.writerFactory = writerFactory;
+  public PushStatusStoreVeniceWriterCache(
+      Map<String, VeniceWriterFactory> writerFactoryMap,
+      PushStatusStoreWriter.ClusterNameSupplier clusterNameSupplier) {
+    this.writerFactoryMap = writerFactoryMap;
+    this.clusterNameSupplier = clusterNameSupplier;
   }
 
   public VeniceWriter prepareVeniceWriter(String storeName) {
@@ -44,8 +51,8 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
           .setChunkingEnabled(false)
           .setPartitionCount(1)
           .build();
-
-      return writerFactory.createVeniceWriter(options);
+      String clusterName = clusterNameSupplier.get(pubSubTopicRepository.getTopic(rtTopic));
+      return writerFactoryMap.get(clusterName).createVeniceWriter(options);
     });
   }
 

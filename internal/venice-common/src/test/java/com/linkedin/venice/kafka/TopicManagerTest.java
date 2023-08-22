@@ -32,8 +32,10 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -61,6 +63,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -86,6 +89,7 @@ public class TopicManagerTest {
   protected static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
   protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   protected TopicManager topicManager;
+  protected final String clusterName = "test_cluster";
 
   @BeforeClass
   public void setUp() {
@@ -107,6 +111,13 @@ public class TopicManagerTest {
     mockInMemoryConsumer.setMockInMemoryAdminAdapter(mockInMemoryAdminAdapter);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
     doReturn(mockInMemoryConsumer).when(pubSubConsumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory = mock(PubSubProducerAdapterFactory.class);
+    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap = Collections.singletonMap(
+        clusterName,
+        new PubSubClientsFactory(
+            pubSubProducerAdapterFactory,
+            pubSubConsumerAdapterFactory,
+            pubSubAdminAdapterFactory));
 
     topicManager = TopicManagerRepository.builder()
         .setPubSubProperties(k -> VeniceProperties.empty())
@@ -117,6 +128,8 @@ public class TopicManagerTest {
         .setKafkaOperationTimeoutMs(500L)
         .setTopicDeletionStatusPollIntervalMs(100L)
         .setTopicMinLogCompactionLagMs(MIN_COMPACTION_LAG)
+        .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
+        .setClusterNameSupplier(s -> clusterName)
         .build()
         .getTopicManager();
   }
@@ -528,8 +541,14 @@ public class TopicManagerTest {
 
     PubSubAdminAdapterFactory adminAdapterFactory = mock(PubSubAdminAdapterFactory.class);
     PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    PubSubProducerAdapterFactory producerAdapterFactory = mock(PubSubProducerAdapterFactory.class);
     doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
     doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap = new HashMap<>();
+    pubSubClientsFactoryMap.put(
+        clusterName,
+        new PubSubClientsFactory(producerAdapterFactory, consumerAdapterFactory, adminAdapterFactory));
+
     try (TopicManager topicManagerForThisTest = TopicManagerRepository.builder()
         .setPubSubProperties(k -> VeniceProperties.empty())
         .setPubSubTopicRepository(pubSubTopicRepository)
@@ -539,6 +558,8 @@ public class TopicManagerTest {
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
         .setTopicDeletionStatusPollIntervalMs(100)
         .setTopicMinLogCompactionLagMs(MIN_COMPACTION_LAG)
+        .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
+        .setClusterNameSupplier(s -> clusterName)
         .build()
         .getTopicManager()) {
       Assert.assertThrows(

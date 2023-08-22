@@ -41,6 +41,8 @@ public class TestDictionaryUtils {
   private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
+  private final String clusterName = "test_cluster";
+
   private String getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
     PubSubTopic pubSubTopic =
@@ -73,7 +75,8 @@ public class TestDictionaryUtils {
                 100,
                 MIN_COMPACTION_LAG,
                 pubSubBrokerWrapper,
-                pubSubTopicRepository)
+                pubSubTopicRepository,
+                clusterName)
             .getTopicManager();
     pubSubProducerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
   }

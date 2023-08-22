@@ -40,7 +40,9 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -299,10 +301,13 @@ public class HelixParticipationService extends AbstractVeniceService
         veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
     VeniceWriterFactory writerFactory =
         new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
+    Map<String, VeniceWriterFactory> veniceWriterFactoryMap = new HashMap<>();
+    veniceWriterFactoryMap.put(clusterName, writerFactory);
     statusStoreWriter = new PushStatusStoreWriter(
-        writerFactory,
+        veniceWriterFactoryMap,
         instance.getNodeId(),
-        veniceProperties.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1));
+        veniceProperties.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1),
+        s -> clusterName);
 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.

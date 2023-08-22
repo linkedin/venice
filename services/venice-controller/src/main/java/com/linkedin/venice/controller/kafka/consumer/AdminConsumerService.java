@@ -33,7 +33,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final VeniceControllerConfig config;
   private final VeniceHelixAdmin admin;
   private final ZkAdminTopicMetadataAccessor adminTopicMetadataAccessor;
-  private final PubSubConsumerAdapterFactory consumerFactory;
+  private final Map<String, PubSubConsumerAdapterFactory> consumerFactoryMap;
   private final MetricsRepository metricsRepository;
   private final boolean remoteConsumptionEnabled;
   private final Optional<String> remoteKafkaServerUrl;
@@ -67,7 +67,7 @@ public class AdminConsumerService extends AbstractVeniceService {
       remoteKafkaServerUrl = Optional.empty();
     }
     this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
-    this.consumerFactory = admin.getVeniceConsumerFactory();
+    this.consumerFactoryMap = admin.getVeniceConsumerFactoryMap();
   }
 
   @Override
@@ -210,7 +210,7 @@ public class AdminConsumerService extends AbstractVeniceService {
      * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
      */
     kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
-    return consumerFactory
+    return consumerFactoryMap.get(clusterName)
         .create(new VeniceProperties(kafkaConsumerProperties), false, pubSubMessageDeserializer, clusterName);
   }
 }

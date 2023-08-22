@@ -41,6 +41,7 @@ import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
@@ -369,20 +370,26 @@ public class IntegrationTestPushUtils {
       long topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
       PubSubBrokerWrapper pubSubBrokerWrapper,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      String clusterName) {
     Properties properties = new Properties();
     String pubSubBootstrapServers = pubSubBrokerWrapper.getAddress();
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
+    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap = new HashMap<>();
+    pubSubClientsFactoryMap.put(clusterName, pubSubBrokerWrapper.getPubSubClientsFactory());
+
     return TopicManagerRepository.builder()
         .setPubSubProperties(k -> new VeniceProperties(properties))
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setLocalKafkaBootstrapServers(pubSubBootstrapServers)
         .setPubSubConsumerAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory())
         .setPubSubAdminAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory())
+        .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
         .setKafkaOperationTimeoutMs(kafkaOperationTimeoutMs)
         .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollIntervalMs)
         .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
+        .setClusterNameSupplier(s -> clusterName)
         .build();
   }
 

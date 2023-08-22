@@ -266,8 +266,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     VeniceWriterFactory veniceWriterFactory =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
+    Map<String, VeniceWriterFactory> metastoreWriterFactoryMap = new HashMap<>(1);
     VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter =
         new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, null);
+    metastoreWriterFactoryMap.put(serverConfig.getClusterName(), veniceWriterFactoryForMetaStoreWriter);
 
     EventThrottler bandwidthThrottler = new EventThrottler(
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),
@@ -307,6 +309,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
+    Map<String, PubSubClientsFactory> pubSubClientsFactoryMap = new HashMap<>();
+    pubSubClientsFactoryMap.put(serverConfig.getClusterName(), pubSubClientsFactory);
+
     this.topicManagerRepository = TopicManagerRepository.builder()
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setMetricsRepository(metricsRepository)
@@ -317,6 +322,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
         .setPubSubProperties(this::getPubSubSSLPropertiesFromServerConfig)
         .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
+        .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
+        .setClusterNameSupplier(s -> serverConfig.getClusterName())
         .build();
 
     VeniceNotifier notifier = new LogNotifier();
@@ -329,9 +336,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (zkSharedSchemaRepository.isPresent()) {
       this.metaStoreWriter = new MetaStoreWriter(
           topicManagerRepository.getTopicManager(),
-          veniceWriterFactoryForMetaStoreWriter,
+          metastoreWriterFactoryMap,
           zkSharedSchemaRepository.get(),
-          pubSubTopicRepository);
+          pubSubTopicRepository,
+          s -> serverConfig.getClusterName());
       this.metaSystemStoreReplicaStatusNotifier = new MetaSystemStoreReplicaStatusNotifier(
           serverConfig.getClusterName(),
           metaStoreWriter,

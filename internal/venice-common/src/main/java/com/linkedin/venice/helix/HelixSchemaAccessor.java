@@ -68,6 +68,10 @@ public class HelixSchemaAccessor {
     replicationMetadataSchemaAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
 
+  public String getClusterName() {
+    return clusterName;
+  }
+
   private void registerSerializerForSchema(ZkClient zkClient, HelixAdapterSerializer adapter) {
     // Register schema serializer
     String keySchemaPath = getKeySchemaPath(PathResourceRegistry.WILDCARD_MATCH_ANY);

@@ -190,7 +190,8 @@ public class TestTopicRequestOnHybridDelete {
         100,
         0l,
         venice.getPubSubBrokerWrapper(),
-        pubSubTopicRepository)) {
+        pubSubTopicRepository,
+        venice.getClusterName())) {
 
       TopicManager topicManager = topicManagerRepository.getTopicManager();
 

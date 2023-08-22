@@ -45,7 +45,6 @@ public class KafkaInputDictTrainer {
     private final int compressionDictSize;
     private final int dictSampleSize;
     private final CompressionStrategy sourceVersionCompressionStrategy;
-
     private final boolean sourceVersionChunkingEnabled;
 
     Param(ParamBuilder builder) {

@@ -863,6 +863,7 @@ public abstract class AbstractPushMonitor
         try {
           String newStatusDetails;
           realTimeTopicSwitcher.switchToRealTimeTopic(
+              clusterName,
               Version.composeRealTimeTopic(storeName),
               offlinePushStatus.getKafkaTopic(),
               store,
@@ -1050,7 +1051,7 @@ public abstract class AbstractPushMonitor
           } else {
             int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
-            realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
+            realTimeTopicSwitcher.transmitVersionSwapMessage(clusterName, store, previousVersion, versionNumber);
           }
         } else {
           LOGGER.info(

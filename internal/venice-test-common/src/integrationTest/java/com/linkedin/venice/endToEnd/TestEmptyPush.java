@@ -111,7 +111,8 @@ public class TestEmptyPush {
                     100,
                     0l,
                     venice.getPubSubBrokerWrapper(),
-                    venice.getPubSubTopicRepository())
+                    venice.getPubSubTopicRepository(),
+                    venice.getClusterName())
                 .getTopicManager()) {
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
       controllerClient.updateStore(

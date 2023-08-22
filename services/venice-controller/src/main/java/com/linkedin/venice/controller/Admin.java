@@ -636,7 +636,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   VeniceWriterFactory getVeniceWriterFactory();
 
-  PubSubConsumerAdapterFactory getVeniceConsumerFactory();
+  Map<String, PubSubConsumerAdapterFactory> getVeniceConsumerFactoryMap();
 
   VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress);
 

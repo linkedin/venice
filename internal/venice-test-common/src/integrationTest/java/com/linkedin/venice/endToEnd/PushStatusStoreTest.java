@@ -48,7 +48,9 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -77,6 +79,8 @@ public class PushStatusStoreTest {
   private String storeName;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
+  private String clusterName;
+
   @BeforeClass
   public void setUp() {
     Properties extraProperties = new Properties();
@@ -89,6 +93,7 @@ public class PushStatusStoreTest {
         .getVeniceCluster(1, NUMBER_OF_SERVERS, 1, REPLICATION_FACTOR, 10000, false, false, extraProperties);
     controllerClient = cluster.getControllerClient();
     d2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
+    clusterName = cluster.getClusterName();
     reader = new PushStatusStoreReader(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
@@ -264,8 +269,11 @@ public class PushStatusStoreTest {
         response = controllerClient.queryJobStatus(job.getTopicToMonitor(), job.getIncrementalPushVersion());
         assertEquals(response.getStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED.name());
 
-        PushStatusStoreRecordDeleter statusStoreDeleter = new PushStatusStoreRecordDeleter(
+        Map<String, VeniceWriterFactory> writerFactoryMap = Collections.singletonMap(
+            clusterName,
             cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory());
+        PushStatusStoreRecordDeleter statusStoreDeleter =
+            new PushStatusStoreRecordDeleter(writerFactoryMap, s -> clusterName);
 
         // After deleting the inc push status belonging to just one partition we should expect
         // SOIP from the controller since other partition has replicas with EOIP status

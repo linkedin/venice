@@ -25,6 +25,7 @@ public class MetaStoreWriterTest {
   public void testMetaStoreWriterWillRestartUponProduceFailure() {
     MetaStoreWriter metaStoreWriter = mock(MetaStoreWriter.class);
     String metaStoreName = "testStore";
+    String clusterName = "test_cluster";
     ReentrantLock reentrantLock = new ReentrantLock();
     when(metaStoreWriter.getOrCreateMetaStoreWriterLock(metaStoreName)).thenReturn(reentrantLock);
     VeniceWriter badWriter = mock(VeniceWriter.class);

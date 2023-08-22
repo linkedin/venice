@@ -39,6 +39,8 @@ public class RealTimeTopicSwitcherRewindTest {
   private RealTimeTopicSwitcher topicReplicator;
   private TestMockTime mockTime;
 
+  private String clusterName = "test_cluster";
+
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeTest
@@ -57,15 +59,15 @@ public class RealTimeTopicSwitcherRewindTest {
     mockTime = new TestMockTime();
 
     when(topicReplicator.getTopicManager()).thenReturn(topicManager);
-    when(topicReplicator.getVeniceWriterFactory()).thenReturn(veniceWriterFactory);
+    when(topicReplicator.getVeniceWriterFactory(clusterName)).thenReturn(veniceWriterFactory);
     when(topicReplicator.getTimer()).thenReturn(mockTime);
-    when(topicManager.containsTopicAndAllPartitionsAreOnline(any())).thenReturn(true);
+    when(topicManager.containsTopicAndAllPartitionsAreOnline(any(), any())).thenReturn(true);
     when(veniceWriterFactory.<byte[], byte[], byte[]>createVeniceWriter(any())).thenReturn(veniceWriter);
 
     // Methods under test
-    doCallRealMethod().when(topicReplicator).ensurePreconditions(any(), any(), any(), any());
+    doCallRealMethod().when(topicReplicator).ensurePreconditions(any(), any(), any(), any(), any());
     doCallRealMethod().when(topicReplicator).getRewindStartTime(any(), any(), anyLong());
-    doCallRealMethod().when(topicReplicator).sendTopicSwitch(any(), any(), anyLong(), anyList());
+    doCallRealMethod().when(topicReplicator).sendTopicSwitch(any(), any(), any(), anyLong(), anyList());
   }
 
   @Test
@@ -83,19 +85,19 @@ public class RealTimeTopicSwitcherRewindTest {
     final PubSubTopic sourceTopicName = pubSubTopicRepository.getTopic("source topic name_v1");
     final PubSubTopic destinationTopicName = pubSubTopicRepository.getTopic("destination topic name_v1");
 
-    topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
+    topicReplicator.ensurePreconditions(clusterName, sourceTopicName, destinationTopicName, store, hybridStoreConfig);
     long rewindStartTime =
         topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
     assertEquals(
         rewindStartTime,
         mockTime.getMilliseconds() - Time.MS_PER_SECOND * REWIND_TIME_IN_SECONDS,
         "Rewind start timestamp is not calculated properly");
-    topicReplicator.sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
+    topicReplicator.sendTopicSwitch(clusterName, sourceTopicName, destinationTopicName, rewindStartTime, null);
 
-    verify(topicReplicator).sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
+    verify(topicReplicator).sendTopicSwitch(clusterName, sourceTopicName, destinationTopicName, rewindStartTime, null);
 
     try {
-      topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, Optional.empty());
+      topicReplicator.ensurePreconditions(clusterName, sourceTopicName, destinationTopicName, store, Optional.empty());
       fail("topicReplicator.startBufferReplay should fail (FOR NOW) for non-Hybrid stores.");
     } catch (VeniceException e) {
       // expected
@@ -117,19 +119,19 @@ public class RealTimeTopicSwitcherRewindTest {
     final PubSubTopic sourceTopicName = pubSubTopicRepository.getTopic("source topic name_v1");
     final PubSubTopic destinationTopicName = pubSubTopicRepository.getTopic("destination topic name_v1");
 
-    topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
+    topicReplicator.ensurePreconditions(clusterName, sourceTopicName, destinationTopicName, store, hybridStoreConfig);
     long rewindStartTime =
         topicReplicator.getRewindStartTime(mock(Version.class), hybridStoreConfig, VERSION_CREATION_TIME_MS);
     assertEquals(
         rewindStartTime,
         VERSION_CREATION_TIME_MS - Time.MS_PER_SECOND * REWIND_TIME_IN_SECONDS,
         "Rewind start timestamp is not calculated properly");
-    topicReplicator.sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
+    topicReplicator.sendTopicSwitch(clusterName, sourceTopicName, destinationTopicName, rewindStartTime, null);
 
-    verify(topicReplicator).sendTopicSwitch(sourceTopicName, destinationTopicName, rewindStartTime, null);
+    verify(topicReplicator).sendTopicSwitch(clusterName, sourceTopicName, destinationTopicName, rewindStartTime, null);
 
     try {
-      topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, Optional.empty());
+      topicReplicator.ensurePreconditions(clusterName, sourceTopicName, destinationTopicName, store, Optional.empty());
       fail("topicReplicator.startBufferReplay should fail (FOR NOW) for non-Hybrid stores.");
     } catch (VeniceException e) {
       // expected

@@ -67,20 +67,22 @@ public class MetaStoreWriter implements Closeable {
   private final Map<String, VeniceWriter> metaStoreWriterMap = new VeniceConcurrentHashMap<>();
   private final Map<String, ReentrantLock> metaStoreWriterLockMap = new VeniceConcurrentHashMap<>();
   private final TopicManager topicManager;
-  private final VeniceWriterFactory writerFactory;
+  private final Map<String, VeniceWriterFactory> writerFactoryMap;
   private final Schema derivedComputeSchema;
   private final HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
   private int derivedComputeSchemaId = -1;
 
   private final PubSubTopicRepository pubSubTopicRepository;
+  private final ClusterNameSupplier clusterNameSupplier;
 
   public MetaStoreWriter(
       TopicManager topicManager,
-      VeniceWriterFactory writerFactory,
+      Map<String, VeniceWriterFactory> writerFactoryMap,
       HelixReadOnlyZKSharedSchemaRepository schemaRepo,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopicRepository pubSubTopicRepository,
+      ClusterNameSupplier clusterNameSupplier) {
     this.topicManager = topicManager;
-    this.writerFactory = writerFactory;
+    this.writerFactoryMap = writerFactoryMap;
     /**
      * TODO: get the write compute schema from the constructor so that this class does not use {@link WriteComputeSchemaConverter}
      */
@@ -89,6 +91,7 @@ public class MetaStoreWriter implements Closeable {
             AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
     this.zkSharedSchemaRepository = schemaRepo;
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.clusterNameSupplier = clusterNameSupplier;
   }
 
   /**
@@ -452,7 +455,7 @@ public class MetaStoreWriter implements Closeable {
           .setPartitionCount(1)
           .build();
 
-      return writerFactory.createVeniceWriter(options);
+      return writerFactoryMap.get(clusterNameSupplier.get(rtTopic)).createVeniceWriter(options);
     });
   }
 
@@ -504,5 +507,9 @@ public class MetaStoreWriter implements Closeable {
           .parallelStream()
           .forEach(entry -> closeVeniceWriter(entry.getKey(), entry.getValue(), false));
     }
+  }
+
+  public interface ClusterNameSupplier {
+    String get(PubSubTopic pubSubTopic);
   }
 }

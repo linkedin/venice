@@ -4,9 +4,11 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -14,6 +16,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubInstrumentedAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -21,17 +24,21 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.io.Closeable;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -81,12 +88,78 @@ public class TopicManager implements Closeable {
   // TODO: Use single PubSubAdminAdapter for both read and write operations
   private final Lazy<PubSubAdminAdapter> pubSubWriteOnlyAdminAdapter;
   private final Lazy<PubSubAdminAdapter> pubSubReadOnlyAdminAdapter;
-  private final PartitionOffsetFetcher partitionOffsetFetcher;
 
+  private final Lazy<PubSubConsumerAdapter> pubSubConsumerAdapter;
+  private final Map<String, PubSubAdminAdapter> pubSubAdminAdapterMap = new HashMap<>();
+  private final Map<String, PubSubConsumerAdapter> pubSubConsumerAdapterMap = new HashMap<>();
+  private final PartitionOffsetFetcher partitionOffsetFetcher;
+  private final Map<String, PubSubClientsFactory> pubSubClientsFactoryMap;
+  private final PubSubTopicRepository pubSubTopicRepository;
+
+  private final PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
+      new KafkaValueSerializer(),
+      new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+      new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+  private final Optional<MetricsRepository> optionalMetricsRepository;
+  private final TopicManagerRepository.ClusterNameSupplier clusterNameSupplier;
+  TopicManagerRepository.SSLPropertiesSupplier pubSubPropertiesSupplier;
   // It's expensive to grab the topic config over and over again, and it changes infrequently. So we temporarily cache
   // queried configs.
   Cache<PubSubTopic, PubSubTopicConfiguration> topicConfigCache =
       Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
+
+  private PubSubConsumerAdapter getConsumerAdapter(PubSubTopic pubSubTopic) {
+    if (pubSubTopic == null) {
+      return pubSubConsumerAdapter.get();
+    }
+    String clusterName = clusterNameSupplier.get(pubSubTopic);
+    if (clusterName == null) {
+      return pubSubConsumerAdapter.get();
+    }
+    return pubSubConsumerAdapterMap.computeIfAbsent(
+        clusterName,
+        c -> pubSubClientsFactoryMap.get(c)
+            .getConsumerAdapterFactory()
+            .create(
+                pubSubPropertiesSupplier.get(pubSubBootstrapServers),
+                false,
+                pubSubMessageDeserializer,
+                pubSubBootstrapServers));
+  }
+
+  private PubSubAdminAdapter getAdminAdapter(PubSubTopic pubSubTopic) {
+    if (pubSubTopic == null) {
+      return pubSubReadOnlyAdminAdapter.get();
+    }
+    String clusterName = clusterNameSupplier.get(pubSubTopic);
+    if (clusterName == null) {
+      return pubSubReadOnlyAdminAdapter.get();
+    }
+    return pubSubAdminAdapterMap.computeIfAbsent(clusterName, c -> {
+      PubSubAdminAdapterFactory pubSubAdminAdapterFactory = pubSubClientsFactoryMap.get(c).getAdminAdapterFactory();
+      VeniceProperties veniceProperties = pubSubPropertiesSupplier.get(pubSubBootstrapServers);
+      PubSubAdminAdapter adminAdapter = pubSubAdminAdapterFactory.create(veniceProperties, pubSubTopicRepository);
+      adminAdapter = createInstrumentedPubSubAdmin(
+          optionalMetricsRepository,
+          "PubSubAdminStats_" + adminAdapter.getClassName() + "_" + clusterName,
+          adminAdapter,
+          pubSubBootstrapServers);
+      logger.info(
+          "{} is creating pubsub admin client of class: {} for cluster: {}",
+          this.getClass().getSimpleName(),
+          adminAdapter.getClassName(),
+          clusterName);
+      return adminAdapter;
+    });
+  }
+
+  public interface AdminSupplier {
+    PubSubAdminAdapter get(PubSubTopic pubSubTopic);
+  }
+
+  public interface ConsumerSupplier {
+    PubSubConsumerAdapter get(PubSubTopic pubSubTopic);
+  }
 
   public TopicManager(TopicManagerRepository.Builder builder, String pubSubBootstrapServers) {
     String pubSubServersForLogger = Utils.getSanitizedStringForLogger(pubSubBootstrapServers);
@@ -95,15 +168,17 @@ public class TopicManager implements Closeable {
     this.topicMinLogCompactionLagMs = builder.getTopicMinLogCompactionLagMs();
     this.pubSubAdminAdapterFactory = builder.getPubSubAdminAdapterFactory();
     this.pubSubBootstrapServers = pubSubBootstrapServers;
+    this.pubSubClientsFactoryMap = builder.getPubSubClientsFactoryMap();
 
-    TopicManagerRepository.SSLPropertiesSupplier pubSubProperties = builder.getPubSubProperties();
-    PubSubTopicRepository pubSubTopicRepository = builder.getPubSubTopicRepository();
+    this.pubSubPropertiesSupplier = builder.getPubSubProperties();
+    this.clusterNameSupplier = builder.getClusterNameSupplier();
+    this.pubSubTopicRepository = builder.getPubSubTopicRepository();
 
-    Optional<MetricsRepository> optionalMetricsRepository = Optional.ofNullable(builder.getMetricsRepository());
+    this.optionalMetricsRepository = Optional.ofNullable(builder.getMetricsRepository());
 
     this.pubSubReadOnlyAdminAdapter = Lazy.of(() -> {
       PubSubAdminAdapter pubSubReadOnlyAdmin =
-          pubSubAdminAdapterFactory.create(pubSubProperties.get(pubSubBootstrapServers), pubSubTopicRepository);
+          pubSubAdminAdapterFactory.create(pubSubPropertiesSupplier.get(pubSubBootstrapServers), pubSubTopicRepository);
       pubSubReadOnlyAdmin = createInstrumentedPubSubAdmin(
           optionalMetricsRepository,
           "ReadOnlyKafkaAdminStats",
@@ -118,7 +193,7 @@ public class TopicManager implements Closeable {
 
     this.pubSubWriteOnlyAdminAdapter = Lazy.of(() -> {
       PubSubAdminAdapter pubSubWriteOnlyAdmin =
-          pubSubAdminAdapterFactory.create(pubSubProperties.get(pubSubBootstrapServers), pubSubTopicRepository);
+          pubSubAdminAdapterFactory.create(pubSubPropertiesSupplier.get(pubSubBootstrapServers), pubSubTopicRepository);
       pubSubWriteOnlyAdmin = createInstrumentedPubSubAdmin(
           optionalMetricsRepository,
           "WriteOnlyKafkaAdminStats",
@@ -131,11 +206,18 @@ public class TopicManager implements Closeable {
       return pubSubWriteOnlyAdmin;
     });
 
+    this.pubSubConsumerAdapter = Lazy.of(
+        () -> builder.getPubSubConsumerAdapterFactory()
+            .create(
+                pubSubPropertiesSupplier.get(pubSubBootstrapServers),
+                false,
+                pubSubMessageDeserializer,
+                pubSubBootstrapServers));
+
     this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
-        builder.getPubSubConsumerAdapterFactory(),
-        pubSubProperties.get(pubSubBootstrapServers),
+        this::getConsumerAdapter,
+        this::getAdminAdapter,
         pubSubBootstrapServers,
-        pubSubReadOnlyAdminAdapter,
         kafkaOperationTimeoutMs,
         optionalMetricsRepository);
   }
@@ -171,25 +253,25 @@ public class TopicManager implements Closeable {
    *
    * @see {@link #createTopic(PubSubTopic, int, int, boolean, boolean, Optional)}
    */
-  public void createTopic(PubSubTopic topicName, int numPartitions, int replication, boolean eternal) {
-    createTopic(topicName, numPartitions, replication, eternal, false, Optional.empty(), false);
+  public void createTopic(PubSubTopic pubSubTopic, int numPartitions, int replication, boolean eternal) {
+    createTopic(pubSubTopic, numPartitions, replication, eternal, false, Optional.empty(), false);
   }
 
   public void createTopic(
-      PubSubTopic topicName,
+      PubSubTopic pubSubTopic,
       int numPartitions,
       int replication,
       boolean eternal,
       boolean logCompaction,
       Optional<Integer> minIsr) {
-    createTopic(topicName, numPartitions, replication, eternal, logCompaction, minIsr, true);
+    createTopic(pubSubTopic, numPartitions, replication, eternal, logCompaction, minIsr, true);
   }
 
   /**
    * Create a topic, and block until the topic is created, with a default timeout of
    * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
    *
-   * @param topicName Name for the new topic
+   * @param pubSubTopic Name for the new topic
    * @param numPartitions number of partitions
    * @param replication replication factor
    * @param eternal if true, the topic will have "infinite" (~250 mil years) retention
@@ -201,7 +283,7 @@ public class TopicManager implements Closeable {
    *                            if true, a much shorter timeout will be used to make topic creation non-blocking.
    */
   public void createTopic(
-      PubSubTopic topicName,
+      PubSubTopic pubSubTopic,
       int numPartitions,
       int replication,
       boolean eternal,
@@ -215,7 +297,7 @@ public class TopicManager implements Closeable {
       retentionTimeMs = DEFAULT_TOPIC_RETENTION_POLICY_MS;
     }
     createTopic(
-        topicName,
+        pubSubTopic,
         numPartitions,
         replication,
         retentionTimeMs,
@@ -228,7 +310,7 @@ public class TopicManager implements Closeable {
    * Create a topic, and block until the topic is created, with a default timeout of
    * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
    *
-   * @param topicName Name for the new topic
+   * @param pubSubTopic Name for the new topic
    * @param numPartitions number of partitions
    * @param replication replication factor
    * @param retentionTimeMs Retention time, in ms, for the topic
@@ -239,7 +321,7 @@ public class TopicManager implements Closeable {
    *                            if true, a much shorter timeout will be used to make topic creation non-blocking.
    */
   public void createTopic(
-      PubSubTopic topicName,
+      PubSubTopic pubSubTopic,
       int numPartitions,
       int replication,
       long retentionTimeMs,
@@ -254,15 +336,15 @@ public class TopicManager implements Closeable {
         new PubSubTopicConfiguration(Optional.of(retentionTimeMs), logCompaction, minIsr, topicMinLogCompactionLagMs);
     logger.info(
         "Creating topic: {} partitions: {} replication: {}, configuration: {}",
-        topicName,
+        pubSubTopic,
         numPartitions,
         replication,
         pubSubTopicConfiguration);
 
     try {
       RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-          () -> pubSubWriteOnlyAdminAdapter.get()
-              .createTopic(topicName, numPartitions, replication, pubSubTopicConfiguration),
+          () -> getAdminAdapter(pubSubTopic)
+              .createTopic(pubSubTopic, numPartitions, replication, pubSubTopicConfiguration),
           10,
           Duration.ofMillis(200),
           Duration.ofSeconds(1),
@@ -270,29 +352,29 @@ public class TopicManager implements Closeable {
           CREATE_TOPIC_RETRIABLE_EXCEPTIONS);
     } catch (Exception e) {
       if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicExistsException.class)) {
-        logger.info("Topic: {} already exists, will update retention policy.", topicName);
-        waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
-        updateTopicRetention(topicName, retentionTimeMs);
-        logger.info("Updated retention policy to be {}ms for topic: {}", retentionTimeMs, topicName);
+        logger.info("Topic: {} already exists, will update retention policy.", pubSubTopic);
+        waitUntilTopicCreated(pubSubTopic, numPartitions, deadlineMs);
+        updateTopicRetention(pubSubTopic, retentionTimeMs);
+        logger.info("Updated retention policy to be {}ms for topic: {}", retentionTimeMs, pubSubTopic);
         return;
       } else {
         throw new PubSubOpTimeoutException(
-            "Timeout while creating topic: " + topicName + ". Topic still does not exist after "
+            "Timeout while creating topic: " + pubSubTopic + ". Topic still does not exist after "
                 + (deadlineMs - startTime) + "ms.",
             e);
       }
     }
-    waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
+    waitUntilTopicCreated(pubSubTopic, numPartitions, deadlineMs);
     boolean eternal = retentionTimeMs == ETERNAL_TOPIC_RETENTION_POLICY_MS;
-    logger.info("Successfully created {}topic: {}", eternal ? "eternal " : "", topicName);
+    logger.info("Successfully created {}topic: {}", eternal ? "eternal " : "", pubSubTopic);
   }
 
-  protected void waitUntilTopicCreated(PubSubTopic topicName, int partitionCount, long deadlineMs) {
+  protected void waitUntilTopicCreated(PubSubTopic pubSubTopic, int partitionCount, long deadlineMs) {
     long startTime = System.currentTimeMillis();
-    while (!containsTopicAndAllPartitionsAreOnline(topicName, partitionCount)) {
+    while (!containsTopicAndAllPartitionsAreOnline(pubSubTopic, partitionCount)) {
       if (System.currentTimeMillis() > deadlineMs) {
         throw new PubSubOpTimeoutException(
-            "Timeout while creating topic: " + topicName + ".  Topic still did not pass all the checks after "
+            "Timeout while creating topic: " + pubSubTopic + ".  Topic still did not pass all the checks after "
                 + (deadlineMs - startTime) + "ms.");
       }
       Utils.sleep(200);
@@ -326,7 +408,7 @@ public class TopicManager implements Closeable {
     Optional<Long> retentionTimeMs = pubSubTopicConfiguration.retentionInMs();
     if (!retentionTimeMs.isPresent() || expectedRetentionInMs != retentionTimeMs.get()) {
       pubSubTopicConfiguration.setRetentionInMs(Optional.of(expectedRetentionInMs));
-      pubSubWriteOnlyAdminAdapter.get().setTopicConfig(topicName, pubSubTopicConfiguration);
+      getAdminAdapter(topicName).setTopicConfig(topicName, pubSubTopicConfiguration);
       logger.info(
           "Updated topic: {} with retention.ms: {} in cluster [{}]",
           topicName,
@@ -448,15 +530,14 @@ public class TopicManager implements Closeable {
    * This operation is a little heavy, since it will pull the configs for all the topics.
    */
   public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws PubSubTopicDoesNotExistException {
-    final PubSubTopicConfiguration pubSubTopicConfiguration =
-        pubSubReadOnlyAdminAdapter.get().getTopicConfig(topicName);
+    final PubSubTopicConfiguration pubSubTopicConfiguration = getAdminAdapter(topicName).getTopicConfig(topicName);
     topicConfigCache.put(topicName, pubSubTopicConfiguration);
     return pubSubTopicConfiguration;
   }
 
   public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName) {
     final PubSubTopicConfiguration pubSubTopicConfiguration =
-        pubSubReadOnlyAdminAdapter.get().getTopicConfigWithRetry(topicName);
+        getAdminAdapter(topicName).getTopicConfigWithRetry(topicName);
     topicConfigCache.put(topicName, pubSubTopicConfiguration);
     return pubSubTopicConfiguration;
   }
@@ -475,7 +556,7 @@ public class TopicManager implements Closeable {
 
   public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
     final Map<PubSubTopic, PubSubTopicConfiguration> topicConfigs =
-        pubSubReadOnlyAdminAdapter.get().getSomeTopicConfigs(topicNames);
+        getAdminAdapter(null).getSomeTopicConfigs(topicNames);
     for (Map.Entry<PubSubTopic, PubSubTopicConfiguration> topicConfig: topicConfigs.entrySet()) {
       topicConfigCache.put(topicConfig.getKey(), topicConfig.getValue());
     }
@@ -542,7 +623,7 @@ public class TopicManager implements Closeable {
    * A quick check to see whether the topic exists.
    */
   public boolean containsTopic(PubSubTopic topic) {
-    return pubSubReadOnlyAdminAdapter.get().containsTopic(topic);
+    return getAdminAdapter(topic).containsTopic(topic);
   }
 
   /**
@@ -553,7 +634,7 @@ public class TopicManager implements Closeable {
       PubSubTopic topic,
       int maxAttempts,
       final boolean expectedResult) {
-    return pubSubReadOnlyAdminAdapter.get().containsTopicWithExpectationAndRetry(topic, maxAttempts, expectedResult);
+    return getAdminAdapter(topic).containsTopicWithExpectationAndRetry(topic, maxAttempts, expectedResult);
   }
 
   public boolean containsTopicWithExpectationAndRetry(
@@ -563,14 +644,13 @@ public class TopicManager implements Closeable {
       Duration initialBackoff,
       Duration maxBackoff,
       Duration maxDuration) {
-    return pubSubReadOnlyAdminAdapter.get()
-        .containsTopicWithExpectationAndRetry(
-            topic,
-            maxAttempts,
-            expectedResult,
-            initialBackoff,
-            maxBackoff,
-            maxDuration);
+    return getAdminAdapter(topic).containsTopicWithExpectationAndRetry(
+        topic,
+        maxAttempts,
+        expectedResult,
+        initialBackoff,
+        maxBackoff,
+        maxDuration);
   }
 
   /**
@@ -667,6 +747,8 @@ public class TopicManager implements Closeable {
   @Override
   public synchronized void close() {
     Utils.closeQuietlyWithErrorLogged(partitionOffsetFetcher);
+    pubSubConsumerAdapterMap.forEach((clusterName, adapter) -> Utils.closeQuietlyWithErrorLogged(adapter));
+    pubSubAdminAdapterMap.forEach((clusterName, adapter) -> Utils.closeQuietlyWithErrorLogged(adapter));
     pubSubReadOnlyAdminAdapter.ifPresent(Utils::closeQuietlyWithErrorLogged);
     pubSubWriteOnlyAdminAdapter.ifPresent(Utils::closeQuietlyWithErrorLogged);
   }

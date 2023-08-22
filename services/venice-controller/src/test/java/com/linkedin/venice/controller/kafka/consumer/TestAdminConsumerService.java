@@ -30,6 +30,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
+import java.util.Map;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -62,11 +63,13 @@ public class TestAdminConsumerService {
     VeniceControllerConfig controllerConfig = new VeniceControllerConfig(props);
 
     PubSubConsumerAdapterFactory consumerFactory = mock(PubSubConsumerAdapterFactory.class);
+    Map<String, PubSubConsumerAdapterFactory> consumerFactoryMap =
+        Collections.singletonMap(someClusterName, consumerFactory);
 
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     doReturn(mock(ZkClient.class)).when(admin).getZkClient();
     doReturn(mock(HelixAdapterSerializer.class)).when(admin).getAdapterSerializer();
-    doReturn(consumerFactory).when(admin).getVeniceConsumerFactory();
+    doReturn(consumerFactoryMap).when(admin).getVeniceConsumerFactoryMap();
     doReturn("localhost:1234").when(admin).getKafkaBootstrapServers(true);
     doReturn(true).when(admin).isSslToKafka();
 

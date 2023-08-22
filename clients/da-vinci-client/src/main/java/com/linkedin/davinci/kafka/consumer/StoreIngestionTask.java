@@ -308,6 +308,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
 
+  protected final String clusterName;
+
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -321,6 +323,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Queue<VeniceNotifier> notifiers) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
+    this.clusterName = storeConfig.getClusterName();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
     this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
     this.kafkaProps = kafkaConsumerProperties;

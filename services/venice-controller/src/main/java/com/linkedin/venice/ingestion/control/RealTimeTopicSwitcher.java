@@ -25,6 +25,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -43,7 +44,7 @@ public class RealTimeTopicSwitcher {
 
   private final TopicManager topicManager;
   private final String destKafkaBootstrapServers;
-  private final VeniceWriterFactory veniceWriterFactory;
+  private final Map<String, VeniceWriterFactory> veniceWriterFactoryMap;
   private final Time timer;
   private final int kafkaReplicationFactorForRTTopics;
   private final int kafkaReplicationFactor;
@@ -53,11 +54,11 @@ public class RealTimeTopicSwitcher {
 
   public RealTimeTopicSwitcher(
       TopicManager topicManager,
-      VeniceWriterFactory veniceWriterFactory,
+      Map<String, VeniceWriterFactory> veniceWriterFactoryMap,
       VeniceProperties veniceProperties,
       PubSubTopicRepository pubSubTopicRepository) {
     this.topicManager = topicManager;
-    this.veniceWriterFactory = veniceWriterFactory;
+    this.veniceWriterFactoryMap = veniceWriterFactoryMap;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.timer = new SystemTime();
     this.destKafkaBootstrapServers =
@@ -79,6 +80,7 @@ public class RealTimeTopicSwitcher {
    *                        is enabled or A/A is enabled)
    */
   void sendTopicSwitch(
+      String clusterName,
       PubSubTopic realTimeTopic,
       PubSubTopic topicWhereToSendTheTopicSwitch,
       long rewindStartTimestamp,
@@ -103,7 +105,7 @@ public class RealTimeTopicSwitcher {
       sourceClusters.add(destKafkaBootstrapServers);
     }
 
-    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriterFactory().createVeniceWriter(
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriterFactory(clusterName).createVeniceWriter(
         new VeniceWriterOptions.Builder(topicWhereToSendTheTopicSwitch.getName()).setTime(getTimer())
             .setPartitionCount(destinationPartitionCount)
             .build())) {
@@ -121,6 +123,7 @@ public class RealTimeTopicSwitcher {
    * General verification and topic creation for hybrid stores.
    */
   void ensurePreconditions(
+      String clusterName,
       PubSubTopic srcTopicName,
       PubSubTopic topicWhereToSendTheTopicSwitch,
       Store store,
@@ -202,7 +205,7 @@ public class RealTimeTopicSwitcher {
     }
   }
 
-  public void transmitVersionSwapMessage(Store store, int previousVersion, int nextVersion) {
+  public void transmitVersionSwapMessage(String clusterName, Store store, int previousVersion, int nextVersion) {
 
     if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION) {
       // NoOp
@@ -233,7 +236,7 @@ public class RealTimeTopicSwitcher {
       return;
     }
     // Write the thing!
-    try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(
+    try (VeniceWriter veniceWriter = getVeniceWriterFactory(clusterName).createVeniceWriter(
         new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(store.getName())).setTime(getTimer())
             .setPartitionCount(previousStoreVersion.getPartitionCount())
             .build())) {
@@ -257,6 +260,7 @@ public class RealTimeTopicSwitcher {
   }
 
   public void switchToRealTimeTopic(
+      String clusterName,
       String realTimeTopicName,
       String topicNameWhereToSendTheTopicSwitch,
       Store store,
@@ -280,7 +284,7 @@ public class RealTimeTopicSwitcher {
     } else {
       hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
     }
-    ensurePreconditions(realTimeTopic, topicWhereToSendTheTopicSwitch, store, hybridStoreConfig);
+    ensurePreconditions(clusterName, realTimeTopic, topicWhereToSendTheTopicSwitch, store, hybridStoreConfig);
     long rewindStartTimestamp = getRewindStartTime(version, hybridStoreConfig, version.getCreatedTime());
     PubSubTopic finalTopicWhereToSendTheTopicSwitch = version.getPushType().isStreamReprocessing()
         ? pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopic(store.getName(), version.getNumber()))
@@ -297,7 +301,12 @@ public class RealTimeTopicSwitcher {
         topicWhereToSendTheTopicSwitch,
         realTimeTopic,
         rewindStartTimestamp);
-    sendTopicSwitch(realTimeTopic, finalTopicWhereToSendTheTopicSwitch, rewindStartTimestamp, remoteKafkaUrls);
+    sendTopicSwitch(
+        clusterName,
+        realTimeTopic,
+        finalTopicWhereToSendTheTopicSwitch,
+        rewindStartTimestamp,
+        remoteKafkaUrls);
   }
 
   private static boolean isAggregate(Store store) {
@@ -327,7 +336,7 @@ public class RealTimeTopicSwitcher {
    * Intended to allow mocking by tests. Visibility package-private on purpose, but could be changed to
    * protected if child classes need it.
    */
-  VeniceWriterFactory getVeniceWriterFactory() {
-    return this.veniceWriterFactory;
+  VeniceWriterFactory getVeniceWriterFactory(String clusterName) {
+    return this.veniceWriterFactoryMap.get(clusterName);
   }
 }

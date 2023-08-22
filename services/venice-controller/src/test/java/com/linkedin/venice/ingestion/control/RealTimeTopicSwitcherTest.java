@@ -50,6 +50,7 @@ public class RealTimeTopicSwitcherTest {
   private TopicManager mockTopicManager;
   private VeniceWriterFactory mockVeniceWriterFactory;
   private String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
+  private String clusterName = "test_cluster";
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
@@ -57,6 +58,7 @@ public class RealTimeTopicSwitcherTest {
   public void setUp() {
     mockTopicManager = mock(TopicManager.class);
     mockVeniceWriterFactory = mock(VeniceWriterFactory.class);
+
     Properties properties = new Properties();
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
     properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR, "3");
@@ -65,7 +67,7 @@ public class RealTimeTopicSwitcherTest {
     // filler bootstrap servers
     leaderStorageNodeReplicator = new RealTimeTopicSwitcher(
         mockTopicManager,
-        mockVeniceWriterFactory,
+        Collections.singletonMap(clusterName, mockVeniceWriterFactory),
         new VeniceProperties(properties),
         pubSubTopicRepository);
   }
@@ -93,6 +95,7 @@ public class RealTimeTopicSwitcherTest {
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createVeniceWriter(any(VeniceWriterOptions.class));
 
     leaderStorageNodeReplicator.switchToRealTimeTopic(
+        clusterName,
         srcTopic.getName(),
         destTopic.getName(),
         mockStore,
@@ -127,6 +130,7 @@ public class RealTimeTopicSwitcherTest {
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createVeniceWriter(any(VeniceWriterOptions.class));
 
     leaderStorageNodeReplicator.switchToRealTimeTopic(
+        clusterName,
         srcTopic.getName(),
         destTopic.getName(),
         mockStore,
@@ -172,19 +176,22 @@ public class RealTimeTopicSwitcherTest {
     when(mockVeniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS))
         .thenReturn(aggregateRealTimeSourceKafkaUrl);
 
-    RealTimeTopicSwitcher realTimeTopicSwitcher =
-        new RealTimeTopicSwitcher(mockTopicManager, mockWriterFactory, mockVeniceProperties, pubSubTopicRepository);
+    RealTimeTopicSwitcher realTimeTopicSwitcher = new RealTimeTopicSwitcher(
+        mockTopicManager,
+        Collections.singletonMap(clusterName, mockWriterFactory),
+        mockVeniceProperties,
+        pubSubTopicRepository);
 
     // Version 1 does not have a view but 2 does. In this case DON'T transmit a version swap message
-    realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 1, 2);
+    realTimeTopicSwitcher.transmitVersionSwapMessage(clusterName, mockStore, 1, 2);
     // todo: Instead of interaction testing consider adding true/false return code for transmitVersionSwapMessage
     verify(mockVeniceWriter, never()).broadcastVersionSwap(anyString(), anyString(), anyMap());
 
     // Version 4 doesn't exist. In this case DON'T transmit a version swap message, and throw an exception to boot
-    Assert.assertThrows(() -> realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 3, 4));
+    Assert.assertThrows(() -> realTimeTopicSwitcher.transmitVersionSwapMessage(clusterName, mockStore, 3, 4));
 
     // Version 2 and 3 both have view configs, so we should transmit a version swap message
-    realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 2, 3);
+    realTimeTopicSwitcher.transmitVersionSwapMessage(clusterName, mockStore, 2, 3);
     verify(mockWriterFactory, times(2)).createVeniceWriter(vwOptionsArgumentCaptor.capture());
     VeniceWriterOptions capturedVwo = vwOptionsArgumentCaptor.getValue();
     Assert.assertEquals(capturedVwo.getTopicName(), realTimeTopic.getName());
@@ -216,7 +223,8 @@ public class RealTimeTopicSwitcherTest {
     doReturn(false).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
 
-    leaderStorageNodeReplicator.ensurePreconditions(srcTopic, destTopic, mockStore, Optional.of(mockHybridConfig));
+    leaderStorageNodeReplicator
+        .ensurePreconditions(clusterName, srcTopic, destTopic, mockStore, Optional.of(mockHybridConfig));
 
     verify(mockTopicManager).createTopic(
         eq(srcTopic),

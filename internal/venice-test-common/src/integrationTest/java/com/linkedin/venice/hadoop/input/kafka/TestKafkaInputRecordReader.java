@@ -37,6 +37,8 @@ public class TestKafkaInputRecordReader {
   private TopicManager manager;
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
+  private String clusterName = "test_cluster";
+
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
@@ -47,7 +49,8 @@ public class TestKafkaInputRecordReader {
                 100L,
                 24 * Time.MS_PER_HOUR,
                 pubSubBrokerWrapper,
-                pubSubTopicRepository)
+                pubSubTopicRepository,
+                clusterName)
             .getTopicManager();
   }
 

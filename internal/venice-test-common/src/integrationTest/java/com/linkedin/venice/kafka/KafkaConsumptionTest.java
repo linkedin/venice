@@ -78,6 +78,8 @@ public class KafkaConsumptionTest {
   private TestMockTime remoteMockTime;
   private PubSubTopic versionTopic;
 
+  private String clusterName = "test_cluster";
+
   private PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString(callingFunction));
@@ -108,7 +110,8 @@ public class KafkaConsumptionTest {
                 100L,
                 MIN_COMPACTION_LAG,
                 localPubSubBroker,
-                pubSubTopicRepository)
+                pubSubTopicRepository,
+                clusterName)
             .getTopicManager();
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
@@ -124,7 +127,8 @@ public class KafkaConsumptionTest {
                 100L,
                 MIN_COMPACTION_LAG,
                 remotePubSubBroker,
-                pubSubTopicRepository)
+                pubSubTopicRepository,
+                clusterName)
             .getTopicManager();
     Cache remoteCacheNothingCache = mock(Cache.class);
     Mockito.when(remoteCacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);

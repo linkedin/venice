@@ -6,10 +6,12 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -82,9 +84,11 @@ public class TopicManagerRepository implements Closeable {
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
     private PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
     private PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
+    private Map<String, PubSubClientsFactory> pubSubClientsFactoryMap;
     private PubSubTopicRepository pubSubTopicRepository;
     private MetricsRepository metricsRepository;
     private SSLPropertiesSupplier pubSubProperties;
+    private ClusterNameSupplier clusterNameSupplier;
 
     private interface Setter {
       void apply();
@@ -135,8 +139,16 @@ public class TopicManagerRepository implements Closeable {
       return pubSubConsumerAdapterFactory;
     }
 
+    public Map<String, PubSubClientsFactory> getPubSubClientsFactoryMap() {
+      return pubSubClientsFactoryMap;
+    }
+
     public SSLPropertiesSupplier getPubSubProperties() {
       return pubSubProperties;
+    }
+
+    public ClusterNameSupplier getClusterNameSupplier() {
+      return clusterNameSupplier;
     }
 
     public Builder setLocalKafkaBootstrapServers(String localKafkaBootstrapServers) {
@@ -173,12 +185,24 @@ public class TopicManagerRepository implements Closeable {
       return set(() -> this.pubSubConsumerAdapterFactory = pubSubConsumerAdapterFactory);
     }
 
+    public Builder setPubSubClientsFactoryMap(Map<String, PubSubClientsFactory> pubSubClientsFactoryMap) {
+      return set(() -> this.pubSubClientsFactoryMap = pubSubClientsFactoryMap);
+    }
+
     public Builder setPubSubProperties(SSLPropertiesSupplier pubSubProperties) {
       return set(() -> this.pubSubProperties = pubSubProperties);
+    }
+
+    public Builder setClusterNameSupplier(ClusterNameSupplier clusterNameSupplier) {
+      return set(() -> this.clusterNameSupplier = clusterNameSupplier);
     }
   }
 
   public interface SSLPropertiesSupplier {
     VeniceProperties get(String pubSubBootstrapServers);
+  }
+
+  public interface ClusterNameSupplier {
+    String get(PubSubTopic pubSubTopic);
   }
 }

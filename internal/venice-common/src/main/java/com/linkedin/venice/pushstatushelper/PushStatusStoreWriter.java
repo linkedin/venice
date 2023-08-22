@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatus.NoOp;
 import com.linkedin.venice.pushstatus.PushStatusKey;
@@ -11,6 +12,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -29,12 +31,16 @@ public class PushStatusStoreWriter implements AutoCloseable {
   private final int derivedSchemaId;
 
   /**
-   * @param writerFactory Used for instantiate veniceWriterCache
+   * @param writerFactoryMap Used for instantiate veniceWriterCache
    * @param instanceName format = hostAddress,appName
    * @param derivedSchemaId writeCompute schema for updating push status
    */
-  public PushStatusStoreWriter(VeniceWriterFactory writerFactory, String instanceName, int derivedSchemaId) {
-    this(new PushStatusStoreVeniceWriterCache(writerFactory), instanceName, derivedSchemaId);
+  public PushStatusStoreWriter(
+      Map<String, VeniceWriterFactory> writerFactoryMap,
+      String instanceName,
+      int derivedSchemaId,
+      ClusterNameSupplier clusterNameSupplier) {
+    this(new PushStatusStoreVeniceWriterCache(writerFactoryMap, clusterNameSupplier), instanceName, derivedSchemaId);
   }
 
   PushStatusStoreWriter(PushStatusStoreVeniceWriterCache veniceWriterCache, String instanceName, int derivedSchemaId) {
@@ -167,5 +173,9 @@ public class PushStatusStoreWriter implements AutoCloseable {
   @Override
   public void close() {
     veniceWriterCache.close();
+  }
+
+  public interface ClusterNameSupplier {
+    String get(PubSubTopic pubSubTopic);
   }
 }

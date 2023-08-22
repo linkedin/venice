@@ -6,6 +6,7 @@ import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Future;
 import org.apache.logging.log4j.LogManager;
@@ -19,8 +20,10 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreRecordDeleter.class);
   private final PushStatusStoreVeniceWriterCache veniceWriterCache;
 
-  public PushStatusStoreRecordDeleter(VeniceWriterFactory veniceWriterFactory) {
-    this.veniceWriterCache = new PushStatusStoreVeniceWriterCache(veniceWriterFactory);
+  public PushStatusStoreRecordDeleter(
+      Map<String, VeniceWriterFactory> writerFactoryMap,
+      PushStatusStoreWriter.ClusterNameSupplier clusterNameSupplier) {
+    this.veniceWriterCache = new PushStatusStoreVeniceWriterCache(writerFactoryMap, clusterNameSupplier);
   }
 
   public void deletePushStatus(

@@ -23,6 +23,7 @@ import org.testng.annotations.Test;
 
 public class CachedPubSubMetadataGetterTest {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final String clusterName = "testCluster";
 
   @Test
   public void testGetEarliestOffset() {
