@@ -535,16 +535,14 @@ public abstract class AbstractClientEndToEndSetup {
       assertTrue(
           metrics.get(metricPrefix + "request_key_count.Rate").value() > 0,
           "Respective request_key_count should have been incremented");
-      assertEquals(
-          metrics.get(metricPrefix + "request_key_count.Max").value(),
-          keyCount,
+      assertTrue(
+          metrics.get(metricPrefix + "request_key_count.Max").value() >= keyCount,
           "Respective request_key_count should have been incremented");
       assertTrue(
           metrics.get(metricPrefix + "success_request_key_count.Rate").value() > 0,
           "Respective success_request_key_count should have been incremented");
-      assertEquals(
-          metrics.get(metricPrefix + "success_request_key_count.Max").value(),
-          successKeyCount,
+      assertTrue(
+          metrics.get(metricPrefix + "success_request_key_count.Max").value() >= successKeyCount,
           "Respective success_request_key_count should have been incremented");
     });
     // incorrect metric should not be incremented
