@@ -1948,4 +1948,9 @@ public class ConfigKeys {
   public static final String PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS = "pub.sub.producer.adapter.factory.class";
 
   public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
+
+  /**
+   * Venice router's principal name used for ssl. Default should contain "venice-router".
+   */
+  public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
 }

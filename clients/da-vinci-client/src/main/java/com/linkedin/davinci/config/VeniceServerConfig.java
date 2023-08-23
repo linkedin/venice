@@ -35,6 +35,7 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DEL
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
@@ -429,6 +430,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long divProducerStateMaxAgeMs;
   private final PubSubClientsFactory pubSubClientsFactory;
+  private final String routerPrincipalName;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -708,6 +710,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       LOGGER.error("Failed to create an instance of pub sub clients factory", e);
       throw new VeniceException(e);
     }
+    routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "CN=venice-router");
   }
 
   long extractIngestionMemoryLimit(
@@ -1236,5 +1239,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public PubSubClientsFactory getPubSubClientsFactory() {
     return pubSubClientsFactory;
+  }
+
+  public String getRouterPrincipalName() {
+    return routerPrincipalName;
   }
 }
