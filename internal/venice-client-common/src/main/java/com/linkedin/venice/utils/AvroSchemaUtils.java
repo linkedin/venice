@@ -457,7 +457,7 @@ public class AvroSchemaUtils {
         case ARRAY:
         case MAP:
           if (hasCollectionType) {
-            // More then one collection type found, this won't work.
+            // More than one collection type found, this won't work.
             throw new VeniceException(
                 "Multiple collection types in a union are not allowedSchema: " + unionSchema.toString(true));
           }
@@ -470,4 +470,5 @@ public class AvroSchemaUtils {
       }
     }
   }
+
 }
