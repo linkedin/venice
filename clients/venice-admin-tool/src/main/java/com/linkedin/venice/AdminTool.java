@@ -4,6 +4,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.SERVER_ADMIN_RESPONSE;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
 
@@ -14,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -81,13 +83,16 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -98,6 +103,7 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -162,6 +168,11 @@ public class AdminTool {
   private static final String SUCCESS = "success";
 
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+
+  private static final PubSubClientsFactory PUB_SUB_CLIENTS_FACTORY = new PubSubClientsFactory(
+      new ApacheKafkaProducerAdapterFactory(),
+      new ApacheKafkaConsumerAdapterFactory(),
+      new ApacheKafkaAdminAdapterFactory());
 
   private static ControllerClient controllerClient;
   private static Optional<SSLFactory> sslFactory = Optional.empty();
@@ -527,6 +538,9 @@ public class AdminTool {
           break;
         case REQUEST_BASED_METADATA:
           getRequestBasedMetadata(cmd);
+          break;
+        case DUMP_INGESTION_STATE:
+          dumpIngestionState(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -1396,8 +1410,8 @@ public class AdminTool {
         .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollingInterval)
         .setTopicMinLogCompactionLagMs(0L)
         .setLocalKafkaBootstrapServers(kafkaBootstrapServer)
-        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
-        .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
+        .setPubSubConsumerAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory())
+        .setPubSubAdminAdapterFactory(PUB_SUB_CLIENTS_FACTORY.getAdminAdapterFactory())
         .setPubSubTopicRepository(pubSubTopicRepository)
         .build()) {
       TopicManager topicManager = topicManagerRepository.getTopicManager();
@@ -1416,10 +1430,12 @@ public class AdminTool {
 
   private static void dumpAdminMessages(CommandLine cmd) {
     Properties consumerProperties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    String pubSubBrokerUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+    consumerProperties = DumpAdminMessages.getPubSubConsumerProperties(pubSubBrokerUrl, consumerProperties);
+    PubSubConsumerAdapter consumer = getConsumer(consumerProperties);
     List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
-        getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS),
+        consumer,
         getRequiredArgument(cmd, Arg.CLUSTER),
-        consumerProperties,
         Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)),
         Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT)));
     printObject(adminMessages);
@@ -2822,16 +2838,9 @@ public class AdminTool {
     String url = getRequiredArgument(cmd, Arg.URL);
     String serverUrl = getRequiredArgument(cmd, Arg.SERVER_URL);
     String storeName = getRequiredArgument(cmd, Arg.STORE);
-    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
-    if (clientConfig.isHttps()) {
-      if (!sslFactory.isPresent()) {
-        throw new VeniceException("HTTPS url requires admin tool to be executed with cert");
-      }
-      clientConfig.setSslFactory(sslFactory.get());
-    }
     TransportClient transportClient = null;
     try {
-      transportClient = ClientFactory.getTransportClient(clientConfig);
+      transportClient = getTransportClientForServer(storeName, serverUrl);
       getAndPrintRequestBasedMetadata(
           transportClient,
           () -> ControllerClientFactory.discoverAndConstructControllerClient(
@@ -2844,6 +2853,63 @@ public class AdminTool {
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
+  }
+
+  private static TransportClient getTransportClientForServer(String storeName, String serverUrl) {
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(serverUrl);
+    if (clientConfig.isHttps()) {
+      if (!sslFactory.isPresent()) {
+        throw new VeniceException("HTTPS url requires admin tool to be executed with cert");
+      }
+      clientConfig.setSslFactory(sslFactory.get());
+    }
+    return ClientFactory.getTransportClient(clientConfig);
+  }
+
+  private static void dumpIngestionState(CommandLine cmd) throws Exception {
+    TransportClient transportClient = null;
+    try {
+      transportClient =
+          getTransportClientForServer(getRequiredArgument(cmd, Arg.STORE), getRequiredArgument(cmd, Arg.SERVER_URL));
+      dumpIngestionState(
+          transportClient,
+          getRequiredArgument(cmd, Arg.STORE),
+          getRequiredArgument(cmd, Arg.VERSION),
+          getOptionalArgument(cmd, Arg.PARTITION));
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(transportClient);
+    }
+  }
+
+  static void dumpIngestionState(TransportClient transportClient, String storeName, String version, String partition)
+      throws Exception {
+    StringBuilder sb = new StringBuilder(QueryAction.ADMIN.toString().toLowerCase()).append("/")
+        .append(Version.composeKafkaTopic(storeName, Integer.parseInt(version)))
+        .append("/")
+        .append(ServerAdminAction.DUMP_INGESTION_STATE.toString().toLowerCase());
+    if (partition != null) {
+      sb.append("/").append(partition);
+    }
+    String requestUrl = sb.toString();
+    TransportClientResponse transportClientResponse = transportClient.get(requestUrl).get();
+    int writerSchemaId = transportClientResponse.getSchemaId();
+    if (writerSchemaId == 1) {
+      /**
+       * The bug in {@link AvroProtocolDefinition} will let the current Venice Server return schema id `1`, while
+       * the specific record is generated from schema: 2.
+       */
+      writerSchemaId = 2;
+    }
+    InternalAvroSpecificSerializer<AdminResponseRecord> serializer = SERVER_ADMIN_RESPONSE.getSerializer();
+    /**
+     * Here, this tool doesn't handle schema evolution, and if the writer schema is not known in the admin tool,
+     * the following deserialization will fail, and we need to rebuild the admin tool.
+     */
+    AdminResponseRecord responseRecord = serializer.deserialize(transportClientResponse.getBody(), writerSchemaId);
+    // Using the jsonWriter to print Avro objects directly does not handle the collection types (List and Map) well.
+    // Use the Avro record's toString() instead and pretty print it.
+    Object printObject = ObjectMapperFactory.getInstance().readValue(responseRecord.toString(), Object.class);
+    System.out.println(jsonWriter.writeValueAsString(printObject));
   }
 
   static void getAndPrintRequestBasedMetadata(
@@ -2993,7 +3059,7 @@ public class AdminTool {
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    return new ApacheKafkaConsumerAdapterFactory()
+    return PUB_SUB_CLIENTS_FACTORY.getConsumerAdapterFactory()
         .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, "admin-tool-topic-dumper");
   }
 

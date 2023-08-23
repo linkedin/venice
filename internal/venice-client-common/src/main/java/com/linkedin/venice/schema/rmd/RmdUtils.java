@@ -1,7 +1,7 @@
 package com.linkedin.venice.schema.rmd;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
-import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 
 import java.util.Collections;
 import java.util.List;
@@ -31,12 +31,12 @@ public class RmdUtils {
   }
 
   public static long extractOffsetVectorSumFromRmd(GenericRecord replicationMetadataRecord) {
-    Object offsetVectorObject = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
+    Object offsetVectorObject = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
     return sumOffsetVector(offsetVectorObject);
   }
 
   public static List<Long> extractOffsetVectorFromRmd(GenericRecord replicationMetadataRecord) {
-    Object offsetVector = (List<Long>) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
+    Object offsetVector = replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
     if (offsetVector == null) {
       return Collections.emptyList();
     }
@@ -55,7 +55,7 @@ public class RmdUtils {
     if (replicationMetadataRecord == null) {
       return Collections.singletonList(0L);
     }
-    Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_NAME);
+    Object timestampObject = replicationMetadataRecord.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = getRmdTimestampType(timestampObject);
 
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {

@@ -1,15 +1,20 @@
 package com.linkedin.venice.listener;
 
+import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -33,12 +38,17 @@ import com.linkedin.venice.compute.protocol.request.ComputeRequest;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.grpc.GrpcErrorCodes;
+import com.linkedin.venice.listener.grpc.GrpcRequestContext;
+import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
+import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
+import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
@@ -54,6 +64,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.protocols.VeniceClientRequest;
+import com.linkedin.venice.protocols.VeniceServerResponse;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -214,8 +226,8 @@ public class StorageReadRequestHandlerTest {
 
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     StorageResponseObject responseObject = (StorageResponseObject) argumentCaptor.getValue();
-    Assert.assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
-    Assert.assertEquals(responseObject.getValueRecord().getSchemaId(), schemaId);
+    assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
+    assertEquals(responseObject.getValueRecord().getSchemaId(), schemaId);
   }
 
   @Test
@@ -227,7 +239,7 @@ public class StorageReadRequestHandlerTest {
 
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     HttpShortcutResponse healthCheckResponse = (HttpShortcutResponse) argumentCaptor.getValue();
-    Assert.assertEquals(healthCheckResponse.getStatus(), HttpResponseStatus.OK);
+    assertEquals(healthCheckResponse.getStatus(), HttpResponseStatus.OK);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -290,9 +302,9 @@ public class StorageReadRequestHandlerTest {
       String valueString = new String(K.value.array(), StandardCharsets.UTF_8);
       results.put(K.keyIndex, valueString);
     });
-    Assert.assertEquals(results.size(), recordCount);
+    assertEquals(results.size(), recordCount);
     for (int i = 0; i < recordCount; i++) {
-      Assert.assertEquals(results.get(i), allValueStrings.get(i));
+      assertEquals(results.get(i), allValueStrings.get(i));
     }
   }
 
@@ -335,8 +347,8 @@ public class StorageReadRequestHandlerTest {
 
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     HttpShortcutResponse shortcutResponse = (HttpShortcutResponse) argumentCaptor.getValue();
-    Assert.assertEquals(shortcutResponse.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-    Assert.assertEquals(shortcutResponse.getMessage(), exceptionMessage);
+    assertEquals(shortcutResponse.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    assertEquals(shortcutResponse.getMessage(), exceptionMessage);
 
     // Asserting that the exception got logged
     Assert.assertTrue(errorLogCount.get() > 0);
@@ -368,13 +380,11 @@ public class StorageReadRequestHandlerTest {
 
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     AdminResponse adminResponse = (AdminResponse) argumentCaptor.getValue();
-    Assert.assertEquals(adminResponse.getResponseRecord().partitionConsumptionStates.size(), 1);
-    Assert.assertEquals(
-        adminResponse.getResponseRecord().partitionConsumptionStates.get(0).partitionId,
-        expectedPartitionId);
-    Assert.assertEquals(
+    assertEquals(adminResponse.getResponseRecord().partitionConsumptionStates.size(), 1);
+    assertEquals(adminResponse.getResponseRecord().partitionConsumptionStates.get(0).partitionId, expectedPartitionId);
+    assertEquals(
         adminResponse.getResponseSchemaIdHeader(),
-        AvroProtocolDefinition.SERVER_ADMIN_RESPONSE_V1.getCurrentProtocolVersion());
+        AvroProtocolDefinition.SERVER_ADMIN_RESPONSE.getCurrentProtocolVersion());
   }
 
   @Test
@@ -409,9 +419,9 @@ public class StorageReadRequestHandlerTest {
 
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     MetadataResponse metadataResponse = (MetadataResponse) argumentCaptor.getValue();
-    Assert.assertEquals(metadataResponse.getResponseRecord().getVersionMetadata(), versionProperties);
-    Assert.assertEquals(metadataResponse.getResponseRecord().getKeySchema(), keySchema);
-    Assert.assertEquals(metadataResponse.getResponseRecord().getValueSchemas(), valueSchemas);
+    assertEquals(metadataResponse.getResponseRecord().getVersionMetadata(), versionProperties);
+    assertEquals(metadataResponse.getResponseRecord().getKeySchema(), keySchema);
+    assertEquals(metadataResponse.getResponseRecord().getValueSchemas(), valueSchemas);
   }
 
   @Test
@@ -421,8 +431,8 @@ public class StorageReadRequestHandlerTest {
 
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     HttpShortcutResponse shortcutResponse = (HttpShortcutResponse) argumentCaptor.getValue();
-    Assert.assertEquals(shortcutResponse.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-    Assert.assertEquals(shortcutResponse.getMessage(), "Unrecognized object in StorageExecutionHandler");
+    assertEquals(shortcutResponse.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    assertEquals(shortcutResponse.getMessage(), "Unrecognized object in StorageExecutionHandler");
   }
 
   @Test
@@ -482,17 +492,17 @@ public class StorageReadRequestHandlerTest {
 
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     ComputeResponseWrapper computeResponse = (ComputeResponseWrapper) argumentCaptor.getValue();
-    Assert.assertEquals(computeResponse.isStreamingResponse(), request.isStreamingRequest());
-    Assert.assertEquals(computeResponse.getRecordCount(), keySet.size());
-    Assert.assertEquals(computeResponse.getMultiChunkLargeValueCount(), 0);
-    Assert.assertEquals(computeResponse.getCompressionStrategy(), CompressionStrategy.NO_OP);
+    assertEquals(computeResponse.isStreamingResponse(), request.isStreamingRequest());
+    assertEquals(computeResponse.getRecordCount(), keySet.size());
+    assertEquals(computeResponse.getMultiChunkLargeValueCount(), 0);
+    assertEquals(computeResponse.getCompressionStrategy(), CompressionStrategy.NO_OP);
 
-    Assert.assertEquals(computeResponse.getDotProductCount(), 1);
-    Assert.assertEquals(computeResponse.getHadamardProductCount(), 1);
-    Assert.assertEquals(computeResponse.getCountOperatorCount(), 0);
-    Assert.assertEquals(computeResponse.getCosineSimilarityCount(), 0);
+    assertEquals(computeResponse.getDotProductCount(), 1);
+    assertEquals(computeResponse.getHadamardProductCount(), 1);
+    assertEquals(computeResponse.getCountOperatorCount(), 0);
+    assertEquals(computeResponse.getCosineSimilarityCount(), 0);
 
-    Assert.assertEquals(computeResponse.getValueSize(), valueBytes.length);
+    assertEquals(computeResponse.getValueSize(), valueBytes.length);
 
     int expectedReadComputeOutputSize = 0;
     RecordDeserializer<ComputeResponseRecordV1> responseDeserializer =
@@ -500,13 +510,50 @@ public class StorageReadRequestHandlerTest {
     for (ComputeResponseRecordV1 record: responseDeserializer
         .deserializeObjects(computeResponse.getResponseBody().array())) {
       if (record.getKeyIndex() < 0) {
-        Assert.assertEquals(record.getValue(), StreamingUtils.EMPTY_BYTE_BUFFER);
+        assertEquals(record.getValue(), StreamingUtils.EMPTY_BYTE_BUFFER);
       } else {
-        Assert.assertEquals(record.getKeyIndex(), 0);
+        assertEquals(record.getKeyIndex(), 0);
         Assert.assertNotEquals(record.getValue(), StreamingUtils.EMPTY_BYTE_BUFFER);
         expectedReadComputeOutputSize += record.getValue().limit();
       }
     }
-    Assert.assertEquals(computeResponse.getReadComputeOutputSize(), expectedReadComputeOutputSize);
+    assertEquals(computeResponse.getReadComputeOutputSize(), expectedReadComputeOutputSize);
+  }
+
+  @Test
+  public void testGrpcReadReturnsInternalErrorWhenRouterRequestIsNull() {
+    VeniceClientRequest clientRequest =
+        VeniceClientRequest.newBuilder().setIsBatchRequest(true).setResourceName("testStore_v1").build();
+    VeniceServerResponse.Builder builder = VeniceServerResponse.newBuilder();
+    GrpcRequestContext ctx = new GrpcRequestContext(clientRequest, builder, null);
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    GrpcStorageReadRequestHandler grpcReadRequestHandler = spy(new GrpcStorageReadRequestHandler(requestHandler));
+    VeniceServerGrpcHandler mockNextHandler = mock(VeniceServerGrpcHandler.class);
+    grpcReadRequestHandler.addNextHandler(mockNextHandler);
+    doNothing().when(mockNextHandler).processRequest(any());
+    grpcReadRequestHandler.processRequest(ctx); // will cause np exception
+
+    assertEquals(builder.getErrorCode(), GrpcErrorCodes.INTERNAL_ERROR);
+    assertTrue(builder.getErrorMessage().contains("Internal Error"));
+  }
+
+  @Test
+  public void testMisRoutedStoreVersion() throws Exception {
+    String storeName = "testStore";
+    // The request should throw NPE when the handler is trying to handleSingleGetRequest due to null partition and key.
+    RouterRequest request = mock(GetRouterRequest.class);
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(SINGLE_GET).when(request).getRequestType();
+    doReturn(Version.composeKafkaTopic(storeName, 1)).when(request).getResourceName();
+    doReturn(storeName).when(request).getStoreName();
+    Store store = mock(Store.class);
+    doReturn(Optional.empty()).when(store).getVersion(anyInt());
+    doReturn(store).when(storeRepository).getStore(storeName);
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+    ArgumentCaptor<HttpShortcutResponse> shortcutResponseArgumentCaptor =
+        ArgumentCaptor.forClass(HttpShortcutResponse.class);
+    verify(context).writeAndFlush(shortcutResponseArgumentCaptor.capture());
+    Assert.assertTrue(shortcutResponseArgumentCaptor.getValue().isMisroutedStoreVersion());
   }
 }

@@ -347,6 +347,7 @@ public class ConfigKeys {
   public static final String LISTENER_PORT = "listener.port";
   public static final String GRPC_READ_SERVER_PORT = "grpc.read.server.port";
   public static final String ENABLE_GRPC_READ_SERVER = "grpc.read.server.enabled";
+  public static final String GRPC_SERVER_WORKER_THREAD_COUNT = "grpc.server.worker.thread.count";
 
   public static final String LISTENER_HOSTNAME = "listener.hostname";
 
@@ -608,7 +609,7 @@ public class ConfigKeys {
   /**
    * Number of retries allowed for stopConsumptionAndWait() API in StoreIngestionService.
    */
-  public static final String SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM = "server.stop.consumption.wait.retries.num";
+  public static final String SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS = "server.stop.consumption.timeout.in.seconds";
 
   /**
    * Service listening port number for main ingestion service.
@@ -1947,4 +1948,9 @@ public class ConfigKeys {
   public static final String PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS = "pub.sub.producer.adapter.factory.class";
 
   public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
+
+  /**
+   * Venice router's principal name used for ssl. Default should contain "venice-router".
+   */
+  public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
 }

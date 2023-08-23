@@ -1,7 +1,9 @@
 package com.linkedin.venice.schema.rmd.v1;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_POS;
 import static org.apache.avro.Schema.Type.LONG;
 import static org.apache.avro.Schema.Type.RECORD;
 
@@ -98,7 +100,7 @@ public class RmdSchemaGeneratorV1 {
 
     // Offset vector is only stored at the record level (NOT the field level)
     Schema.Field offsetVectorField = AvroCompatibilityHelper.newField(null)
-        .setName(REPLICATION_CHECKPOINT_VECTOR_FIELD)
+        .setName(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)
         .setSchema(OFFSET_VECTOR_SCHEMA)
         .setDoc("high watermark remote checkpoints which touched this record")
         .setDefault(new ArrayList<>())
@@ -107,7 +109,10 @@ public class RmdSchemaGeneratorV1 {
 
     final Schema metadataRecord =
         Schema.createRecord(originalSchema.getName() + "_" + METADATA_RECORD_SUFFIX, null, namespace, false);
-    metadataRecord.setFields(Arrays.asList(timeStampField, offsetVectorField));
+    Schema.Field[] fields = new Schema.Field[2];
+    fields[TIMESTAMP_FIELD_POS] = timeStampField;
+    fields[REPLICATION_CHECKPOINT_VECTOR_FIELD_POS] = offsetVectorField;
+    metadataRecord.setFields(Arrays.asList(fields));
     return metadataRecord;
   }
 }

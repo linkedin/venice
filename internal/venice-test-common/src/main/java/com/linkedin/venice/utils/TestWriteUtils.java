@@ -120,6 +120,18 @@ public class TestWriteUtils {
       + "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" },  "
       + "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }  " + "  ]" + " } ";
 
+  public static final String NESTED_SCHEMA_STRING_V3 = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"nameRecord\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"firstName\", \"type\": \"string\", \"default\": \"\" },  "
+      + "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" },  "
+      + "       { \"name\": \"height\", \"type\": \"int\", \"default\": -1 }  " + "  ]" + " } ";
+
+  public static final String NESTED_SCHEMA_STRING_V4 = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"nameRecord\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"firstName\", \"type\": \"string\", \"default\": \"\" },  "
+      + "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" },  "
+      + "       { \"name\": \"height\", \"type\": \"long\", \"default\": -1 }  " + "  ]" + " } ";
+
   public static final String STRING_RECORD_SCHEMA_STRING =
       "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
           + "  \"name\": \"StringToRecord\",     " + "  \"fields\": [           " + "       { \"name\": \""

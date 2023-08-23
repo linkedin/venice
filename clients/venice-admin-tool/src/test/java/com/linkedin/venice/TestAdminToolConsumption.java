@@ -5,6 +5,12 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
+import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
+import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -37,28 +43,93 @@ import org.testng.annotations.Test;
 
 
 public class TestAdminToolConsumption {
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private static final String SCHEMA_STRING = "\"string\"";
+  private static final String STORE_NAME = "test_store";
+
+  @Test
+  void testAdminToolAdminMessageConsumption() {
+    int assignedPartition = 0;
+    String topic = Version.composeRealTimeTopic(STORE_NAME);
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
+    int adminMessageNum = 10;
+    int dumpedMessageNum = 2;
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessageList =
+        prepareAdminPubSubMessageList(STORE_NAME, pubSubTopicPartition, adminMessageNum);
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messagesMap = new HashMap<>();
+    messagesMap.put(pubSubTopicPartition, pubSubMessageList);
+    ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
+    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, Collections.EMPTY_MAP);
+    List<DumpAdminMessages.AdminOperationInfo> adminOperationInfos =
+        DumpAdminMessages.dumpAdminMessages(apacheKafkaConsumer, "cluster1", 0, dumpedMessageNum);
+    Assert.assertEquals(adminOperationInfos.size(), dumpedMessageNum);
+  }
+
+  private List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> prepareAdminPubSubMessageList(
+      String storeName,
+      PubSubTopicPartition pubSubTopicPartition,
+      int messageNum) {
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessageList = new ArrayList<>();
+    for (int i = 0; i < messageNum; i++) {
+      String keyString = "test";
+      byte[] serializedKey = TopicMessageFinder.serializeKey(keyString, SCHEMA_STRING);
+      KafkaKey kafkaKey = new KafkaKey(PUT, serializedKey);
+      KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
+      messageEnvelope.producerMetadata = new ProducerMetadata();
+      messageEnvelope.producerMetadata.messageTimestamp = 0;
+      messageEnvelope.producerMetadata.messageSequenceNumber = 0;
+      messageEnvelope.producerMetadata.segmentNumber = 0;
+      messageEnvelope.producerMetadata.producerGUID = new GUID();
+      Put put = new Put();
+      put.schemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+      AdminOperationSerializer deserializer = new AdminOperationSerializer();
+      StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
+      storeCreation.clusterName = "clusterName";
+      storeCreation.storeName = storeName;
+      storeCreation.owner = "owner";
+      storeCreation.keySchema = new SchemaMeta();
+      storeCreation.keySchema.definition = SCHEMA_STRING;
+      storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.getValue();
+      storeCreation.valueSchema = new SchemaMeta();
+      storeCreation.valueSchema.definition = SCHEMA_STRING;
+      storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.getValue();
+      AdminOperation adminMessage = new AdminOperation();
+      adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
+      adminMessage.payloadUnion = storeCreation;
+      adminMessage.executionId = 1;
+      deserializer.serialize(adminMessage);
+      byte[] putValueBytes = deserializer.serialize(adminMessage);
+      put.putValue = ByteBuffer.wrap(putValueBytes);
+      put.replicationMetadataPayload = ByteBuffer.allocate(0);
+      messageEnvelope.payloadUnion = put;
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
+          new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, 0, 0, 20);
+      pubSubMessageList.add(pubSubMessage);
+    }
+    return pubSubMessageList;
+  }
+
   @Test
   public void testAdminToolConsumption() {
-    String schemaStr = "\"string\"";
-    String storeName = "test_store";
-    String topic = Version.composeRealTimeTopic(storeName);
+
+    String topic = Version.composeRealTimeTopic(STORE_NAME);
     ControllerClient controllerClient = mock(ControllerClient.class);
     SchemaResponse schemaResponse = mock(SchemaResponse.class);
-    when(schemaResponse.getSchemaStr()).thenReturn(schemaStr);
-    when(controllerClient.getKeySchema(storeName)).thenReturn(schemaResponse);
+    when(schemaResponse.getSchemaStr()).thenReturn(SCHEMA_STRING);
+    when(controllerClient.getKeySchema(STORE_NAME)).thenReturn(schemaResponse);
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = mock(StoreInfo.class);
     when(storeInfo.getPartitionCount()).thenReturn(2);
-    when(controllerClient.getStore(storeName)).thenReturn(storeResponse);
+    when(controllerClient.getStore(STORE_NAME)).thenReturn(storeResponse);
     when(storeResponse.getStore()).thenReturn(storeInfo);
 
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     int assignedPartition = 0;
     long startOffset = 0;
     long endOffset = 1;
     long progressInterval = 1;
     String keyString = "test";
-    byte[] serializedKey = TopicMessageFinder.serializeKey(keyString, schemaStr);
+    byte[] serializedKey = TopicMessageFinder.serializeKey(keyString, SCHEMA_STRING);
     KafkaKey kafkaKey = new KafkaKey(PUT, serializedKey);
     KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
     messageEnvelope.producerMetadata = new ProducerMetadata();

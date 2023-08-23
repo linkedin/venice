@@ -13,6 +13,7 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.PushMonitorNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -31,7 +32,6 @@ import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
-import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
@@ -137,11 +137,7 @@ public class HelixParticipationService extends AbstractVeniceService
   // Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected
   // behavior is pool will create a new thread if the number of running threads is fewer than corePoolSize, otherwise
   // add this task into queue. If a thread is idle for more than 300 seconds, pool will collect this thread.
-  private ThreadPoolExecutor initHelixStateTransitionThreadPool(
-      int size,
-      String threadName,
-      MetricsRepository metricsRepository,
-      String statsName) {
+  private ThreadPoolExecutor initHelixStateTransitionThreadPool(int size, String threadName) {
     ThreadPoolExecutor helixStateTransitionThreadPool = new ThreadPoolExecutor(
         size,
         size,
@@ -150,9 +146,6 @@ public class HelixParticipationService extends AbstractVeniceService
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory(threadName));
     helixStateTransitionThreadPool.allowCoreThreadTimeOut(true);
-
-    // register stats that tracks the thread pool
-    new ThreadPoolStats(metricsRepository, helixStateTransitionThreadPool, statsName);
 
     return helixStateTransitionThreadPool;
   }
@@ -166,21 +159,29 @@ public class HelixParticipationService extends AbstractVeniceService
     VeniceServerConfig config = veniceConfigLoader.getVeniceServerConfig();
     leaderFollowerHelixStateTransitionThreadPool = initHelixStateTransitionThreadPool(
         config.getMaxLeaderFollowerStateTransitionThreadNumber(),
-        "Venice-L/F-state-transition",
+        "Venice-L/F-state-transition");
+    // register stats that tracks the thread pool
+    ParticipantStateTransitionStats stateTransitionStats = new ParticipantStateTransitionStats(
         metricsRepository,
+        leaderFollowerHelixStateTransitionThreadPool,
         "Venice_L/F_ST_thread_pool");
 
     if (config.getLeaderFollowerThreadPoolStrategy()
         .equals(LeaderFollowerPartitionStateModelFactory.LeaderFollowerThreadPoolStrategy.DUAL_POOL_STRATEGY)) {
+      ThreadPoolExecutor futureVersionThreadPool = initHelixStateTransitionThreadPool(
+          config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber(),
+          "venice-L/F-state-transition-future-version");
+      ParticipantStateTransitionStats futureVersionStateTransitionStats = new ParticipantStateTransitionStats(
+          metricsRepository,
+          futureVersionThreadPool,
+          "Venice_L/F_ST_thread_pool_future_version");
       leaderFollowerParticipantModelFactory = new LeaderFollowerPartitionStateModelDualPoolFactory(
           ingestionBackend,
           veniceConfigLoader,
           leaderFollowerHelixStateTransitionThreadPool,
-          initHelixStateTransitionThreadPool(
-              config.getMaxFutureVersionLeaderFollowerStateTransitionThreadNumber(),
-              "venice-L/F-state-transition-future-version",
-              metricsRepository,
-              "Venice_L/F_ST_thread_pool_future_version"),
+          stateTransitionStats,
+          futureVersionThreadPool,
+          futureVersionStateTransitionStats,
           helixReadOnlyStoreRepository,
           partitionPushStatusAccessorFuture,
           instance.getNodeId());
@@ -189,6 +190,7 @@ public class HelixParticipationService extends AbstractVeniceService
           ingestionBackend,
           veniceConfigLoader,
           leaderFollowerHelixStateTransitionThreadPool,
+          stateTransitionStats,
           helixReadOnlyStoreRepository,
           partitionPushStatusAccessorFuture,
           instance.getNodeId());

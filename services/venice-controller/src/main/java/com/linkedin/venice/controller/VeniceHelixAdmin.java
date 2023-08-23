@@ -196,6 +196,7 @@ import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
@@ -237,6 +238,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.HelixException;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.HelixPropertyFactory;
 import org.apache.helix.InstanceType;
@@ -293,6 +295,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       ExecutionStatus.COMPLETED,
       ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
       ExecutionStatus.ARCHIVED);
+
+  private static final RedundantExceptionFilter EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceHelixAdmin.class);
   private static final int RECORD_COUNT = 10;
@@ -351,8 +356,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final D2Client d2Client;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
   private final boolean usePushStatusStoreToReadServerIncrementalPushStatus;
-  private static final ByteBuffer EMPTY_PUSH_ZSTD_DICTIONARY =
-      ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
   private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
 
@@ -2453,19 +2456,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 clusterConfig,
                 useFastKafkaOperationTimeout);
 
-            ByteBuffer compressionDictionaryBuffer = null;
-            if (compressionDictionary != null) {
-              compressionDictionaryBuffer =
-                  ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
-            } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
-              // We can't use dictionary compression with no dictionary, so we generate a basic one
-              // TODO: It would be smarter to query it from the previous version and pass it along. However,
-              // the 'previous' version can mean different things in different colos, and ideally we'd want
-              // a consistent compressed result in all colos so as to make sure we don't confuse our consistency
-              // checking mechanisms. So this needs some (maybe) complicated reworking.
-              compressionDictionaryBuffer = EMPTY_PUSH_ZSTD_DICTIONARY;
-            }
-
             String sourceKafkaBootstrapServers = null;
 
             store = repository.getStore(storeName);
@@ -2585,6 +2575,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if (sendStartOfPush) {
+              ByteBuffer compressionDictionaryBuffer = null;
+              if (compressionDictionary != null) {
+                compressionDictionaryBuffer =
+                    ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
+              } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+                // This compression strategy needs a dictionary even if there is no input data,
+                // so we generate a dictionary based on synthetic data. This is done in vpj driver
+                // as well, but this code will be triggered in cases like Samza batch push job
+                // which is independent of the vpj flow.
+                compressionDictionaryBuffer = ZstdWithDictCompressor.EMPTY_PUSH_ZSTD_DICTIONARY;
+              }
+
               final Version finalVersion = version;
               VeniceWriter veniceWriter = null;
               try {
@@ -4759,9 +4761,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);
 
     List<String> instances = getStorageNodes(clusterName);
+    Map<String, List<String>> disabledPartitions;
     for (String instance: instances) {
-      Map<String, List<String>> disabledPartitions =
-          getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
+      try {
+        disabledPartitions = getHelixAdminClient().getDisabledPartitionsMap(clusterName, instance);
+      } catch (HelixException helixException) {
+        String msg = "Failed to get disabled partition map in cluster " + clusterName + " for host " + instance;
+        if (!EXCEPTION_FILTER.isRedundantException(msg)) {
+          LOGGER.warn(msg, helixException);
+        }
+        continue;
+      }
       for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
         if (entry.getKey().equals(kafkaTopic)) {
           // clean up disabled partition map, so that it does not grow indefinitely with dropped resources

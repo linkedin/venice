@@ -216,7 +216,13 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
             }
           }
         } else {
-          LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
+          if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+            LOGGER.info(
+                "compression strategy is {} with no input records: dictionary will be generated from synthetic data or current version data for hybrid stores",
+                storeSetting.compressionStrategy);
+          } else {
+            LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
+          }
         }
       } else {
         LOGGER.info("No compression dictionary is generated");

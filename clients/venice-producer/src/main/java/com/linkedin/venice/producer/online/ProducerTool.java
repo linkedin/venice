@@ -214,16 +214,22 @@ public class ProducerTool {
       case INT:
         data = Integer.parseInt(dataString);
         break;
+      case LONG:
+        data = Long.parseLong(dataString);
+        break;
+      case FLOAT:
+        data = Float.parseFloat(dataString);
+        break;
       case DOUBLE:
         data = Double.parseDouble(dataString);
         break;
-      case LONG:
-        data = Long.parseLong(dataString);
+      case BOOLEAN:
+        data = Boolean.parseBoolean(dataString);
         break;
       case STRING:
         data = dataString;
         break;
-      case RECORD:
+      default:
         try {
           data = new GenericDatumReader<>(dataSchema, dataSchema).read(
               null,
@@ -232,8 +238,6 @@ public class ProducerTool {
           throw new VeniceException("Invalid input:" + dataString, e);
         }
         break;
-      default:
-        throw new VeniceException("Cannot handle type, found schema: " + dataSchema);
     }
     return data;
   }

@@ -70,7 +70,7 @@ ext.libraries = [
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
-    helix: 'org.apache.helix:helix-core:1.0.4',
+    helix: 'org.apache.helix:helix-core:1.1.0',
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.2.1',
     httpCore5: 'org.apache.httpcomponents.core5:httpcore5:5.2.2',
@@ -94,7 +94,7 @@ ext.libraries = [
     mail: 'javax.mail:mail:1.4.4',
     mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
     mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
-    mockito: 'org.mockito:mockito-core:3.3.3',
+    mockito: 'org.mockito:mockito-core:4.11.0',
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
     pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
@@ -260,7 +260,7 @@ subprojects {
     avroCompiler libraries.avroCompiler
     avroCompiler libraries.avroUtilBuilder
     avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
-    runtimeOnly libraries.grpcNettyShaded
+    implementation libraries.grpcNettyShaded
     implementation libraries.grpcProtobuf
     implementation libraries.grpcStub
     compileOnly libraries.tomcatAnnotations
@@ -728,6 +728,7 @@ ext.createDiffFile = { ->
 
       // venice-common
       ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
+      ':!internal/venice-common/src/main/java/com/linkedin/venice/acl/handler/StoreAclHandler.java',
 
       // venice-test-common
       ':!internal/venice-test-common/*',

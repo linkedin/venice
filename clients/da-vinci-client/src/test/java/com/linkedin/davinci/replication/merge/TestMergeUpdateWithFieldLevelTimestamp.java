@@ -88,7 +88,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         1);
     Assert.assertEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     Assert.assertTrue(
-        ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD)).isEmpty(),
+        ((List<?>) rmdRecord.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME)).isEmpty(),
         "When the Update request is ignored, replication_checkpoint_vector should stay the same (empty).");
   }
 
@@ -173,7 +173,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
     GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
-        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
         Arrays.asList(2L, 1L));
 
     GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
@@ -278,7 +278,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     Assert.assertNotEquals(mergeConflictResult, MergeConflictResult.getIgnoredResult());
     GenericRecord updatedRmd = mergeConflictResult.getRmdRecord();
     Assert.assertEquals(
-        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD),
+        (List<?>) updatedRmd.get(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME),
         Arrays.asList(0L, 1L));
 
     GenericRecord rmdTimestamp = (GenericRecord) updatedRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);

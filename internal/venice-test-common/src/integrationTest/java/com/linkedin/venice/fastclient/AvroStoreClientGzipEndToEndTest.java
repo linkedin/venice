@@ -18,13 +18,13 @@ import org.testng.annotations.DataProvider;
 
 public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest {
   @Override
-  @DataProvider(name = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode")
-  public Object[][] fourBooleanANumberStoreMetadataFetchMode() {
+  @DataProvider(name = "FastClient-Five-Boolean-A-Number-Store-Metadata-Fetch-Mode")
+  public Object[][] fiveBooleanANumberStoreMetadataFetchMode() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean batchGet = (boolean) permutation[2];
       boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
-      int batchGetKeySize = (int) permutation[4];
-      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[5];
+      int batchGetKeySize = (int) permutation[5];
+      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[6];
       if (!batchGet) {
         if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
@@ -41,6 +41,7 @@ public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest
         DataProviderUtils.BOOLEAN_FALSE, // speculativeQueryEnabled
         DataProviderUtils.BOOLEAN, // batchGet
         DataProviderUtils.BOOLEAN_TRUE, // useStreamingBatchGetAsDefault
+        DataProviderUtils.BOOLEAN, // enableGrpc
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }

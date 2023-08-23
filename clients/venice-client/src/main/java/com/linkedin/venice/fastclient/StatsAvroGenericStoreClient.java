@@ -273,7 +273,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
               clientStats.recordInternalServerErrorRequest(instance);
               break;
             case S_410_GONE:
-              /* Check {@link InstanceHealthMonitor#sendRequestToInstance} to understand this special http status. */
+              /* Check {@link InstanceHealthMonitor#trackHealthBasedOnRequestToInstance} to understand this special http status. */
               clientStats.recordLeakedRequest(instance);
               break;
             case S_503_SERVICE_UNAVAILABLE:

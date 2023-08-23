@@ -10,6 +10,7 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.FAST_AVRO_FIELD_LIMIT_PER_METHOD;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
@@ -34,6 +35,7 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DEL
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
@@ -101,6 +103,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME
 import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
 import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
@@ -265,6 +268,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * number of worker threads for the netty listener.  If not specified, netty uses twice cpu count.
    */
   private final int nettyWorkerThreadCount;
+  private final int grpcWorkerThreadCount;
 
   private final long databaseSyncBytesIntervalForTransactionalMode;
 
@@ -274,6 +278,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int partitionGracefulDropDelaySeconds;
 
+  private final int stopConsumptionTimeoutInSeconds;
   private final long leakedResourceCleanUpIntervalInMS;
 
   private final boolean quotaEnforcementEnabled;
@@ -425,6 +430,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long divProducerStateMaxAgeMs;
   private final PubSubClientsFactory pubSubClientsFactory;
+  private final String routerPrincipalName;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -477,6 +483,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30);
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
+    grpcWorkerThreadCount =
+        serverProperties.getInt(GRPC_SERVER_WORKER_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
     remoteIngestionRepairSleepInterval = serverProperties.getInt(
         SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS,
@@ -490,6 +498,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024);
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.95);
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30);
+    stopConsumptionTimeoutInSeconds = serverProperties.getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 180);
     leakedResourceCleanUpIntervalInMS =
         TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 10));
     quotaEnforcementEnabled = serverProperties.getBoolean(SERVER_QUOTA_ENFORCEMENT_ENABLED, false);
@@ -701,6 +710,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       LOGGER.error("Failed to create an instance of pub sub clients factory", e);
       throw new VeniceException(e);
     }
+    routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "CN=venice-router");
   }
 
   long extractIngestionMemoryLimit(
@@ -867,6 +877,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return nettyWorkerThreadCount;
   }
 
+  public int getGrpcWorkerThreadCount() {
+    return grpcWorkerThreadCount;
+  }
+
   public long getDatabaseSyncBytesIntervalForTransactionalMode() {
     return databaseSyncBytesIntervalForTransactionalMode;
   }
@@ -881,6 +895,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getPartitionGracefulDropDelaySeconds() {
     return partitionGracefulDropDelaySeconds;
+  }
+
+  public int getStopConsumptionTimeoutInSeconds() {
+    return stopConsumptionTimeoutInSeconds;
   }
 
   public long getLeakedResourceCleanUpIntervalInMS() {
@@ -1221,5 +1239,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public PubSubClientsFactory getPubSubClientsFactory() {
     return pubSubClientsFactory;
+  }
+
+  public String getRouterPrincipalName() {
+    return routerPrincipalName;
   }
 }

@@ -11,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
@@ -20,6 +21,7 @@ import static org.apache.hadoop.security.UserGroupInformation.HADOOP_TOKEN_FILE_
 import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -67,12 +69,14 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
+import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
@@ -145,6 +149,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP = "kafka.source.key.schema";
   public static final String EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = "extended.schema.validity.check.enabled";
   public static final boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
+  public static final String UPDATE_SCHEMA_STRING_PROP = "update.schema";
 
   // Vson input configs
   // Vson files store key/value schema on file header. key / value fields are optional
@@ -152,6 +157,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String FILE_KEY_SCHEMA = "key.schema";
   public static final String FILE_VALUE_SCHEMA = "value.schema";
   public static final String INCREMENTAL_PUSH = "incremental.push";
+  public static final String GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT = "generate.partial.update.record.from.input";
 
   // veniceReducer will not fail fast and override the previous key if this is true and duplicate keys incur.
   public static final String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
@@ -485,6 +491,7 @@ public class VenicePushJob implements AutoCloseable {
     String sourceGridFabric;
     int batchNumBytes;
     boolean isIncrementalPush;
+    boolean generatePartialUpdateRecordFromInput;
     Optional<String> incrementalPushVersion = Optional.empty();
     boolean isDuplicateKeyAllowed;
     boolean enablePushJobStatusUpload;
@@ -1294,6 +1301,7 @@ public class VenicePushJob implements AutoCloseable {
           RegionUtils.composeRegionList(candidateRegions),
           false);
     }
+    sendPushJobDetailsToController();
   }
 
   private PushJobHeartbeatSender createPushJobHeartbeatSender(final boolean sslEnabled) {
@@ -1516,10 +1524,6 @@ public class VenicePushJob implements AutoCloseable {
        */
       return false;
     }
-    if (!inputFileHasRecords) {
-      LOGGER.info("No compression dictionary will be generated as there are no records");
-      return false;
-    }
 
     if (pushJobSetting.compressionMetricCollectionEnabled
         || storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
@@ -1527,12 +1531,26 @@ public class VenicePushJob implements AutoCloseable {
         LOGGER.info("No compression dictionary will be generated as the push type is incremental push");
         return false;
       }
+
+      if (!inputFileHasRecords) {
+        if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+          LOGGER.info(
+              "compression strategy is {} with no input records: dictionary will be generated from synthetic data or current version data for hybrid stores",
+              storeSetting.compressionStrategy);
+        } else {
+          LOGGER.info("No compression dictionary will be generated as there are no records");
+          return false;
+        }
+      }
+
       LOGGER.info(
           "Compression dictionary will be generated with the compression strategy {} "
               + "and compressionMetricCollectionEnabled is {}",
           storeSetting.compressionStrategy,
           (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
       return true;
+    } else if (!inputFileHasRecords) {
+      LOGGER.info("No compression dictionary will be generated as there are no records");
     }
 
     LOGGER.info(
@@ -1869,49 +1887,65 @@ public class VenicePushJob implements AutoCloseable {
 
       return Optional.ofNullable(compressionDictionary);
     } else {
-      /**
-       * Special handling for an empty push to a hybrid store.
-       * Push Job will try to train a dict based on the records of the current version, and it won't work
-       * for the very first version, and the following versions will work.
-       */
-      if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && !inputFileHasRecords
-          && storeSetting.hybridStoreConfig != null) {
-        String storeName = getPushJobSetting().storeName;
-        try {
-          // Get the latest version
-          RepushInfoResponse repushInfoResponse = ControllerClient.retryableRequest(
-              controllerClient,
-              pushJobSetting.controllerRetries,
-              c -> c.getRepushInfo(storeName, Optional.empty()));
-          if (repushInfoResponse.isError()) {
-            throw new VeniceException(
-                "Could not get repush info for store " + storeName + " with error: " + repushInfoResponse.getError());
-          }
-          int sourceVersion = repushInfoResponse.getRepushInfo().getVersion().getNumber();
-          String sourceTopicName = Version.composeKafkaTopic(storeName, sourceVersion);
-          String sourceKafkaUrl = repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
-          LOGGER.info(
-              "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
-              sourceTopicName,
-              sourceKafkaUrl);
-          paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
-              .setTopicName(sourceTopicName)
-              .setSourceVersionCompressionStrategy(
-                  repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
-          KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
-          compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
-
-          return Optional.of(compressionDictionary);
-        } catch (Exception e) {
-          LOGGER.warn(
-              "Encountered an exception when trying to build a dict from an existing version for an empty push to a hybrid store: "
-                  + storeName + ", so the push job will use a default dict built in the Controller",
-              e);
-          return Optional.empty();
-        }
-      }
-
       if (isZstdDictCreationRequired) {
+        if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && !inputFileHasRecords) {
+          /**
+           * Special handling for empty push with ZSTD_WITH_DICT: This compression strategy needs a dictionary even if
+           * there is no input data, so we generate a dictionary either based on synthetic data or from the current version.
+           */
+          if (storeSetting.hybridStoreConfig != null) {
+            /**
+             * For hybrid store: Push Job will try to train a dict based on the records of the current version, and
+             * it won't work for the very first version, and the following versions will work.
+             */
+            LOGGER.info(
+                "compression strategy is {} for hybrid store with no input records: Attempt to generate dictionary from current version data",
+                storeSetting.compressionStrategy);
+            String storeName = getPushJobSetting().storeName;
+            try {
+              // Get the latest version
+              RepushInfoResponse repushInfoResponse = ControllerClient.retryableRequest(
+                  controllerClient,
+                  pushJobSetting.controllerRetries,
+                  c -> c.getRepushInfo(storeName, Optional.empty()));
+              if (repushInfoResponse.isError()) {
+                throw new VeniceException(
+                    "Could not get repush info for store " + storeName + " with error: "
+                        + repushInfoResponse.getError());
+              }
+              int sourceVersion = repushInfoResponse.getRepushInfo().getVersion().getNumber();
+              String sourceTopicName = Version.composeKafkaTopic(storeName, sourceVersion);
+              String sourceKafkaUrl = repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
+              LOGGER.info(
+                  "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
+                  sourceTopicName,
+                  sourceKafkaUrl);
+              paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
+                  .setTopicName(sourceTopicName)
+                  .setSourceVersionCompressionStrategy(
+                      repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
+              KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
+              compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
+
+              return Optional.of(compressionDictionary);
+            } catch (Exception e) {
+              LOGGER.warn(
+                  "Encountered an exception when trying to build a dict from an existing version for an empty push to a hybrid store: "
+                      + storeName + ", so the push job will use a default dict",
+                  e);
+            }
+          }
+
+          /**
+           * For Batch only store or first push to a hybrid store: Build dictionary based on synthetic data
+           */
+          LOGGER.info(
+              "compression strategy is {} with no input records: Generating dictionary from synthetic data",
+              storeSetting.compressionStrategy);
+          compressionDictionary = ZstdWithDictCompressor.EMPTY_PUSH_ZSTD_DICTIONARY;
+          return Optional.of(compressionDictionary);
+        }
+
         if (!pushJobSetting.useMapperToBuildDict) {
           LOGGER.info("Training Zstd dictionary");
           compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
@@ -2306,12 +2340,61 @@ public class VenicePushJob implements AutoCloseable {
         .info("Validating value schema: {} for store: {}", pushJobSchemaInfo.getValueSchemaString(), setting.storeName);
 
     SchemaResponse getValueSchemaIdResponse;
-
     if (setting.enableWriteCompute) {
-      getValueSchemaIdResponse = ControllerClient.retryableRequest(
-          controllerClient,
-          setting.controllerRetries,
-          c -> c.getValueOrDerivedSchemaId(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
+      if (!isUpdateSchema(pushJobSchemaInfo.getValueSchemaString())) {
+        MultiSchemaResponse multiSchemaResponse = ControllerClient.retryableRequest(
+            controllerClient,
+            setting.controllerRetries,
+            c -> c.getAllValueAndDerivedSchema(setting.storeName));
+        StoreResponse storeResponse = ControllerClient
+            .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
+
+        if (storeResponse.isError()) {
+          throw new VeniceException("Store does not exist: " + setting.storeName);
+        }
+        if (multiSchemaResponse.isError()) {
+          throw new VeniceException("Unable to retrieve schemas for store: " + setting.storeName);
+        }
+        /**
+         * For now, we will issue a separated call to controller to retrieve superset schema ID to identify the latest
+         * update schema for partial update enabled store. In the future, we should include superset schema ID in the
+         * MultiSchemaResponse for different purpose.
+         */
+        int supersetSchemaId = storeResponse.getStore().getLatestSuperSetValueSchemaId();
+        MultiSchemaResponse.Schema supersetSchema =
+            AvroSupersetSchemaUtils.getSupersetSchemaFromSchemaResponse(multiSchemaResponse, supersetSchemaId);
+        if (supersetSchema == null) {
+          throw new VeniceException("Superset schema not found for store: " + setting.storeName);
+        }
+        if (!validateSubsetValueSchema(pushJobSchemaInfo.getValueSchemaString(), supersetSchema.getSchemaStr())) {
+          throw new VeniceException(
+              "Input value schema is not subset of superset schema. Input value schema: "
+                  + pushJobSchemaInfo.getValueSchemaString() + " , superset schema: " + supersetSchema.getSchemaStr());
+        }
+        // With new input format, we will need to use the latest update schema to generate partial update record.
+        MultiSchemaResponse.Schema latestUpdateSchema =
+            AvroSupersetSchemaUtils.getLatestUpdateSchemaFromSchemaResponse(multiSchemaResponse, supersetSchemaId);
+        if (latestUpdateSchema == null) {
+          throw new VeniceException("Latest update schema not found for store: " + setting.storeName);
+        }
+        // Create a dummy schema response to make sure existing check logics went through.
+        getValueSchemaIdResponse = new SchemaResponse();
+        getValueSchemaIdResponse.setSchemaStr(latestUpdateSchema.getSchemaStr());
+        getValueSchemaIdResponse.setId(latestUpdateSchema.getId());
+        getValueSchemaIdResponse.setDerivedSchemaId(latestUpdateSchema.getDerivedSchemaId());
+        // Update the schema to be the update schema of the superset schema.
+        LOGGER.info(
+            "Detect partial update input format as: {}, using latest update schema: {}",
+            pushJobSchemaInfo.getValueSchemaString(),
+            latestUpdateSchema.getSchemaStr());
+        pushJobSchemaInfo.setValueSchemaString(latestUpdateSchema.getSchemaStr());
+        pushJobSetting.generatePartialUpdateRecordFromInput = true;
+      } else {
+        getValueSchemaIdResponse = ControllerClient.retryableRequest(
+            controllerClient,
+            setting.controllerRetries,
+            c -> c.getValueOrDerivedSchemaId(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
+      }
     } else {
       getValueSchemaIdResponse = ControllerClient.retryableRequest(
           controllerClient,
@@ -2351,7 +2434,6 @@ public class VenicePushJob implements AutoCloseable {
       }
       // Add value schema successfully
       setSchemaIdPropInSchemaInfo(pushJobSchemaInfo, addValueSchemaResponse, setting.enableWriteCompute);
-
     } else {
       // Get value schema ID successfully
       setSchemaIdPropInSchemaInfo(pushJobSchemaInfo, getValueSchemaIdResponse, setting.enableWriteCompute);
@@ -2361,6 +2443,10 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSchemaInfo.getValueSchemaId(),
         pushJobSchemaInfo.getValueSchemaString(),
         setting.storeName);
+  }
+
+  boolean isUpdateSchema(String schemaString) {
+    return schemaString.contains(WriteComputeOperation.NO_OP_ON_FIELD.name());
   }
 
   private void setSchemaIdPropInSchemaInfo(
@@ -3034,6 +3120,10 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSchemaInfo.isAvro()) {
         jobConf.set(SCHEMA_STRING_PROP, pushJobSchemaInfo.getFileSchemaString());
         jobConf.set(AvroJob.INPUT_SCHEMA, pushJobSchemaInfo.getFileSchemaString());
+        if (getPushJobSetting().generatePartialUpdateRecordFromInput) {
+          jobConf.setBoolean(GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT, true);
+          jobConf.set(UPDATE_SCHEMA_STRING_PROP, pushJobSchemaInfo.getValueSchemaString());
+        }
         jobConf.setClass("avro.serialization.data.model", GenericData.class, GenericData.class);
         jobConf.setInputFormat(AvroInputFormat.class);
         jobConf.setMapperClass(VeniceAvroMapper.class);

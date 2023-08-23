@@ -2,6 +2,8 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
@@ -274,6 +276,69 @@ public class PartialUpdateTest {
     }
   }
 
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testIncrementalPushPartialUpdateNewFormat() throws IOException {
+    final String storeName = Utils.getUniqueString("inc_push_update_new_format");
+    String parentControllerUrl = parentController.getControllerUrl();
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties vpjProperties =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
+    vpjProperties.put(INCREMENTAL_PUSH, true);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, NESTED_SCHEMA_STRING_V2));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setChunkingEnabled(true)
+              .setIncrementalPushEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // VPJ push
+      String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
+      try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
+        runVPJ(vpjProperties, 1, childControllerClient);
+      }
+      VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          try {
+            for (int i = 1; i < 100; i++) {
+              String key = String.valueOf(i);
+              GenericRecord value = readValue(storeReader, key);
+              assertNotNull(value, "Key " + key + " should not be missing!");
+              assertEquals(value.get("firstName").toString(), "first_name_" + key);
+              assertEquals(value.get("lastName").toString(), "last_name_" + key);
+              assertEquals(value.get("age"), -1);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
+  }
+
   /**
    * This integration test verifies that in A/A + partial update enabled store, UPDATE on a key that was written in the
    * batch push should not throw exception, as the update logic should initialize a new RMD record for the original value
@@ -475,8 +540,8 @@ public class PartialUpdateTest {
    * This integration test performs a few actions to test RMD chunking logic:
    * (1) Send a bunch of large UPDATE messages to make sure eventually the key's value + RMD size greater than 1MB and
    * thus trigger chunking / RMD chunking.
-   * (2) Run a KIF repush to make sure it handles RMD chunks correctly.
-   * (3) Send a DELETE message to partially delete some of the items in the map field.
+   * (2) Run a KIF re-push to make sure it handles RMD chunks correctly.
+   * (3) Send a DELETE message to partially delete some items in the map field.
    * (4) Send a DELETE message to fully delete the record.
    */
   @Test(timeOut = TEST_TIMEOUT_MS * 4)
@@ -651,7 +716,6 @@ public class PartialUpdateTest {
           throw new VeniceException(e);
         }
       });
-
       // Validate RMD bytes after PUT requests.
       String kafkaTopic_v2 = Version.composeKafkaTopic(storeName, 2);
       validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
