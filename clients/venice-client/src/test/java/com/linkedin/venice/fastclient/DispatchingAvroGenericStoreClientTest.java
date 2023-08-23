@@ -514,12 +514,12 @@ public class DispatchingAvroGenericStoreClientTest {
    * Condition to test: batchGet API either returns full results or exception, but no partial results.
    * In this test:
    * setup: 1 key returns valid value and the other key doesn't return anything.
-   * Behavior: routingLeakedRequestCleanupThresholdMS times out, so returns exception with
-   *           "At least one route did not complete".
+   * Behavior: this test calls batchGet().get() without timeout, so waits till routingLeakedRequestCleanupThresholdMS
+   *           times out and returns exception with "At least one route did not complete".
    */
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*VeniceClientException: At least one route did not complete")
   public void testBatchGetWithTimeoutV1() throws IOException, ExecutionException, InterruptedException {
-    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(3);
+    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
       batchGetRequestContext = new BatchGetRequestContext<>();
@@ -546,11 +546,11 @@ public class DispatchingAvroGenericStoreClientTest {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*VeniceClientException: At least one route did not complete")
   public void testBatchGetWithTimeoutV2()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
-    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(3);
+    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
       batchGetRequestContext = new BatchGetRequestContext<>();
-      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get(6000, TimeUnit.MILLISECONDS);
+      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get(2, TimeUnit.SECONDS);
       fail();
     } finally {
       // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
@@ -573,11 +573,11 @@ public class DispatchingAvroGenericStoreClientTest {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = TimeoutException.class)
   public void testBatchGetWithTimeoutV3()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
-    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(5);
+    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(2);
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
       batchGetRequestContext = new BatchGetRequestContext<>();
-      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get(2000, TimeUnit.MILLISECONDS);
+      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get(1, TimeUnit.SECONDS);
       fail();
     } finally {
       // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
@@ -593,12 +593,12 @@ public class DispatchingAvroGenericStoreClientTest {
   /**
    * Condition to test: streamingBatchGet(keys) API returns partial results in case of future.get(timeout)
    * setup: 1 key returns valid value and the other key doesn't return anything.
-   * Behavior: routingLeakedRequestCleanupThresholdMS times out, so returns exception with
-   *           "At least one route did not complete".
+   * Behavior: this test calls streamingBatchGet().get() without timeout, so waits till routingLeakedRequestCleanupThresholdMS
+   *           times out and returns exception with "At least one route did not complete".
    */
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*VeniceClientException: At least one route did not complete")
   public void testStreamingBatchGetWithTimeoutV1() throws IOException, ExecutionException, InterruptedException {
-    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(3);
+    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
       batchGetRequestContext = new BatchGetRequestContext<>();
@@ -626,13 +626,13 @@ public class DispatchingAvroGenericStoreClientTest {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*VeniceClientException: At least one route did not complete")
   public void testStreamingBatchGetWithTimeoutV2()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
-    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(3);
+    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
       batchGetRequestContext = new BatchGetRequestContext<>();
       CompletableFuture<VeniceResponseMap<String, String>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
-      future.get(6000, TimeUnit.MILLISECONDS);
+      future.get(2, TimeUnit.SECONDS);
       fail();
     } finally {
       // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
@@ -655,12 +655,12 @@ public class DispatchingAvroGenericStoreClientTest {
   public void testStreamingBatchGetWithTimeoutV3()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
     try {
-      long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(6);
+      long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(2);
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
       batchGetRequestContext = new BatchGetRequestContext<>();
       CompletableFuture<VeniceResponseMap<String, String>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
-      VeniceResponseMap<String, String> value = future.get(3000, TimeUnit.MILLISECONDS);
+      VeniceResponseMap<String, String> value = future.get(1, TimeUnit.SECONDS);
       assertEquals(value.size(), 1);
       assertFalse(value.isFullResponse());
       assertTrue(BATCH_GET_VALUE_RESPONSE.get("test_key_1").contentEquals(value.get("test_key_1")));
@@ -678,7 +678,7 @@ public class DispatchingAvroGenericStoreClientTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testBatchGetToUnreachableClient(boolean useStreamingBatchGetAsDefault) throws IOException {
     try {
-      setUpClient(useStreamingBatchGetAsDefault, false, false, false, false, 6 * Time.MS_PER_SECOND);
+      setUpClient(useStreamingBatchGetAsDefault, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
       batchGetRequestContext = new BatchGetRequestContext<>();
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
