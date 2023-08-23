@@ -70,6 +70,39 @@ Note that for now, the doc supports at most 3 levels of nesting.
 
 For more information, consult [Just the Docs](https://just-the-docs.github.io/just-the-docs/docs/navigation-structure/).
 
+## Pictures and Diagrams
+
+It is encouraged to use diagrams within the documentation, but there are some guidelines to standardize the way it is
+done, and to avoid certain anti-patterns.
+
+### Text-based Assets
+
+For text-based assets (which are preferred whenever feasible), we wish to check them into source control. This should 
+include both the displayable asset (e.g. in SVG format) and the source file from which the displayable asset was 
+generated (e.g. in XML format). This makes the docs self-contained, and enables contributors to edit the assets over 
+time.
+
+Diagrams conforming to these guidelines can be placed under the `/docs/assets/images` path of the repo, and then 
+embedded in the docs with a relative link like this:
+
+```markdown
+![](../assets/images/vip_3_read_path.drawio.svg)
+```
+
+The [draw.io](https://draw.io) service makes it easy to generate such assets.
+
+### Binary Assets
+
+For binary assets (e.g. PNG, BMP, JPG, etc.), we do NOT wish to check them into source control. Instead, they should be 
+linked from an external source. This can be done in GitHub itself. Within the Pull Request that proposes the doc change, 
+the contributor can insert images in the PR's description or comments, and then take the URL GitHub generated for it. 
+Then the modified files included in the PR can be edited to link to that image, and the PR updated. Externally hosted 
+images can be embedded with an absolute link like this:
+
+```markdown
+![](https://user-images.githubusercontent.com/1248632/195111861-518f81c4-f226-4942-b88a-a34337da79e3.png)
+```
+
 ## Emojis
 
 Here's a link to all the emojis available in README files: [Emoji Cheat Sheet](https://github.com/ikatyang/emoji-cheat-sheet/blob/master/README.md). 
