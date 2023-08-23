@@ -270,8 +270,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
                           HttpResponseStatus.BAD_REQUEST));
                 } else {
                   LOGGER.error("Exception thrown in parallel batch get for {}", request.getResourceName(), e);
-                  context.writeAndFlush(
-                      new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+                  HttpShortcutResponse shortcutResponse =
+                      new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+                  shortcutResponse.setMisroutedStoreVersion(checkMisroutedStoreVersionRequest(request));
+                  context.writeAndFlush(shortcutResponse);
                 }
               } else {
                 context.writeAndFlush(v);
@@ -316,7 +318,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.REQUEST_TIMEOUT));
         } catch (Exception e) {
           LOGGER.error("Exception thrown for {}", request.getResourceName(), e);
-          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+          HttpShortcutResponse shortcutResponse =
+              new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+          shortcutResponse.setMisroutedStoreVersion(checkMisroutedStoreVersionRequest(request));
+          context.writeAndFlush(shortcutResponse);
         }
       });
 
@@ -347,6 +352,21 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
               "Unrecognized object in StorageExecutionHandler",
               HttpResponseStatus.INTERNAL_SERVER_ERROR));
     }
+  }
+
+  /**
+   * Best effort check for the purpose of reporting misrouted store version metric when the request errors.
+   */
+  private boolean checkMisroutedStoreVersionRequest(RouterRequest request) {
+    boolean misrouted = false;
+    Store store = metadataRepository.getStore(request.getStoreName());
+    if (store != null) {
+      Optional<Version> version = store.getVersion(Version.parseVersionFromVersionTopicName(request.getResourceName()));
+      if (!version.isPresent()) {
+        misrouted = true;
+      }
+    }
+    return misrouted;
   }
 
   private ThreadPoolExecutor getExecutor(RequestType requestType) {

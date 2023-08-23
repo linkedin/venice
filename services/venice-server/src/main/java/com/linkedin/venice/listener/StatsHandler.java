@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.RouterRequest;
@@ -145,6 +146,10 @@ public class StatsHandler extends ChannelDuplexHandler {
     return serverStatsContext;
   }
 
+  public void setMisroutedStoreVersionRequest(boolean misroutedStoreVersionRequest) {
+    serverStatsContext.setMisroutedStoreVersion(misroutedStoreVersionRequest);
+  }
+
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) {
     if (serverStatsContext.isNewRequest()) {
@@ -194,10 +199,10 @@ public class StatsHandler extends ChannelDuplexHandler {
        * multiple times for a single request
        */
       if (!serverStatsContext.isStatCallBackExecuted()) {
-        ServerHttpRequestStats serverHttpRequestStats =
-            serverStatsContext.getCurrentStats().getStoreStats(serverStatsContext.getStoreName());
+        ServerHttpRequestStats serverHttpRequestStats = serverStatsContext.getStoreName() == null
+            ? null
+            : serverStatsContext.getCurrentStats().getStoreStats(serverStatsContext.getStoreName());
         serverStatsContext.recordBasicMetrics(serverHttpRequestStats);
-
         double elapsedTime = LatencyUtils.getLatencyInMS(serverStatsContext.getRequestStartTimeInNS());
         // if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
         // records a successRequest in stats. Otherwise, records a errorRequest in stats;

@@ -87,6 +87,8 @@ public class ServerStatsContext {
   private int requestPartCount = -1;
   private boolean isComplete;
 
+  private boolean isMisroutedStoreVersion = false;
+
   public boolean isNewRequest() {
     return newRequest;
   }
@@ -153,6 +155,8 @@ public class ServerStatsContext {
     cosineSimilarityCount = 0;
     hadamardProductCount = 0;
     isRequestTerminatedEarly = false;
+    isComplete = false;
+    isMisroutedStoreVersion = false;
 
     newRequest = false;
   }
@@ -297,7 +301,7 @@ public class ServerStatsContext {
   }
 
   public void recordBasicMetrics(ServerHttpRequestStats serverHttpRequestStats) {
-    if (storeName != null) {
+    if (serverHttpRequestStats != null) {
       if (databaseLookupLatency >= 0) {
         serverHttpRequestStats.recordDatabaseLookupLatency(databaseLookupLatency, isAssembledMultiChunkLargeValue());
       }
@@ -381,7 +385,7 @@ public class ServerStatsContext {
   // Please re-consider the race condition if new logic is added.
   public void successRequest(ServerHttpRequestStats stats, double elapsedTime) {
     isComplete = true;
-    if (storeName != null) {
+    if (stats != null) {
       stats.recordSuccessRequest();
       stats.recordSuccessRequestLatency(elapsedTime);
     } else {
@@ -391,12 +395,18 @@ public class ServerStatsContext {
 
   public void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
     isComplete = true;
-    if (storeName == null) {
+    if (stats == null) {
       currentStats.recordErrorRequest();
       currentStats.recordErrorRequestLatency(elapsedTime);
+      if (isMisroutedStoreVersion) {
+        currentStats.recordMisroutedStoreVersionRequest();
+      }
     } else {
       stats.recordErrorRequest();
       stats.recordErrorRequestLatency(elapsedTime);
+      if (isMisroutedStoreVersion) {
+        stats.recordMisroutedStoreVersionRequest();
+      }
     }
   }
 
@@ -414,5 +424,13 @@ public class ServerStatsContext {
 
   public boolean isComplete() {
     return isComplete;
+  }
+
+  public void setMisroutedStoreVersion(boolean misroutedStoreVersion) {
+    isMisroutedStoreVersion = misroutedStoreVersion;
+  }
+
+  public boolean isMisroutedStoreVersion() {
+    return isMisroutedStoreVersion;
   }
 }

@@ -79,6 +79,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         if (shortcutResponse.getStatus().equals(VeniceRequestEarlyTerminationException.getHttpResponseStatus())) {
           statsHandler.setRequestTerminatedEarly();
         }
+        statsHandler.setMisroutedStoreVersionRequest(shortcutResponse.isMisroutedStoreVersion());
       } else if (msg instanceof BinaryResponse) {
         // For dictionary Fetch requests
         body = ((BinaryResponse) msg).getBody();
