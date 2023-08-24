@@ -8,6 +8,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -71,7 +72,7 @@ class ConsumptionTask implements Runnable {
     this.recordsThrottler = recordsThrottler;
     this.stats = stats;
     this.cleaner = cleaner;
-    String kafkaUrlForLogger = kafkaUrl.replace(".", "_");
+    String kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
     this.LOGGER = LogManager.getLogger(getClass().getSimpleName() + "[ " + kafkaUrlForLogger + " - " + taskId + " ]");
   }
 

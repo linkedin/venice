@@ -176,4 +176,9 @@ public class UtilsTest {
         () -> Utils.parseCommaSeparatedStringMapFromString("invalid_value", "test_field"));
     assertTrue(e.getMessage().contains("must be key value pairs separated by comma"));
   }
+
+  @Test
+  public void testSanitizingStringForLogger() {
+    Assert.assertEquals(Utils.getSanitizedStringForLogger(".abc.123."), "_abc_123_");
+  }
 }

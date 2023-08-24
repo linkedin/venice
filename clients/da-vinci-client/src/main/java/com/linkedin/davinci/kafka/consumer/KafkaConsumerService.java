@@ -102,7 +102,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       final KafkaConsumerServiceStats statsOverride,
       final boolean isKafkaConsumerOffsetCollectionEnabled) {
     this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
-    this.kafkaUrlForLogger = kafkaUrl.replace(".", "_");
+    this.kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
     this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "]");
 
     // Initialize consumers and consumerExecutor
