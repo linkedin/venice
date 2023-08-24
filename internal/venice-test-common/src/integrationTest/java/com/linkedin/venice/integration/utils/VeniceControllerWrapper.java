@@ -62,10 +62,8 @@ import com.linkedin.venice.controller.VeniceControllerContext;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
@@ -84,6 +82,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -232,12 +231,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           builder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
         }
 
-        String fabricAllowList = "";
+        String fabricAllowList;
         if (options.isParent()) {
           // Parent controller needs config to route per-cluster requests such as job status
           // This dummy parent controller won't support such requests until we make this config configurable.
           // go/inclusivecode deferred(Reference will be removed when clients have migrated)
-          fabricAllowList = extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, "");
+          fabricAllowList =
+              extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, StringUtils.EMPTY);
         } else {
           // child controller should at least know the urls or D2 ZK address of its local region
           fabricAllowList = options.getExtraProperties().getProperty(LOCAL_REGION_NAME, options.getRegionName());
@@ -340,12 +340,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
       Optional<ClientConfig> consumerClientConfig = Optional.empty();
       Object clientConfig = options.getExtraProperties().get(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER);
-      if (clientConfig != null && clientConfig instanceof ClientConfig) {
+      if (clientConfig instanceof ClientConfig) {
         consumerClientConfig = Optional.of((ClientConfig) clientConfig);
       }
       Optional<SupersetSchemaGenerator> supersetSchemaGenerator = Optional.empty();
       Object passedSupersetSchemaGenerator = options.getExtraProperties().get(SUPERSET_SCHEMA_GENERATOR);
-      if (passedSupersetSchemaGenerator != null && passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
+      if (passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
         supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
       }
       VeniceControllerContext ctx = new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
@@ -447,29 +447,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .build());
   }
 
-  /***
-   * Sets a version to be active for a given store and version
-   *
-   * @param storeName
-   * @param version
-   */
-  public void setActiveVersion(String clusterName, String storeName, int version) {
-    try (ControllerClient controllerClient = new ControllerClient(clusterName, getControllerUrl())) {
-      controllerClient.overrideSetActiveVersion(storeName, version);
-    }
-  }
-
-  /***
-   * Set a version to be active, parsing store name and version number from a kafka topic name
-   *
-   * @param kafkaTopic
-   */
-  public void setActiveVersion(String clusterName, String kafkaTopic) {
-    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-    int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    setActiveVersion(clusterName, storeName, version);
-  }
-
   public boolean isLeaderController(String clusterName) {
     Admin admin = service.getVeniceControllerService().getVeniceHelixAdmin();
     return admin.isLeaderControllerFor(clusterName);
@@ -503,6 +480,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   @Override
   public String getComponentTagForLogging() {
-    return new StringBuilder(getComponentTagPrefix(regionName)).append(super.getComponentTagForLogging()).toString();
+    return getComponentTagPrefix(regionName) + super.getComponentTagForLogging();
   }
 }
