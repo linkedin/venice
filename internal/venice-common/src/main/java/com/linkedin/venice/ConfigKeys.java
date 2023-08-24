@@ -337,6 +337,12 @@ public class ConfigKeys {
   public static final String CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
       "controller.parent.external.superset.schema.generation.enabled";
 
+  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED =
+      "controller.system.store.health.check.enabled";
+
+  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL =
+      "controller.system.store.health.check.interval";
+
   /**
    * Whether to initialize system schemas when controller starts. Default is true.
    */

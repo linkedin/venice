@@ -7810,6 +7810,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return pushStatusStoreReader;
   }
 
+  @Override
+  public Optional<PushStatusStoreWriter> getPushStatusStoreWriter() {
+    return pushStatusStoreWriter;
+  }
+
   public Optional<SSLFactory> getSslFactory() {
     return sslFactory;
   }

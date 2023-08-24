@@ -15,6 +15,7 @@ public class PushStatusStoreUtils {
 
   public static final String SERVER_INCREMENTAL_PUSH_PREFIX = "SERVER_SIDE_INCREMENTAL_PUSH_STATUS";
   public static final String ONGOING_INCREMENTAL_PUSH_STATUSES_KEY = "ONGOING_INCREMENTAL_PUSHES";
+  public static final String CONTROLLER_HEARTBEAT_INSTANCE_NAME = "CONTROLLER_HEARTBEAT";
 
   public static PushStatusKey getHeartbeatKey(String instanceName) {
     PushStatusKey pushStatusKey = new PushStatusKey();

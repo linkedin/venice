@@ -29,6 +29,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -943,4 +944,6 @@ public interface Admin extends AutoCloseable, Closeable {
   }
 
   Optional<PushStatusStoreReader> getPushStatusStoreReader();
+
+  Optional<PushStatusStoreWriter> getPushStatusStoreWriter();
 }
