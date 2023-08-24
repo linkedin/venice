@@ -9,6 +9,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.system.store.MetaStoreReader;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;
@@ -35,6 +37,9 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
   private final ReadWriteStoreRepository storeRepository;
   private final PushStatusStoreReader pushStatusStoreReader;
   private final PushStatusStoreWriter pushStatusStoreWriter;
+  private final MetaStoreReader metaStoreReader;
+  private final MetaStoreWriter metaStoreWriter;
+
   private final int checkPeriodInSeconds;
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private ScheduledExecutorService checkServiceExecutor;
@@ -43,10 +48,14 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
 
   public SystemStoreHealthCheckService(
       ReadWriteStoreRepository storeRepository,
+      MetaStoreReader metaStoreReader,
+      MetaStoreWriter metaStoreWriter,
       PushStatusStoreReader pushStatusStoreReader,
       PushStatusStoreWriter pushStatusStoreWriter,
       int systemStoreCheckPeriodInSeconds) {
     this.storeRepository = storeRepository;
+    this.metaStoreWriter = metaStoreWriter;
+    this.metaStoreReader = metaStoreReader;
     this.pushStatusStoreWriter = pushStatusStoreWriter;
     this.pushStatusStoreReader = pushStatusStoreReader;
     this.checkPeriodInSeconds = systemStoreCheckPeriodInSeconds;
@@ -85,7 +94,7 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
       }
 
       Set<String> newUnhealthySystemStoreSet = new HashSet<>();
-      Map<String, Long> pushStatusStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
+      Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
       for (Store store: storeRepository.getAllStores()) {
         if (!isRunning.get()) {
           return;
@@ -103,22 +112,18 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
         long currentTimestamp = System.currentTimeMillis();
         if (VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.equals(systemStoreType)) {
           pushStatusStoreWriter.writeHeartbeat(userStoreName, currentTimestamp);
-          pushStatusStoreToHeartbeatTimestampMap.put(userStoreName, currentTimestamp);
         } else {
-          // TODO: Add message for meta store.
+          metaStoreWriter.writeHeartbeat(userStoreName, currentTimestamp);
         }
+        systemStoreToHeartbeatTimestampMap.put(store.getName(), currentTimestamp);
       }
 
-      for (Map.Entry<String, Long> entry: pushStatusStoreToHeartbeatTimestampMap.entrySet()) {
+      for (Map.Entry<String, Long> entry: systemStoreToHeartbeatTimestampMap.entrySet()) {
         if (!isRunning.get()) {
           return;
         }
-        if (!isSystemStoreIngesting(
-            VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE,
-            entry.getKey(),
-            entry.getValue())) {
-          newUnhealthySystemStoreSet
-              .add(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(entry.getKey()));
+        if (!isSystemStoreIngesting(entry.getKey(), entry.getValue())) {
+          newUnhealthySystemStoreSet.add(entry.getKey());
         }
       }
 
@@ -127,20 +132,21 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
     }
   }
 
-  private boolean isSystemStoreIngesting(
-      VeniceSystemStoreType systemStoreType,
-      String userStoreName,
-      long heartbeatTimestamp) {
+  private boolean isSystemStoreIngesting(String systemStoreName, long heartbeatTimestamp) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(systemStoreName);
+    String userStoreName = systemStoreType.extractRegularStoreName(systemStoreName);
     try {
       return RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(() -> {
+        long retrievedTimestamp = 0;
         if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-          long retrievedTimestamp = pushStatusStoreReader
+          retrievedTimestamp = pushStatusStoreReader
               .getHeartbeat(userStoreName, PushStatusStoreUtils.CONTROLLER_HEARTBEAT_INSTANCE_NAME);
-          if (retrievedTimestamp < heartbeatTimestamp) {
-            throw new VeniceException("Heartbeat not refreshed.");
-          }
+        } else {
+          retrievedTimestamp = metaStoreReader.getHeartbeat(userStoreName);
         }
-        // TODO: Add same check for meta store.
+        if (retrievedTimestamp < heartbeatTimestamp) {
+          throw new VeniceException("Heartbeat not refreshed.");
+        }
         return true;
       }, 3, Duration.ofSeconds(10), Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {

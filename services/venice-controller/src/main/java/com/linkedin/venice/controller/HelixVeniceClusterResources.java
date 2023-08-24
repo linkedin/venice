@@ -212,6 +212,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
     this.systemStoreHealthCheckService = (!config.isParent() && config.isSystemStoreHealthCheckEnabled())
         ? new SystemStoreHealthCheckService(
             storeMetadataRepository,
+            admin.getMetaStoreReader(),
+            admin.getMetaStoreWriter(),
             admin.getPushStatusStoreReader().get(),
             admin.getPushStatusStoreWriter().get(),
             config.getDaVinciPushStatusScanIntervalInSeconds())

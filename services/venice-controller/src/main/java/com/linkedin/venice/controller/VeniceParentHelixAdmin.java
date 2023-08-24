@@ -200,6 +200,7 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
@@ -4700,6 +4701,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public MetaStoreWriter getMetaStoreWriter() {
     return getVeniceHelixAdmin().getMetaStoreWriter();
+  }
+
+  @Override
+  public MetaStoreReader getMetaStoreReader() {
+    return getVeniceHelixAdmin().getMetaStoreReader();
   }
 
   /**

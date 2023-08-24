@@ -39,6 +39,7 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -743,6 +744,8 @@ public interface Admin extends AutoCloseable, Closeable {
    * Return a {@link MetaStoreWriter}, which can be shared across different Venice clusters.
    */
   MetaStoreWriter getMetaStoreWriter();
+
+  MetaStoreReader getMetaStoreReader();
 
   /**
    * Return {@link PushStatusStoreRecordDeleter}.

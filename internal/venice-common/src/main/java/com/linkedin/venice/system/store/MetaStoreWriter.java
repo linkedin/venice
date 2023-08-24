@@ -146,6 +146,18 @@ public class MetaStoreWriter implements Closeable {
     });
   }
 
+  public void writeHeartbeat(String storeName, long heartbeat) {
+    write(storeName, MetaStoreDataType.HEARTBEAT, () -> {
+      Map<String, String> keyMap = new HashMap<>(1);
+      keyMap.put(KEY_STRING_STORE_NAME, storeName);
+      return keyMap;
+    }, () -> {
+      StoreMetaValue value = new StoreMetaValue();
+      value.timestamp = heartbeat;
+      return value;
+    });
+  }
+
   /**
    * Improved version of writeStoreValueSchemas. Instead of writing all value schemas into one K/V pair we write it to
    * a different key space where each K/V pair only represents one version of the value schema. This allows us to store
