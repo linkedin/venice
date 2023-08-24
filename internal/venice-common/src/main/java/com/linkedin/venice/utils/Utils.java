@@ -905,4 +905,15 @@ public class Utils {
       }
     };
   }
+
+  /**
+   * Log4J's class name logging splits at the last "." and assumes it is the class name. In case where custom strings
+   * (e.g. URLs, server addresses, etc.) are added to the logger names, Log4J logs an incomplete string. This function
+   * replaces "." with "_" in the string when setting as the input for the logger.
+   * @param orig The string to sanitize
+   * @return A sanitized string that won't get mutated by Log4J
+   */
+  public static String getSanitizedStringForLogger(String orig) {
+    return orig.replace('.', '_');
+  }
 }

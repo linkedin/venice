@@ -9,6 +9,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,6 +20,7 @@ public class StorePartitionDataReceiver
   private final StoreIngestionTask storeIngestionTask;
   private final PubSubTopicPartition topicPartition;
   private final String kafkaUrl;
+  private final String kafkaUrlForLogger;
   private final int kafkaClusterId;
   private final Logger LOGGER;
 
@@ -32,8 +34,9 @@ public class StorePartitionDataReceiver
     this.storeIngestionTask = Validate.notNull(storeIngestionTask);
     this.topicPartition = Validate.notNull(topicPartition);
     this.kafkaUrl = Validate.notNull(kafkaUrl);
+    this.kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
     this.kafkaClusterId = kafkaClusterId;
-    this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrl + "]");
+    this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrlForLogger + "]");
     this.receivedRecordsCount = 0L;
   }
 

@@ -8,6 +8,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -36,7 +37,7 @@ import org.apache.logging.log4j.Logger;
  * 3. Recording some stats.
  */
 class ConsumptionTask implements Runnable {
-  private final Logger logger;
+  private final Logger LOGGER;
   private final int taskId;
   private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap =
       new VeniceConcurrentHashMap<>();
@@ -71,7 +72,8 @@ class ConsumptionTask implements Runnable {
     this.recordsThrottler = recordsThrottler;
     this.stats = stats;
     this.cleaner = cleaner;
-    this.logger = LogManager.getLogger(getClass().getSimpleName() + "[ " + kafkaUrl + " - " + taskId + " ]");
+    String kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
+    this.LOGGER = LogManager.getLogger(getClass().getSimpleName() + "[ " + kafkaUrlForLogger + " - " + taskId + " ]");
   }
 
   @Override
@@ -129,7 +131,7 @@ class ConsumptionTask implements Runnable {
             consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
             if (consumedDataReceiver == null) {
               // defensive code
-              logger.error(
+              LOGGER.error(
                   "Couldn't find consumed data receiver for topic partition : {} after receiving records from `poll` request",
                   pubSubTopicPartition);
               topicPartitionsToUnsub.add(pubSubTopicPartition);
@@ -154,15 +156,15 @@ class ConsumptionTask implements Runnable {
       } catch (Exception e) {
         if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
           // We sometimes wrap InterruptedExceptions, so not taking any chances...
-          logger.error("Received InterruptedException, will exit");
+          LOGGER.error("Received InterruptedException, will exit");
           break;
         }
-        logger.error("Received exception while polling, will retry", e);
+        LOGGER.error("Received exception while polling, will retry", e);
         addSomeDelay = true;
         stats.recordPollError();
       }
     }
-    logger.info("Shared consumer thread: {} exited", Thread.currentThread().getName());
+    LOGGER.info("Shared consumer thread: {} exited", Thread.currentThread().getName());
   }
 
   void stop() {
