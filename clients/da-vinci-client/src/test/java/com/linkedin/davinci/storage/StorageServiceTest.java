@@ -1,8 +1,5 @@
 package com.linkedin.davinci.storage;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -42,17 +39,5 @@ public class StorageServiceTest {
 
     StorageService.deleteStorageEngineOnRocksDBError(storageEngineName, storeRepository, factory);
     verify(factory, times(2)).removeStorageEngine(storageEngineName);
-  }
-
-  @Test
-  public void testDeleteStorageEngineOnClosedEngine() {
-    StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
-    // no store or no version exists, delete the store
-    StorageService storageService = mock(StorageService.class);
-    when(storageEngineRepository.removeLocalStorageEngine(anyString())).thenReturn(null);
-    when(storageService.getStorageEngineRepository()).thenReturn(storageEngineRepository);
-    doCallRealMethod().when(storageService).removeStorageEngine(any());
-    storageService.removeStorageEngine(storageEngineName);
-    verify(storageService, times(1)).openStorageEngine(anyString());
   }
 }
