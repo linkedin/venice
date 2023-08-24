@@ -347,17 +347,24 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       String topicName,
       int partition,
       IngestionCommandType command,
-      Supplier<Boolean> remoteCommandSupplier,
-      Runnable localCommandRunnable) {
+      Supplier<Boolean> isolatedProcessCommandSupplier,
+      Runnable mainProcessCommandRunnable) {
+    boolean isTopicPartitionHosted = isTopicPartitionHosted(topicName, partition);
+
+    // Start consumption for new partition happens in isolated process
+    if (command == START_CONSUMPTION && !isTopicPartitionHosted) {
+      isolatedProcessCommandSupplier.get();
+      return;
+    } else if (command == REMOVE_PARTITION && !isTopicPartitionHosted) {
+      mainProcessCommandRunnable.run();
+      isolatedProcessCommandSupplier.get();
+      return;
+    }
+
     do {
-      if (isTopicPartitionHostedInMainProcess(topicName, partition)
-          || (!isTopicPartitionHosted(topicName, partition) && command != START_CONSUMPTION)) {
-        LOGGER.info(
-            "Executing command {} of topic: {}, partition: {} in main process process.",
-            command,
-            topicName,
-            partition);
-        localCommandRunnable.run();
+      if (isTopicPartitionHostedInMainProcess(topicName, partition) || !isTopicPartitionHosted) {
+        LOGGER.info("Executing command {} of topic: {}, partition: {} in main process.", command, topicName, partition);
+        mainProcessCommandRunnable.run();
         return;
       }
       LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
@@ -376,7 +383,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       try (AutoCloseableLock ignored =
           AutoCloseableSingleLock.of(getMainIngestionMonitorService().getForkProcessActionLock().readLock())) {
         try {
-          if (remoteCommandSupplier.get()) {
+          if (isolatedProcessCommandSupplier.get()) {
             return;
           }
         } catch (Exception e) {
@@ -403,7 +410,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
             topicName,
             partition,
             command);
-        localCommandRunnable.run();
+        mainProcessCommandRunnable.run();
         return;
       }
       /**

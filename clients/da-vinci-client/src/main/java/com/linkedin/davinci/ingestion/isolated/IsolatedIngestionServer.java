@@ -722,7 +722,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         storeVersionStateSerializer,
         partitionStateSerializer,
         storeRepository,
-        false,
+        true,
         true);
     storageService.start();
 
