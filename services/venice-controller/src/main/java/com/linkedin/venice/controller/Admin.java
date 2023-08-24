@@ -634,7 +634,7 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   Map<String, String> findAllBootstrappingVersions(String clusterName);
 
-  VeniceWriterFactory getVeniceWriterFactory();
+  VeniceWriterFactory getVeniceWriterFactory(String clusterName);
 
   Map<String, PubSubConsumerAdapterFactory> getVeniceConsumerFactoryMap();
 

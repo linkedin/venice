@@ -781,7 +781,7 @@ public class TestPushJobWithNativeReplication {
             incPushToRTWriter = startIncrementalPush(
                 parentControllerClient,
                 storeName,
-                parentController.getVeniceAdmin().getVeniceWriterFactory(),
+                parentController.getVeniceAdmin().getVeniceWriterFactory(clusterName),
                 incPushToRTVersion);
             final String newVersionTopic = Version.composeKafkaTopic(
                 storeName,

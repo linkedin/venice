@@ -271,7 +271,7 @@ public class PushStatusStoreTest {
 
         Map<String, VeniceWriterFactory> writerFactoryMap = Collections.singletonMap(
             clusterName,
-            cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory());
+            cluster.getLeaderVeniceController().getVeniceHelixAdmin().getVeniceWriterFactory(clusterName));
         PushStatusStoreRecordDeleter statusStoreDeleter =
             new PushStatusStoreRecordDeleter(writerFactoryMap, s -> Optional.of(clusterName));
 

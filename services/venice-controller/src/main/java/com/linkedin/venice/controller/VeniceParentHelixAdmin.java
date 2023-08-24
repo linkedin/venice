@@ -566,7 +566,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * 2. Data out of order;
        * 3. Data duplication;
        */
-      return getVeniceWriterFactory().createVeniceWriter(
+      return getVeniceWriterFactory(clusterName).createVeniceWriter(
           new VeniceWriterOptions.Builder(topicName.getName()).setTime(getTimer())
               .setPartitionCount(AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC)
               .build());
@@ -4011,8 +4011,8 @@ public class VeniceParentHelixAdmin implements Admin {
    * @return a <code>VeniceWriterFactory</code> object used by the Venice controller to create the venice writer.
    */
   @Override
-  public VeniceWriterFactory getVeniceWriterFactory() {
-    return getVeniceHelixAdmin().getVeniceWriterFactory();
+  public VeniceWriterFactory getVeniceWriterFactory(String clusterName) {
+    return getVeniceHelixAdmin().getVeniceWriterFactory(clusterName);
   }
 
   /**

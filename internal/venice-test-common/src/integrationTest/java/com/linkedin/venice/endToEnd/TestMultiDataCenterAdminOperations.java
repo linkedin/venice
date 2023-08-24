@@ -144,7 +144,7 @@ public class TestMultiDataCenterAdminOperations {
     VeniceControllerWrapper parentController =
         multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
     Admin admin = parentController.getVeniceAdmin();
-    VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory();
+    VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory(clusterName);
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder(AdminTopicUtils.getTopicNameFromClusterName(clusterName)).build());
     AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();

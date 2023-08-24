@@ -342,8 +342,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final long deprecatedJobTopicRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
   private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
-  private final VeniceWriterFactory veniceWriterFactory;
-  private final PubSubConsumerAdapterFactory veniceConsumerFactory;
   private final int minNumberOfStoreVersionsToPreserve;
   private final StoreGraveyard storeGraveyard;
   private final Map<String, String> participantMessageStoreRTTMap;
@@ -408,14 +406,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final Object LIVENESS_HEARTBEAT_CLIENT_LOCK = new Object();
   private AvroSpecificStoreClient<BatchJobHeartbeatKey, BatchJobHeartbeatValue> livenessHeartbeatStoreClient = null;
-  private Map<String, PubSubConsumerAdapterFactory> consumerFactoryMap;
+  private final Map<String, PubSubConsumerAdapterFactory> consumerFactoryMap;
+  private final Map<String, VeniceWriterFactory> veniceWriterFactoryMap;
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
       D2Client d2Client,
-      PubSubTopicRepository pubSubTopicRepository,
-      PubSubClientsFactory pubSubClientsFactory) {
+      PubSubTopicRepository pubSubTopicRepository) {
     this(
         multiClusterConfigs,
         metricsRepository,
@@ -425,7 +423,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional.empty(),
         Optional.empty(),
         pubSubTopicRepository,
-        pubSubClientsFactory,
         Collections.EMPTY_LIST);
   }
 
@@ -439,7 +436,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<DynamicAccessController> accessController,
       Optional<ICProvider> icProvider,
       PubSubTopicRepository pubSubTopicRepository,
-      PubSubClientsFactory pubSubClientsFactory,
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
@@ -495,7 +491,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.adapterSerializer = new HelixAdapterSerializer();
 
     Map<String, PubSubClientsFactory> pubSubClientsFactoryMap = new HashMap<>(multiClusterConfigs.getClusters().size());
-    Map<String, VeniceWriterFactory> veniceWriterFactoryMap = new HashMap<>(multiClusterConfigs.getClusters().size());
+    veniceWriterFactoryMap = new HashMap<>(multiClusterConfigs.getClusters().size());
     this.consumerFactoryMap = new HashMap<>(multiClusterConfigs.getClusters().size());
     for (String clusterName: multiClusterConfigs.getClusters()) {
       PubSubClientsFactory clusterPubSubClientsFactory =
@@ -510,7 +506,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       consumerFactoryMap.put(clusterName, clusterPubSubClientsFactory.getConsumerAdapterFactory());
     }
 
-    this.veniceConsumerFactory = pubSubClientsFactory.getConsumerAdapterFactory();
+    PubSubClientsFactory defaultPubSubClientFactory = multiClusterConfigs.getPubSubClientsFactory();
     this.topicManagerRepository = TopicManagerRepository.builder()
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setMetricsRepository(metricsRepository)
@@ -519,7 +515,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
         .setPubSubProperties(this::getPubSubSSLPropertiesFromControllerConfig)
-        .setDefaultPubSubClientsFactory(pubSubClientsFactory)
+        .setDefaultPubSubClientsFactory(defaultPubSubClientFactory)
         .setPubSubClientsFactoryMap(pubSubClientsFactoryMap)
         .setClusterNameSupplier(this::discoverClusterFromStore)
         .build();
@@ -533,10 +529,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         commonConfig.getRefreshIntervalForZkReconnectInMs());
     storeConfigRepo.refresh();
     this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
-    veniceWriterFactory = new VeniceWriterFactory(
-        commonConfig.getProps().toProperties(),
-        pubSubClientsFactory.getProducerAdapterFactory(),
-        null);
     this.realTimeTopicSwitcher = new RealTimeTopicSwitcher(
         topicManagerRepository.getTopicManager(),
         veniceWriterFactoryMap,
@@ -1216,7 +1208,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           pushJobStatusStoreClusterName,
           VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           value.getSchema().toString());
-      return getVeniceWriterFactory().createVeniceWriter(
+      return getVeniceWriterFactory(pushJobStatusStoreClusterName).createVeniceWriter(
           new VeniceWriterOptions.Builder(pushJobDetailsRTTopic.getName())
               .setKeySerializer(new VeniceAvroKafkaSerializer(key.getSchema().toString()))
               .setValueSerializer(new VeniceAvroKafkaSerializer(value.getSchema().toString()))
@@ -1306,7 +1298,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         : Version.composeKafkaTopic(storeName, versionNumber);
 
     // write EOP message
-    VeniceWriterFactory factory = getVeniceWriterFactory();
+    VeniceWriterFactory factory = getVeniceWriterFactory(clusterName);
     int partitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
     VeniceWriterOptions.Builder vwOptionsBuilder =
         new VeniceWriterOptions.Builder(topicToReceiveEndOfPush).setUseKafkaKeySerializer(true)
@@ -2653,7 +2645,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   // Produce directly into one of the child fabric
                   vwOptionsBuilder.setBrokerAddress(finalVersion.getPushStreamSourceAddress());
                 }
-                veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build());
+                veniceWriter = getVeniceWriterFactory(clusterName).createVeniceWriter(vwOptionsBuilder.build());
                 veniceWriter.broadcastStartOfPush(
                     sorted,
                     finalVersion.isChunkingEnabled(),
@@ -6276,7 +6268,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             "Can't find the expected topic " + topic + " for participant message store "
                 + VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
       }
-      return getVeniceWriterFactory().createVeniceWriter(
+      return getVeniceWriterFactory(clusterName).createVeniceWriter(
           new VeniceWriterOptions.Builder(topic.getName())
               .setKeySerializer(new VeniceAvroKafkaSerializer(ParticipantMessageKey.getClassSchema().toString()))
               .setValueSerializer(new VeniceAvroKafkaSerializer(ParticipantMessageValue.getClassSchema().toString()))
@@ -6585,8 +6577,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * @return a <code>VeniceWriterFactory</code> object used by the Venice controller to create the venice writer.
    */
-  public VeniceWriterFactory getVeniceWriterFactory() {
-    return veniceWriterFactory;
+  public VeniceWriterFactory getVeniceWriterFactory(String clusterName) {
+    return veniceWriterFactoryMap.get(clusterName);
   }
 
   /**

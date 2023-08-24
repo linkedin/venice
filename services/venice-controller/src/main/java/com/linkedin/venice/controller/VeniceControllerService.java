@@ -15,7 +15,6 @@ import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreV
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
@@ -56,8 +55,7 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<ClientConfig> routerClientConfig,
       Optional<ICProvider> icProvider,
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
-      PubSubTopicRepository pubSubTopicRepository,
-      PubSubClientsFactory pubSubClientsFactory) {
+      PubSubTopicRepository pubSubTopicRepository) {
     this.multiClusterConfigs = multiClusterConfigs;
 
     DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
@@ -84,7 +82,6 @@ public class VeniceControllerService extends AbstractVeniceService {
         accessController,
         icProvider,
         pubSubTopicRepository,
-        pubSubClientsFactory,
         Arrays.asList(initRoutineForPushJobDetailsSystemStore, initRoutineForHeartbeatSystemStore));
 
     if (multiClusterConfigs.isParent()) {

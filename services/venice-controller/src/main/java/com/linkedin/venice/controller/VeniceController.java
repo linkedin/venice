@@ -15,7 +15,6 @@ import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -60,7 +59,6 @@ public class VeniceController {
   private final Optional<ICProvider> icProvider;
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private final PubSubClientsFactory pubSubClientsFactory;
   static final String CONTROLLER_SERVICE_NAME = "venice-controller";
 
   /**
@@ -121,7 +119,6 @@ public class VeniceController {
     this.routerClientConfig = Optional.ofNullable(ctx.getRouterClientConfig());
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
-    this.pubSubClientsFactory = multiClusterConfigs.getPubSubClientsFactory();
     createServices();
   }
 
@@ -137,8 +134,7 @@ public class VeniceController {
         routerClientConfig,
         icProvider,
         externalSupersetSchemaGenerator,
-        pubSubTopicRepository,
-        pubSubClientsFactory);
+        pubSubTopicRepository);
 
     adminServer = new AdminSparkServer(
         // no need to pass the hostname, we are binding to all the addresses
