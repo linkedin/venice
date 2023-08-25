@@ -489,7 +489,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.storeGraveyardCleanupDelayMinutes = props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, 0);
     this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
-    this.systemStoreHealthCheckEnabled = props.getBoolean(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED, true);
+    this.systemStoreHealthCheckEnabled = props.getBoolean(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED, false);
     this.systemStoreHealthCheckInterval = props.getInt(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL, 3600);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
