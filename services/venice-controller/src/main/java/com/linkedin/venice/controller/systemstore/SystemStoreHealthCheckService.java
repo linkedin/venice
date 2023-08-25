@@ -62,7 +62,7 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
   }
 
   /**
-   * Return unhealthy system store name set.
+   * Return unhealthy system store name set. This API is expected to be called by parent controller.
    */
   public Set<String> getUnhealthySystemStoreSet() {
     return unhealthySystemStoreSet;
@@ -132,25 +132,33 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
     }
   }
 
-  private boolean isSystemStoreIngesting(String systemStoreName, long heartbeatTimestamp) {
+  boolean isSystemStoreIngesting(String systemStoreName, long heartbeatTimestamp) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(systemStoreName);
     String userStoreName = systemStoreType.extractRegularStoreName(systemStoreName);
     try {
       return RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(() -> {
-        long retrievedTimestamp = 0;
+        long retrievedTimestamp;
         if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
-          retrievedTimestamp = pushStatusStoreReader
+          retrievedTimestamp = getPushStatusStoreReader()
               .getHeartbeat(userStoreName, PushStatusStoreUtils.CONTROLLER_HEARTBEAT_INSTANCE_NAME);
         } else {
-          retrievedTimestamp = metaStoreReader.getHeartbeat(userStoreName);
+          retrievedTimestamp = getMetaStoreReader().getHeartbeat(userStoreName);
         }
         if (retrievedTimestamp < heartbeatTimestamp) {
           throw new VeniceException("Heartbeat not refreshed.");
         }
         return true;
-      }, 3, Duration.ofSeconds(10), Collections.singletonList(VeniceException.class));
+      }, 3, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {
       return false;
     }
+  }
+
+  MetaStoreReader getMetaStoreReader() {
+    return metaStoreReader;
+  }
+
+  PushStatusStoreReader getPushStatusStoreReader() {
+    return pushStatusStoreReader;
   }
 }
