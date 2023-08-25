@@ -63,7 +63,7 @@ public class MetaStoreReader implements Closeable {
       try {
         veniceClient.close();
       } catch (Exception e) {
-        LOGGER.error("Can not close VeniceClient. ", e);
+        LOGGER.error("Can not close VeniceClient.", e);
       }
     });
   }

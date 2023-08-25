@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.systemstore;
 
+import static java.lang.Thread.currentThread;
+
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -22,6 +24,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,9 +45,9 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
 
   private final int checkPeriodInSeconds;
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
-  private ScheduledExecutorService checkServiceExecutor;
+  private final AtomicReference<Set<String>> unhealthySystemStoreSet = new AtomicReference<>();
 
-  private Set<String> unhealthySystemStoreSet = new HashSet<>();
+  private ScheduledExecutorService checkServiceExecutor;
 
   public SystemStoreHealthCheckService(
       ReadWriteStoreRepository storeRepository,
@@ -59,13 +62,14 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
     this.pushStatusStoreWriter = pushStatusStoreWriter;
     this.pushStatusStoreReader = pushStatusStoreReader;
     this.checkPeriodInSeconds = systemStoreCheckPeriodInSeconds;
+    this.unhealthySystemStoreSet.set(new HashSet<>());
   }
 
   /**
    * Return unhealthy system store name set. This API is expected to be called by parent controller.
    */
   public Set<String> getUnhealthySystemStoreSet() {
-    return unhealthySystemStoreSet;
+    return unhealthySystemStoreSet.get();
   }
 
   @Override
@@ -77,13 +81,24 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
         checkPeriodInSeconds,
         checkPeriodInSeconds,
         TimeUnit.SECONDS);
+    LOGGER.info("System store health check executor service is started.");
     return true;
   }
 
   @Override
   public void stopInner() {
     isRunning.set(false);
-    checkServiceExecutor.shutdownNow();
+    checkServiceExecutor.shutdown();
+    try {
+      if (!checkServiceExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+        LOGGER.warn(
+            "System store health check executor service is not terminated after 5 seconds, will be force shutdown now.");
+        checkServiceExecutor.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      currentThread().interrupt();
+    }
+    LOGGER.info("System store health check executor service is shutdown.");
   }
 
   private class SystemStoreHealthCheckTask implements Runnable {
@@ -126,9 +141,9 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
           newUnhealthySystemStoreSet.add(entry.getKey());
         }
       }
-
+      LOGGER.info("Collected unhealthy system stores: {}", newUnhealthySystemStoreSet.toString());
       // Update the unhealthy system store set.
-      unhealthySystemStoreSet = newUnhealthySystemStoreSet;
+      unhealthySystemStoreSet.set(newUnhealthySystemStoreSet);
     }
   }
 
