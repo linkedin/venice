@@ -193,6 +193,16 @@ operator to implement their authorization in two places. Furthermore, approach 2
 since the authorization logic need not run within the hot path of every single request. For these reasons, approach 2 is
 preferred.
 
+### Metrics
+
+Similarly to auth/auth, there is already an abstraction for taking metrics out of Venice on the Java side, so for the
+metrics that will be gathered on the Rust side, two analogous approaches exist: build a Rust abstraction that can be
+implemented so that the Rust server gains the ability to emit metrics directly, or build a mechanism by which metrics
+held in Rust's memory can be copied over to the Java side, and emitted alongside the other Java side metrics. The latter
+approach is analogous to what is being done in Ingestion Isolation, where the child process periodically sends all its 
+metrics to the parent process. For the same reason as in auth/auth that it would be simpler for the operator, the second 
+approach is preferred here as well.
+
 ## Development Milestones
 
 The milestones for the MVP would be the following:
@@ -205,9 +215,10 @@ The milestones for the MVP would be the following:
 4. Add server configs to enable the Rust gRPC module (including basic service disco announcement).
 5. Implement the batch get support.
 6. Implement support for auth/auth.
-7. Multi-architecture (Linux + Mac) support.
-8. (Possibly optional) implement quota.
-9. (Possibly optional) more advanced/granular service disco control.
+7. Implement support for metrics.
+8. Multi-architecture (Linux + Mac) support.
+9. (Possibly optional) implement quota.
+10. (Possibly optional) more advanced/granular service disco control.
 
 Beyond the MVP, the following scope expansions are natural followups:
 
