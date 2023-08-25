@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -147,15 +148,12 @@ public class MetaStoreWriter implements Closeable {
   }
 
   public void writeHeartbeat(String storeName, long heartbeat) {
-    write(storeName, MetaStoreDataType.HEARTBEAT, () -> {
-      Map<String, String> keyMap = new HashMap<>(1);
-      keyMap.put(KEY_STRING_STORE_NAME, storeName);
-      return keyMap;
-    }, () -> {
-      StoreMetaValue value = new StoreMetaValue();
-      value.timestamp = heartbeat;
-      return value;
-    });
+    write(
+        storeName,
+        MetaStoreDataType.HEARTBEAT,
+        () -> Collections.singletonMap(KEY_STRING_STORE_NAME, storeName),
+        StoreMetaValue::new,
+        heartbeat);
   }
 
   /**
@@ -342,13 +340,22 @@ public class MetaStoreWriter implements Closeable {
       MetaStoreDataType dataType,
       Supplier<Map<String, String>> keyStringSupplier,
       Supplier<StoreMetaValue> valueSupplier) {
+    write(storeName, dataType, keyStringSupplier, valueSupplier, System.currentTimeMillis());
+  }
+
+  private void write(
+      String storeName,
+      MetaStoreDataType dataType,
+      Supplier<Map<String, String>> keyStringSupplier,
+      Supplier<StoreMetaValue> valueSupplier,
+      long timestamp) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     StoreMetaValue value = valueSupplier.get();
-    value.timestamp = System.currentTimeMillis();
-    writeMessageWithRetry(metaStoreName, vw -> {
-      vw.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get());
-    });
+    value.timestamp = timestamp;
+    writeMessageWithRetry(
+        metaStoreName,
+        vw -> vw.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get()));
   }
 
   private void update(
