@@ -208,16 +208,23 @@ public class HelixVeniceClusterResources implements VeniceResource {
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
-    // TODO: Add meta store.
-    this.systemStoreHealthCheckService = (!config.isParent() && config.isSystemStoreHealthCheckEnabled())
-        ? new SystemStoreHealthCheckService(
-            storeMetadataRepository,
-            admin.getMetaStoreReader(),
-            admin.getMetaStoreWriter(),
-            admin.getPushStatusStoreReader().get(),
-            admin.getPushStatusStoreWriter().get(),
-            config.getDaVinciPushStatusScanIntervalInSeconds())
-        : null;
+    if (!config.isParent() && config.isSystemStoreHealthCheckEnabled()) {
+      if (!admin.getPushStatusStoreReader().isPresent()) {
+        throw new VeniceException("Da Vinci push status reader is not enabled.");
+      }
+      if (!admin.getPushStatusStoreWriter().isPresent()) {
+        throw new VeniceException("Da Vinci push status writer is not enabled.");
+      }
+      this.systemStoreHealthCheckService = new SystemStoreHealthCheckService(
+          storeMetadataRepository,
+          admin.getMetaStoreReader(),
+          admin.getMetaStoreWriter(),
+          admin.getPushStatusStoreReader().get(),
+          admin.getPushStatusStoreWriter().get(),
+          config.getDaVinciPushStatusScanIntervalInSeconds());
+    } else {
+      this.systemStoreHealthCheckService = null;
+    }
   }
 
   private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerConfig config) {
