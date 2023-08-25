@@ -571,14 +571,6 @@ public class TestUtils {
   }
 
   public static VeniceWriterFactory getVeniceWriterFactory(
-      String kafkaBootstrapServers,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
-    Properties properties = new Properties();
-    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    return getVeniceWriterFactory(properties, pubSubProducerAdapterFactory);
-  }
-
-  public static VeniceWriterFactory getVeniceWriterFactory(
       Properties properties,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     Properties factoryProperties = new Properties();
