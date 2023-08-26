@@ -116,13 +116,9 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
         return;
       }
 
-      for (Map.Entry<String, Long> entry: systemStoreToHeartbeatTimestampMap.entrySet()) {
-        if (!getIsRunning().get()) {
-          return;
-        }
-        if (!isSystemStoreIngesting(entry.getKey(), entry.getValue())) {
-          newUnhealthySystemStoreSet.add(entry.getKey());
-        }
+      checkSystemStoreHeartbeat(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+      if (!getIsRunning().get()) {
+        return;
       }
       LOGGER.info("Collected unhealthy system stores: {}", newUnhealthySystemStoreSet.toString());
       // Update the unhealthy system store set.
@@ -154,6 +150,19 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
         getMetaStoreWriter().writeHeartbeat(userStoreName, currentTimestamp);
       }
       systemStoreToHeartbeatTimestampMap.put(store.getName(), currentTimestamp);
+    }
+  }
+
+  void checkSystemStoreHeartbeat(
+      Set<String> newUnhealthySystemStoreSet,
+      Map<String, Long> systemStoreToHeartbeatTimestampMap) {
+    for (Map.Entry<String, Long> entry: systemStoreToHeartbeatTimestampMap.entrySet()) {
+      if (!getIsRunning().get()) {
+        return;
+      }
+      if (!isSystemStoreIngesting(entry.getKey(), entry.getValue())) {
+        newUnhealthySystemStoreSet.add(entry.getKey());
+      }
     }
   }
 

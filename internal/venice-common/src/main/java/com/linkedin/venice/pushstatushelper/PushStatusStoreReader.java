@@ -23,7 +23,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
@@ -31,12 +30,11 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * PushStatusStoreReader is a helper class for Venice controller reading PushStatus/Heartbeat messages.
- * One PushStatusStoreReader for one regular Venice store.
- * Don't keep a map of [storeName->client] to minimize states kept by controller.
+ * This class is a helper class for Venice controller to read PushStatus / Heartbeat messages.
  */
 public class PushStatusStoreReader implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreReader.class);
+  private static final int DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS = 3;
   private final Map<String, AvroSpecificStoreClient<PushStatusKey, PushStatusValue>> veniceClients =
       new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;
@@ -196,7 +194,8 @@ public class PushStatusStoreReader implements Closeable {
     AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
     try {
-      PushStatusValue pushStatusValue = client.get(pushStatusKey).get();
+      PushStatusValue pushStatusValue =
+          client.get(pushStatusKey).get(DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS);
       if (pushStatusValue == null) {
         return 0;
       } else {
@@ -218,8 +217,8 @@ public class PushStatusStoreReader implements Closeable {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
     PushStatusValue pushStatusValue;
     try {
-      pushStatusValue = storeClient.get(pushStatusKey).get(1, TimeUnit.SECONDS);
-    } catch (InterruptedException | ExecutionException | TimeoutException | VeniceException e) {
+      pushStatusValue = storeClient.get(pushStatusKey).get();
+    } catch (InterruptedException | ExecutionException | VeniceException e) {
       LOGGER.error("Failed to get ongoing incremental pushes for store:{}.", storeName, e);
       throw new VeniceException(e);
     }

@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -51,24 +53,66 @@ public class TestSystemStoreHealthCheckService {
   }
 
   @Test
+  void testCheckSystemStoreHeartbeat() {
+    AtomicBoolean isRunning = new AtomicBoolean(false);
+    MetaStoreReader metaStoreReader = mock(MetaStoreReader.class);
+    PushStatusStoreReader pushStatusStoreReader = mock(PushStatusStoreReader.class);
+    SystemStoreHealthCheckService systemStoreHealthCheckService = mock(SystemStoreHealthCheckService.class);
+    when(systemStoreHealthCheckService.getMetaStoreReader()).thenReturn(metaStoreReader);
+    when(systemStoreHealthCheckService.getPushStatusStoreReader()).thenReturn(pushStatusStoreReader);
+    when(systemStoreHealthCheckService.isSystemStoreIngesting(anyString(), anyLong())).thenReturn(true, false);
+    when(systemStoreHealthCheckService.getIsRunning()).thenReturn(isRunning);
+    Set<String> newUnhealthySystemStoreSet = new HashSet<>();
+    Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
+    systemStoreToHeartbeatTimestampMap.put(VeniceSystemStoreType.META_STORE.getSystemStoreName("test_store"), 1L);
+    systemStoreToHeartbeatTimestampMap
+        .put(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("test_store"), 1L);
+    doCallRealMethod().when(systemStoreHealthCheckService)
+        .checkSystemStoreHeartbeat(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+    systemStoreHealthCheckService
+        .checkSystemStoreHeartbeat(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+    Assert.assertTrue(newUnhealthySystemStoreSet.isEmpty());
+    verify(systemStoreHealthCheckService, times(0)).isSystemStoreIngesting(anyString(), anyLong());
+    isRunning.set(true);
+    systemStoreHealthCheckService
+        .checkSystemStoreHeartbeat(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+    Assert.assertEquals(newUnhealthySystemStoreSet.size(), 1);
+    Assert.assertTrue(
+        newUnhealthySystemStoreSet
+            .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("test_store")));
+    verify(systemStoreHealthCheckService, times(2)).isSystemStoreIngesting(anyString(), anyLong());
+
+  }
+
+  @Test
   public void testSendHeartbeat() {
     MetaStoreWriter metaStoreWriter = mock(MetaStoreWriter.class);
     PushStatusStoreWriter pushStatusStoreWriter = mock(PushStatusStoreWriter.class);
     ReadWriteStoreRepository storeRepository = mock(ReadWriteStoreRepository.class);
-    Store metaStoreWithNoVersion = mock(Store.class);
-    when(metaStoreWithNoVersion.getName())
-        .thenReturn(VeniceSystemStoreType.META_STORE.getSystemStoreName("test_store"));
-    when(metaStoreWithNoVersion.getCurrentVersion()).thenReturn(0);
+    String testStore1 = "test_store_1";
+    Store userStore1 = mock(Store.class);
+    when(userStore1.getName()).thenReturn(testStore1);
+    Store metaStore1 = mock(Store.class);
+    when(metaStore1.getName()).thenReturn(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore1));
+    when(metaStore1.getCurrentVersion()).thenReturn(0);
+    Store pushStatusStore1 = mock(Store.class);
+    when(pushStatusStore1.getName())
+        .thenReturn(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore1));
+    when(pushStatusStore1.getCurrentVersion()).thenReturn(1);
 
-    Store pushStatusStore = mock(Store.class);
-    when(pushStatusStore.getName())
-        .thenReturn(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("test_store"));
-    when(pushStatusStore.getCurrentVersion()).thenReturn(1);
+    String testStore2 = "test_store_2";
+    Store userStore2 = mock(Store.class);
+    when(userStore2.getName()).thenReturn(testStore2);
+    Store metaStore2 = mock(Store.class);
+    when(metaStore2.getName()).thenReturn(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore2));
+    when(metaStore2.getCurrentVersion()).thenReturn(1);
+    Store pushStatusStore2 = mock(Store.class);
+    when(pushStatusStore2.getName())
+        .thenReturn(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore2));
+    when(pushStatusStore2.getCurrentVersion()).thenReturn(0);
 
-    Store userStore = mock(Store.class);
-    when(userStore.getName()).thenReturn("test_store");
-
-    when(storeRepository.getAllStores()).thenReturn(Arrays.asList(metaStoreWithNoVersion, pushStatusStore, userStore));
+    when(storeRepository.getAllStores())
+        .thenReturn(Arrays.asList(metaStore1, pushStatusStore1, userStore1, metaStore2, pushStatusStore2, userStore2));
     AtomicBoolean isRunning = new AtomicBoolean(false);
 
     SystemStoreHealthCheckService systemStoreHealthCheckService = mock(SystemStoreHealthCheckService.class);
@@ -89,12 +133,18 @@ public class TestSystemStoreHealthCheckService {
     isRunning.set(true);
     systemStoreHealthCheckService
         .sendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
-    Assert.assertEquals(newUnhealthySystemStoreSet.size(), 1);
+    Assert.assertEquals(newUnhealthySystemStoreSet.size(), 2);
     Assert.assertTrue(
-        newUnhealthySystemStoreSet.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName("test_store")));
-    Assert.assertEquals(systemStoreToHeartbeatTimestampMap.size(), 1);
+        newUnhealthySystemStoreSet.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore1)));
+    Assert.assertTrue(
+        newUnhealthySystemStoreSet
+            .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore2)));
+
+    Assert.assertEquals(systemStoreToHeartbeatTimestampMap.size(), 2);
     Assert.assertNotNull(
         systemStoreToHeartbeatTimestampMap
-            .get(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("test_store")));
+            .get(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore1)));
+    Assert.assertNotNull(
+        systemStoreToHeartbeatTimestampMap.get(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore2)));
   }
 }

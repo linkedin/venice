@@ -21,6 +21,7 @@ import org.apache.logging.log4j.Logger;
 
 public class MetaStoreReader implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(MetaStoreReader.class);
+  private static final int DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS = 3;
   private final Map<String, AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue>> veniceClients =
       new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;
@@ -36,7 +37,7 @@ public class MetaStoreReader implements Closeable {
     StoreMetaKey key =
         MetaStoreDataType.HEARTBEAT.getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
     try {
-      StoreMetaValue value = client.get(key).get(1, TimeUnit.SECONDS);
+      StoreMetaValue value = client.get(key).get(DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS);
       if (value == null) {
         return 0;
       } else {
