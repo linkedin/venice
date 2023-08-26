@@ -99,37 +99,15 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
     LOGGER.info("System store health check executor service is shutdown.");
   }
 
-  private class SystemStoreHealthCheckTask implements Runnable {
+  class SystemStoreHealthCheckTask implements Runnable {
     @Override
     public void run() {
-      if (!isRunning.get()) {
+      if (!getIsRunning().get()) {
         return;
       }
-
       Set<String> newUnhealthySystemStoreSet = new HashSet<>();
       Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
-      for (Store store: storeRepository.getAllStores()) {
-        if (!isRunning.get()) {
-          return;
-        }
-        if (!VeniceSystemStoreUtils.isUserSystemStore(store.getName())) {
-          continue;
-        }
-        // It is also possible that the store is a new store and is being empty pushed.
-        if (store.getCurrentVersion() == 0) {
-          newUnhealthySystemStoreSet.add(store.getName());
-          continue;
-        }
-        VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(store.getName());
-        String userStoreName = systemStoreType.extractRegularStoreName(store.getName());
-        long currentTimestamp = System.currentTimeMillis();
-        if (VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.equals(systemStoreType)) {
-          pushStatusStoreWriter.writeHeartbeat(userStoreName, currentTimestamp);
-        } else {
-          metaStoreWriter.writeHeartbeat(userStoreName, currentTimestamp);
-        }
-        systemStoreToHeartbeatTimestampMap.put(store.getName(), currentTimestamp);
-      }
+      sendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
       try {
         // Sleep for enough time for system store to consume heartbeat messages.
         Thread.sleep(60000);
@@ -139,7 +117,7 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
       }
 
       for (Map.Entry<String, Long> entry: systemStoreToHeartbeatTimestampMap.entrySet()) {
-        if (!isRunning.get()) {
+        if (!getIsRunning().get()) {
           return;
         }
         if (!isSystemStoreIngesting(entry.getKey(), entry.getValue())) {
@@ -149,6 +127,33 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
       LOGGER.info("Collected unhealthy system stores: {}", newUnhealthySystemStoreSet.toString());
       // Update the unhealthy system store set.
       unhealthySystemStoreSet.set(newUnhealthySystemStoreSet);
+    }
+  }
+
+  void sendHeartbeatToSystemStores(
+      Set<String> newUnhealthySystemStoreSet,
+      Map<String, Long> systemStoreToHeartbeatTimestampMap) {
+    for (Store store: getStoreRepository().getAllStores()) {
+      if (!getIsRunning().get()) {
+        return;
+      }
+      if (!VeniceSystemStoreUtils.isUserSystemStore(store.getName())) {
+        continue;
+      }
+      // It is also possible that the store is a new store and is being empty pushed.
+      if (store.getCurrentVersion() == 0) {
+        newUnhealthySystemStoreSet.add(store.getName());
+        continue;
+      }
+      VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(store.getName());
+      String userStoreName = systemStoreType.extractRegularStoreName(store.getName());
+      long currentTimestamp = System.currentTimeMillis();
+      if (VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.equals(systemStoreType)) {
+        getPushStatusStoreWriter().writeHeartbeat(userStoreName, currentTimestamp);
+      } else {
+        getMetaStoreWriter().writeHeartbeat(userStoreName, currentTimestamp);
+      }
+      systemStoreToHeartbeatTimestampMap.put(store.getName(), currentTimestamp);
     }
   }
 
@@ -180,5 +185,21 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
 
   PushStatusStoreReader getPushStatusStoreReader() {
     return pushStatusStoreReader;
+  }
+
+  MetaStoreWriter getMetaStoreWriter() {
+    return metaStoreWriter;
+  }
+
+  PushStatusStoreWriter getPushStatusStoreWriter() {
+    return pushStatusStoreWriter;
+  }
+
+  AtomicBoolean getIsRunning() {
+    return isRunning;
+  }
+
+  ReadWriteStoreRepository getStoreRepository() {
+    return storeRepository;
   }
 }
