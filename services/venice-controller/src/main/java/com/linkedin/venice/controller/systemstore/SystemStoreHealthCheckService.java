@@ -88,12 +88,10 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
   @Override
   public void stopInner() {
     isRunning.set(false);
-    checkServiceExecutor.shutdown();
+    checkServiceExecutor.shutdownNow();
     try {
       if (!checkServiceExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-        LOGGER.warn(
-            "System store health check executor service is not terminated after 5 seconds, will be force shutdown now.");
-        checkServiceExecutor.shutdownNow();
+        LOGGER.warn("Current task in system store health check executor service is not terminated after 5 seconds.");
       }
     } catch (InterruptedException e) {
       currentThread().interrupt();
@@ -131,6 +129,13 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
           metaStoreWriter.writeHeartbeat(userStoreName, currentTimestamp);
         }
         systemStoreToHeartbeatTimestampMap.put(store.getName(), currentTimestamp);
+      }
+      try {
+        // Sleep for enough time for system store to consume heartbeat messages.
+        Thread.sleep(60000);
+      } catch (InterruptedException e) {
+        LOGGER.info("Caught interrupted exception, will exit now.");
+        return;
       }
 
       for (Map.Entry<String, Long> entry: systemStoreToHeartbeatTimestampMap.entrySet()) {

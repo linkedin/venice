@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -35,7 +36,7 @@ public class MetaStoreReader implements Closeable {
     StoreMetaKey key =
         MetaStoreDataType.HEARTBEAT.getStoreMetaKey(Collections.singletonMap(KEY_STRING_STORE_NAME, storeName));
     try {
-      StoreMetaValue value = client.get(key).get();
+      StoreMetaValue value = client.get(key).get(1, TimeUnit.SECONDS);
       if (value == null) {
         return 0;
       } else {

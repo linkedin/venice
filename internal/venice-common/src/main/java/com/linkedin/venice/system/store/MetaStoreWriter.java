@@ -147,13 +147,13 @@ public class MetaStoreWriter implements Closeable {
     });
   }
 
-  public void writeHeartbeat(String storeName, long heartbeat) {
+  public void writeHeartbeat(String storeName, long heartbeatTimestamp) {
     write(
         storeName,
         MetaStoreDataType.HEARTBEAT,
         () -> Collections.singletonMap(KEY_STRING_STORE_NAME, storeName),
         StoreMetaValue::new,
-        heartbeat);
+        heartbeatTimestamp);
   }
 
   /**

@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
@@ -217,8 +218,8 @@ public class PushStatusStoreReader implements Closeable {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
     PushStatusValue pushStatusValue;
     try {
-      pushStatusValue = storeClient.get(pushStatusKey).get();
-    } catch (InterruptedException | ExecutionException | VeniceException e) {
+      pushStatusValue = storeClient.get(pushStatusKey).get(1, TimeUnit.SECONDS);
+    } catch (InterruptedException | ExecutionException | TimeoutException | VeniceException e) {
       LOGGER.error("Failed to get ongoing incremental pushes for store:{}.", storeName, e);
       throw new VeniceException(e);
     }
