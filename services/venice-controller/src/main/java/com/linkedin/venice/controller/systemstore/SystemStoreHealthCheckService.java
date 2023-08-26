@@ -5,6 +5,7 @@ import static java.lang.Thread.currentThread;
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.stats.SystemStoreCheckStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -46,11 +47,12 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
   private final int checkPeriodInSeconds;
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private final AtomicReference<Set<String>> unhealthySystemStoreSet = new AtomicReference<>();
-
+  private final SystemStoreCheckStats systemStoreCheckStats;
   private ScheduledExecutorService checkServiceExecutor;
 
   public SystemStoreHealthCheckService(
       ReadWriteStoreRepository storeRepository,
+      SystemStoreCheckStats systemStoreCheckStats,
       MetaStoreReader metaStoreReader,
       MetaStoreWriter metaStoreWriter,
       PushStatusStoreReader pushStatusStoreReader,
@@ -63,6 +65,7 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
     this.pushStatusStoreReader = pushStatusStoreReader;
     this.checkPeriodInSeconds = systemStoreCheckPeriodInSeconds;
     this.unhealthySystemStoreSet.set(new HashSet<>());
+    this.systemStoreCheckStats = systemStoreCheckStats;
   }
 
   /**
@@ -123,6 +126,7 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
       LOGGER.info("Collected unhealthy system stores: {}", newUnhealthySystemStoreSet.toString());
       // Update the unhealthy system store set.
       unhealthySystemStoreSet.set(newUnhealthySystemStoreSet);
+      systemStoreCheckStats.recordBadSystemStoreCount(newUnhealthySystemStoreSet.size());
     }
   }
 
