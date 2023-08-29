@@ -16,6 +16,7 @@ import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
@@ -25,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -43,6 +45,8 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
   private final PushStatusStoreWriter pushStatusStoreWriter;
   private final MetaStoreReader metaStoreReader;
   private final MetaStoreWriter metaStoreWriter;
+  private final AtomicLong badMetaStoreCount = new AtomicLong(0);
+  private final AtomicLong badPushStatusStoreCount = new AtomicLong(0);
 
   private final int checkPeriodInSeconds;
   private final int heartbeatWaitTimeSeconds;
@@ -53,7 +57,8 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
 
   public SystemStoreHealthCheckService(
       ReadWriteStoreRepository storeRepository,
-      SystemStoreCheckStats systemStoreCheckStats,
+      MetricsRepository metricsRepository,
+      String clusterName,
       MetaStoreReader metaStoreReader,
       MetaStoreWriter metaStoreWriter,
       PushStatusStoreReader pushStatusStoreReader,
@@ -68,7 +73,8 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
     this.checkPeriodInSeconds = systemStoreCheckPeriodInSeconds;
     this.heartbeatWaitTimeSeconds = systemStoreHealthCheckHeartbeatWaitTimeSeconds;
     this.unhealthySystemStoreSet.set(new HashSet<>());
-    this.systemStoreCheckStats = systemStoreCheckStats;
+    this.systemStoreCheckStats =
+        new SystemStoreCheckStats(metricsRepository, clusterName, badMetaStoreCount::get, badPushStatusStoreCount::get);
   }
 
   /**
@@ -128,12 +134,11 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
       }
       // Update the unhealthy system store set.
       unhealthySystemStoreSet.set(newUnhealthySystemStoreSet);
-      long badMetaSystemStoreCount = newUnhealthySystemStoreSet.stream()
+      long newBadMetaSystemStoreCount = newUnhealthySystemStoreSet.stream()
           .filter(x -> VeniceSystemStoreType.getSystemStoreType(x).equals(VeniceSystemStoreType.META_STORE))
           .count();
-      systemStoreCheckStats.recordBadMetaSystemStoreCount(badMetaSystemStoreCount);
-      systemStoreCheckStats
-          .recordBadPushStatusSystemStoreCount(newUnhealthySystemStoreSet.size() - badMetaSystemStoreCount);
+      badMetaStoreCount.set(newBadMetaSystemStoreCount);
+      badPushStatusStoreCount.set(newUnhealthySystemStoreSet.size() - newBadMetaSystemStoreCount);
       LOGGER.info("Collected unhealthy system stores: {}", newUnhealthySystemStoreSet.toString());
     }
   }

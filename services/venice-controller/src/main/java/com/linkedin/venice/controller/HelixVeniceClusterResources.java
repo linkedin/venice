@@ -5,7 +5,6 @@ import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
-import com.linkedin.venice.controller.stats.SystemStoreCheckStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controller.systemstore.SystemStoreHealthCheckService;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -218,7 +217,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
       }
       this.systemStoreHealthCheckService = new SystemStoreHealthCheckService(
           storeMetadataRepository,
-          new SystemStoreCheckStats(metricsRepository, clusterName),
+          metricsRepository,
+          clusterName,
           admin.getMetaStoreReader(),
           admin.getMetaStoreWriter(),
           admin.getPushStatusStoreReader().get(),
