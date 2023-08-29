@@ -187,6 +187,7 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
@@ -353,6 +354,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
   private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
   private final MetaStoreWriter metaStoreWriter;
+  private final MetaStoreReader metaStoreReader;
   private final D2Client d2Client;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
   private final boolean usePushStatusStoreToReadServerIncrementalPushStatus;
@@ -523,6 +525,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
     coloLeaderClusterName = commonConfig.getClusterName();
     pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
+    // TODO: We need to consider removing this config, as push status store is rolled out everywhere.
     if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
       pushStatusStoreReader = Optional.of(
           new PushStatusStoreReader(
@@ -558,6 +561,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         veniceWriterFactory,
         zkSharedSchemaRepository,
         pubSubTopicRepository);
+    metaStoreReader = new MetaStoreReader(d2Client, commonConfig.getClusterDiscoveryD2ServiceName());
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
     dataRecoveryManager = new DataRecoveryManager(
@@ -7293,6 +7297,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return metaStoreWriter;
   }
 
+  @Override
+  public MetaStoreReader getMetaStoreReader() {
+    return metaStoreReader;
+  }
+
   /**
    * @see Admin#getPushStatusStoreRecordDeleter()
    */
@@ -7808,6 +7817,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
     return pushStatusStoreReader;
+  }
+
+  @Override
+  public Optional<PushStatusStoreWriter> getPushStatusStoreWriter() {
+    return pushStatusStoreWriter;
   }
 
   public Optional<SSLFactory> getSslFactory() {

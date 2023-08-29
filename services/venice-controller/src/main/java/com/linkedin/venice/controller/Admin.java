@@ -29,6 +29,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -38,6 +39,7 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -743,6 +745,8 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   MetaStoreWriter getMetaStoreWriter();
 
+  MetaStoreReader getMetaStoreReader();
+
   /**
    * Return {@link PushStatusStoreRecordDeleter}.
    */
@@ -943,4 +947,6 @@ public interface Admin extends AutoCloseable, Closeable {
   }
 
   Optional<PushStatusStoreReader> getPushStatusStoreReader();
+
+  Optional<PushStatusStoreWriter> getPushStatusStoreWriter();
 }
