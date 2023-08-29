@@ -12,12 +12,14 @@ import java.util.function.Consumer;
  * is readable.
  *
  * All of these APIs have at least two versions - one that accepts a logical timestamp and one that doesn't.
+ * <br/>
  * 1. Logical timestamps (in ms) are what Venice backend will use to resolve conflicts in case multiple writes modify
  * the same record. An update to Venice could be triggered due to some trigger that can be attributed to a specific
  * point in time. In such cases, it might be beneficial for applications to mark their updates to Venice with that
  * timestamp and Venice will persist the record as if it had been received at that point in time - either by applying
  * the update, dropping the update if a newer update has already been persisted, or applying an update partially only to
  * fields that have not received an update with a newer timestamp yet.
+ * <br/>
  * 2. In case the write requests are made without specifying the logical timestamp, then the time at which the message
  * was produced is used as the logical timestamp during conflict resolution.
  *
