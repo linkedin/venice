@@ -739,7 +739,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 pubSubTopicPartition,
                 message.getOffset(),
                 message.getPubSubMessageTime(),
-                payloadSize));
+                payloadSize,
+                false));
       }
 
       // Determine if the event should be filtered or not
@@ -831,7 +832,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         pubSubTopicPartition,
         offset,
         timestamp,
-        payloadSize);
+        payloadSize,
+        false);
   }
 
   private V deserializeValueFromBytes(ByteBuffer byteBuffer, int valueSchemaId) {
@@ -889,7 +891,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     Set<PubSubTopicPartition> topicPartitionSet = pubSubConsumer.getAssignment();
     Optional<PubSubTopicPartition> topicPartition =
         topicPartitionSet.stream().filter(tp -> tp.getPartitionNumber() == partition).findFirst();
-    if (topicPartition.isEmpty()) {
+    if (!topicPartition.isPresent()) {
       throw new VeniceException(
           "Cannot get latest coordinate position for partition " + partition + "! Consumer isn't subscribed!");
     }
@@ -904,7 +906,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     Set<PubSubTopicPartition> topicPartitionSet = pubSubConsumer.getAssignment();
     Optional<PubSubTopicPartition> topicPartition =
         topicPartitionSet.stream().filter(tp -> tp.getPartitionNumber() == partition).findFirst();
-    if (topicPartition.isEmpty()) {
+    if (!topicPartition.isPresent()) {
       throw new VeniceException(
           "Cannot get latest coordinate position for partition " + partition + "! Consumer isn't subscribed!");
     }

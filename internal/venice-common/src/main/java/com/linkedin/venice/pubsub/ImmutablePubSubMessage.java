@@ -57,4 +57,9 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
   public int getPayloadSize() {
     return payloadSize;
   }
+
+  @Override
+  public boolean isEndOfBootstrap() {
+    return false;
+  }
 }

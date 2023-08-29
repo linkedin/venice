@@ -643,5 +643,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
     public int getPayloadSize() {
       return 0;
     }
+
+    @Override
+    public boolean isEndOfBootstrap() {
+      return false;
+    }
   }
 }

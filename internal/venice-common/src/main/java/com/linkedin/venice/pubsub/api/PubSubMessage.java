@@ -38,4 +38,9 @@ public interface PubSubMessage<K, V, OFFSET> {
   default int getPartition() {
     return getTopicPartition().getPartitionNumber();
   }
+
+  /**
+   * @return whether this message marks the end of bootstrap.
+   */
+  boolean isEndOfBootstrap();
 }
