@@ -357,19 +357,22 @@ public class StorageService extends AbstractVeniceService {
 
   /**
    * Drops the partition of the specified store version in the storage service.
-   * @param storeConfig config of the store version.
-   * @param partition partition ID to be dropped.
+   *
+   * @param storeConfig              config of the store version.
+   * @param partition                partition ID to be dropped.
    * @param removeEmptyStorageEngine Whether to delete the storage engine when there is no remaining data partition.
+   * @return
    */
-  public synchronized void dropStorePartition(
+  public synchronized boolean dropStorePartition(
       VeniceStoreVersionConfig storeConfig,
       int partition,
       boolean removeEmptyStorageEngine) {
     String kafkaTopic = storeConfig.getStoreVersionName();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
-      LOGGER.warn("Storage engine {} does not exist, ignoring drop partition request.", kafkaTopic);
-      return;
+      LOGGER.warn("Storage engine {} does not exist, directly deleting DB files.", kafkaTopic);
+      removeStoragePartition(kafkaTopic, partition);
+      return false;
     }
     for (int subPartition: getSubPartition(kafkaTopic, partition)) {
       storageEngine.dropPartition(subPartition);
@@ -379,6 +382,13 @@ public class StorageService extends AbstractVeniceService {
 
     if (remainingPartitions.isEmpty() && removeEmptyStorageEngine) {
       removeStorageEngine(kafkaTopic);
+    }
+    return true;
+  }
+
+  void removeStoragePartition(String kafkaTopic, int partition) {
+    for (StorageEngineFactory factory: persistenceTypeToStorageEngineFactoryMap.values()) {
+      factory.removeStorageEnginePartition(kafkaTopic, partition);
     }
   }
 
@@ -397,7 +407,7 @@ public class StorageService extends AbstractVeniceService {
   public synchronized void removeStorageEngine(String kafkaTopic) {
     AbstractStorageEngine<?> storageEngine = getStorageEngineRepository().removeLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
-      LOGGER.warn("Storage engine {} does not exist, trying to reopen storage for .", kafkaTopic);
+      LOGGER.warn("Storage engine {} does not exist, ignoring remove request.", kafkaTopic);
       return;
     }
     storageEngine.drop();

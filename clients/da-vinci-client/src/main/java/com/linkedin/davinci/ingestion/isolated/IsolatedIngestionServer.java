@@ -715,6 +715,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
      * automatically open the metadata partitions. Also, during Da Vinci bootstrap, main process will need to open the
      * metadata partition of storage engines in order to perform full cleanup of stale versions.
      */
+    boolean isDaVinciClient = veniceMetadataRepositoryBuilder.isDaVinciClient();
+
     storageService = new StorageService(
         configLoader,
         storageEngineStats,
@@ -722,7 +724,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         storeVersionStateSerializer,
         partitionStateSerializer,
         storeRepository,
-        true,
+        false,
         true);
     storageService.start();
 
@@ -738,7 +740,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     StorageEngineBackedCompressorFactory compressorFactory =
         new StorageEngineBackedCompressorFactory(storageMetadataService);
 
-    boolean isDaVinciClient = veniceMetadataRepositoryBuilder.isDaVinciClient();
     PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
 
     // Create KafkaStoreIngestionService
