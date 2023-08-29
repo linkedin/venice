@@ -92,6 +92,8 @@ public class TestSystemStoreHealthCheckService {
     String testStore1 = "test_store_1";
     Store userStore1 = mock(Store.class);
     when(userStore1.getName()).thenReturn(testStore1);
+    when(userStore1.isStoreMetaSystemStoreEnabled()).thenReturn(true);
+    when(userStore1.isDaVinciPushStatusStoreEnabled()).thenReturn(true);
     Store metaStore1 = mock(Store.class);
     when(metaStore1.getName()).thenReturn(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore1));
     when(metaStore1.getCurrentVersion()).thenReturn(0);
@@ -103,6 +105,8 @@ public class TestSystemStoreHealthCheckService {
     String testStore2 = "test_store_2";
     Store userStore2 = mock(Store.class);
     when(userStore2.getName()).thenReturn(testStore2);
+    when(userStore2.isStoreMetaSystemStoreEnabled()).thenReturn(true);
+    when(userStore2.isDaVinciPushStatusStoreEnabled()).thenReturn(true);
     Store metaStore2 = mock(Store.class);
     when(metaStore2.getName()).thenReturn(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore2));
     when(metaStore2.getCurrentVersion()).thenReturn(1);
@@ -110,6 +114,12 @@ public class TestSystemStoreHealthCheckService {
     when(pushStatusStore2.getName())
         .thenReturn(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore2));
     when(pushStatusStore2.getCurrentVersion()).thenReturn(0);
+
+    String testStore3 = "test_store_3";
+    Store userStore3 = mock(Store.class);
+    when(userStore3.getName()).thenReturn(testStore3);
+    when(userStore3.isStoreMetaSystemStoreEnabled()).thenReturn(false);
+    when(userStore3.isDaVinciPushStatusStoreEnabled()).thenReturn(false);
 
     when(storeRepository.getAllStores())
         .thenReturn(Arrays.asList(metaStore1, pushStatusStore1, userStore1, metaStore2, pushStatusStore2, userStore2));
@@ -119,26 +129,31 @@ public class TestSystemStoreHealthCheckService {
     when(systemStoreHealthCheckService.getMetaStoreWriter()).thenReturn(metaStoreWriter);
     when(systemStoreHealthCheckService.getPushStatusStoreWriter()).thenReturn(pushStatusStoreWriter);
     when(systemStoreHealthCheckService.getStoreRepository()).thenReturn(storeRepository);
-    doCallRealMethod().when(systemStoreHealthCheckService).sendHeartbeatToSystemStores(anySet(), anyMap());
+    doCallRealMethod().when(systemStoreHealthCheckService).checkAndSendHeartbeatToSystemStores(anySet(), anyMap());
     when(systemStoreHealthCheckService.getIsRunning()).thenReturn(isRunning);
 
     Set<String> newUnhealthySystemStoreSet = new HashSet<>();
     Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
 
     systemStoreHealthCheckService
-        .sendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+        .checkAndSendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
     Assert.assertTrue(newUnhealthySystemStoreSet.isEmpty());
     Assert.assertTrue(systemStoreToHeartbeatTimestampMap.isEmpty());
 
     isRunning.set(true);
     systemStoreHealthCheckService
-        .sendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
-    Assert.assertEquals(newUnhealthySystemStoreSet.size(), 2);
+        .checkAndSendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+    Assert.assertEquals(newUnhealthySystemStoreSet.size(), 4);
     Assert.assertTrue(
         newUnhealthySystemStoreSet.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore1)));
     Assert.assertTrue(
         newUnhealthySystemStoreSet
             .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore2)));
+    Assert.assertTrue(
+        newUnhealthySystemStoreSet.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore3)));
+    Assert.assertTrue(
+        newUnhealthySystemStoreSet
+            .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore3)));
 
     Assert.assertEquals(systemStoreToHeartbeatTimestampMap.size(), 2);
     Assert.assertNotNull(

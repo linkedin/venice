@@ -110,7 +110,7 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
       }
       Set<String> newUnhealthySystemStoreSet = new HashSet<>();
       Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
-      sendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+      checkAndSendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
       try {
         // Sleep for enough time for system store to consume heartbeat messages.
         Thread.sleep(60000);
@@ -130,17 +130,27 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
     }
   }
 
-  void sendHeartbeatToSystemStores(
+  void checkAndSendHeartbeatToSystemStores(
       Set<String> newUnhealthySystemStoreSet,
       Map<String, Long> systemStoreToHeartbeatTimestampMap) {
     for (Store store: getStoreRepository().getAllStores()) {
       if (!getIsRunning().get()) {
         return;
       }
+      // For user store, if corresponding system store flag is not true, it indicates system store is not created.
       if (!VeniceSystemStoreUtils.isUserSystemStore(store.getName())) {
+        if (!store.isDaVinciPushStatusStoreEnabled()) {
+          newUnhealthySystemStoreSet
+              .add(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName()));
+        }
+        if (!store.isStoreMetaSystemStoreEnabled()) {
+          newUnhealthySystemStoreSet.add(VeniceSystemStoreType.META_STORE.getSystemStoreName(store.getName()));
+        }
         continue;
       }
-      // It is also possible that the store is a new store and is being empty pushed.
+      /**
+       * System store does not have an online serving version.
+       */
       if (store.getCurrentVersion() == 0) {
         newUnhealthySystemStoreSet.add(store.getName());
         continue;
