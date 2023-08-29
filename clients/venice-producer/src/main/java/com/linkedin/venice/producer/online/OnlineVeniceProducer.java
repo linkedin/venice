@@ -48,6 +48,9 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
       VeniceProperties producerConfigs,
       MetricsRepository metricsRepository,
       ICProvider icProvider) {
+    this.storeName = storeClientConfig.getStoreName();
+    this.icProvider = icProvider;
+
     Duration schemaRefreshPeriod;
     if (producerConfigs.containsKey(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS)) {
       schemaRefreshPeriod =
@@ -56,28 +59,28 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
       schemaRefreshPeriod = storeClientConfig.getSchemaRefreshPeriod();
     }
 
-    AvroGenericStoreClient<K, V> tempStoreClient = ClientFactory.getAndStartAvroClient(storeClientConfig);
+    try {
+      AvroGenericStoreClient<K, V> tempStoreClient = ClientFactory.getAndStartAvroClient(storeClientConfig);
 
-    if (!(tempStoreClient instanceof InternalAvroStoreClient)) {
-      throw new IllegalStateException(
-          "Store client must be of type " + InternalAvroStoreClient.class.getCanonicalName() + ". Got "
-              + getClass().getCanonicalName());
-    }
+      if (!(tempStoreClient instanceof InternalAvroStoreClient)) {
+        throw new IllegalStateException(
+            "Store client must be of type " + InternalAvroStoreClient.class.getCanonicalName() + ". Got "
+                + getClass().getCanonicalName());
+      }
 
-    this.storeClient = (InternalAvroStoreClient<K, V>) tempStoreClient;
-    this.storeName = storeClient.getStoreName();
-    this.icProvider = icProvider;
+      this.storeClient = (InternalAvroStoreClient<K, V>) tempStoreClient;
 
-    ClientConfig clientConfigForSchemaReader =
-        ClientConfig.cloneConfig(storeClientConfig).setSchemaRefreshPeriod(schemaRefreshPeriod);
+      ClientConfig clientConfigForSchemaReader =
+          ClientConfig.cloneConfig(storeClientConfig).setSchemaRefreshPeriod(schemaRefreshPeriod);
 
-    this.schemaReader = ClientFactory.getSchemaReader(clientConfigForSchemaReader, icProvider);
-    ClientConfig<KafkaMessageEnvelope> kmeClientConfig = ClientConfig.cloneConfig(storeClientConfig)
-        .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
-        .setSpecificValueClass(KafkaMessageEnvelope.class);
+      this.schemaReader = ClientFactory.getSchemaReader(clientConfigForSchemaReader, icProvider);
+      ClientConfig<KafkaMessageEnvelope> kmeClientConfig = ClientConfig.cloneConfig(storeClientConfig)
+          .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
+          .setSpecificValueClass(KafkaMessageEnvelope.class);
 
-    try (SchemaReader kmeSchemaReader = ClientFactory.getSchemaReader(kmeClientConfig, icProvider)) {
-      configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
+      try (SchemaReader kmeSchemaReader = ClientFactory.getSchemaReader(kmeClientConfig, icProvider)) {
+        configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
+      }
     } catch (Throwable e) {
       // When using D2TransportClient, the threads that D2 creates are non-daemon threads which hold up graceful
       // termination of the "main" thread. This is especially problematic for the shell producer.
