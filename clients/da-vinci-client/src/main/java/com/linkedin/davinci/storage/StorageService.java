@@ -361,9 +361,8 @@ public class StorageService extends AbstractVeniceService {
    * @param storeConfig              config of the store version.
    * @param partition                partition ID to be dropped.
    * @param removeEmptyStorageEngine Whether to delete the storage engine when there is no remaining data partition.
-   * @return
    */
-  public synchronized boolean dropStorePartition(
+  public synchronized void dropStorePartition(
       VeniceStoreVersionConfig storeConfig,
       int partition,
       boolean removeEmptyStorageEngine) {
@@ -372,7 +371,7 @@ public class StorageService extends AbstractVeniceService {
     if (storageEngine == null) {
       LOGGER.warn("Storage engine {} does not exist, directly deleting DB files.", kafkaTopic);
       removeStoragePartition(kafkaTopic, partition);
-      return false;
+      return;
     }
     for (int subPartition: getSubPartition(kafkaTopic, partition)) {
       storageEngine.dropPartition(subPartition);
@@ -383,7 +382,6 @@ public class StorageService extends AbstractVeniceService {
     if (remainingPartitions.isEmpty() && removeEmptyStorageEngine) {
       removeStorageEngine(kafkaTopic);
     }
-    return true;
   }
 
   void removeStoragePartition(String kafkaTopic, int partition) {
