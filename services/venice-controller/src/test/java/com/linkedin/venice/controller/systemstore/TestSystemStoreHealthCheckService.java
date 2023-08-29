@@ -121,8 +121,8 @@ public class TestSystemStoreHealthCheckService {
     when(userStore3.isStoreMetaSystemStoreEnabled()).thenReturn(false);
     when(userStore3.isDaVinciPushStatusStoreEnabled()).thenReturn(false);
 
-    when(storeRepository.getAllStores())
-        .thenReturn(Arrays.asList(metaStore1, pushStatusStore1, userStore1, metaStore2, pushStatusStore2, userStore2));
+    when(storeRepository.getAllStores()).thenReturn(
+        Arrays.asList(metaStore1, pushStatusStore1, userStore1, metaStore2, pushStatusStore2, userStore2, userStore3));
     AtomicBoolean isRunning = new AtomicBoolean(false);
 
     SystemStoreHealthCheckService systemStoreHealthCheckService = mock(SystemStoreHealthCheckService.class);
