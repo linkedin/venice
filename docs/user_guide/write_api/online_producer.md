@@ -1,11 +1,11 @@
 ---
 layout: default
-title: Online Writer (Experimental)
+title: Online Producer (Experimental)
 parent: Write APIs
 grand_parent: User Guides
-permalink: /docs/user_guide/write_api/online_writer
+permalink: /docs/user_guide/write_api/online_producer
 ---
-# [Experimental] Online Writer
+# [Experimental] Online Producer
 The Online Producer enables online applications to write data to a Venice store directly. All writes are still
 asynchronous, and data is only eventually consistent. However, the APIs guarantee durability of the data if the
 operation is successful.
