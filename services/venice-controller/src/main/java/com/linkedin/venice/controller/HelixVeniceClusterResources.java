@@ -223,7 +223,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
           admin.getMetaStoreWriter(),
           admin.getPushStatusStoreReader().get(),
           admin.getPushStatusStoreWriter().get(),
-          config.getSystemStoreHealthCheckInterval());
+          config.getSystemStoreHealthCheckIntervalSeconds(),
+          config.getSystemStoreHealthCheckHeartbeatWaitTimeSeconds());
     } else {
       this.systemStoreHealthCheckService = null;
     }

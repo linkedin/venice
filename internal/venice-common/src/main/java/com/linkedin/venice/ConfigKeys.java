@@ -337,11 +337,24 @@ public class ConfigKeys {
   public static final String CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
       "controller.parent.external.superset.schema.generation.enabled";
 
+  /**
+   * Whether to check system store health in child controller. Default is false.
+   */
   public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED =
       "controller.system.store.health.check.enabled";
 
-  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL =
-      "controller.system.store.health.check.interval";
+  /**
+   * Frequency to run system store health check in child controller. Default is 1h.
+   */
+  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL_SECONDS =
+      "controller.system.store.health.check.interval.seconds";
+
+  /**
+   * The wait time before validating system store heartbeat during system store health check in child controller.
+   * Default is 1min.
+   */
+  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_HEARTBEAT_WAIT_TIME_SECONDS =
+      "controller.system.store.health.check.heartbeat.wait.time.seconds";
 
   /**
    * Whether to initialize system schemas when controller starts. Default is true.

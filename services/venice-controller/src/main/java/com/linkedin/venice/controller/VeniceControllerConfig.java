@@ -47,7 +47,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_HEARTBEAT_WAIT_TIME_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_ENABLED;
@@ -281,7 +282,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean systemStoreHealthCheckEnabled;
 
-  private final int systemStoreHealthCheckInterval;
+  private final int systemStoreHealthCheckIntervalSeconds;
+
+  private final int systemStoreHealthCheckHeartbeatWaitTimeSeconds;
 
   private final boolean parentExternalSupersetSchemaGenerationEnabled;
 
@@ -490,7 +493,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
     this.systemStoreHealthCheckEnabled = props.getBoolean(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED, false);
-    this.systemStoreHealthCheckInterval = props.getInt(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL, 3600);
+    this.systemStoreHealthCheckIntervalSeconds =
+        props.getInt(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL_SECONDS, 3600);
+    this.systemStoreHealthCheckHeartbeatWaitTimeSeconds =
+        props.getInt(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_HEARTBEAT_WAIT_TIME_SECONDS, 60);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     this.parentExternalSupersetSchemaGenerationEnabled =
@@ -925,8 +931,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return systemStoreHealthCheckEnabled;
   }
 
-  public int getSystemStoreHealthCheckInterval() {
-    return systemStoreHealthCheckInterval;
+  public int getSystemStoreHealthCheckIntervalSeconds() {
+    return systemStoreHealthCheckIntervalSeconds;
+  }
+
+  public int getSystemStoreHealthCheckHeartbeatWaitTimeSeconds() {
+    return systemStoreHealthCheckHeartbeatWaitTimeSeconds;
   }
 
   public boolean isParentExternalSupersetSchemaGenerationEnabled() {

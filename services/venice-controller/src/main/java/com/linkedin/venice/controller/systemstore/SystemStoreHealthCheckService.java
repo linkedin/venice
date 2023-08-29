@@ -45,6 +45,7 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
   private final MetaStoreWriter metaStoreWriter;
 
   private final int checkPeriodInSeconds;
+  private final int heartbeatWaitTimeSeconds;
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private final AtomicReference<Set<String>> unhealthySystemStoreSet = new AtomicReference<>();
   private final SystemStoreCheckStats systemStoreCheckStats;
@@ -57,13 +58,15 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
       MetaStoreWriter metaStoreWriter,
       PushStatusStoreReader pushStatusStoreReader,
       PushStatusStoreWriter pushStatusStoreWriter,
-      int systemStoreCheckPeriodInSeconds) {
+      int systemStoreCheckPeriodInSeconds,
+      int systemStoreHealthCheckHeartbeatWaitTimeSeconds) {
     this.storeRepository = storeRepository;
     this.metaStoreWriter = metaStoreWriter;
     this.metaStoreReader = metaStoreReader;
     this.pushStatusStoreWriter = pushStatusStoreWriter;
     this.pushStatusStoreReader = pushStatusStoreReader;
     this.checkPeriodInSeconds = systemStoreCheckPeriodInSeconds;
+    this.heartbeatWaitTimeSeconds = systemStoreHealthCheckHeartbeatWaitTimeSeconds;
     this.unhealthySystemStoreSet.set(new HashSet<>());
     this.systemStoreCheckStats = systemStoreCheckStats;
   }
@@ -113,7 +116,7 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
       checkAndSendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
       try {
         // Sleep for enough time for system store to consume heartbeat messages.
-        Thread.sleep(60000);
+        Thread.sleep(TimeUnit.SECONDS.toMillis(heartbeatWaitTimeSeconds));
       } catch (InterruptedException e) {
         LOGGER.info("Caught interrupted exception, will exit now.");
         return;
@@ -123,10 +126,15 @@ public class SystemStoreHealthCheckService extends AbstractVeniceService {
       if (!getIsRunning().get()) {
         return;
       }
-      LOGGER.info("Collected unhealthy system stores: {}", newUnhealthySystemStoreSet.toString());
       // Update the unhealthy system store set.
       unhealthySystemStoreSet.set(newUnhealthySystemStoreSet);
-      systemStoreCheckStats.recordBadSystemStoreCount(newUnhealthySystemStoreSet.size());
+      long badMetaSystemStoreCount = newUnhealthySystemStoreSet.stream()
+          .filter(x -> VeniceSystemStoreType.getSystemStoreType(x).equals(VeniceSystemStoreType.META_STORE))
+          .count();
+      systemStoreCheckStats.recordBadMetaSystemStoreCount(badMetaSystemStoreCount);
+      systemStoreCheckStats
+          .recordBadPushStatusSystemStoreCount(newUnhealthySystemStoreSet.size() - badMetaSystemStoreCount);
+      LOGGER.info("Collected unhealthy system stores: {}", newUnhealthySystemStoreSet.toString());
     }
   }
 
