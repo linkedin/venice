@@ -61,8 +61,7 @@ value schema:
 
 Let's create a venice store:
 ```
-./create_store.sh http://venice-controller:5555 venice-cluster0 test-store
-sample-data/schema/keySchema.avsc sample-data/schema/valueSchema.avsc
+./create_store.sh http://venice-controller:5555 venice-cluster0 test-store sample-data/schema/keySchema.avsc sample-data/schema/valueSchema.avsc
 ```
 
 #### Step 6: Push data to the store
