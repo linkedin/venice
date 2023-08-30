@@ -348,6 +348,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     }
     File dbDir;
 
+    // partitionId -1 means removes all partitions in the DB path.
     if (partitionId == -1) {
       dbDir = new File(rocksDBPath, storeName);
     } else {
