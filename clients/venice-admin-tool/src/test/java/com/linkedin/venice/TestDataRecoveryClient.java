@@ -24,6 +24,7 @@ import com.linkedin.venice.datarecovery.DataRecoveryTask;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.MonitorCommand;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
+import com.linkedin.venice.datarecovery.meta.RepushViabilityInfo;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.StoreInfo;
@@ -488,5 +489,18 @@ public class TestDataRecoveryClient {
       Assert.assertFalse(storeNames.contains(monitor.getTasks().get(i).getTaskParams().getStore()));
       storeNames.add(monitor.getTasks().get(i).getTaskParams().getStore());
     }
+  }
+
+  @Test
+  public void TestDataStructure() {
+    RepushViabilityInfo info = new RepushViabilityInfo();
+    info.viableWithResult(RepushViabilityInfo.Result.SUCCESS);
+    Assert.assertFalse(info.isError());
+
+    info.inViableWithResult(RepushViabilityInfo.Result.NO_CURRENT_VERSION);
+    Assert.assertFalse(info.isError());
+
+    info.inViableWithError(RepushViabilityInfo.Result.DISCOVERY_ERROR);
+    Assert.assertTrue(info.isError());
   }
 }
