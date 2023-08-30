@@ -412,17 +412,19 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   @Override
   public void close() throws IOException {
     closed = true;
-    producerExecutor.shutdownNow();
-    try {
-      producerExecutor.awaitTermination(60, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
+    if (producerExecutor != null) {
+      producerExecutor.shutdownNow();
+      try {
+        producerExecutor.awaitTermination(60, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Caught InterruptedException while closing the Venice producer ExecutorService", e);
+      }
     }
 
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
   }
 
-  public boolean isClosed() {
+  protected boolean isClosed() {
     return closed;
   }
 }

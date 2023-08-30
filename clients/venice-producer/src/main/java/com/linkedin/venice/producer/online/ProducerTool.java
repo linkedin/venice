@@ -14,6 +14,7 @@ import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.ByteArrayInputStream;
@@ -184,6 +185,9 @@ public class ProducerTool {
 
       producer.asyncPut(key, value).get();
       System.out.println("Data written to Venice!");
+    } catch (Exception e) {
+      System.err.println(ExceptionUtils.stackTraceToString(e));
+      System.exit(1);
     }
   }
 
