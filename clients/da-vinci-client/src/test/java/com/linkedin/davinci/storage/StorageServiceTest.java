@@ -1,6 +1,9 @@
 package com.linkedin.davinci.storage;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -36,6 +39,5 @@ public class StorageServiceTest {
 
     StorageService.deleteStorageEngineOnRocksDBError(storageEngineName, storeRepository, factory);
     verify(factory, times(2)).removeStorageEngine(storageEngineName);
-
   }
 }
