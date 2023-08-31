@@ -40,24 +40,26 @@ public class TestSystemStoreRepairTask {
     heartbeatResponse.setHeartbeatTimestamp(10L);
     when(client.getHeartbeatFromSystemStore(metaStoreName)).thenReturn(heartbeatResponse);
     when(client.getHeartbeatFromSystemStore(pushStatusStoreName)).thenReturn(heartbeatResponse);
-    when(systemStoreRepairTask.isSystemStoreIngesting(anyString(), anyString(), anyLong())).thenCallRealMethod();
+    when(systemStoreRepairTask.isHeartbeatReceivedBySystemStore(anyString(), anyString(), anyLong()))
+        .thenCallRealMethod();
     when(systemStoreRepairTask.getControllerClientMap(clusterName))
         .thenReturn(Collections.singletonMap(region, client));
 
     // Eventually should succeed.
-    Assert.assertTrue(systemStoreRepairTask.isSystemStoreIngesting(clusterName, metaStoreName, 10L));
+    Assert.assertTrue(systemStoreRepairTask.isHeartbeatReceivedBySystemStore(clusterName, metaStoreName, 10L));
     // Eventually should fail.
-    Assert.assertFalse(systemStoreRepairTask.isSystemStoreIngesting(clusterName, metaStoreName, 11L));
+    Assert.assertFalse(systemStoreRepairTask.isHeartbeatReceivedBySystemStore(clusterName, metaStoreName, 11L));
 
-    Assert.assertTrue(systemStoreRepairTask.isSystemStoreIngesting(clusterName, pushStatusStoreName, 10L));
-    Assert.assertFalse(systemStoreRepairTask.isSystemStoreIngesting(clusterName, pushStatusStoreName, 11L));
+    Assert.assertTrue(systemStoreRepairTask.isHeartbeatReceivedBySystemStore(clusterName, pushStatusStoreName, 10L));
+    Assert.assertFalse(systemStoreRepairTask.isHeartbeatReceivedBySystemStore(clusterName, pushStatusStoreName, 11L));
   }
 
   @Test
   void testCheckSystemStoreHeartbeat() {
     AtomicBoolean isRunning = new AtomicBoolean(false);
     SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
-    when(systemStoreRepairTask.isSystemStoreIngesting(anyString(), anyString(), anyLong())).thenReturn(true, false);
+    when(systemStoreRepairTask.isHeartbeatReceivedBySystemStore(anyString(), anyString(), anyLong()))
+        .thenReturn(true, false);
     when(systemStoreRepairTask.getIsRunning()).thenReturn(isRunning);
     String clusterName = "venice";
     Set<String> newUnhealthySystemStoreSet = new HashSet<>();
@@ -66,22 +68,22 @@ public class TestSystemStoreRepairTask {
     systemStoreToHeartbeatTimestampMap
         .put(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("test_store"), 1L);
     doCallRealMethod().when(systemStoreRepairTask)
-        .checkSystemStoreHeartbeat(clusterName, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+        .checkHeartbeatFromSystemStores(clusterName, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
 
     when(systemStoreRepairTask.shouldContinue(anyString())).thenReturn(false);
     systemStoreRepairTask
-        .checkSystemStoreHeartbeat(clusterName, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+        .checkHeartbeatFromSystemStores(clusterName, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
     Assert.assertTrue(newUnhealthySystemStoreSet.isEmpty());
-    verify(systemStoreRepairTask, times(0)).isSystemStoreIngesting(anyString(), anyString(), anyLong());
+    verify(systemStoreRepairTask, times(0)).isHeartbeatReceivedBySystemStore(anyString(), anyString(), anyLong());
     isRunning.set(true);
     when(systemStoreRepairTask.shouldContinue(anyString())).thenReturn(true);
     systemStoreRepairTask
-        .checkSystemStoreHeartbeat(clusterName, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+        .checkHeartbeatFromSystemStores(clusterName, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
     Assert.assertEquals(newUnhealthySystemStoreSet.size(), 1);
     Assert.assertTrue(
         newUnhealthySystemStoreSet
             .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("test_store")));
-    verify(systemStoreRepairTask, times(2)).isSystemStoreIngesting(anyString(), anyString(), anyLong());
+    verify(systemStoreRepairTask, times(2)).isHeartbeatReceivedBySystemStore(anyString(), anyString(), anyLong());
 
   }
 

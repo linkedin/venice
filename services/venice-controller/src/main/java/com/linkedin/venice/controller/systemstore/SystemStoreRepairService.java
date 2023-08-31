@@ -15,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 
 public class SystemStoreRepairService extends AbstractVeniceService {
   public static final Logger LOGGER = LogManager.getLogger(SystemStoreRepairService.class);
-  private final int repairTaskIntervalInSeconds;
+  private final int repairTaskIntervalInHours;
   private final VeniceParentHelixAdmin parentAdmin;
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private final AtomicLong badMetaStoreCount = new AtomicLong(0);
@@ -27,11 +27,11 @@ public class SystemStoreRepairService extends AbstractVeniceService {
 
   public SystemStoreRepairService(
       VeniceParentHelixAdmin parentAdmin,
-      int repairTaskIntervalInSeconds,
+      int repairTaskIntervalInHours,
       int maxRepairRetry,
       int heartbeatWaitTimeSeconds) {
     this.parentAdmin = parentAdmin;
-    this.repairTaskIntervalInSeconds = repairTaskIntervalInSeconds;
+    this.repairTaskIntervalInHours = repairTaskIntervalInHours;
     this.heartbeatWaitTimeSeconds = heartbeatWaitTimeSeconds;
     this.maxRepairRetry = maxRepairRetry;
     /*
@@ -47,9 +47,9 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     isRunning.set(true);
     checkServiceExecutor.scheduleWithFixedDelay(
         new SystemStoreRepairTask(parentAdmin, maxRepairRetry, heartbeatWaitTimeSeconds, isRunning),
-        repairTaskIntervalInSeconds,
-        repairTaskIntervalInSeconds,
-        TimeUnit.SECONDS);
+        repairTaskIntervalInHours,
+        repairTaskIntervalInHours,
+        TimeUnit.HOURS);
     LOGGER.info("SystemStoreRepairService is started.");
     return true;
   }

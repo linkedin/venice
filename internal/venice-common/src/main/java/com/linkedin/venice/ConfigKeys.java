@@ -340,13 +340,13 @@ public class ConfigKeys {
   /**
    * Whether to check system store health in child controller. Default is false.
    */
-  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED =
-      "controller.system.store.health.check.enabled";
+  public static final String CONTROLLER_SYSTEM_STORE_REPAIR_SERVICE_ENABLED =
+      "controller.system.store.repair.service.enabled";
 
   /**
    * Frequency to run system store health check in child controller. Default is 1h.
    */
-  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL_SECONDS =
+  public static final String CONTROLLER_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_HOURS =
       "controller.system.store.health.check.interval.seconds";
 
   /**

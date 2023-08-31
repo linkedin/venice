@@ -513,8 +513,8 @@ public class VeniceParentHelixAdmin implements Admin {
     if (multiClusterConfigs.getCommonConfig().isSystemStoreHealthCheckEnabled()) {
       this.systemStoreRepairService = new SystemStoreRepairService(
           this,
-          multiClusterConfigs.getCommonConfig().getSystemStoreHealthCheckIntervalSeconds(),
-          3,
+          multiClusterConfigs.getCommonConfig().getSystemStoreRepairCheckIntervalHours(),
+          1, // Set it to 1 for now. It could also be controlled by a config if necessary.
           multiClusterConfigs.getCommonConfig().getSystemStoreHealthCheckHeartbeatWaitTimeSeconds());
       this.systemStoreRepairService.startInner();
     } else {
