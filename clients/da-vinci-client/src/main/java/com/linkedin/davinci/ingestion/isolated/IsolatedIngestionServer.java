@@ -11,6 +11,7 @@ import static java.lang.Thread.currentThread;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.DefaultIngestionBackend;
@@ -27,6 +28,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.d2.D2ClientFactory;
@@ -152,6 +154,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private DefaultIngestionBackend ingestionBackend;
   private final RemoteIngestionRepairService repairService;
 
+  private final VeniceServerConfig serverConfig;
+
   public IsolatedIngestionServer(String configPath) throws FileNotFoundException {
     VeniceProperties loadedVeniceProperties = IsolatedIngestionUtils.loadVenicePropertiesFromFile(configPath);
     String configBasePath =
@@ -160,7 +164,9 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     Map<String, Map<String, String>> kafkaClusterMap =
         IsolatedIngestionUtils.loadForkedIngestionKafkaClusterMapConfig(configBasePath);
     this.configLoader = new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties, kafkaClusterMap);
-    this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
+    this.serverConfig = configLoader.getVeniceServerConfig();
+
+    this.servicePort = serverConfig.getIngestionServicePort();
     this.connectionTimeoutMs =
         configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, 180)
             * Time.MS_PER_SECOND;
@@ -669,9 +675,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
 
     // Create RocksDBMemoryStats.
-    boolean plainTableEnabled =
-        configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
-    RocksDBMemoryStats rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled()
+    boolean plainTableEnabled = serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled();
+    RocksDBMemoryStats rocksDBMemoryStats = serverConfig.isDatabaseMemoryStatsEnabled()
         ? new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled)
         : null;
 
@@ -703,7 +708,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(
         metricsRepository,
         storeRepository,
-        configLoader.getVeniceServerConfig().isUnregisterMetricForDeletedStoreEnabled());
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
     /**
      * The reason of not to restore the data partitions during initialization of storage service is:
      * 1. During first fresh start up with no data on disk, we don't need to restore anything
@@ -740,7 +745,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     StorageEngineBackedCompressorFactory compressorFactory =
         new StorageEngineBackedCompressorFactory(storageMetadataService);
 
-    PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
+    PubSubClientsFactory pubSubClientsFactory = serverConfig.getPubSubClientsFactory();
 
     // Create KafkaStoreIngestionService
     storeIngestionService = new KafkaStoreIngestionService(
@@ -769,9 +774,17 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     storeIngestionService.addIngestionNotifier(new IsolatedIngestionNotifier(this));
     ingestionBackend = new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService);
 
-    LOGGER.info(
-        "Starting report client with target application port: {}",
-        configLoader.getVeniceServerConfig().getIngestionApplicationPort());
+    if (serverConfig.isLeakedResourceCleanupEnabled()) {
+      LeakedResourceCleaner leakedResourceCleaner = new LeakedResourceCleaner(
+          storageService.getStorageEngineRepository(),
+          serverConfig.getLeakedResourceCleanUpIntervalInMS(),
+          storeRepository,
+          storeIngestionService,
+          storageService,
+          metricsRepository);
+      leakedResourceCleaner.start();
+    }
+    LOGGER.info("Starting report client with target application port: {}", serverConfig.getIngestionApplicationPort());
     // Create Netty client to report ingestion status back to main process.
     reportClient = new IsolatedIngestionRequestClient(configLoader);
     // Create Netty client to report metrics update back to main process.
