@@ -68,6 +68,7 @@ import org.apache.logging.log4j.Logger;
  * @see AggKafkaConsumerService which wraps one instance of this class per Kafka cluster.
  */
 public abstract class KafkaConsumerService extends AbstractVeniceService {
+  private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
@@ -277,11 +278,9 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   @Override
   public void stopInner() throws Exception {
     consumerToConsumptionTask.values().forEach(ConsumptionTask::stop);
-
-    int timeOutInSeconds = 1;
-    long gracefulShutdownBeginningTime = System.currentTimeMillis();
-    boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(timeOutInSeconds, TimeUnit.SECONDS);
-    long gracefulShutdownDuration = System.currentTimeMillis() - gracefulShutdownBeginningTime;
+    long beginningTime = System.currentTimeMillis();
+    boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(SHUTDOWN_TIMEOUT_IN_SECOND, TimeUnit.SECONDS);
+    long gracefulShutdownDuration = System.currentTimeMillis() - beginningTime;
     if (gracefulShutdownSuccess) {
       LOGGER.info("consumerExecutor terminated gracefully in {} ms.", gracefulShutdownDuration);
     } else {
@@ -290,7 +289,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
           gracefulShutdownDuration);
       long forcefulShutdownBeginningTime = System.currentTimeMillis();
       consumerExecutor.shutdownNow();
-      boolean forcefulShutdownSuccess = consumerExecutor.awaitTermination(timeOutInSeconds, TimeUnit.SECONDS);
+      boolean forcefulShutdownSuccess = consumerExecutor.awaitTermination(SHUTDOWN_TIMEOUT_IN_SECOND, TimeUnit.SECONDS);
       long forcefulShutdownDuration = System.currentTimeMillis() - forcefulShutdownBeginningTime;
       if (forcefulShutdownSuccess) {
         LOGGER.info("consumerExecutor terminated forcefully in {} ms.", forcefulShutdownDuration);
@@ -300,8 +299,9 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
             forcefulShutdownDuration);
       }
     }
-
+    beginningTime = System.currentTimeMillis();
     consumerToConsumptionTask.keySet().forEach(SharedKafkaConsumer::close);
+    LOGGER.info("SharedKafkaConsumer closed in {} ms.", System.currentTimeMillis() - beginningTime);
   }
 
   public boolean hasAnySubscriptionFor(PubSubTopic versionTopic) {
