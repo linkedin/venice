@@ -492,15 +492,33 @@ public class TestDataRecoveryClient {
   }
 
   @Test
-  public void testDataStructure() {
+  public void testRepushViabilityInfo() {
     RepushViabilityInfo info = new RepushViabilityInfo();
     info.viableWithResult(RepushViabilityInfo.Result.SUCCESS);
     Assert.assertFalse(info.isError());
 
-    info.inViableWithResult(RepushViabilityInfo.Result.NO_CURRENT_VERSION);
+    info.inViableWithResult(RepushViabilityInfo.Result.CURRENT_VERSION_IS_NEWER);
     Assert.assertFalse(info.isError());
 
     info.inViableWithError(RepushViabilityInfo.Result.DISCOVERY_ERROR);
     Assert.assertTrue(info.isError());
   }
+
+  @Test
+  public void testRepushCommandExecute() {
+    StoreRepushCommand repushCommand = spy(StoreRepushCommand.class);
+    RepushViabilityInfo info = new RepushViabilityInfo();
+    info.inViableWithResult(RepushViabilityInfo.Result.CURRENT_VERSION_IS_NEWER);
+    StoreRepushCommand.Params repushParams = new StoreRepushCommand.Params();
+    doReturn(info).when(repushCommand).getRepushViability();
+    doReturn(repushParams).when(repushCommand).getParams();
+
+    repushCommand.execute();
+    Assert.assertFalse(repushCommand.getResult().isError());
+
+    info.inViableWithError(RepushViabilityInfo.Result.DISCOVERY_ERROR);
+    repushCommand.execute();
+    Assert.assertTrue(repushCommand.getResult().isError());
+  }
+
 }
