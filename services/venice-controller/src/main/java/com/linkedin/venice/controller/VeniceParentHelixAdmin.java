@@ -510,7 +510,7 @@ public class VeniceParentHelixAdmin implements Admin {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
-    if (multiClusterConfigs.getCommonConfig().isSystemStoreHealthCheckEnabled()) {
+    if (multiClusterConfigs.getCommonConfig().isSystemStoreRepairServiceEnabled()) {
       this.systemStoreRepairService = new SystemStoreRepairService(
           this,
           multiClusterConfigs.getCommonConfig().getSystemStoreRepairCheckIntervalHours(),
