@@ -123,6 +123,7 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -295,6 +296,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final SystemStoreAclSynchronizationTask systemStoreAclSynchronizationTask;
   private final UserSystemStoreLifeCycleHelper systemStoreLifeCycleHelper;
   private final WriteComputeSchemaConverter writeComputeSchemaConverter;
+  private final SystemStoreRepairService systemStoreRepairService;
 
   private Time timer = new SystemTime();
   private Optional<SSLFactory> sslFactory = Optional.empty();
@@ -507,6 +509,16 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
+    }
+    if (multiClusterConfigs.getCommonConfig().isSystemStoreHealthCheckEnabled()) {
+      this.systemStoreRepairService = new SystemStoreRepairService(
+          this,
+          multiClusterConfigs.getCommonConfig().getSystemStoreHealthCheckIntervalSeconds(),
+          3,
+          multiClusterConfigs.getCommonConfig().getSystemStoreHealthCheckHeartbeatWaitTimeSeconds());
+      this.systemStoreRepairService.startInner();
+    } else {
+      this.systemStoreRepairService = null;
     }
   }
 
@@ -4056,6 +4068,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public synchronized void close() {
     veniceWriterMap.keySet().forEach(this::stop);
+
     getVeniceHelixAdmin().close();
     terminalStateTopicChecker.close();
     if (systemStoreAclSynchronizationTask != null) {
@@ -4074,6 +4087,9 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+    }
+    if (systemStoreRepairService != null) {
+      systemStoreRepairService.stopInner();
     }
     newFabricControllerClientMap.forEach(
         (clusterName, controllerClientMap) -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
@@ -4769,8 +4785,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getClustersLeaderOf();
   }
 
-  // Function that can be overridden in tests
-  VeniceHelixAdmin getVeniceHelixAdmin() {
+  public VeniceHelixAdmin getVeniceHelixAdmin() {
     return veniceHelixAdmin;
   }
 
@@ -5218,5 +5233,15 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Optional<PushStatusStoreWriter> getPushStatusStoreWriter() {
     throw new VeniceUnsupportedOperationException("Parent controller does not have Da Vinci push status store writer");
+  }
+
+  @Override
+  public void sendHeartbeatToSystemStore(String clusterName, String systemStoreName, long heartbeatTimestamp) {
+    throw new VeniceUnsupportedOperationException("sendHeartbeatToSystemStore");
+  }
+
+  @Override
+  public long getHeartbeatFromSystemStore(String clusterName, String storeName) {
+    throw new VeniceUnsupportedOperationException("getHeartbeatFromSystemStore");
   }
 }

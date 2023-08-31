@@ -29,6 +29,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
@@ -208,6 +209,10 @@ public enum ControllerRoute {
       "/send_push_job_details", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION), PUSH_JOB_DETAILS
   ),
 
+  SEND_HEARTBEAT_TIMESTAMP("/send_heartbeat_timestamp", HttpMethod.POST, Arrays.asList(NAME, HEARTBEAT_TIMESTAMP)),
+
+  GET_HEARTBEAT_TIMESTAMP("/send_heartbeat_timestamp", HttpMethod.GET, Collections.singletonList(NAME)),
+
   ADD_VERSION("/add_version", HttpMethod.POST, Arrays.asList(NAME, PUSH_JOB_ID, VERSION, PARTITION_COUNT)),
   FUTURE_VERSION("/list_future_versions", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
   SET_TOPIC_COMPACTION("/set_topic_compaction", HttpMethod.POST, Arrays.asList(TOPIC, TOPIC_COMPACTION_POLICY)),
@@ -225,7 +230,7 @@ public enum ControllerRoute {
   ),
   GET_ONGOING_INCREMENTAL_PUSH_VERSIONS(
       "/get_ongoing_incremental_push_versions", HttpMethod.GET, Collections.singletonList(TOPIC)
-  ), GET_REPUSH_INFO("/get_repush_info", HttpMethod.GET, Arrays.asList(NAME), FABRIC),
+  ), GET_REPUSH_INFO("/get_repush_info", HttpMethod.GET, Collections.singletonList(NAME), FABRIC),
   WIPE_CLUSTER("/wipe_cluster", HttpMethod.POST, Arrays.asList(CLUSTER, FABRIC), NAME, VERSION),
   COMPARE_STORE("/compare_store", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, FABRIC_A, FABRIC_B)),
   REPLICATE_META_DATA(
@@ -255,7 +260,7 @@ public enum ControllerRoute {
   LIST_STORE_PUSH_INFO("/list_store_push_info", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)),
   GET_REGION_PUSH_DETAILS(
       "/get_region_push_details", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)
-  ), GET_KAFKA_TOPIC_CONFIGS("/get_kafka_topic_configs", HttpMethod.GET, Arrays.asList(TOPIC)),
+  ), GET_KAFKA_TOPIC_CONFIGS("/get_kafka_topic_configs", HttpMethod.GET, Collections.singletonList(TOPIC)),
   UPDATE_KAFKA_TOPIC_LOG_COMPACTION(
       "/update_kafka_topic_log_compaction", HttpMethod.POST, Arrays.asList(TOPIC, KAFKA_TOPIC_LOG_COMPACTION_ENABLED)
   ),

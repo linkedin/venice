@@ -45,6 +45,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_TOPIC_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
@@ -59,6 +60,7 @@ import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.HeartbeatResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -1011,6 +1013,63 @@ public class StoresRoutes extends AbstractRoute {
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         admin.removeStoreFromGraveyard(clusterName, storeName);
+      } catch (ResourceStillExistsException exception) {
+        responseObject.setError(exception);
+        AdminSparkServer.handleError(exception, request, response, false);
+      } catch (Throwable throwable) {
+        responseObject.setError(throwable);
+        AdminSparkServer.handleError(new VeniceException(throwable), request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route sendHeartbeatToSystemStore(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        if (!isAllowListUser(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+        }
+        AdminSparkServer.validateParams(request, SEND_HEARTBEAT_TIMESTAMP.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        // admin.sendHeartbeatToSystemStore(clusterName, storeName);
+      } catch (ResourceStillExistsException exception) {
+        responseObject.setError(exception);
+        AdminSparkServer.handleError(exception, request, response, false);
+      } catch (Throwable throwable) {
+        responseObject.setError(throwable);
+        AdminSparkServer.handleError(new VeniceException(throwable), request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route getHeartbeatFromSystemStore(Admin admin) {
+    return (request, response) -> {
+      HeartbeatResponse responseObject = new HeartbeatResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        if (!isAllowListUser(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+        }
+        AdminSparkServer.validateParams(request, SEND_HEARTBEAT_TIMESTAMP.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        // admin.sendHeartbeatToSystemStore(clusterName, storeName);
+        responseObject.setHeartbeatTimestamp(0);
       } catch (ResourceStillExistsException exception) {
         responseObject.setError(exception);
         AdminSparkServer.handleError(exception, request, response, false);

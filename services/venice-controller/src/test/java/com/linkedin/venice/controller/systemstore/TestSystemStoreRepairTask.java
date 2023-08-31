@@ -11,14 +11,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.HeartbeatResponse;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
-import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
-import com.linkedin.venice.system.store.MetaStoreReader;
-import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -27,68 +26,67 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestSystemStoreHealthCheckService {
+public class TestSystemStoreRepairTask {
   @Test
   public void testCheckHeartbeat() {
-    MetaStoreReader metaStoreReader = mock(MetaStoreReader.class);
-    PushStatusStoreReader pushStatusStoreReader = mock(PushStatusStoreReader.class);
-    SystemStoreHealthCheckService systemStoreHealthCheckService = mock(SystemStoreHealthCheckService.class);
-    when(systemStoreHealthCheckService.getMetaStoreReader()).thenReturn(metaStoreReader);
-    when(systemStoreHealthCheckService.getPushStatusStoreReader()).thenReturn(pushStatusStoreReader);
-    when(systemStoreHealthCheckService.isSystemStoreIngesting(anyString(), anyLong())).thenCallRealMethod();
-
-    when(pushStatusStoreReader.getHeartbeat(anyString(), anyString())).thenReturn(1L, 1L, 10L);
-    when(metaStoreReader.getHeartbeat(anyString())).thenReturn(1L, 1L, 10L);
+    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
+    ControllerClient client = mock(ControllerClient.class);
+    String clusterName = "venice";
+    String region = "region";
     String userStoreName = "testStore";
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(userStoreName);
-    // Eventually should succeed.
-    Assert.assertTrue(systemStoreHealthCheckService.isSystemStoreIngesting(metaStoreName, 10L));
-    // Eventually should fail.
-    Assert.assertFalse(systemStoreHealthCheckService.isSystemStoreIngesting(metaStoreName, 11L));
-
     String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName);
-    Assert.assertTrue(systemStoreHealthCheckService.isSystemStoreIngesting(pushStatusStoreName, 10L));
-    Assert.assertFalse(systemStoreHealthCheckService.isSystemStoreIngesting(pushStatusStoreName, 11L));
+    HeartbeatResponse heartbeatResponse = new HeartbeatResponse();
+    heartbeatResponse.setHeartbeatTimestamp(10L);
+    when(client.getHeartbeatFromSystemStore(metaStoreName)).thenReturn(heartbeatResponse);
+    when(client.getHeartbeatFromSystemStore(pushStatusStoreName)).thenReturn(heartbeatResponse);
+    when(systemStoreRepairTask.isSystemStoreIngesting(anyString(), anyString(), anyLong())).thenCallRealMethod();
+    when(systemStoreRepairTask.getControllerClientMap(clusterName))
+        .thenReturn(Collections.singletonMap(region, client));
 
+    // Eventually should succeed.
+    Assert.assertTrue(systemStoreRepairTask.isSystemStoreIngesting(clusterName, metaStoreName, 10L));
+    // Eventually should fail.
+    Assert.assertFalse(systemStoreRepairTask.isSystemStoreIngesting(clusterName, metaStoreName, 11L));
+
+    Assert.assertTrue(systemStoreRepairTask.isSystemStoreIngesting(clusterName, pushStatusStoreName, 10L));
+    Assert.assertFalse(systemStoreRepairTask.isSystemStoreIngesting(clusterName, pushStatusStoreName, 11L));
   }
 
   @Test
   void testCheckSystemStoreHeartbeat() {
     AtomicBoolean isRunning = new AtomicBoolean(false);
-    MetaStoreReader metaStoreReader = mock(MetaStoreReader.class);
-    PushStatusStoreReader pushStatusStoreReader = mock(PushStatusStoreReader.class);
-    SystemStoreHealthCheckService systemStoreHealthCheckService = mock(SystemStoreHealthCheckService.class);
-    when(systemStoreHealthCheckService.getMetaStoreReader()).thenReturn(metaStoreReader);
-    when(systemStoreHealthCheckService.getPushStatusStoreReader()).thenReturn(pushStatusStoreReader);
-    when(systemStoreHealthCheckService.isSystemStoreIngesting(anyString(), anyLong())).thenReturn(true, false);
-    when(systemStoreHealthCheckService.getIsRunning()).thenReturn(isRunning);
+    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
+    when(systemStoreRepairTask.isSystemStoreIngesting(anyString(), anyString(), anyLong())).thenReturn(true, false);
+    when(systemStoreRepairTask.getIsRunning()).thenReturn(isRunning);
+    String clusterName = "venice";
     Set<String> newUnhealthySystemStoreSet = new HashSet<>();
     Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
     systemStoreToHeartbeatTimestampMap.put(VeniceSystemStoreType.META_STORE.getSystemStoreName("test_store"), 1L);
     systemStoreToHeartbeatTimestampMap
         .put(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("test_store"), 1L);
-    doCallRealMethod().when(systemStoreHealthCheckService)
-        .checkSystemStoreHeartbeat(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
-    systemStoreHealthCheckService
-        .checkSystemStoreHeartbeat(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+    doCallRealMethod().when(systemStoreRepairTask)
+        .checkSystemStoreHeartbeat(clusterName, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+
+    when(systemStoreRepairTask.shouldContinue(anyString())).thenReturn(false);
+    systemStoreRepairTask
+        .checkSystemStoreHeartbeat(clusterName, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
     Assert.assertTrue(newUnhealthySystemStoreSet.isEmpty());
-    verify(systemStoreHealthCheckService, times(0)).isSystemStoreIngesting(anyString(), anyLong());
+    verify(systemStoreRepairTask, times(0)).isSystemStoreIngesting(anyString(), anyString(), anyLong());
     isRunning.set(true);
-    systemStoreHealthCheckService
-        .checkSystemStoreHeartbeat(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+    when(systemStoreRepairTask.shouldContinue(anyString())).thenReturn(true);
+    systemStoreRepairTask
+        .checkSystemStoreHeartbeat(clusterName, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
     Assert.assertEquals(newUnhealthySystemStoreSet.size(), 1);
     Assert.assertTrue(
         newUnhealthySystemStoreSet
             .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("test_store")));
-    verify(systemStoreHealthCheckService, times(2)).isSystemStoreIngesting(anyString(), anyLong());
+    verify(systemStoreRepairTask, times(2)).isSystemStoreIngesting(anyString(), anyString(), anyLong());
 
   }
 
   @Test
   public void testSendHeartbeat() {
-    MetaStoreWriter metaStoreWriter = mock(MetaStoreWriter.class);
-    PushStatusStoreWriter pushStatusStoreWriter = mock(PushStatusStoreWriter.class);
-    ReadWriteStoreRepository storeRepository = mock(ReadWriteStoreRepository.class);
     String testStore1 = "test_store_1";
     Store userStore1 = mock(Store.class);
     when(userStore1.getName()).thenReturn(testStore1);
@@ -121,28 +119,31 @@ public class TestSystemStoreHealthCheckService {
     when(userStore3.isStoreMetaSystemStoreEnabled()).thenReturn(false);
     when(userStore3.isDaVinciPushStatusStoreEnabled()).thenReturn(false);
 
-    when(storeRepository.getAllStores()).thenReturn(
+    String cluster = "venice";
+
+    VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    when(veniceParentHelixAdmin.getAllStores(cluster)).thenReturn(
         Arrays.asList(metaStore1, pushStatusStore1, userStore1, metaStore2, pushStatusStore2, userStore2, userStore3));
     AtomicBoolean isRunning = new AtomicBoolean(false);
 
-    SystemStoreHealthCheckService systemStoreHealthCheckService = mock(SystemStoreHealthCheckService.class);
-    when(systemStoreHealthCheckService.getMetaStoreWriter()).thenReturn(metaStoreWriter);
-    when(systemStoreHealthCheckService.getPushStatusStoreWriter()).thenReturn(pushStatusStoreWriter);
-    when(systemStoreHealthCheckService.getStoreRepository()).thenReturn(storeRepository);
-    doCallRealMethod().when(systemStoreHealthCheckService).checkAndSendHeartbeatToSystemStores(anySet(), anyMap());
-    when(systemStoreHealthCheckService.getIsRunning()).thenReturn(isRunning);
+    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
+    when(systemStoreRepairTask.getParentAdmin()).thenReturn(veniceParentHelixAdmin);
+    doCallRealMethod().when(systemStoreRepairTask).checkAndSendHeartbeatToSystemStores(anyString(), anySet(), anyMap());
+    when(systemStoreRepairTask.getIsRunning()).thenReturn(isRunning);
 
+    when(systemStoreRepairTask.shouldContinue(cluster)).thenReturn(false);
     Set<String> newUnhealthySystemStoreSet = new HashSet<>();
     Map<String, Long> systemStoreToHeartbeatTimestampMap = new VeniceConcurrentHashMap<>();
 
-    systemStoreHealthCheckService
-        .checkAndSendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+    systemStoreRepairTask
+        .checkAndSendHeartbeatToSystemStores(cluster, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
     Assert.assertTrue(newUnhealthySystemStoreSet.isEmpty());
     Assert.assertTrue(systemStoreToHeartbeatTimestampMap.isEmpty());
 
     isRunning.set(true);
-    systemStoreHealthCheckService
-        .checkAndSendHeartbeatToSystemStores(newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
+    when(systemStoreRepairTask.shouldContinue(cluster)).thenReturn(true);
+    systemStoreRepairTask
+        .checkAndSendHeartbeatToSystemStores(cluster, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
     Assert.assertEquals(newUnhealthySystemStoreSet.size(), 4);
     Assert.assertTrue(
         newUnhealthySystemStoreSet.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore1)));

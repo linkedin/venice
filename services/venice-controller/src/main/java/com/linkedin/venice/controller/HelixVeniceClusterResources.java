@@ -6,7 +6,6 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
-import com.linkedin.venice.controller.systemstore.SystemStoreHealthCheckService;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -74,7 +73,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final Optional<DynamicAccessController> accessController;
   private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
   private final StoragePersonaRepository storagePersonaRepository;
-  private final SystemStoreHealthCheckService systemStoreHealthCheckService;
 
   private ErrorPartitionResetTask errorPartitionResetTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
@@ -208,26 +206,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
-    if (!config.isParent() && config.isSystemStoreHealthCheckEnabled()) {
-      if (!admin.getPushStatusStoreReader().isPresent()) {
-        throw new VeniceException("Da Vinci push status reader is not enabled.");
-      }
-      if (!admin.getPushStatusStoreWriter().isPresent()) {
-        throw new VeniceException("Da Vinci push status writer is not enabled.");
-      }
-      this.systemStoreHealthCheckService = new SystemStoreHealthCheckService(
-          storeMetadataRepository,
-          metricsRepository,
-          clusterName,
-          admin.getMetaStoreReader(),
-          admin.getMetaStoreWriter(),
-          admin.getPushStatusStoreReader().get(),
-          admin.getPushStatusStoreWriter().get(),
-          config.getSystemStoreHealthCheckIntervalSeconds(),
-          config.getSystemStoreHealthCheckHeartbeatWaitTimeSeconds());
-    } else {
-      this.systemStoreHealthCheckService = null;
-    }
   }
 
   private List<String> getActiveActiveRealTimeSourceKafkaURLs(VeniceControllerConfig config) {
@@ -355,22 +333,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
         leakedPushStatusCleanUpService.stop();
       } catch (Exception e) {
         LOGGER.error("Error when stopping leaked push status clean-up service for cluster: {}", clusterName);
-      }
-    }
-  }
-
-  public void startSystemStoreHealthCheckService() {
-    if (systemStoreHealthCheckService != null) {
-      systemStoreHealthCheckService.start();
-    }
-  }
-
-  public void stopSystemStoreHealthCheckService() {
-    if (systemStoreHealthCheckService != null) {
-      try {
-        systemStoreHealthCheckService.stop();
-      } catch (Exception e) {
-        LOGGER.error("Error when stopping system store health check service for cluster: {}", clusterName);
       }
     }
   }
