@@ -187,6 +187,7 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
@@ -353,11 +354,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final SharedHelixReadOnlyZKSharedSystemStoreRepository zkSharedSystemStoreRepository;
   private final SharedHelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
   private final MetaStoreWriter metaStoreWriter;
+  private final MetaStoreReader metaStoreReader;
   private final D2Client d2Client;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
   private final boolean usePushStatusStoreToReadServerIncrementalPushStatus;
-  private static final ByteBuffer EMPTY_PUSH_ZSTD_DICTIONARY =
-      ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
   private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
 
@@ -525,6 +525,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
     coloLeaderClusterName = commonConfig.getClusterName();
     pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
+    // TODO: We need to consider removing this config, as push status store is rolled out everywhere.
     if (commonConfig.isDaVinciPushStatusStoreEnabled()) {
       pushStatusStoreReader = Optional.of(
           new PushStatusStoreReader(
@@ -560,6 +561,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         veniceWriterFactory,
         zkSharedSchemaRepository,
         pubSubTopicRepository);
+    metaStoreReader = new MetaStoreReader(d2Client, commonConfig.getClusterDiscoveryD2ServiceName());
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
     dataRecoveryManager = new DataRecoveryManager(
@@ -2458,19 +2460,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 clusterConfig,
                 useFastKafkaOperationTimeout);
 
-            ByteBuffer compressionDictionaryBuffer = null;
-            if (compressionDictionary != null) {
-              compressionDictionaryBuffer =
-                  ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
-            } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
-              // We can't use dictionary compression with no dictionary, so we generate a basic one
-              // TODO: It would be smarter to query it from the previous version and pass it along. However,
-              // the 'previous' version can mean different things in different colos, and ideally we'd want
-              // a consistent compressed result in all colos so as to make sure we don't confuse our consistency
-              // checking mechanisms. So this needs some (maybe) complicated reworking.
-              compressionDictionaryBuffer = EMPTY_PUSH_ZSTD_DICTIONARY;
-            }
-
             String sourceKafkaBootstrapServers = null;
 
             store = repository.getStore(storeName);
@@ -2590,6 +2579,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if (sendStartOfPush) {
+              ByteBuffer compressionDictionaryBuffer = null;
+              if (compressionDictionary != null) {
+                compressionDictionaryBuffer =
+                    ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
+              } else if (store.getCompressionStrategy().equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+                // This compression strategy needs a dictionary even if there is no input data,
+                // so we generate a dictionary based on synthetic data. This is done in vpj driver
+                // as well, but this code will be triggered in cases like Samza batch push job
+                // which is independent of the vpj flow.
+                compressionDictionaryBuffer = ZstdWithDictCompressor.EMPTY_PUSH_ZSTD_DICTIONARY;
+              }
+
               final Version finalVersion = version;
               VeniceWriter veniceWriter = null;
               try {
@@ -7314,6 +7315,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return metaStoreWriter;
   }
 
+  @Override
+  public MetaStoreReader getMetaStoreReader() {
+    return metaStoreReader;
+  }
+
   /**
    * @see Admin#getPushStatusStoreRecordDeleter()
    */
@@ -7829,6 +7835,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Optional<PushStatusStoreReader> getPushStatusStoreReader() {
     return pushStatusStoreReader;
+  }
+
+  @Override
+  public Optional<PushStatusStoreWriter> getPushStatusStoreWriter() {
+    return pushStatusStoreWriter;
   }
 
   public Optional<SSLFactory> getSslFactory() {

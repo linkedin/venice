@@ -195,6 +195,7 @@ public class VeniceControllerStateModel extends StateModel {
     clusterResources.refresh();
     clusterResources.startErrorPartitionResetTask();
     clusterResources.startLeakedPushStatusCleanUpService();
+    clusterResources.startSystemStoreHealthCheckService();
   }
 
   /**
@@ -298,6 +299,7 @@ public class VeniceControllerStateModel extends StateModel {
   /** synchronized because concurrent calls could cause a NPE */
   private synchronized void clearResources() {
     if (clusterResources != null) {
+      clusterResources.stopSystemStoreHealthCheckService();
       /**
        * Leaked push status clean up service depends on VeniceHelixAdmin, so VeniceHelixAdmin should be stopped after
        * its dependent service.

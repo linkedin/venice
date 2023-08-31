@@ -4,8 +4,10 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
+import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.Partition;
@@ -48,19 +50,17 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private final ConcurrentMap<String, TokenBucket> storeVersionBuckets = new VeniceConcurrentHashMap<>();
   private final TokenBucket storageNodeBucket;
   private final ReadOnlyStoreRepository storeRepository;
-  private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private final String thisNodeId;
   private final AggServerQuotaUsageStats stats;
   private final Clock clock;
-  private boolean enforcing = true;
   private final ExpiringSet<String> noBucketStores = new ExpiringSet<>(30, TimeUnit.SECONDS);
-
-  private volatile boolean initializedVolatile = false;
-  private boolean initialized = false;
-
   // TODO make these configurable
   private final int enforcementIntervalSeconds = 10; // TokenBucket refill interval
   private final int enforcementCapacityMultiple = 5; // Token bucket capacity is refill amount times this multiplier
+  private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
+  private boolean enforcing = true;
+  private volatile boolean initializedVolatile = false;
+  private boolean initialized = false;
 
   public ReadQuotaEnforcementHandler(
       long storageNodeRcuCapacity,
@@ -88,6 +88,65 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       this.customizedViewRepository = cv;
       init();
     });
+  }
+
+  /**
+   * Initially, this is the key count.  As we develop a more accurate capacity model, this method can be refined.
+   * @param request
+   * @return
+   */
+  public static int getRcu(RouterRequest request) {
+    switch (request.getRequestType()) {
+      case SINGLE_GET:
+        return 1;
+      case MULTI_GET:
+        return request.getKeyCount();
+      case COMPUTE:
+        // Eventually, we'll want to add some extra cost beyond the look up cost for compute operations.
+        return request.getKeyCount();
+      default:
+        LOGGER.error(
+            "Unknown request type: {}, request for resource: {}",
+            request.getRequestType(),
+            request.getResourceName());
+        return Integer.MAX_VALUE;
+    }
+  }
+
+  /**
+   * Recalculates the amount of quota that this node should serve given the partition assignment.  Assumes each
+   * partition gets an even portion of quota, and for each partition divides the quota by the readyToServe instances.
+   *
+   * @param partitionAssignment
+   * @param nodeId
+   * @return
+   */
+  protected static double getNodeResponsibilityForQuota(
+      HelixCustomizedViewOfflinePushRepository customizedViewRepository,
+      PartitionAssignment partitionAssignment,
+      String nodeId) {
+    double thisNodePartitionPortion = 0; // 1 means full responsibility for serving a partition. 0.33 means serving 1 of
+    // 3 replicas for a partition
+    for (Partition p: partitionAssignment.getAllPartitions()) {
+      List<String> readyToServeInstances = new ArrayList<>();
+      for (ReplicaState replicaState: customizedViewRepository
+          .getReplicaStates(partitionAssignment.getTopic(), p.getId())) {
+        if (replicaState.isReadyToServe()) {
+          readyToServeInstances.add(replicaState.getParticipantId());
+        }
+      }
+      long thisPartitionReplicaCount = readyToServeInstances.size();
+      long thisNodeReplicaCount = 0;
+      for (String instanceId: readyToServeInstances) {
+        if (instanceId.equals(nodeId)) {
+          thisNodeReplicaCount += 1;
+        }
+      }
+      if (thisPartitionReplicaCount > 0) {
+        thisNodePartitionPortion += thisNodeReplicaCount / (double) thisPartitionReplicaCount;
+      }
+    }
+    return thisNodePartitionPortion / partitionAssignment.getAllPartitions().size();
   }
 
   /**
@@ -128,20 +187,15 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   public void channelRead0(ChannelHandlerContext ctx, RouterRequest request) {
     String storeName = request.getStoreName();
     Store store = storeRepository.getStore(storeName);
-    if (store == null) {
-      ctx.writeAndFlush(
-          new HttpShortcutResponse(
-              "Invalid request resource " + request.getResourceName(),
-              HttpResponseStatus.BAD_REQUEST));
+
+    if (checkStoreNull(ctx, request, null, false, store)) {
       return;
     }
-    if (!isInitialized() || !store.isStorageNodeReadQuotaEnabled()) {
-      // If we haven't completed initialization or store does not have SN read quota enabled, allow all requests
-      // Note: not recording any metrics. Lack of metrics indicates an issue with initialization
-      ReferenceCountUtil.retain(request);
-      ctx.fireChannelRead(request);
+
+    if (checkInitAndQuotaEnabled(ctx, request, store, false)) {
       return;
     }
+
     int rcu = getRcu(request); // read capacity units
 
     /**
@@ -151,25 +205,13 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     if (tokenBucket != null && !request.isRetryRequest()) {
       if (!tokenBucket.tryConsume(rcu)) {
         // TODO: check if extra node capacity and can still process this request out of quota
-        stats.recordRejected(storeName, rcu);
-        if (enforcing) {
-          long storeQuota = store.getReadQuotaInCU();
-          float thisNodeRcuPerSecond = storeVersionBuckets.get(request.getResourceName()).getAmortizedRefillPerSecond();
-          String errorMessage =
-              "Total quota for store " + storeName + " is " + storeQuota + " RCU per second. Storage Node " + thisNodeId
-                  + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
-          ctx.writeAndFlush(new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
+        if (handleTooManyRequests(ctx, request, null, store, rcu, false))
           return;
-        }
       }
     } else if (enforcing && !noBucketStores.contains(request.getResourceName())) {
       // If this happens it is probably due to a short-lived race condition
       // of the resource being allocated before the bucket is allocated.
-      LOGGER.warn(
-          "Request for resource: {} but no TokenBucket for that resource. Not yet enforcing quota",
-          request.getResourceName());
-      // TODO: We could consider initializing a bucket. Would need to carefully consider this case.
-      noBucketStores.add(request.getResourceName()); // So that we only log this once every 30 seconds
+      handleEnforcingAndNoBucket(request);
     }
 
     /**
@@ -177,40 +219,130 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
      * retried requests need to be throttled at node capacity level
      */
     if (!storageNodeBucket.tryConsume(rcu)) {
-      stats.recordRejected(storeName, rcu);
-      if (enforcing) {
-        ctx.writeAndFlush(new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
+      if (handleServerOverCapacity(ctx, null, storeName, rcu, false))
         return;
-      }
     }
-
-    ReferenceCountUtil.retain(request);
-    ctx.fireChannelRead(request);
-    stats.recordAllowed(storeName, rcu);
-    stats.recordReadQuotaUsage(storeName, storageNodeBucket.getStaleUsageRatio());
+    handleEpilogue(ctx, request, storeName, rcu, false);
   }
 
-  /**
-   * Initially, this is the key count.  As we develop a more accurate capacity model, this method can be refined.
-   * @param request
-   * @return
-   */
-  public static int getRcu(RouterRequest request) {
-    switch (request.getRequestType()) {
-      case SINGLE_GET:
-        return 1;
-      case MULTI_GET:
-        return request.getKeyCount();
-      case COMPUTE:
-        // Eventually, we'll want to add some extra cost beyond the look up cost for compute operations.
-        return request.getKeyCount();
-      default:
-        LOGGER.error(
-            "Unknown request type: {}, request for resource: {}",
-            request.getRequestType(),
-            request.getResourceName());
-        return Integer.MAX_VALUE;
+  public boolean checkStoreNull(
+      ChannelHandlerContext ctx,
+      RouterRequest request,
+      GrpcRequestContext grpcCtx,
+      boolean isGrpc,
+      Store store) {
+    if (store != null) {
+      return false;
     }
+
+    if (!isGrpc) {
+      ctx.writeAndFlush(
+          new HttpShortcutResponse(
+              "Invalid request resource " + request.getResourceName(),
+              HttpResponseStatus.BAD_REQUEST));
+    } else {
+      String error = "Invalid request resource " + request.getResourceName();
+      grpcCtx.setError();
+      grpcCtx.getVeniceServerResponseBuilder().setErrorCode(GrpcErrorCodes.BAD_REQUEST).setErrorMessage(error);
+    }
+
+    return true;
+  }
+
+  public boolean checkInitAndQuotaEnabled(
+      ChannelHandlerContext ctx,
+      RouterRequest request,
+      Store store,
+      boolean isGrpc) {
+    if (!isInitialized() || !store.isStorageNodeReadQuotaEnabled()) {
+      // If we haven't completed initialization or store does not have SN read quota enabled, allow all requests
+      // Note: not recording any metrics. Lack of metrics indicates an issue with initialization
+      ReferenceCountUtil.retain(request);
+
+      if (!isGrpc) {
+        ctx.fireChannelRead(request);
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+  public boolean handleTooManyRequests(
+      ChannelHandlerContext ctx,
+      RouterRequest request,
+      GrpcRequestContext grpcCtx,
+      Store store,
+      int rcu,
+      boolean isGrpc) {
+    stats.recordRejected(request.getStoreName(), rcu);
+
+    if (!enforcing) {
+      return false;
+    }
+
+    long storeQuota = store.getReadQuotaInCU();
+    float thisNodeRcuPerSecond = storeVersionBuckets.get(request.getResourceName()).getAmortizedRefillPerSecond();
+    String errorMessage =
+        "Total quota for store " + request.getStoreName() + " is " + storeQuota + " RCU per second. Storage Node "
+            + thisNodeId + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
+
+    if (!isGrpc) {
+      ctx.writeAndFlush(new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
+    } else {
+      grpcCtx.setError();
+      grpcCtx.getVeniceServerResponseBuilder()
+          .setErrorCode(GrpcErrorCodes.TOO_MANY_REQUESTS)
+          .setErrorMessage(errorMessage);
+    }
+
+    return true;
+  }
+
+  public void handleEnforcingAndNoBucket(RouterRequest request) {
+    LOGGER.warn(
+        "Request for resource: {} but no TokenBucket for that resource. Not yet enforcing quota",
+        request.getResourceName());
+    // TODO: we could consider initializing a bucket. Would need to carefully consider this case.
+    noBucketStores.add(request.getResourceName()); // So that we only log this once every 30 seconds
+  }
+
+  public boolean handleServerOverCapacity(
+      ChannelHandlerContext ctx,
+      GrpcRequestContext grpcCtx,
+      String storeName,
+      int rcu,
+      boolean isGrpc) {
+    stats.recordRejected(storeName, rcu);
+
+    if (!enforcing)
+      return false;
+    if (!isGrpc) {
+      ctx.writeAndFlush(new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
+    } else {
+      String errorMessage = "Server over capacity";
+      grpcCtx.setError();
+      grpcCtx.getVeniceServerResponseBuilder()
+          .setErrorCode(GrpcErrorCodes.SERVICE_UNAVAILABLE)
+          .setErrorMessage(errorMessage);
+    }
+
+    return true;
+  }
+
+  private void handleEpilogue(
+      ChannelHandlerContext ctx,
+      RouterRequest request,
+      String storeName,
+      int rcu,
+      boolean isGrpc) {
+    ReferenceCountUtil.retain(request);
+    if (!isGrpc) {
+      ctx.fireChannelRead(request);
+    }
+    stats.recordAllowed(storeName, rcu);
+    stats.recordReadQuotaUsage(storeName, storageNodeBucket.getStaleUsageRatio());
   }
 
   /**
@@ -282,42 +414,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   @Override
   public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
     // Ignore this event
-  }
-
-  /**
-   * Recalculates the amount of quota that this node should serve given the partition assignment.  Assumes each
-   * partition gets an even portion of quota, and for each partition divides the quota by the readyToServe instances.
-   *
-   * @param partitionAssignment
-   * @param nodeId
-   * @return
-   */
-  protected static double getNodeResponsibilityForQuota(
-      HelixCustomizedViewOfflinePushRepository customizedViewRepository,
-      PartitionAssignment partitionAssignment,
-      String nodeId) {
-    double thisNodePartitionPortion = 0; // 1 means full responsibility for serving a partition. 0.33 means serving 1 of
-    // 3 replicas for a partition
-    for (Partition p: partitionAssignment.getAllPartitions()) {
-      List<String> readyToServeInstances = new ArrayList<>();
-      for (ReplicaState replicaState: customizedViewRepository
-          .getReplicaStates(partitionAssignment.getTopic(), p.getId())) {
-        if (replicaState.isReadyToServe()) {
-          readyToServeInstances.add(replicaState.getParticipantId());
-        }
-      }
-      long thisPartitionReplicaCount = readyToServeInstances.size();
-      long thisNodeReplicaCount = 0;
-      for (String instanceId: readyToServeInstances) {
-        if (instanceId.equals(nodeId)) {
-          thisNodeReplicaCount += 1;
-        }
-      }
-      if (thisPartitionReplicaCount > 0) {
-        thisNodePartitionPortion += thisNodeReplicaCount / (double) thisPartitionReplicaCount;
-      }
-    }
-    return thisNodePartitionPortion / partitionAssignment.getAllPartitions().size();
   }
 
   @Override
@@ -456,5 +552,29 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
    */
   public void disableEnforcement() {
     this.enforcing = false;
+  }
+
+  public ReadOnlyStoreRepository getStoreRepository() {
+    return storeRepository;
+  }
+
+  public ConcurrentMap<String, TokenBucket> getStoreVersionBuckets() {
+    return storeVersionBuckets;
+  }
+
+  public boolean isEnforcingAndNoBucketStoreContainsResource(String resourceName) {
+    return enforcing && noBucketStores.contains(resourceName);
+  }
+
+  public boolean storageConsumeRcu(int rcu) {
+    return !storageNodeBucket.tryConsume(rcu);
+  }
+
+  public AggServerQuotaUsageStats getStats() {
+    return stats;
+  }
+
+  public double getStaleUsageRatio() {
+    return storageNodeBucket.getStaleUsageRatio();
   }
 }

@@ -66,6 +66,7 @@ import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.Arg.OFFSET;
 import static com.linkedin.venice.Arg.OWNER;
+import static com.linkedin.venice.Arg.PARTITION;
 import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
 import static com.linkedin.venice.Arg.PARTITION_COUNT;
@@ -468,6 +469,11 @@ public enum Command {
       "request-based-metadata",
       "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
       new Arg[] { URL, SERVER_URL, STORE }
+  ),
+  DUMP_INGESTION_STATE(
+      "dump-ingestion-state",
+      "Dump the real-time ingestion state for a certain store version in a certain storage node",
+      new Arg[] { SERVER_URL, STORE, VERSION }, new Arg[] { PARTITION }
   );
 
   private final String commandName;

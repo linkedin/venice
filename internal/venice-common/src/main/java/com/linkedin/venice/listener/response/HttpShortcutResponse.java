@@ -10,6 +10,8 @@ public class HttpShortcutResponse {
   private final String message;
   private final HttpResponseStatus status;
 
+  private boolean misroutedStoreVersion = false;
+
   public HttpShortcutResponse(String message, HttpResponseStatus status) {
     this.message = message;
     this.status = status;
@@ -21,5 +23,13 @@ public class HttpShortcutResponse {
 
   public HttpResponseStatus getStatus() {
     return status;
+  }
+
+  public boolean isMisroutedStoreVersion() {
+    return misroutedStoreVersion;
+  }
+
+  public void setMisroutedStoreVersion(boolean misroutedStoreVersion) {
+    this.misroutedStoreVersion = misroutedStoreVersion;
   }
 }

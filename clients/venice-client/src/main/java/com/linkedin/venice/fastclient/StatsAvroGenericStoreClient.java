@@ -126,8 +126,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) {
     long startTimeInNS = System.nanoTime();
-    CompletableFuture<VeniceResponseMap<K, V>> innerFuture = super.streamingBatchGet(requestContext, keys);
-    return recordMetrics(requestContext, keys.size(), innerFuture, startTimeInNS, clientStatsForBatchGet);
+    CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGetFuture = super.streamingBatchGet(requestContext, keys);
+    recordMetrics(requestContext, keys.size(), streamingBatchGetFuture, startTimeInNS, clientStatsForBatchGet);
+    return streamingBatchGetFuture;
   }
 
   private <R> CompletableFuture<R> recordMetrics(
@@ -272,7 +273,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
               clientStats.recordInternalServerErrorRequest(instance);
               break;
             case S_410_GONE:
-              /* Check {@link InstanceHealthMonitor#sendRequestToInstance} to understand this special http status. */
+              /* Check {@link InstanceHealthMonitor#trackHealthBasedOnRequestToInstance} to understand this special http status. */
               clientStats.recordLeakedRequest(instance);
               break;
             case S_503_SERVICE_UNAVAILABLE:

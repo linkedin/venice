@@ -5,6 +5,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.data.Stat;
@@ -31,7 +32,7 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
   private final Thread cleanupThread;
   private final int sleepIntervalBetweenListFetchMinutes; // default is 15 min
   private final Time time = new SystemTime();
-  private boolean stop = false;
+  private final AtomicBoolean stop = new AtomicBoolean(false);
 
   public StoreGraveyardCleanupService(
       VeniceParentHelixAdmin admin,
@@ -51,7 +52,7 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
-    stop = true;
+    stop.set(true);
     cleanupThread.interrupt();
   }
 
@@ -59,7 +60,7 @@ public class StoreGraveyardCleanupService extends AbstractVeniceService {
     @Override
     public void run() {
       LOGGER.info("Started running {}", getClass().getSimpleName());
-      while (!stop) {
+      while (!stop.get()) {
         try {
           time.sleep((long) sleepIntervalBetweenListFetchMinutes * Time.MS_PER_MINUTE);
           // loop all clusters

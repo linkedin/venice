@@ -238,12 +238,13 @@ public class SslUtils {
    * Build an instance of {@link Properties} with a file path to SSL config file.
    *
    * An example of SSL config file:
-   * ssl.enabled=true
-   * keystore.type=PKCS12
-   * keystore.password=local_password
-   * keystore.path=./identity.p12
-   * truststore.password=local_password
-   * truststore.path=/etc/riddler/cacerts
+   * ssl.enabled:true
+   * ssl.key.password:local_password
+   * ssl.keystore.location:./identity.p12
+   * ssl.keystore.password:local_password
+   * ssl.keystore.type:pkcs12
+   * ssl.truststore.location:./cacerts
+   * ssl.truststore.password:local_password
    */
   public static Properties loadSSLConfig(String configFilePath) throws IOException {
     Properties props = new Properties();

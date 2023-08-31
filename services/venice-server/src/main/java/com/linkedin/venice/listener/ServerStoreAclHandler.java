@@ -6,6 +6,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.SslUtils;
+import io.grpc.Metadata;
+import io.grpc.ServerCall;
+import io.grpc.ServerCallHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.ssl.SslHandler;
@@ -13,6 +16,8 @@ import io.netty.util.Attribute;
 import io.netty.util.ReferenceCountUtil;
 import java.security.cert.X509Certificate;
 import javax.net.ssl.SSLPeerUnverifiedException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -24,6 +29,8 @@ import javax.net.ssl.SSLPeerUnverifiedException;
  * If both of them fail, the request will be rejected.
  */
 public class ServerStoreAclHandler extends StoreAclHandler {
+  private final static Logger LOGGER = LogManager.getLogger(ServerStoreAclHandler.class);
+
   public ServerStoreAclHandler(DynamicAccessController accessController, ReadOnlyStoreRepository metadataRepository) {
     super(accessController, metadataRepository);
   }
@@ -41,7 +48,7 @@ public class ServerStoreAclHandler extends StoreAclHandler {
     if (checkWhetherAccessHasAlreadyApproved(ctx)) {
       /**
        * Access has been approved by {@link ServerAclHandler}.
-        */
+       */
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
     } else {
@@ -62,5 +69,25 @@ public class ServerStoreAclHandler extends StoreAclHandler {
   protected static boolean checkWhetherAccessHasAlreadyApproved(ChannelHandlerContext ctx) {
     Attribute<Boolean> serverAclApprovedAttr = ctx.channel().attr(ServerAclHandler.SERVER_ACL_APPROVED_ATTRIBUTE_KEY);
     return Boolean.TRUE.equals(serverAclApprovedAttr.get());
+  }
+
+  protected static boolean checkWhetherAccessHasAlreadyApproved(Metadata headers) {
+    return Boolean.parseBoolean(
+        headers.get(
+            Metadata.Key
+                .of(ServerAclHandler.GRPC_SERVER_ACL_APPROVED_ATTRIBUTE_KEY, Metadata.ASCII_STRING_MARSHALLER)));
+  }
+
+  @Override
+  public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
+      ServerCall<ReqT, RespT> call,
+      Metadata headers,
+      ServerCallHandler<ReqT, RespT> next) {
+    boolean checkWhetherAccessHasAlreadyApproved = checkWhetherAccessHasAlreadyApproved(headers);
+    if (checkWhetherAccessHasAlreadyApproved) {
+      return next.startCall(call, headers);
+    } else {
+      return super.interceptCall(call, headers, next);
+    }
   }
 }

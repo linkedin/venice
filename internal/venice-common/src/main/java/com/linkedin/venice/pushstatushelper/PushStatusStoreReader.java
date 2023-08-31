@@ -30,12 +30,11 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * PushStatusStoreReader is a helper class for Venice controller reading PushStatus/Heartbeat messages.
- * One PushStatusStoreReader for one regular Venice store.
- * Don't keep a map of [storeName->client] to minimize states kept by controller.
+ * This class is a helper class for Venice controller to read PushStatus / Heartbeat messages.
  */
 public class PushStatusStoreReader implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(PushStatusStoreReader.class);
+  private static final int DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS = 3;
   private final Map<String, AvroSpecificStoreClient<PushStatusKey, PushStatusValue>> veniceClients =
       new VeniceConcurrentHashMap<>();
   private final D2Client d2Client;
@@ -195,7 +194,8 @@ public class PushStatusStoreReader implements Closeable {
     AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
     try {
-      PushStatusValue pushStatusValue = client.get(pushStatusKey).get();
+      PushStatusValue pushStatusValue =
+          client.get(pushStatusKey).get(DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS);
       if (pushStatusValue == null) {
         return 0;
       } else {

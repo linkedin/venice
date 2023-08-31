@@ -52,6 +52,11 @@ public class InMemoryStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
+  public void removeStorageEnginePartition(String storeName, int partition) {
+    // Right away!
+  }
+
+  @Override
   public void closeStorageEngine(AbstractStorageEngine engine) {
     // Nothing to do here since we do not track the created storage engine
   }

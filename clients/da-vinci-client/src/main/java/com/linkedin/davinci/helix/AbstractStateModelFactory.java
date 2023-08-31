@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
  * model definition and model factory, each factory could only create 1 type of model.
  */
 public abstract class AbstractStateModelFactory extends StateModelFactory<StateModel> {
-  protected final Logger logger = LogManager.getLogger(getClass().getSimpleName());
+  protected final Logger logger = LogManager.getLogger(getClass());
   private final VeniceIngestionBackend ingestionBackend;
   private final VeniceConfigLoader configService;
   protected final ReadOnlyStoreRepository storeMetadataRepo;

@@ -57,6 +57,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   // Ratio sensors are not directly written to, but they still get their state updated indirectly
   @SuppressWarnings("unused")
   private final Sensor successRequestKeyRatioSensor, successRequestRatioSensor;
+  private final Sensor misroutedStoreVersionSensor;
 
   public ServerHttpRequestStats(
       MetricsRepository metricsRepository,
@@ -305,6 +306,11 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
           TehutiUtils
               .getFineGrainedPercentileStatWithAvgAndMax(getName(), getFullMetricName(requestKeySizeSensorName)));
     }
+    misroutedStoreVersionSensor = registerPerStoreAndTotal(
+        "misrouted_store_version_request_count",
+        totalStats,
+        () -> totalStats.misroutedStoreVersionSensor,
+        new OccurrenceRate());
   }
 
   private Sensor registerPerStoreAndTotal(
@@ -428,5 +434,9 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordValueSizeInByte(long valueSize) {
     requestValueSizeSensor.record(valueSize);
+  }
+
+  public void recordMisroutedStoreVersionRequest() {
+    misroutedStoreVersionSensor.record();
   }
 }

@@ -338,6 +338,25 @@ public class ConfigKeys {
       "controller.parent.external.superset.schema.generation.enabled";
 
   /**
+   * Whether to check system store health in child controller. Default is false.
+   */
+  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED =
+      "controller.system.store.health.check.enabled";
+
+  /**
+   * Frequency to run system store health check in child controller. Default is 1h.
+   */
+  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL_SECONDS =
+      "controller.system.store.health.check.interval.seconds";
+
+  /**
+   * The wait time before validating system store heartbeat during system store health check in child controller.
+   * Default is 1min.
+   */
+  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_HEARTBEAT_WAIT_TIME_SECONDS =
+      "controller.system.store.health.check.heartbeat.wait.time.seconds";
+
+  /**
    * Whether to initialize system schemas when controller starts. Default is true.
    */
   public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
@@ -347,6 +366,7 @@ public class ConfigKeys {
   public static final String LISTENER_PORT = "listener.port";
   public static final String GRPC_READ_SERVER_PORT = "grpc.read.server.port";
   public static final String ENABLE_GRPC_READ_SERVER = "grpc.read.server.enabled";
+  public static final String GRPC_SERVER_WORKER_THREAD_COUNT = "grpc.server.worker.thread.count";
 
   public static final String LISTENER_HOSTNAME = "listener.hostname";
 
@@ -1947,4 +1967,9 @@ public class ConfigKeys {
   public static final String PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS = "pub.sub.producer.adapter.factory.class";
 
   public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
+
+  /**
+   * Venice router's principal name used for ssl. Default should contain "venice-router".
+   */
+  public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
 }

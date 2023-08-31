@@ -43,17 +43,22 @@ public class PushStatusStoreWriter implements AutoCloseable {
     this.derivedSchemaId = derivedSchemaId;
   }
 
-  public void writeHeartbeat(String storeName) {
+  public void writeHeartbeat(String storeName, long heartbeat) {
     VeniceWriter writer = veniceWriterCache.prepareVeniceWriter(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
     PushStatusValue pushStatusValue = new PushStatusValue();
-    pushStatusValue.reportTimestamp = System.currentTimeMillis();
+    pushStatusValue.reportTimestamp = heartbeat;
     pushStatusValue.instances = Collections.emptyMap();
     LOGGER.info("Sending heartbeat of {}", instanceName);
     writer.put(
         pushStatusKey,
         pushStatusValue,
         AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion());
+
+  }
+
+  public void writeHeartbeat(String storeName) {
+    writeHeartbeat(storeName, System.currentTimeMillis());
   }
 
   public void writePushStatus(String storeName, int version, int partitionId, ExecutionStatus status) {
