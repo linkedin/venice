@@ -492,7 +492,7 @@ public class TestDataRecoveryClient {
   }
 
   @Test
-  public void TestDataStructure() {
+  public void testDataStructure() {
     RepushViabilityInfo info = new RepushViabilityInfo();
     info.viableWithResult(RepushViabilityInfo.Result.SUCCESS);
     Assert.assertFalse(info.isError());
