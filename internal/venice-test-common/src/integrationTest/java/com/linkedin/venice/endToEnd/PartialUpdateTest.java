@@ -23,6 +23,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING;
 import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING_V2;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToRecordSchema;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -268,6 +269,67 @@ public class PartialUpdateTest {
           try {
             GenericRecord value = (GenericRecord) storeReader.get(keyRecord).get();
             assertNotNull(value, "key " + keyRecord + " should not be missing!");
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+    }
+  }
+
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testIncrementalPushPartialUpdateClassicFormat() throws IOException {
+    final String storeName = Utils.getUniqueString("inc_push_update_classic_format");
+    String parentControllerUrl = parentController.getControllerUrl();
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(inputDir, true);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties vpjProperties =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    vpjProperties.put(ENABLE_WRITE_COMPUTE, true);
+    vpjProperties.put(INCREMENTAL_PUSH, true);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, NESTED_SCHEMA_STRING));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setChunkingEnabled(true)
+              .setIncrementalPushEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // VPJ push
+      String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
+      try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
+        runVPJ(vpjProperties, 1, childControllerClient);
+      }
+      VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+      try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+          try {
+            for (int i = 1; i < 100; i++) {
+              String key = String.valueOf(i);
+              GenericRecord value = readValue(storeReader, key);
+              assertNotNull(value, "Key " + key + " should not be missing!");
+              assertEquals(value.get("firstName").toString(), "first_name_" + key);
+              assertEquals(value.get("lastName").toString(), "last_name_" + key);
+            }
           } catch (Exception e) {
             throw new VeniceException(e);
           }
