@@ -329,7 +329,6 @@ public class PartialUpdateTest {
               assertNotNull(value, "Key " + key + " should not be missing!");
               assertEquals(value.get("firstName").toString(), "first_name_" + key);
               assertEquals(value.get("lastName").toString(), "last_name_" + key);
-              // assertEquals(value.get("age"), -1);
             }
           } catch (Exception e) {
             throw new VeniceException(e);
