@@ -123,7 +123,6 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
-import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -296,7 +295,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private final SystemStoreAclSynchronizationTask systemStoreAclSynchronizationTask;
   private final UserSystemStoreLifeCycleHelper systemStoreLifeCycleHelper;
   private final WriteComputeSchemaConverter writeComputeSchemaConverter;
-  private final SystemStoreRepairService systemStoreRepairService;
 
   private Time timer = new SystemTime();
   private Optional<SSLFactory> sslFactory = Optional.empty();
@@ -509,16 +507,6 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
-    }
-    if (multiClusterConfigs.getCommonConfig().isParentSystemStoreRepairServiceEnabled()) {
-      this.systemStoreRepairService = new SystemStoreRepairService(
-          this,
-          multiClusterConfigs.getCommonConfig().getParentSystemStoreRepairCheckIntervalSeconds(),
-          multiClusterConfigs.getCommonConfig().getParentSystemStoreRepairRetryCount(),
-          multiClusterConfigs.getCommonConfig().getParentSystemStoreHeartbeatCheckWaitTimeSeconds());
-      this.systemStoreRepairService.startInner();
-    } else {
-      this.systemStoreRepairService = null;
     }
   }
 
@@ -4087,9 +4075,6 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-    }
-    if (systemStoreRepairService != null) {
-      systemStoreRepairService.stopInner();
     }
     newFabricControllerClientMap.forEach(
         (clusterName, controllerClientMap) -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));

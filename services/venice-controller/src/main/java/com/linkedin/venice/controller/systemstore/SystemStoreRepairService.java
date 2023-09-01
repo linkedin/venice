@@ -2,13 +2,17 @@ package com.linkedin.venice.controller.systemstore;
 
 import static java.lang.Thread.currentThread;
 
+import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
+import com.linkedin.venice.controller.stats.SystemStoreHealthCheckStats;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -22,27 +26,26 @@ public class SystemStoreRepairService extends AbstractVeniceService {
   private final int repairTaskIntervalInSeconds;
   private final VeniceParentHelixAdmin parentAdmin;
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
-  private final AtomicLong badMetaStoreCount = new AtomicLong(0);
-  private final AtomicLong badPushStatusStoreCount = new AtomicLong(0);
   private final int heartbeatWaitTimeSeconds;
   private ScheduledExecutorService checkServiceExecutor;
   private final int maxRepairRetry;
-  // private final SystemStoreCheckStats systemStoreCheckStats;
+  private final Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap =
+      new VeniceConcurrentHashMap<>();
 
   public SystemStoreRepairService(
       VeniceParentHelixAdmin parentAdmin,
-      int repairTaskIntervalInSeconds,
-      int maxRepairRetry,
-      int heartbeatWaitTimeSeconds) {
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository) {
     this.parentAdmin = parentAdmin;
-    this.repairTaskIntervalInSeconds = repairTaskIntervalInSeconds;
-    this.heartbeatWaitTimeSeconds = heartbeatWaitTimeSeconds;
-    this.maxRepairRetry = maxRepairRetry;
-    /*
-    this.systemStoreCheckStats =
-        new SystemStoreCheckStats(metricsRepository, clusterName, badMetaStoreCount::get, badPushStatusStoreCount::get);
-    
-     */
+    this.repairTaskIntervalInSeconds =
+        multiClusterConfigs.getCommonConfig().getParentSystemStoreRepairCheckIntervalSeconds();
+    this.maxRepairRetry = multiClusterConfigs.getCommonConfig().getParentSystemStoreRepairRetryCount();
+    this.heartbeatWaitTimeSeconds =
+        multiClusterConfigs.getCommonConfig().getParentSystemStoreHeartbeatCheckWaitTimeSeconds();
+    for (String clusterName: multiClusterConfigs.getClusters()) {
+      clusterToSystemStoreHealthCheckStatsMap
+          .put(clusterName, new SystemStoreHealthCheckStats(metricsRepository, clusterName));
+    }
   }
 
   @Override
@@ -50,7 +53,12 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     checkServiceExecutor = Executors.newScheduledThreadPool(1);
     isRunning.set(true);
     checkServiceExecutor.scheduleWithFixedDelay(
-        new SystemStoreRepairTask(parentAdmin, maxRepairRetry, heartbeatWaitTimeSeconds, isRunning),
+        new SystemStoreRepairTask(
+            parentAdmin,
+            clusterToSystemStoreHealthCheckStatsMap,
+            maxRepairRetry,
+            heartbeatWaitTimeSeconds,
+            isRunning),
         repairTaskIntervalInSeconds,
         repairTaskIntervalInSeconds,
         TimeUnit.SECONDS);
