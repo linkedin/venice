@@ -2446,7 +2446,6 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   boolean isUpdateSchema(String schemaString) {
-    LOGGER.info("DEBUGGING: {}", WriteComputeOperation.NO_OP_ON_FIELD.getName());
     return schemaString.contains(WriteComputeOperation.NO_OP_ON_FIELD.getName());
   }
 
