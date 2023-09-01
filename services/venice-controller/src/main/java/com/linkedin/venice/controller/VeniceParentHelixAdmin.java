@@ -1926,7 +1926,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } catch (InterruptedException e) {
-      throw new VeniceException("Unable to roll forward since thread is interrupted");
+      throw new VeniceException("Unable to change active version since thread is interrupted");
     } catch (ExecutionException e) {
       throw new VeniceException(e.getMessage());
     } finally {
