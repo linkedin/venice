@@ -13,9 +13,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class is the system store repair service in Venice parent controller. It will issue repair task {@link SystemStoreRepairTask}
+ * to check system store health and try to repair bad system store at its best effort.
+ */
 public class SystemStoreRepairService extends AbstractVeniceService {
   public static final Logger LOGGER = LogManager.getLogger(SystemStoreRepairService.class);
-  private final int repairTaskIntervalInHours;
+  private final int repairTaskIntervalInSeconds;
   private final VeniceParentHelixAdmin parentAdmin;
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private final AtomicLong badMetaStoreCount = new AtomicLong(0);
@@ -27,11 +31,11 @@ public class SystemStoreRepairService extends AbstractVeniceService {
 
   public SystemStoreRepairService(
       VeniceParentHelixAdmin parentAdmin,
-      int repairTaskIntervalInHours,
+      int repairTaskIntervalInSeconds,
       int maxRepairRetry,
       int heartbeatWaitTimeSeconds) {
     this.parentAdmin = parentAdmin;
-    this.repairTaskIntervalInHours = repairTaskIntervalInHours;
+    this.repairTaskIntervalInSeconds = repairTaskIntervalInSeconds;
     this.heartbeatWaitTimeSeconds = heartbeatWaitTimeSeconds;
     this.maxRepairRetry = maxRepairRetry;
     /*
@@ -47,9 +51,9 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     isRunning.set(true);
     checkServiceExecutor.scheduleWithFixedDelay(
         new SystemStoreRepairTask(parentAdmin, maxRepairRetry, heartbeatWaitTimeSeconds, isRunning),
-        repairTaskIntervalInHours,
-        repairTaskIntervalInHours,
-        TimeUnit.HOURS);
+        repairTaskIntervalInSeconds,
+        repairTaskIntervalInSeconds,
+        TimeUnit.SECONDS);
     LOGGER.info("SystemStoreRepairService is started.");
     return true;
   }

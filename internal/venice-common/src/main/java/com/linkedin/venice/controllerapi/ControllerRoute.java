@@ -209,9 +209,13 @@ public enum ControllerRoute {
       "/send_push_job_details", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION), PUSH_JOB_DETAILS
   ),
 
-  SEND_HEARTBEAT_TIMESTAMP("/send_heartbeat_timestamp", HttpMethod.POST, Arrays.asList(NAME, HEARTBEAT_TIMESTAMP)),
+  SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE(
+      "/send_heartbeat_timestamp_to_system_store", HttpMethod.POST, Arrays.asList(NAME, HEARTBEAT_TIMESTAMP)
+  ),
 
-  GET_HEARTBEAT_TIMESTAMP("/send_heartbeat_timestamp", HttpMethod.GET, Collections.singletonList(NAME)),
+  GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE(
+      "/get_heartbeat_timestamp_from_system_store", HttpMethod.GET, Collections.singletonList(NAME)
+  ),
 
   ADD_VERSION("/add_version", HttpMethod.POST, Arrays.asList(NAME, PUSH_JOB_ID, VERSION, PARTITION_COUNT)),
   FUTURE_VERSION("/list_future_versions", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),

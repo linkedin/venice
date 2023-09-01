@@ -6,6 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_D
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -35,6 +36,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
@@ -44,8 +46,12 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_
 import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
+<<<<<<< HEAD
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_HEARTBEAT_TIMESTAMP;
+=======
+import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE;
+>>>>>>> 447d5dc25 (Address comments)
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_TOPIC_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
@@ -1035,12 +1041,13 @@ public class StoresRoutes extends AbstractRoute {
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
-        AdminSparkServer.validateParams(request, SEND_HEARTBEAT_TIMESTAMP.getParams(), admin);
+        AdminSparkServer.validateParams(request, SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
+        long heartbeatTimestamp = Long.parseLong(request.queryParams(HEARTBEAT_TIMESTAMP));
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
-        // admin.sendHeartbeatToSystemStore(clusterName, storeName);
+        admin.sendHeartbeatToSystemStore(clusterName, storeName, heartbeatTimestamp);
       } catch (ResourceStillExistsException exception) {
         responseObject.setError(exception);
         AdminSparkServer.handleError(exception, request, response, false);
@@ -1063,12 +1070,12 @@ public class StoresRoutes extends AbstractRoute {
           responseObject.setErrorType(ErrorType.BAD_REQUEST);
           return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
         }
-        AdminSparkServer.validateParams(request, SEND_HEARTBEAT_TIMESTAMP.getParams(), admin);
+        AdminSparkServer.validateParams(request, GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
-        // admin.sendHeartbeatToSystemStore(clusterName, storeName);
+        responseObject.setHeartbeatTimestamp(admin.getHeartbeatFromSystemStore(clusterName, storeName));
         responseObject.setHeartbeatTimestamp(0);
       } catch (ResourceStillExistsException exception) {
         responseObject.setError(exception);

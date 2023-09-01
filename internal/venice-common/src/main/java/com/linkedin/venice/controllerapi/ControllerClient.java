@@ -1058,12 +1058,12 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse sendHeartbeatToSystemStore(String storeName, long heartbeatTimestamp) {
     QueryParams params = newParams().add(NAME, storeName).add(HEARTBEAT_TIMESTAMP, heartbeatTimestamp);
-    return request(ControllerRoute.SEND_HEARTBEAT_TIMESTAMP, params, ControllerResponse.class);
+    return request(ControllerRoute.SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE, params, ControllerResponse.class);
   }
 
   public HeartbeatResponse getHeartbeatFromSystemStore(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
-    return request(ControllerRoute.GET_HEARTBEAT_TIMESTAMP, params, HeartbeatResponse.class);
+    return request(ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE, params, HeartbeatResponse.class);
   }
 
   public ControllerResponse configureNativeReplicationForCluster(

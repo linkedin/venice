@@ -21,12 +21,21 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class tries to scan all cluster which current parent controller is the leader controller.
+ * It will perform the following action for each system store of each cluster:
+ * 1. Check system store is created / has current version.
+ * 2. Send heartbeat to system store and check if heartbeat is received.
+ * 3. If system store failed any of the check in (1) / (2), it will try to run empty push to repair the system store,
+ * until maximum retry of repair is reached.
+ * It will emit metrics to indicate bad system store counts per cluster and how many stores are not fixable by the task.
+ */
 public class SystemStoreRepairTask implements Runnable {
   public static final Logger LOGGER = LogManager.getLogger(SystemStoreRepairTask.class);
   public static final String SYSTEM_STORE_REPAIR_JOB_PREFIX = "CONTROLLER_SYSTEM_STORE_REPAIR_JOB_";
-
-  private final int pushStatusPollIntervalInSeconds = 30;
-  private final int heartbeatCheckIntervalMs = 100;
+  private static final int SKIP_NEWLY_CREATED_STORE_SYSTEM_STORE_HEALTH_CHECK_HOURS = 2;
+  private static final int SYSTEM_STORE_PUSH_STATUS_POLL_INTERVAL_IN_SECONDS = 30;
+  private static final int PER_SYSTEM_STORE_HEARTBEAT_CHECK_INTERVAL_IN_MS = 100;
 
   private final int heartbeatWaitTimeSeconds;
   private final int maxRepairRetry;
@@ -104,17 +113,31 @@ public class SystemStoreRepairTask implements Runnable {
     updateBadSystemStoreCount(newUnhealthySystemStoreSet);
   }
 
+  /**
+   *  Here we scan the store repository for two passes:
+   *  1. We check user stores
+   */
   void checkAndSendHeartbeatToSystemStores(
       String clusterName,
       Set<String> newUnhealthySystemStoreSet,
       Map<String, Long> systemStoreToHeartbeatTimestampMap) {
+
+    Map<String, Long> userStoreToCreationTimestampMap = new HashMap<>();
     for (Store store: getParentAdmin().getAllStores(clusterName)) {
       if (!shouldContinue(clusterName)) {
         return;
       }
-
       // For user store, if corresponding system store flag is not true, it indicates system store is not created.
-      if (!VeniceSystemStoreUtils.isUserSystemStore(store.getName())) {
+      if (!VeniceSystemStoreUtils.isSystemStore(store.getName())) {
+        userStoreToCreationTimestampMap
+            .put(VeniceSystemStoreType.META_STORE.getSystemStoreName(store.getName()), store.getCreatedTime());
+        userStoreToCreationTimestampMap.put(
+            VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName()),
+            store.getCreatedTime());
+        // We will not check newly created system stores.
+        if (isStoreNewlyCreated(store.getCreatedTime())) {
+          continue;
+        }
         if (!store.isDaVinciPushStatusStoreEnabled()) {
           newUnhealthySystemStoreSet
               .add(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName()));
@@ -122,6 +145,21 @@ public class SystemStoreRepairTask implements Runnable {
         if (!store.isStoreMetaSystemStoreEnabled()) {
           newUnhealthySystemStoreSet.add(VeniceSystemStoreType.META_STORE.getSystemStoreName(store.getName()));
         }
+
+      }
+    }
+
+    for (Store store: getParentAdmin().getAllStores(clusterName)) {
+      if (!shouldContinue(clusterName)) {
+        return;
+      }
+      // This pass we only scan user system store.
+      if (!(VeniceSystemStoreUtils.isSystemStore(store.getName())
+          && VeniceSystemStoreUtils.isUserSystemStore(store.getName()))) {
+        continue;
+      }
+      // We will not check newly created system stores.
+      if (isStoreNewlyCreated(userStoreToCreationTimestampMap.getOrDefault(store.getName(), 0L))) {
         continue;
       }
       // System store does not have an online serving version.
@@ -137,7 +175,7 @@ public class SystemStoreRepairTask implements Runnable {
 
       // Sleep to throttle heartbeat send rate.
       try {
-        Thread.sleep(heartbeatCheckIntervalMs);
+        Thread.sleep(PER_SYSTEM_STORE_HEARTBEAT_CHECK_INTERVAL_IN_MS);
       } catch (InterruptedException e) {
         LOGGER.info("Caught interrupted exception, will exit now.");
         return;
@@ -226,12 +264,18 @@ public class SystemStoreRepairTask implements Runnable {
       }
       try {
         // Sleep for enough time for system store complete ingestion.
-        Thread.sleep(TimeUnit.SECONDS.toMillis(pushStatusPollIntervalInSeconds));
+        Thread.sleep(TimeUnit.SECONDS.toMillis(SYSTEM_STORE_PUSH_STATUS_POLL_INTERVAL_IN_SECONDS));
       } catch (InterruptedException e) {
         LOGGER.info("Caught interrupted exception, will exit now.");
         return false;
       }
     }
+  }
+
+  boolean isStoreNewlyCreated(long creationTimestamp) {
+    // Since system store is just created, we can skip checking its system store.
+    return (System.currentTimeMillis() - creationTimestamp) < TimeUnit.HOURS
+        .toMillis(SKIP_NEWLY_CREATED_STORE_SYSTEM_STORE_HEALTH_CHECK_HOURS);
   }
 
   AtomicLong getBadMetaStoreCount() {

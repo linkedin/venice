@@ -7872,7 +7872,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return retrievedTimestamp;
       }, 3, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {
-      return 0;
+      return -1;
     }
   }
 
