@@ -7850,6 +7850,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     String userStoreName = systemStoreType.extractRegularStoreName(storeName);
     long currentTimestamp = System.currentTimeMillis();
     if (VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.equals(systemStoreType)) {
+      // Push status store is fully rolled out in controller. It will be cleaned up to become non-optional argument.
       getPushStatusStoreWriter().get().writeHeartbeat(userStoreName, currentTimestamp);
     } else {
       getMetaStoreWriter().writeHeartbeat(userStoreName, currentTimestamp);
