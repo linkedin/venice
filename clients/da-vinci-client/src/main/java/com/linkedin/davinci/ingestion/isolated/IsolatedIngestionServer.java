@@ -154,6 +154,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private DefaultIngestionBackend ingestionBackend;
   private final RemoteIngestionRepairService repairService;
 
+  private LeakedResourceCleaner leakedResourceCleaner;
+
   private final VeniceServerConfig serverConfig;
 
   public IsolatedIngestionServer(String configPath) throws FileNotFoundException {
@@ -241,6 +243,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       LOGGER.info("StorageService has been shutdown.");
     } catch (Throwable e) {
       throw new VeniceException("Unable to stop Ingestion Service", e);
+    }
+
+    if (leakedResourceCleaner != null) {
+      leakedResourceCleaner.stop();
     }
 
     heartbeatCheckScheduler.shutdownNow();
@@ -775,7 +781,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     ingestionBackend = new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService);
 
     if (serverConfig.isLeakedResourceCleanupEnabled()) {
-      LeakedResourceCleaner leakedResourceCleaner = new LeakedResourceCleaner(
+      this.leakedResourceCleaner = new LeakedResourceCleaner(
           storageService.getStorageEngineRepository(),
           serverConfig.getLeakedResourceCleanUpIntervalInMS(),
           storeRepository,
