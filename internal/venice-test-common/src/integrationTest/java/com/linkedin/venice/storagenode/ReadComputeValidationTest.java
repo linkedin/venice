@@ -208,10 +208,12 @@ public class ReadComputeValidationTest {
             .execute(keySet)
             .get();
 
+        // Venice Server won't report any missing field error since it would always use the schema passed by the client
+        // to decode the value.
         computeResult.forEach(
             (key, value) -> Assert.assertEquals(
                 ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(),
-                1));
+                0));
       });
     }
   }

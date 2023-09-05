@@ -57,7 +57,9 @@ public class ErrorCountAppender extends AbstractAppender {
 
   @Override
   public void append(LogEvent event) {
-    if (event.getLevel().equals(Level.ERROR) && event.getThrown().getLocalizedMessage().contains(exceptionMessage)) {
+    if (event.getLevel().equals(Level.ERROR) && event.getThrown() != null
+        && event.getThrown().getLocalizedMessage() != null
+        && event.getThrown().getLocalizedMessage().contains(exceptionMessage)) {
       errorMessageCounter.addAndGet(1);
     }
   }

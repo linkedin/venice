@@ -606,8 +606,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private ReadResponse handleComputeRequest(ComputeRouterRequestWrapper request) {
     SchemaEntry superSetOrLatestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(request.getStoreName());
-    Schema valueSchema = getComputeValueSchema(request, superSetOrLatestValueSchema);
-    Schema resultSchema = getComputeResultSchema(request.getComputeRequest(), valueSchema);
+    SchemaEntry valueSchemaEntry = getComputeValueSchema(request, superSetOrLatestValueSchema);
+    Schema resultSchema = getComputeResultSchema(request.getComputeRequest(), valueSchemaEntry.getSchema());
     RecordSerializer<GenericRecord> resultSerializer = genericSerializerGetter.apply(resultSchema);
     PerStoreVersionState storeVersion = getPerStoreVersionState(request.getResourceName());
     VeniceCompressor compressor =
@@ -616,7 +616,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     // Reuse the same value record and result record instances for all values
     ReusableObjects reusableObjects = threadLocalReusableObjects.get();
     GenericRecord reusableValueRecord =
-        reusableObjects.valueRecordMap.computeIfAbsent(valueSchema, GenericData.Record::new);
+        reusableObjects.valueRecordMap.computeIfAbsent(valueSchemaEntry.getSchema(), GenericData.Record::new);
     GenericRecord reusableResultRecord =
         reusableObjects.resultRecordMap.computeIfAbsent(resultSchema, GenericData.Record::new);
     reusableObjects.computeContext.clear();
@@ -633,7 +633,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           storeVersion,
           key,
           reusableValueRecord,
-          superSetOrLatestValueSchema.getId(),
+          valueSchemaEntry.getId(),
           compressor,
           response,
           reusableObjects,
@@ -667,10 +667,12 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return resultSchema;
   }
 
-  private Schema getComputeValueSchema(ComputeRouterRequestWrapper request, SchemaEntry superSetOrLatestValueSchema) {
+  private SchemaEntry getComputeValueSchema(
+      ComputeRouterRequestWrapper request,
+      SchemaEntry superSetOrLatestValueSchema) {
     return request.getValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID
-        ? schemaRepository.getValueSchema(request.getStoreName(), request.getValueSchemaId()).getSchema()
-        : superSetOrLatestValueSchema.getSchema();
+        ? schemaRepository.getValueSchema(request.getStoreName(), request.getValueSchemaId())
+        : superSetOrLatestValueSchema;
   }
 
   /**
