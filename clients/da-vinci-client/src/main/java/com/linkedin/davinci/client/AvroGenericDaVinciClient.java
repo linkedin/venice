@@ -44,9 +44,11 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -395,6 +397,26 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     return computeResultSchema;
   }
 
+  static int getValueSchemaIdForComputeRequest(
+      String storeName,
+      Schema computeValueSchema,
+      ReadOnlySchemaRepository repo) {
+    SchemaEntry latestSchemaEntry = repo.getSupersetOrLatestValueSchema(storeName);
+    if (computeValueSchema == latestSchemaEntry.getSchema()) {
+      /**
+       * For most of the scenario, the compute request will execute this efficient path since the request is trying to
+       * use the latest value schema all the time.
+       */
+      return latestSchemaEntry.getId();
+    } else {
+      /**
+       * This slow path shouldn't be executed frequently, and it is a little inefficient because of the schema parsing logic internally.
+       * Refactoring SchemaRepository is a slightly bigger effort.
+       */
+      return repo.getValueSchemaId(storeName, computeValueSchema.toString());
+    }
+  }
+
   @Override
   public void compute(
       ComputeRequestWrapper computeRequestWrapper,
@@ -424,13 +446,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
       ReusableObjects reusableObjects = REUSABLE_OBJECTS.get();
       Schema valueSchema = computeRequestWrapper.getValueSchema();
+      int valueSchemaId =
+          getValueSchemaIdForComputeRequest(getStoreName(), valueSchema, daVinciBackend.get().getSchemaRepository());
       GenericRecord reuseValueRecord =
           reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, k -> new GenericData.Record(valueSchema));
 
       Map<String, Object> globalContext = new HashMap<>();
       Schema computeResultSchema = getComputeResultSchema(computeRequestWrapper);
 
-      int readerSchemaId = versionBackend.getSupersetOrLatestValueSchemaId();
       for (K key: keys) {
         byte[] keyBytes = keySerializer.serialize(key);
         int partition = versionBackend.getPartition(keyBytes);
@@ -441,7 +464,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
               keyBytes,
               getGenericRecordChunkingAdapter(),
               genericRecordStoreDeserializerCache,
-              readerSchemaId,
+              valueSchemaId,
               reusableObjects.binaryDecoder,
               reusableObjects.rawValue,
               reuseValueRecord,
