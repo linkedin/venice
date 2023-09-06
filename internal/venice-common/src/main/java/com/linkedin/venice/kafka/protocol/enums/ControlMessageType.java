@@ -9,6 +9,7 @@ import com.linkedin.venice.kafka.protocol.EndOfSegment;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.StartOfSegment;
+import com.linkedin.venice.kafka.protocol.SyncOffset;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.utils.EnumUtils;
@@ -24,7 +25,8 @@ import com.linkedin.venice.utils.VeniceEnumValue;
  */
 public enum ControlMessageType implements VeniceEnumValue {
   START_OF_PUSH(0), END_OF_PUSH(1), START_OF_SEGMENT(2), END_OF_SEGMENT(3), @Deprecated
-  START_OF_BUFFER_REPLAY(4), START_OF_INCREMENTAL_PUSH(5), END_OF_INCREMENTAL_PUSH(6), TOPIC_SWITCH(7), VERSION_SWAP(8);
+  START_OF_BUFFER_REPLAY(4), START_OF_INCREMENTAL_PUSH(5), END_OF_INCREMENTAL_PUSH(6), TOPIC_SWITCH(7), VERSION_SWAP(8),
+  SYNC_OFFSET(9);
 
   /** The value is the byte used on the wire format */
   private final int value;
@@ -69,7 +71,8 @@ public enum ControlMessageType implements VeniceEnumValue {
         return new TopicSwitch();
       case VERSION_SWAP:
         return new VersionSwap();
-
+      case SYNC_OFFSET:
+        return new SyncOffset();
       default:
         throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }

@@ -1972,4 +1972,10 @@ public class ConfigKeys {
    * Venice router's principal name used for ssl. Default should contain "venice-router".
    */
   public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
+
+  /**
+   * The minimum interval in milliseconds for leader replica to send sync offset control message upon consuming SOS and
+   * EOS messages from RT.
+   */
+  public static final String SERVER_SYNC_OFFSET_MIN_INTERVAL_MS = "server.sync.offset.min.interval.ms";
 }

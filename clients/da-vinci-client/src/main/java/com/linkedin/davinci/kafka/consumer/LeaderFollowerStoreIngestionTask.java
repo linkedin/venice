@@ -36,6 +36,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.SyncOffset;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -2075,9 +2076,41 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                * For #3 stat counter update will not happen for SOS/EOS message. This should not be a big issue. If needed we can copy some of the stats maintenance
                *   work here.
                *
+               * To address #2 we will periodically produce {@link com.linkedin.venice.kafka.protocol.SyncOffset}
+               * control message to VT and upon consumption of those messages in the drainer we will update the offset.
+               *
                * So in summary NO further processing is needed SOS/EOS received from RT topics. Just silently drop the message here.
                * We should not return false here.
                */
+              if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+                long timestamp = System.currentTimeMillis();
+                long previousSyncOffsetTimestamp = partitionConsumptionState.getLatestRTSyncOffsetTimestamp(kafkaUrl);
+                if (timestamp > previousSyncOffsetTimestamp + getServerConfig().getSyncOffsetMinIntervalMs()) {
+                  ControlMessage syncOffsetCM = new ControlMessage();
+                  syncOffsetCM.controlMessageType = ControlMessageType.SYNC_OFFSET.getValue();
+                  SyncOffset syncOffset = new SyncOffset();
+                  syncOffset.upstreamOffset = consumerRecord.getOffset();
+                  syncOffset.kafkaURL = kafkaUrl;
+                  syncOffsetCM.controlMessageUnion = syncOffset;
+                  int versionTopicPartition =
+                      consumerRecord.getTopicPartition().getPartitionNumber() * amplificationFactor;
+                  produceToLocalKafka(
+                      consumerRecord,
+                      partitionConsumptionState,
+                      leaderProducedRecordContext,
+                      (callback, leaderMetadataWrapper) -> veniceWriter.get()
+                          .asyncSendControlMessage(
+                              syncOffsetCM,
+                              versionTopicPartition,
+                              new HashMap<>(),
+                              callback,
+                              leaderMetadataWrapper),
+                      subPartition,
+                      kafkaUrl,
+                      kafkaClusterId,
+                      beforeProcessingRecordTimestampNs);
+                }
+              }
               producedFinally = false;
             }
             break;
@@ -2140,6 +2173,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 beforeProcessingRecordTimestampNs);
             break;
           case VERSION_SWAP:
+          case SYNC_OFFSET:
             return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
           default:
             // do nothing
@@ -3115,6 +3149,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     for (VeniceViewWriter viewWriter: viewWriters.values()) {
       // TODO: at some point, we should do this on more or all control messages potentially as we add more view types
       viewWriter.processControlMessage(controlMessage, partition, partitionConsumptionState, this.versionNumber);
+    }
+  }
+
+  @Override
+  protected void processSyncOffsetMessage(
+      ControlMessage controlMessage,
+      int partition,
+      PartitionConsumptionState partitionConsumptionState) {
+    // Update the latest processed upstream offset in memory.
+    OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+    PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    if (upstreamTopic != null && upstreamTopic.isRealTime()) {
+      SyncOffset syncOffset = (SyncOffset) controlMessage.controlMessageUnion;
+      String kafkaUrl = syncOffset.kafkaURL == null
+          ? OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY
+          : syncOffset.kafkaURL.toString();
+      long previousOffset = partitionConsumptionState.getLatestProcessedUpstreamRTOffset(kafkaUrl);
+      if (syncOffset.upstreamOffset > previousOffset) {
+        partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(kafkaUrl, syncOffset.upstreamOffset);
+      }
     }
   }
 

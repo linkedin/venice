@@ -264,6 +264,7 @@ public class Segment {
           case END_OF_INCREMENTAL_PUSH:
           case TOPIC_SWITCH:
           case VERSION_SWAP:
+          case SYNC_OFFSET:
             // All other control messages are handled the same way.
             updateCheckSum(messageEnvelope.getMessageType());
             updateCheckSum(controlMessage.getControlMessageType());

@@ -2418,6 +2418,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     statusReportAdapter.reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
   }
 
+  protected void processSyncOffsetMessage(
+      ControlMessage controlMessage,
+      int partition,
+      PartitionConsumptionState partitionConsumptionState) {
+    throw new UnsupportedOperationException(
+        ControlMessageType.SYNC_OFFSET.name()
+            + " control message should not be received in Online/Offline model. Topic: " + kafkaVersionTopic
+            + "partition: " + partition);
+  }
+
   /**
    *  This isn't really used for ingestion outside of A/A, so we NoOp here and rely on the actual implementation in
    *  {@link ActiveActiveStoreIngestionTask}
@@ -2436,7 +2446,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) {
     throw new VeniceException(
         ControlMessageType.TOPIC_SWITCH.name() + " control message should not be received in"
-            + "Online/Offline state model. Topic " + kafkaVersionTopic + " partition " + partition);
+            + "Online/Offline state model. Topic: " + kafkaVersionTopic + " partition: " + partition);
   }
 
   /**
@@ -2494,6 +2504,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case VERSION_SWAP:
         processVersionSwapMessage(controlMessage, partition, partitionConsumptionState);
+        break;
+      case SYNC_OFFSET:
+        processSyncOffsetMessage(controlMessage, partition, partitionConsumptionState);
         break;
       default:
         throw new UnsupportedMessageTypeException(

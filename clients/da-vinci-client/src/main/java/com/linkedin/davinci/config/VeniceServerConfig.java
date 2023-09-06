@@ -105,6 +105,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY
 import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
+import static com.linkedin.venice.ConfigKeys.SERVER_SYNC_OFFSET_MIN_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
@@ -432,6 +433,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final PubSubClientsFactory pubSubClientsFactory;
   private final String routerPrincipalName;
 
+  private final long syncOffsetMinIntervalMs;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -711,6 +714,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       throw new VeniceException(e);
     }
     routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "CN=venice-router");
+    syncOffsetMinIntervalMs =
+        serverProperties.getLong(SERVER_SYNC_OFFSET_MIN_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
   }
 
   long extractIngestionMemoryLimit(
@@ -1243,5 +1248,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getRouterPrincipalName() {
     return routerPrincipalName;
+  }
+
+  public long getSyncOffsetMinIntervalMs() {
+    return syncOffsetMinIntervalMs;
   }
 }
