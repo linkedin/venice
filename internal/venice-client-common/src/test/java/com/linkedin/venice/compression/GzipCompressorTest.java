@@ -65,7 +65,11 @@ public class GzipCompressorTest {
       ByteBuffer decompressed = compressor
           .decompressAndPrependSchemaHeader(bbWithHeader.array(), bbWithHeader.remaining() + bbWithHeader.position());
       LogManager.getLogger()
-          .info("DEBUGGING: {} {} {}", decompressed.position(), decompressed.remaining(), decompressed.array().length);
+          .info(
+              "DEBUGGING FINAL: {} {} {}",
+              decompressed.position(),
+              decompressed.remaining(),
+              decompressed.array().length);
       byte[] outputBytes = new byte[decompressed.remaining()];
       decompressed.get(outputBytes, 0, decompressed.remaining());
       Assert.assertEquals("Hello World", new String(outputBytes));

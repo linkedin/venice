@@ -19,7 +19,6 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
-import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -263,8 +262,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   private final DecoderWrapper<byte[], T> decompressingByteArrayDecoder =
       (reusedDecoder, bytes, inputBytesLength, reusedValue, deserializer, readResponse, compressor) -> {
         try {
-          LogManager.getLogger().info("DEBUGGING {} {}", inputBytesLength, compressor);
-
           return deserializer.deserialize(
               reusedValue,
               compressor.decompressAndPrependSchemaHeader(bytes, inputBytesLength),

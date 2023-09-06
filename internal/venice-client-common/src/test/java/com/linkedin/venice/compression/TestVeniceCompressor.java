@@ -13,8 +13,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -43,6 +43,11 @@ public class TestVeniceCompressor {
         { CompressionStrategy.ZSTD_WITH_DICT, SourceDataType.BYTE_ARRAY, ByteUtils.SIZE_OF_INT } };
   }
 
+  @DataProvider(name = "CompressionStrategy")
+  public static Object[] compressionStrategyProvider() {
+    return new Object[] { CompressionStrategy.NO_OP, CompressionStrategy.GZIP, CompressionStrategy.ZSTD_WITH_DICT };
+  }
+
   private VeniceCompressor getCompressor(CompressionStrategy strategy) {
     switch (strategy) {
       case ZSTD_WITH_DICT:
@@ -50,6 +55,33 @@ public class TestVeniceCompressor {
         return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
       default:
         return new CompressorFactory().getCompressor(strategy);
+    }
+  }
+
+  @Test(dataProvider = "CompressionStrategy", timeOut = TEST_TIMEOUT)
+  public void testCompressAndDecompress(CompressionStrategy strategy) throws IOException {
+    try (VeniceCompressor compressor = getCompressor(strategy)) {
+      byte[] inputBytes = "Hello World".getBytes();
+      ByteBuffer bbWithHeader;
+      int schemaId = 123;
+      if (strategy == CompressionStrategy.NO_OP) {
+        bbWithHeader = ByteBuffer.allocate(inputBytes.length + VeniceCompressor.SCHEMA_HEADER_LENGTH);
+        bbWithHeader.putInt(schemaId).put(inputBytes);
+        bbWithHeader.flip();
+        bbWithHeader.position(VeniceCompressor.SCHEMA_HEADER_LENGTH);
+      } else {
+        bbWithHeader = compressor.compress(ByteBuffer.wrap(inputBytes), VeniceCompressor.SCHEMA_HEADER_LENGTH);
+        bbWithHeader.position(0);
+        bbWithHeader.putInt(schemaId);
+      }
+      ByteBuffer decompressed = compressor
+          .decompressAndPrependSchemaHeader(bbWithHeader.array(), bbWithHeader.remaining() + bbWithHeader.position());
+      decompressed.position(0);
+      LOGGER.info("DEBUGGING: {} {}", decompressed.position(), decompressed.remaining());
+      Assert.assertEquals(decompressed.getInt(), 123);
+      byte[] outputBytes = new byte[decompressed.remaining()];
+      decompressed.get(outputBytes, 0, decompressed.remaining());
+      Assert.assertEquals("Hello World", new String(outputBytes));
     }
   }
 

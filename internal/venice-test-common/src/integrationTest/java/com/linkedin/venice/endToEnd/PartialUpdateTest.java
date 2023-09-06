@@ -606,8 +606,19 @@ public class PartialUpdateTest {
    * (3) Send a DELETE message to partially delete some items in the map field.
    * (4) Send a DELETE message to fully delete the record.
    */
-  @Test(timeOut = TEST_TIMEOUT_MS * 4)
-  public void testReplicationMetadataChunkingE2E() throws IOException {
+  @Test(timeOut = TEST_TIMEOUT_MS * 5, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testReplicationMetadataChunkingE2E(boolean enableCompression) throws IOException {
+    final CompressionStrategy compressionStrategy =
+        enableCompression ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP;
+    /**
+     * Before we enable ZSTD_WITH_DICT, the follow flag is always true. For now, there are several issues with ZSTD:
+     * (1) Compression rate is too high, hard to trigger chunking (not an issue for ZSTD but for testing).
+     * (2) Compression / decompression performance is slow, HttpTransportClient read timeout for default 1s. Will need to
+     * be able to update the default timeout in HttpClient5Builder.
+     * (3) Repush failed when requesting topic in controller as dictionary is too large and exceed the max request body size.
+     */
+
+    final boolean validateChunkData = compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT;
     final String storeName = Utils.getUniqueString("rmdChunking");
     String parentControllerUrl = parentController.getControllerUrl();
     String keySchemaStr = "{\"type\" : \"string\"}";
@@ -627,7 +638,7 @@ public class PartialUpdateTest {
           parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setCompressionStrategy(CompressionStrategy.GZIP)
+              .setCompressionStrategy(compressionStrategy)
               .setWriteComputationEnabled(true)
               .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
@@ -657,12 +668,12 @@ public class PartialUpdateTest {
     String primitiveFieldName = "name";
     String mapFieldName = "stringMap";
 
+    int totalUpdateCount = 30;
     // Insert large amount of Map entries to trigger RMD chunking.
-    int oldUpdateCount = 29;
     int singleUpdateEntryCount = 10000;
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
-      for (int i = 0; i < oldUpdateCount; i++) {
+      for (int i = 0; i < (totalUpdateCount - 1); i++) {
         producePartialUpdate(
             storeName,
             veniceProducer,
@@ -674,7 +685,7 @@ public class PartialUpdateTest {
             i);
       }
       // Verify the value record has been partially updated.
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, true, () -> {
         try {
           GenericRecord valueRecord = readValue(storeReader, key);
           boolean nullRecord = (valueRecord == null);
@@ -683,14 +694,16 @@ public class PartialUpdateTest {
           Map<String, String> mapFieldResult = new HashMap<>();
           ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
               .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
-          assertEquals(mapFieldResult.size(), oldUpdateCount * singleUpdateEntryCount);
+          assertEquals(mapFieldResult.size(), (totalUpdateCount - 1) * singleUpdateEntryCount);
         } catch (Exception e) {
           throw new VeniceException(e);
         }
       });
 
       String kafkaTopic_v1 = Version.composeKafkaTopic(storeName, 1);
-      validateValueChunks(kafkaTopic_v1, key, Assert::assertNotNull);
+      if (validateChunkData) {
+        validateValueChunks(kafkaTopic_v1, key, Assert::assertNotNull);
+      }
       VeniceServerWrapper serverWrapper = multiRegionMultiClusterWrapper.getChildRegions()
           .get(0)
           .getClusters()
@@ -699,10 +712,10 @@ public class PartialUpdateTest {
           .get(0);
       AbstractStorageEngine storageEngine =
           serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic_v1);
-      ChunkedValueManifest valueManifest = getChunkValueManifest(storageEngine, 0, key, false);
-      ChunkedValueManifest rmdManifest = getChunkValueManifest(storageEngine, 0, key, true);
+      ChunkedValueManifest valueManifest =
+          validateChunkData ? getChunkValueManifest(storageEngine, 0, key, false) : null;
+      ChunkedValueManifest rmdManifest = validateChunkData ? getChunkValueManifest(storageEngine, 0, key, true) : null;
 
-      int updateCount = 30;
       producePartialUpdate(
           storeName,
           veniceProducer,
@@ -711,7 +724,7 @@ public class PartialUpdateTest {
           primitiveFieldName,
           mapFieldName,
           singleUpdateEntryCount,
-          updateCount - 1);
+          totalUpdateCount - 1);
 
       // Verify the value record has been partially updated.
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, () -> {
@@ -723,7 +736,7 @@ public class PartialUpdateTest {
           Map<String, String> mapFieldResult = new HashMap<>();
           ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
               .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
-          assertEquals(mapFieldResult.size(), updateCount * singleUpdateEntryCount);
+          assertEquals(mapFieldResult.size(), totalUpdateCount * singleUpdateEntryCount);
         } catch (Exception e) {
           throw new VeniceException(e);
         }
@@ -733,18 +746,26 @@ public class PartialUpdateTest {
         GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get("timestamp");
         GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
         List<Long> activeElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("activeElementsTimestamps");
-        assertEquals(activeElementsTimestamps.size(), updateCount * singleUpdateEntryCount);
+        assertEquals(activeElementsTimestamps.size(), totalUpdateCount * singleUpdateEntryCount);
       });
 
-      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
-        Assert.assertNotNull(valueManifest);
-        Assert.assertNotNull(rmdManifest);
-        validateChunksFromManifests(kafkaTopic_v1, 0, valueManifest, rmdManifest, (valueChunkBytes, rmdChunkBytes) -> {
-          Assert.assertNull(valueChunkBytes);
-          Assert.assertNotNull(rmdChunkBytes);
-          Assert.assertEquals(rmdChunkBytes.length, 4);
-        }, true);
-      });
+      if (validateChunkData) {
+        TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+          Assert.assertNotNull(valueManifest);
+          Assert.assertNotNull(rmdManifest);
+          validateChunksFromManifests(
+              kafkaTopic_v1,
+              0,
+              valueManifest,
+              rmdManifest,
+              (valueChunkBytes, rmdChunkBytes) -> {
+                Assert.assertNull(valueChunkBytes);
+                Assert.assertNotNull(rmdChunkBytes);
+                Assert.assertEquals(rmdChunkBytes.length, 4);
+              },
+              true);
+        });
+      }
 
       // <!--- Perform one time repush to make sure repush can handle RMD chunks data correctly -->
       Properties props =
@@ -773,7 +794,7 @@ public class PartialUpdateTest {
           Map<String, String> mapFieldResult = new HashMap<>();
           ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
               .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
-          assertEquals(mapFieldResult.size(), updateCount * singleUpdateEntryCount);
+          assertEquals(mapFieldResult.size(), totalUpdateCount * singleUpdateEntryCount);
         } catch (Exception e) {
           throw new VeniceException(e);
         }
@@ -784,11 +805,11 @@ public class PartialUpdateTest {
         GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get("timestamp");
         GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
         List<Long> activeElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("activeElementsTimestamps");
-        assertEquals(activeElementsTimestamps.size(), updateCount * singleUpdateEntryCount);
+        assertEquals(activeElementsTimestamps.size(), totalUpdateCount * singleUpdateEntryCount);
       });
 
       // Send DELETE record that partially removes data.
-      sendStreamingDeleteRecord(veniceProducer, storeName, key, (updateCount - 1) * 10L);
+      sendStreamingDeleteRecord(veniceProducer, storeName, key, (totalUpdateCount - 1) * 10L);
 
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         GenericRecord valueRecord = readValue(storeReader, key);
@@ -811,7 +832,7 @@ public class PartialUpdateTest {
       });
 
       // Send DELETE record that fully removes data.
-      sendStreamingDeleteRecord(veniceProducer, storeName, key, updateCount * 10L);
+      sendStreamingDeleteRecord(veniceProducer, storeName, key, totalUpdateCount * 10L);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         GenericRecord valueRecord = readValue(storeReader, key);
         boolean nullRecord = (valueRecord == null);
@@ -823,7 +844,7 @@ public class PartialUpdateTest {
         GenericRecord timestampRecord =
             (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
         GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
-        assertEquals(stringMapTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), (long) (updateCount) * 10);
+        assertEquals(stringMapTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), (long) (totalUpdateCount) * 10);
       });
     } finally {
       veniceProducer.stop();

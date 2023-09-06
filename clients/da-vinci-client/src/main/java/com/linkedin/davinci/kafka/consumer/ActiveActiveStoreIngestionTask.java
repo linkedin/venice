@@ -624,10 +624,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             compressedOriginalValue.remaining(),
             compressedOriginalValue.array().length);
         try {
-          originalValue = compressor.get()
-              .decompressAndPrependSchemaHeader(
-                  compressedOriginalValue.array(),
-                  compressedOriginalValue.position() + compressedOriginalValue.remaining());
+          originalValue = getCompressionStrategy().isCompressionEnabled()
+              ? compressor.get()
+                  .decompressAndPrependSchemaHeader(
+                      compressedOriginalValue.array(),
+                      compressedOriginalValue.position() + compressedOriginalValue.remaining())
+              : compressedOriginalValue;
           LOGGER.info(
               "DEBUGGING DECOMPRESSED OLD VALUE FROM CACHE: {} {} {}",
               originalValue.position(),

@@ -34,7 +34,7 @@ import org.apache.hc.core5.util.Timeout;
 public class HttpClient5Utils {
   public static class HttpClient5Builder {
     private SSLContext sslContext;
-    private long requestTimeOutInMilliseconds = TimeUnit.SECONDS.toMillis(1); // 1s by default
+    private long requestTimeOutInMilliseconds = TimeUnit.SECONDS.toMillis(5); // 1s by default
     /**
      * We need to use a high connect timeout to avoid reconnect issue, which might result in confusing logging and unhealthy requests.
      * For now, we remove the functions updating to connect timeout to avoid mistakes.

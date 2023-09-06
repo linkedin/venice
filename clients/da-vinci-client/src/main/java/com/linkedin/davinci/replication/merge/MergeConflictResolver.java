@@ -607,6 +607,8 @@ public class MergeConflictResolver {
         newValue = AvroSchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
       } else {
         int schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
+        LogManager.getLogger()
+            .info("DEBUGGING SCHEMA ID: {} {} {}", oldValueBytes.position(), oldValueBytes.remaining(), schemaId);
         Schema writerSchema = getValueSchema(schemaId);
         newValue = deserializeValue(oldValueBytes, writerSchema, readerValueSchemaEntry.getSchema());
       }
