@@ -135,7 +135,7 @@ public class StoreRepushCommand extends Command {
     try {
       String clusterName = cli.discoverCluster(s).getCluster();
       if (clusterName == null) {
-        return ret.failWithResult(RepushViabilityInfo.Result.DISCOVERY_ERROR);
+        return ret.inViableWithError(RepushViabilityInfo.Result.DISCOVERY_ERROR);
       }
       try (ControllerClient parentCtrlCli = buildControllerClient(clusterName, url, getParams().getSSLFactory())) {
         StoreResponse storeResponse = parentCtrlCli.getStore(s);
@@ -146,31 +146,31 @@ public class StoreRepushCommand extends Command {
         StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(s, false);
         Map<String, RegionPushDetails> regionPushDetails = storeHealthInfo.getRegionPushDetails();
         if (!regionPushDetails.containsKey(destFabric)) {
-          return ret.failWithResult(RepushViabilityInfo.Result.NO_FUTURE_VERSION);
+          return ret.inViableWithError(RepushViabilityInfo.Result.NO_CURRENT_VERSION);
         }
         String latestTimestamp = regionPushDetails.get(destFabric).getPushStartTimestamp();
         LocalDateTime latestPushStartTime = LocalDateTime.parse(latestTimestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
         if (latestPushStartTime.isAfter(timestamp)) {
-          return ret.failWithResult(RepushViabilityInfo.Result.TIMESTAMP_MISMATCH);
+          return ret.inViableWithResult(RepushViabilityInfo.Result.CURRENT_VERSION_IS_NEWER);
         }
 
         MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, s);
         // No future version status for target region.
         if (!response.getStoreStatusMap().containsKey(destFabric)) {
-          return ret.succeedWithResult(RepushViabilityInfo.Result.SUCCESS);
+          return ret.viableWithResult(RepushViabilityInfo.Result.SUCCESS);
         }
 
         int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(destFabric));
         // No ongoing offline pushes detected for target region.
         if (futureVersion == Store.NON_EXISTING_VERSION) {
-          return ret.succeedWithResult(RepushViabilityInfo.Result.SUCCESS);
+          return ret.viableWithResult(RepushViabilityInfo.Result.SUCCESS);
         }
         // Find ongoing pushes for this store, skip.
-        return ret.failWithResult(RepushViabilityInfo.Result.ONGOING_PUSH);
+        return ret.inViableWithResult(RepushViabilityInfo.Result.ONGOING_PUSH);
       }
     } catch (VeniceException e) {
-      return ret.failWithResult(RepushViabilityInfo.Result.EXCEPTION_THROWN);
+      return ret.inViableWithError(RepushViabilityInfo.Result.EXCEPTION_THROWN);
     }
   }
 
@@ -181,9 +181,14 @@ public class StoreRepushCommand extends Command {
     StoreRepushCommand.Params repushParams = getParams();
     ControllerClient cli = repushParams.getPCtrlCliWithoutCluster();
     if (!repushViability.isViable()) {
-      completeCoreWorkWithError("failure: " + repushViability.getResult().toString());
+      if (repushViability.isError()) {
+        completeCoreWorkWithError(repushViability.getResult().toString());
+      } else {
+        completeCoreWorkWithMessage(repushViability.getResult().toString());
+      }
       return;
     }
+
     if (!repushViability.isHybrid()) {
       try {
         String clusterName = cli.discoverCluster(repushParams.getStore()).getCluster();
@@ -196,7 +201,7 @@ public class StoreRepushCommand extends Command {
               -1,
               Optional.empty());
           if (prepareResponse.isError()) {
-            completeCoreWorkWithError("failure: " + prepareResponse.getError());
+            completeCoreWorkWithError(prepareResponse.getError());
             return;
           }
           ControllerResponse dataRecoveryResponse = parentCtrlCli.dataRecovery(
@@ -208,13 +213,13 @@ public class StoreRepushCommand extends Command {
               true,
               Optional.empty());
           if (dataRecoveryResponse.isError()) {
-            completeCoreWorkWithError("failure: " + dataRecoveryResponse.getError());
+            completeCoreWorkWithError(dataRecoveryResponse.getError());
             return;
           }
-          completeCoreWorkWithMessage("success: (batch store -- no url)");
+          completeCoreWorkWithMessage("batch store with data recovery API -- no url");
         }
       } catch (VeniceException e) {
-        completeCoreWorkWithError("failure: VeniceException -- " + e.getMessage());
+        completeCoreWorkWithError(e.getMessage());
       }
       return;
     }

@@ -40,7 +40,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 
 def avroVersion = '1.10.2'
 def avroUtilVersion = '0.2.150'
-def grpcVersion = '1.54.1'
+def grpcVersion = '1.49.2'
 def kafkaGroup = 'com.linkedin.kafka'
 def kafkaVersion = '2.4.1.65'
 def log4j2Version = '2.17.1'
@@ -716,6 +716,7 @@ ext.createDiffFile = { ->
       // Keep this sorted
       // da-vinci-client
       ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',
+      ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/ingestion/isolated/IsolatedIngestionServer.java',
 
       // venice-client
       ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',

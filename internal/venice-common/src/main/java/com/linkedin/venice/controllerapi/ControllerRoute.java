@@ -128,6 +128,7 @@ public enum ControllerRoute {
       PERSONA_NAME
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   ROLLBACK_TO_BACKUP_VERSION("/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME)),
+  ROLL_FORWARD_TO_FUTURE_VERSION("/roll_forward_to_future_version", HttpMethod.POST, Collections.singletonList(NAME)),
   // Enable/disable read write for this store. Status is "true" or "false". Operation "read" or "write" or "readwrite".
   ENABLE_STORE("/enable_store", HttpMethod.POST, Arrays.asList(NAME, OPERATION, STATUS)),
   DELETE_ALL_VERSIONS("/delete_all_versions", HttpMethod.POST, Collections.singletonList(NAME)),
