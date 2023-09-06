@@ -96,6 +96,29 @@ public class GzipCompressor extends VeniceCompressor {
   }
 
   @Override
+  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int length) throws IOException {
+    int valueSchema = ByteUtils.readInt(data, SCHEMA_HEADER_LENGTH);
+    byte[] decompressedByteArray;
+    try (InputStream gis =
+        decompress(new ByteArrayInputStream(data, SCHEMA_HEADER_LENGTH, length - SCHEMA_HEADER_LENGTH))) {
+      decompressedByteArray = IOUtils.toByteArray(gis);
+      ByteBuffer byteBufferWithHeader = ByteBuffer.allocate(SCHEMA_HEADER_LENGTH + decompressedByteArray.length)
+          .putInt(valueSchema)
+          .put(decompressedByteArray);
+      byteBufferWithHeader.flip();
+      byteBufferWithHeader.position(SCHEMA_HEADER_LENGTH);
+      LOGGER.info(
+          "DEBUGGING GZIP DECOMPRESSED: {} {} {} {} {}",
+          data.length,
+          length,
+          byteBufferWithHeader.position(),
+          byteBufferWithHeader.remaining(),
+          byteBufferWithHeader.array().length);
+      return byteBufferWithHeader;
+    }
+  }
+
+  @Override
   public InputStream decompress(InputStream inputStream) throws IOException {
     return new GZIPInputStream(inputStream);
   }

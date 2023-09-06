@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -423,6 +424,13 @@ public class MergeConflictResolver {
     if (oldValueBytes == null) {
       return AvroSchemaUtils.createGenericRecord(readerValueSchema);
     }
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING Old Value ByteBuffer: {} {} {} {}",
+            oldValueBytes.position(),
+            oldValueBytes.remaining(),
+            oldValueBytes.array().length,
+            oldValueWriterSchemaID);
     final Schema oldValueWriterSchema = getValueSchema(oldValueWriterSchemaID);
     return deserializeValue(oldValueBytes, oldValueWriterSchema, readerValueSchema);
   }

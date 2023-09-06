@@ -137,9 +137,9 @@ public class PartialUpdateTest {
         NUMBER_OF_CLUSTERS,
         1,
         1,
-        2,
         1,
-        2,
+        1,
+        1,
         Optional.of(controllerProps),
         Optional.of(controllerProps),
         Optional.of(serverProperties),
@@ -627,7 +627,7 @@ public class PartialUpdateTest {
           parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setCompressionStrategy(CompressionStrategy.GZIP)
               .setWriteComputationEnabled(true)
               .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)

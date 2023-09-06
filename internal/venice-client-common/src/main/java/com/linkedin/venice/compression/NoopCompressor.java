@@ -39,6 +39,11 @@ public class NoopCompressor extends VeniceCompressor {
   }
 
   @Override
+  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int length) throws IOException {
+    return ByteBuffer.wrap(data, SCHEMA_HEADER_LENGTH, length - SCHEMA_HEADER_LENGTH);
+  }
+
+  @Override
   public InputStream decompress(InputStream inputStream) throws IOException {
     return inputStream;
   }

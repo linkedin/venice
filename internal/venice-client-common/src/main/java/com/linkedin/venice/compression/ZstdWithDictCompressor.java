@@ -13,6 +13,7 @@ import com.github.luben.zstd.ZstdException;
 import com.github.luben.zstd.ZstdInputStream;
 import com.linkedin.venice.compression.protocol.FakeCompressingSchema;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.concurrent.CloseableThreadLocal;
 import java.io.IOException;
 import java.io.InputStream;
@@ -120,6 +121,27 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
             length);
     validateActualDecompressedSize(actualSize, expectedSize);
     returnedData.position(0);
+    return returnedData;
+  }
+
+  @Override
+  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int length) throws IOException {
+    int schemaHeader = ByteUtils.readInt(data, 0);
+    int expectedSize = validateExpectedDecompressedSize(
+        Zstd.decompressedSize(data, SCHEMA_HEADER_LENGTH, length - SCHEMA_HEADER_LENGTH));
+    ByteBuffer returnedData = ByteBuffer.allocate(expectedSize + SCHEMA_HEADER_LENGTH);
+    returnedData.position(SCHEMA_HEADER_LENGTH);
+    int actualSize = decompressor.get()
+        .decompressByteArray(
+            returnedData.array(),
+            returnedData.position(),
+            returnedData.remaining(),
+            data,
+            SCHEMA_HEADER_LENGTH,
+            length - SCHEMA_HEADER_LENGTH);
+    validateActualDecompressedSize(actualSize, expectedSize);
+    returnedData.position(0);
+    returnedData.putInt(schemaHeader);
     return returnedData;
   }
 
