@@ -452,6 +452,18 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertEquals(storeInfo.getCurrentVersion(), 1);
         });
       }
+
+      // Now lets go back to the future version for fun
+      response = parentControllerClient.rollForwardToFutureVersion(storeName);
+      Assert.assertFalse(response.isError());
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          Assert.assertEquals(storeInfo.getCurrentVersion(), 2);
+        });
+      }
     }
   }
 

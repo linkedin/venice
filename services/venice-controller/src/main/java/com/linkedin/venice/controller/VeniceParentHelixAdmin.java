@@ -1867,15 +1867,21 @@ public class VeniceParentHelixAdmin implements Admin {
             + "setting version on parent is not supported, since the version list could be different fabric by fabric");
   }
 
-  /**
-   * Set backup version as current version in all child regions.
-   */
   @Override
-  public void rollbackToBackupVersion(String clusterName, String storeName) {
+  public void rollForwardToFutureVersion(String clusterName, String storeName) {
+    setCurrentVersionInChildRegions(clusterName, storeName, store -> {
+      Optional<Version> version = store.getVersions().stream().max(Comparable::compareTo);
+      return version.map(Version::getNumber).orElse(Store.NON_EXISTING_VERSION);
+    });
+  }
+
+  protected void setCurrentVersionInChildRegions(
+      String clusterName,
+      String storeName,
+      VersionProvider currentVersionProvider) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
-      getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
-      // Call child controllers in parallel to check whether backup version is consistent in all child regions
+      // Call child controllers in parallel to check whether next version is consistent in all child regions
       Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
       List<Callable<Integer>> tasks = new ArrayList<>();
       controllerClientMap.forEach((region, cc) -> tasks.add(() -> {
@@ -1885,25 +1891,27 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         StoreInfo store = storeResponse.getStore();
         if (!store.isEnableStoreWrites()) {
-          throw new VeniceException("Unable to rollback since store does not enable write in region " + region);
+          throw new VeniceException(
+              "Unable to change current version as store does not have writes enabled in region " + region);
         }
-        int backupVersion =
-            getVeniceHelixAdmin().getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
-        if (backupVersion == Store.NON_EXISTING_VERSION) {
-          throw new VeniceException("Unable to rollback since backup version does not exist in region " + region);
+        int newCurrentVersion = currentVersionProvider.getVersion(store);
+        if (newCurrentVersion == Store.NON_EXISTING_VERSION) {
+          throw new VeniceException(
+              "Unable to change current version as valid version does not exit in region " + region);
         }
-        return backupVersion;
+        return newCurrentVersion;
       }));
-
+      getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
       ExecutorService executor = Executors.newFixedThreadPool(tasks.size());
-      int backupVersion = Store.NON_EXISTING_VERSION;
+      int futureVersion = Store.NON_EXISTING_VERSION;
       List<Future<Integer>> results = executor.invokeAll(tasks);
       for (Future<Integer> future: results) {
-        int backupVersionInChild = future.get();
-        if (backupVersion != Store.NON_EXISTING_VERSION && backupVersion != backupVersionInChild) {
-          throw new VeniceException("Unable to rollback since backup version number is inconsistent across regions");
+        int futureVersionInChild = future.get();
+        if (futureVersion != Store.NON_EXISTING_VERSION && futureVersion != futureVersionInChild) {
+          throw new VeniceException(
+              "Unable to change current version as destination version number is inconsistent across regions");
         }
-        backupVersion = backupVersionInChild;
+        futureVersion = futureVersionInChild;
       }
 
       // Send admin message to set backup version as current version. Child controllers will execute the admin message.
@@ -1911,19 +1919,35 @@ public class VeniceParentHelixAdmin implements Admin {
           (SetStoreCurrentVersion) AdminMessageType.SET_STORE_CURRENT_VERSION.getNewInstance();
       setStoreCurrentVersion.clusterName = clusterName;
       setStoreCurrentVersion.storeName = storeName;
-      setStoreCurrentVersion.currentVersion = backupVersion;
+      setStoreCurrentVersion.currentVersion = futureVersion;
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.SET_STORE_CURRENT_VERSION.getValue();
       message.payloadUnion = setStoreCurrentVersion;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
     } catch (InterruptedException e) {
-      throw new VeniceException("Unable to rollback since thread is interrupted");
+      throw new VeniceException("Unable to change active version since thread is interrupted");
     } catch (ExecutionException e) {
       throw new VeniceException(e.getMessage());
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
+  }
+
+  @FunctionalInterface
+  interface VersionProvider {
+    int getVersion(StoreInfo storeInfo);
+  }
+
+  /**
+   * Set backup version as current version in all child regions.
+   */
+  @Override
+  public void rollbackToBackupVersion(String clusterName, String storeName) {
+    setCurrentVersionInChildRegions(
+        clusterName,
+        storeName,
+        store -> getVeniceHelixAdmin().getBackupVersionNumber(store.getVersions(), store.getCurrentVersion()));
   }
 
   /**
