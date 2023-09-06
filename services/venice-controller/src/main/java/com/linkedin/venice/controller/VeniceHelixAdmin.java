@@ -3650,6 +3650,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  @Override
+  public void rollForwardToFutureVersion(String clusterName, String storeName) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      if (!store.isEnableWrites()) {
+        throw new VeniceException(
+            "Unable to update store:" + storeName + " current version since store does not enable writes");
+      }
+      int futureVersion = getFutureVersion(clusterName, storeName);
+      if (futureVersion == Store.NON_EXISTING_VERSION) {
+        throw new VeniceException("Future version does not exist for store:" + storeName);
+      }
+      int previousVersion = store.getCurrentVersion();
+      store.setCurrentVersion(futureVersion);
+      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, futureVersion);
+      return store;
+    });
+  }
+
   /**
    * Set backup version as current version in a child region.
    */
