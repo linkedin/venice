@@ -345,8 +345,8 @@ public class TestUtils {
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
     props.putAll(response.getPartitionerParams());
-    props.putAll(additionalProperties);
     props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
+    props.putAll(additionalProperties);
     VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props, pubSubProducerAdapterFactory);
 
     Properties partitionerProperties = new Properties();
