@@ -136,7 +136,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private static final String CONSUMER_TASK_ID_FORMAT = StoreIngestionTask.class.getSimpleName() + " for [ Topic: %s ]";
   public static long SCHEMA_POLLING_DELAY_MS = SECONDS.toMillis(5);
+  public static long STORE_VERSION_POLLING_DELAY_MS = MINUTES.toMillis(1);
+
   private static final long SCHEMA_POLLING_TIMEOUT_MS = MINUTES.toMillis(5);
+  private static final long SOP_POLLING_TIMEOUT_MS = HOURS.toMillis(1);
 
   private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
   private static final int MAX_IDLE_COUNTER = 100;
@@ -274,6 +277,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StatusReportAdapter statusReportAdapter;
 
   private final Optional<ObjectCacheBackend> cacheBackend;
+  private final Runnable runnableForKillIngestionTasksForMissingSOP;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -406,6 +410,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         new IngestionNotificationDispatcher(notifiers, kafkaVersionTopic, isCurrentVersion),
         amplificationFactorAdapter);
 
+    this.runnableForKillIngestionTasksForMissingSOP = () -> waitForStateVersion(kafkaVersionTopic);
+    this.runnableForKillIngestionTasksForMissingSOP.run();
     this.cacheBackend = cacheBackend;
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
@@ -470,6 +476,30 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected int nextSeqNum() {
     return consumerActionSequenceNumber.incrementAndGet();
+  }
+
+  private void waitForStateVersion(String kafkaTopic) {
+    long startTime = System.currentTimeMillis();
+
+    for (;;) {
+      try {
+        Thread.sleep(STORE_VERSION_POLLING_DELAY_MS);
+      } catch (InterruptedException e) {
+        LOGGER.info("Received interruptedException while waiting for store version.");
+        break;
+      }
+      StoreVersionState state = storageEngine.getStoreVersionState();
+
+      long elapsedTime = System.currentTimeMillis() - startTime;
+      if (state != null || !isRunning()) {
+        break;
+      }
+
+      if (elapsedTime > SOP_POLLING_TIMEOUT_MS) {
+        LOGGER.warn("Killing the ingestion as Version state is not available for {} after {}", kafkaTopic, elapsedTime);
+        kill();
+      }
+    }
   }
 
   /**
