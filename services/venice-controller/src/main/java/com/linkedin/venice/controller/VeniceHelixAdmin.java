@@ -41,6 +41,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -199,6 +200,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -1509,7 +1511,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return versionsToMigrate;
   }
 
-  Map<String, ControllerClient> getControllerClientMap(String clusterName) {
+  public Map<String, ControllerClient> getControllerClientMap(String clusterName) {
     return clusterControllerClientPerColoMap.computeIfAbsent(clusterName, cn -> {
       Map<String, ControllerClient> controllerClients = new HashMap<>();
       VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
@@ -7840,6 +7842,39 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public Optional<PushStatusStoreWriter> getPushStatusStoreWriter() {
     return pushStatusStoreWriter;
+  }
+
+  @Override
+  public void sendHeartbeatToSystemStore(String clusterName, String storeName, long heartbeatTimeStamp) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    String userStoreName = systemStoreType.extractRegularStoreName(storeName);
+    long currentTimestamp = System.currentTimeMillis();
+    if (VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.equals(systemStoreType)) {
+      // Push status store is fully rolled out in controller. It will be cleaned up to become non-optional argument.
+      getPushStatusStoreWriter().get().writeHeartbeat(userStoreName, currentTimestamp);
+    } else {
+      getMetaStoreWriter().writeHeartbeat(userStoreName, currentTimestamp);
+    }
+  }
+
+  @Override
+  public long getHeartbeatFromSystemStore(String clusterName, String systemStoreName) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(systemStoreName);
+    String userStoreName = systemStoreType.extractRegularStoreName(systemStoreName);
+    try {
+      return RetryUtils.executeWithMaxRetriesAndFixedAttemptDuration(() -> {
+        long retrievedTimestamp;
+        if (systemStoreType == VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE) {
+          retrievedTimestamp = getPushStatusStoreReader().get()
+              .getHeartbeat(userStoreName, PushStatusStoreUtils.CONTROLLER_HEARTBEAT_INSTANCE_NAME);
+        } else {
+          retrievedTimestamp = getMetaStoreReader().getHeartbeat(userStoreName);
+        }
+        return retrievedTimestamp;
+      }, 3, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
+    } catch (VeniceException e) {
+      return -1;
+    }
   }
 
   public Optional<SSLFactory> getSslFactory() {

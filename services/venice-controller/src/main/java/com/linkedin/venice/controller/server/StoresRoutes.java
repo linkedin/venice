@@ -6,6 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_D
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -35,6 +36,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
@@ -45,6 +47,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_TOPIC_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
@@ -75,6 +78,7 @@ import com.linkedin.venice.controllerapi.StoreComparisonResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
@@ -1017,6 +1021,56 @@ public class StoresRoutes extends AbstractRoute {
       } catch (Throwable throwable) {
         responseObject.setError(throwable);
         AdminSparkServer.handleError(new VeniceException(throwable), request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route sendHeartbeatToSystemStore(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        if (!isAllowListUser(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+        }
+        AdminSparkServer.validateParams(request, SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        long heartbeatTimestamp = Long.parseLong(request.queryParams(HEARTBEAT_TIMESTAMP));
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        admin.sendHeartbeatToSystemStore(clusterName, storeName, heartbeatTimestamp);
+      } catch (Throwable e) {
+        responseObject.setError(e);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route getHeartbeatFromSystemStore(Admin admin) {
+    return (request, response) -> {
+      SystemStoreHeartbeatResponse responseObject = new SystemStoreHeartbeatResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        if (!isAllowListUser(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError(ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+        }
+        AdminSparkServer.validateParams(request, GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        responseObject.setHeartbeatTimestamp(admin.getHeartbeatFromSystemStore(clusterName, storeName));
+        responseObject.setHeartbeatTimestamp(0);
+      } catch (Throwable e) {
+        responseObject.setError(e);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };

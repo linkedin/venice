@@ -4056,6 +4056,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public synchronized void close() {
     veniceWriterMap.keySet().forEach(this::stop);
+
     getVeniceHelixAdmin().close();
     terminalStateTopicChecker.close();
     if (systemStoreAclSynchronizationTask != null) {
@@ -4769,8 +4770,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getClustersLeaderOf();
   }
 
-  // Function that can be overridden in tests
-  VeniceHelixAdmin getVeniceHelixAdmin() {
+  public VeniceHelixAdmin getVeniceHelixAdmin() {
     return veniceHelixAdmin;
   }
 
@@ -5218,5 +5218,15 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Optional<PushStatusStoreWriter> getPushStatusStoreWriter() {
     throw new VeniceUnsupportedOperationException("Parent controller does not have Da Vinci push status store writer");
+  }
+
+  @Override
+  public void sendHeartbeatToSystemStore(String clusterName, String systemStoreName, long heartbeatTimestamp) {
+    throw new VeniceUnsupportedOperationException("sendHeartbeatToSystemStore");
+  }
+
+  @Override
+  public long getHeartbeatFromSystemStore(String clusterName, String storeName) {
+    throw new VeniceUnsupportedOperationException("getHeartbeatFromSystemStore");
   }
 }
