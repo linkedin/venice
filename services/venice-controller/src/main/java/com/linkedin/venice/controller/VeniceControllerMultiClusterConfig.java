@@ -262,4 +262,8 @@ public class VeniceControllerMultiClusterConfig {
   public PubSubClientsFactory getPubSubClientsFactory() {
     return getCommonConfig().getPubSubClientsFactory();
   }
+
+  public boolean isKMERegistrationFromMessageHeaderEnabled() {
+    return getCommonConfig().isKMERegistrationFromMessageHeaderEnabled();
+  }
 }

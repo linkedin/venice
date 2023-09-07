@@ -461,6 +461,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     return service.getVeniceControllerService().getVeniceHelixAdmin();
   }
 
+  public VeniceController getController() {
+    return service;
+  }
+
   public VeniceHelixAdmin getVeniceHelixAdmin() {
     return (VeniceHelixAdmin) getVeniceAdmin();
   }

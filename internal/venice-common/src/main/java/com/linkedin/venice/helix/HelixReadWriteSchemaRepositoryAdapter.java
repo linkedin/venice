@@ -299,4 +299,9 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
     readOnlyZKSharedSchemaRepository.clear();
     readWriteRegularStoreSchemaRepository.clear();
   }
+
+  // For testing purpose only.
+  public ReadWriteSchemaRepository getReadWriteRegularStoreSchemaRepository() {
+    return this.readWriteRegularStoreSchemaRepository;
+  }
 }

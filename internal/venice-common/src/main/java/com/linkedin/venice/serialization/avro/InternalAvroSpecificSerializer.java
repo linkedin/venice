@@ -7,6 +7,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.SparseConcurrentListWithOffset;
 import com.linkedin.venice.utils.Utils;
 import it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet;
@@ -14,7 +15,6 @@ import it.unimi.dsi.fastutil.ints.IntSet;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.BiConsumer;
@@ -93,7 +93,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   private final SpecificDatumWriter writer;
 
   /** Maintains the mapping between protocol version and the corresponding {@link SpecificDatumReader<SPECIFIC_RECORD>} */
-  private final List<VeniceSpecificDatumReader<SPECIFIC_RECORD>> protocolVersionToReader;
+  private final SparseConcurrentList<VeniceSpecificDatumReader<SPECIFIC_RECORD>> protocolVersionToReader;
 
   /** The schema of the {@link SpecificRecord} which is compiled in the current version of the code. */
   private final Schema compiledProtocol;
@@ -355,11 +355,28 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
   public SPECIFIC_RECORD deserialize(byte[] bytes, Schema providedProtocolSchema, SPECIFIC_RECORD reuse) {
     int protocolVersion = getProtocolVersion(bytes);
-    VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = protocolVersionToReader.get(protocolVersion);
-    if (specificDatumReader == null) {
-      specificDatumReader = cacheDatumReader(protocolVersion, providedProtocolSchema);
-      newSchemaEncountered.accept(protocolVersion, providedProtocolSchema);
-    }
+
+    /**
+     * When a new schema version is discovered during data ingestion, there will be only one thread registering
+     * the new schema for all the users of the shared InternalAvroSpecificSerializer object. During this period
+     * of registration, other concurrent threads that calling deserialize will be blocked until the registration
+     * of the first thread is finished. (It would help to avoid the concurrent request loads in the case e.g. when
+     * all shared consumer threads in one venice server discover an unknown schema from header, and all the
+     * threads decide to register this schema to controller.)
+     *
+     * It is important to notice that once the registration part is completed, it still allows the deserialization
+     * to run in parallel.
+     *
+     * Also notice that if exception happens in newSchemaEncountered, local protocolVersionToReader will not
+     * be updated, and it gives its caller an opportunity to discover the failure and perform any
+     * remediation steps (e.g. retry etc.).
+     */
+    VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader =
+        protocolVersionToReader.computeIfAbsent(protocolVersion, index -> {
+          newSchemaEncountered.accept(protocolVersion, providedProtocolSchema);
+          return cacheDatumReader(protocolVersion, providedProtocolSchema);
+        });
+
     return deserialize(bytes, specificDatumReader, reuse);
   }
 
@@ -425,5 +442,15 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
   private String getCurrentlyLoadedProtocolVersions() {
     return knownProtocols().toString();
+  }
+
+  // For testing only.
+  public void removeAllSchemas() {
+    this.protocolVersionToReader.clear();
+  }
+
+  // For testing purpose only.
+  public int getProtocolVersionSize() {
+    return protocolVersionToReader.size();
   }
 }

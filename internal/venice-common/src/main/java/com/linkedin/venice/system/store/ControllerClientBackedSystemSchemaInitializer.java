@@ -15,6 +15,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -76,7 +77,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
     this.enforceSslOnly = enforceSslOnly;
   }
 
-  public void execute() {
+  public void execute(Map<Integer, Schema> inputSchemas) {
     if (controllerClient == null) {
       if (!controllerUrl.isEmpty()) {
         controllerClient = ControllerClient.constructClusterControllerClient(clusterName, controllerUrl, sslFactory);
@@ -100,7 +101,9 @@ public class ControllerClientBackedSystemSchemaInitializer {
     }
 
     String storeName = protocolDefinition.getSystemStoreName();
-    Map<Integer, Schema> schemasInLocalResources = Utils.getAllSchemasFromResources(protocolDefinition);
+
+    Map<Integer, Schema> schemasInLocalResources =
+        inputSchemas != null ? inputSchemas : Utils.getAllSchemasFromResources(protocolDefinition);
     D2ServiceDiscoveryResponse discoveryResponse = controllerClient.retryableRequest(
         DEFAULT_RETRY_TIMES,
         c -> c.discoverCluster(storeName),
@@ -142,17 +145,29 @@ public class ControllerClientBackedSystemSchemaInitializer {
     for (int version = 1; version <= protocolDefinition.getCurrentProtocolVersion(); version++) {
       Schema schemaInLocalResources = schemasInLocalResources.get(version);
       if (schemaInLocalResources == null) {
-        throw new VeniceException(
-            "Invalid protocol definition: " + protocolDefinition.name() + " does not have a version " + version
-                + " even though it is less than or equal to the current version ("
-                + protocolDefinition.getCurrentProtocolVersion() + ").");
-      }
-      checkAndMayRegisterValueSchema(storeName, version, schemasInZk.get(version), schemaInLocalResources);
+        if (inputSchemas == null) {
+          throw new VeniceException(
+              "Invalid protocol definition: " + protocolDefinition.name() + " does not have a version " + version
+                  + " even though it is less than or equal to the current version ("
+                  + protocolDefinition.getCurrentProtocolVersion() + ").");
+        }
+      } else {
+        checkAndMayRegisterValueSchema(
+            storeName,
+            version,
+            schemasInZk.get(version),
+            schemaInLocalResources,
+            inputSchemas != null);
 
-      if (autoRegisterPartialUpdateSchema) {
-        checkAndMayRegisterPartialUpdateSchema(storeName, version, schemaInLocalResources);
+        if (autoRegisterPartialUpdateSchema) {
+          checkAndMayRegisterPartialUpdateSchema(storeName, version, schemaInLocalResources);
+        }
       }
     }
+  }
+
+  public void execute() {
+    execute(null);
   }
 
   private boolean hasLeaderController() {
@@ -236,11 +251,20 @@ public class ControllerClientBackedSystemSchemaInitializer {
       String storeName,
       int valueSchemaId,
       Schema schemaInZk,
-      Schema schemaInLocalResources) {
+      Schema schemaInLocalResources,
+      boolean skipCompatibilityCheck) {
     if (schemaInZk == null) {
-      SchemaResponse addValueSchemaResponse = controllerClient.retryableRequest(
-          DEFAULT_RETRY_TIMES,
-          c -> c.addValueSchema(storeName, schemaInLocalResources.toString(), valueSchemaId));
+      SchemaResponse addValueSchemaResponse = controllerClient.retryableRequest(DEFAULT_RETRY_TIMES, c -> {
+        if (skipCompatibilityCheck) {
+          return c.addValueSchema(
+              storeName,
+              schemaInLocalResources.toString(),
+              valueSchemaId,
+              DirectionalSchemaCompatibilityType.NONE);
+        }
+        return c.addValueSchema(storeName, schemaInLocalResources.toString(), valueSchemaId);
+      });
+
       if (addValueSchemaResponse.isError()) {
         throw new VeniceException(
             "Error when adding value schema " + valueSchemaId + " to system store " + storeName + " in cluster "
