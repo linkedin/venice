@@ -69,7 +69,6 @@ public class GzipCompressor extends VeniceCompressor {
       gos.finish();
       ByteBuffer output = outputStream.toByteBuffer();
       output.position(startPositionOfOutput);
-      LOGGER.info("DEBUGGING GZIP COMPRESSED BB: {} {}", output.position(), output.remaining());
       return output;
     }
   }
@@ -103,19 +102,11 @@ public class GzipCompressor extends VeniceCompressor {
     try (InputStream gis =
         decompress(new ByteArrayInputStream(data, SCHEMA_HEADER_LENGTH, length - SCHEMA_HEADER_LENGTH))) {
       decompressedByteArray = IOUtils.toByteArray(gis);
-      LOGGER.info("DEBUGGING: {}", valueSchema);
       ByteBuffer byteBufferWithHeader = ByteBuffer.allocate(SCHEMA_HEADER_LENGTH + decompressedByteArray.length)
           .putInt(valueSchema)
           .put(decompressedByteArray);
       byteBufferWithHeader.flip();
       byteBufferWithHeader.position(SCHEMA_HEADER_LENGTH);
-      LOGGER.info(
-          "DEBUGGING GZIP DECOMPRESSED: {} {} {} {} {}",
-          data.length,
-          length,
-          byteBufferWithHeader.position(),
-          byteBufferWithHeader.remaining(),
-          byteBufferWithHeader.array().length);
       return byteBufferWithHeader;
     }
   }
