@@ -3592,4 +3592,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
 
+  /**
+   * Check and send sync offset control message to local VT for the latest consumed upstream RT topic leader offset.
+   */
+  protected void maybeSendSyncOffsetCM() {
+    // No op
+  }
 }

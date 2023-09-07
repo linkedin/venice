@@ -317,17 +317,12 @@
                   "type": "record",
                   "fields": [
                     {
-                      "name": "upstreamOffset",
-                      "doc": "The latest processed upstream offset for a given fabric. Leader will produce this CM to VT and consumers of VT will know the leader's progress upon consumption",
-                      "type": "long"
-                    }, {
-                      "name": "kafkaURL",
-                      "doc": "Kafka URL associated with the fabric that the offset belongs to. Default of null to represent the local fabric's kafka URL",
-                      "type": [
-                        "null",
-                        "string"
-                      ],
-                      "default": null
+                      "name": "upstreamLeaderOffsetMap",
+                      "doc": "A map of Kafka URL to the latest consumed leader upstream offset for the given fabric. Leader will produce this CM to VT and consumers of VT (including the leader) will update the leader's latest processed upstream offset upon consumption for proper upstream lag calculation",
+                      "type": {
+                        "type": "map",
+                        "values": "long"
+                      }
                     }
                   ]
                 }

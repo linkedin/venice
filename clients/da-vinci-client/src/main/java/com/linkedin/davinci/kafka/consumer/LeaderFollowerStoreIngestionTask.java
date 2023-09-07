@@ -167,6 +167,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected final AvroStoreDeserializerCache storeDeserializerCache;
 
+  private long lastSyncOffsetTimestamp = 0;
+
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -2077,40 +2079,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                *   work here.
                *
                * To address #2 we will periodically produce {@link com.linkedin.venice.kafka.protocol.SyncOffset}
-               * control message to VT and upon consumption of those messages in the drainer we will update the offset.
+               * control message to VT and upon consumption of those control messages in the drainer we will update the
+               * offset accordingly.
                *
-               * So in summary NO further processing is needed SOS/EOS received from RT topics. Just silently drop the message here.
+               * So in summary NO further processing is needed SOS/EOS received from RT topics. Just silently drop the
+               * message here.
                * We should not return false here.
                */
-              if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-                long timestamp = System.currentTimeMillis();
-                long previousSyncOffsetTimestamp = partitionConsumptionState.getLatestRTSyncOffsetTimestamp(kafkaUrl);
-                if (timestamp > previousSyncOffsetTimestamp + getServerConfig().getSyncOffsetMinIntervalMs()) {
-                  ControlMessage syncOffsetCM = new ControlMessage();
-                  syncOffsetCM.controlMessageType = ControlMessageType.SYNC_OFFSET.getValue();
-                  SyncOffset syncOffset = new SyncOffset();
-                  syncOffset.upstreamOffset = consumerRecord.getOffset();
-                  syncOffset.kafkaURL = kafkaUrl;
-                  syncOffsetCM.controlMessageUnion = syncOffset;
-                  int versionTopicPartition =
-                      consumerRecord.getTopicPartition().getPartitionNumber() * amplificationFactor;
-                  produceToLocalKafka(
-                      consumerRecord,
-                      partitionConsumptionState,
-                      leaderProducedRecordContext,
-                      (callback, leaderMetadataWrapper) -> veniceWriter.get()
-                          .asyncSendControlMessage(
-                              syncOffsetCM,
-                              versionTopicPartition,
-                              new HashMap<>(),
-                              callback,
-                              leaderMetadataWrapper),
-                      subPartition,
-                      kafkaUrl,
-                      kafkaClusterId,
-                      beforeProcessingRecordTimestampNs);
-                }
-              }
               producedFinally = false;
             }
             break;
@@ -3110,20 +3085,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
     long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
 
-    // Here we handle the case where the topic is actually empty,
-    // if consumerLag is a positive number then that means there is an existing offset that we've consumed to and a
-    // bigger offset out there somewhere. Meaning that there are at least two messages in the topic and it's not empty
-    long consumerLag = getPartitionOffsetLag(sourceRealTimeTopicKafkaURL, leaderTopic, partitionToGetLatestOffsetFor);
-    if (consumerLag <= 0) {
-      // We don't have a positive consumer lag, but this could be because we haven't polled.
-      // So as a final check to determine if the topic is empty, we check
-      // if the end offset is the same as the beginning
-      long earliestOffset = cachedPubSubMetadataGetter.getEarliestOffset(
-          getTopicManager(sourceRealTimeTopicKafkaURL),
-          new PubSubTopicPartitionImpl(leaderTopic, partitionToGetLatestOffsetFor));
-      if (earliestOffset == lastOffsetInRealTimeTopic - 1) {
-        lag = 0;
-      }
+    // Here we handle the case where the topic is actually empty, we check
+    // if the end offset is the same as the beginning
+    long earliestOffset = cachedPubSubMetadataGetter.getEarliestOffset(
+        getTopicManager(sourceRealTimeTopicKafkaURL),
+        new PubSubTopicPartitionImpl(leaderTopic, partitionToGetLatestOffsetFor));
+    if (earliestOffset == lastOffsetInRealTimeTopic - 1) {
+      lag = 0;
     }
 
     if (shouldLog) {
@@ -3162,13 +3130,63 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
     if (upstreamTopic != null && upstreamTopic.isRealTime()) {
       SyncOffset syncOffset = (SyncOffset) controlMessage.controlMessageUnion;
-      String kafkaUrl = syncOffset.kafkaURL == null
-          ? OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY
-          : syncOffset.kafkaURL.toString();
-      long previousOffset = partitionConsumptionState.getLatestProcessedUpstreamRTOffset(kafkaUrl);
-      if (syncOffset.upstreamOffset > previousOffset) {
-        partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(kafkaUrl, syncOffset.upstreamOffset);
+      for (Map.Entry<CharSequence, Long> entry: syncOffset.upstreamLeaderOffsetMap.entrySet()) {
+        String kafkaUrl = entry.getKey().toString();
+        long latestProcessedUpstreamOffset = partitionConsumptionState.getLatestProcessedUpstreamRTOffset(kafkaUrl);
+        if (entry.getValue() > latestProcessedUpstreamOffset) {
+          // This is to handle the race where we do have records following the latest consumed leader offset when sync
+          // offset CM was sent. e.g. an offset of 100 was used for the latest consumed leader offset coming from an EOS
+          // CM. However, there were put records with offset > 100 in the RT and was produced to VT before the sync
+          // offset
+          // CM. In such case we don't want our latest processed upstream RT offset to rewind from 101 to 100.
+          partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(kafkaUrl, entry.getValue());
+        }
       }
+    }
+  }
+
+  @Override
+  protected void maybeSendSyncOffsetCM() {
+    if (!serverConfig.isSyncOffsetEnabled() || !isHybridMode() || isDaVinciClient) {
+      // Skip if: 1. feature is not enabled, 2. store version is not hybrid, 3. this is a da vinci client.
+      return;
+    }
+    long currentTimestamp = System.currentTimeMillis();
+    if (lastSyncOffsetTimestamp + serverConfig.getSyncOffsetIntervalMs() > currentTimestamp) {
+      // Not time for another sync offset yet, skip.
+      return;
+    }
+    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+      if (!isLeader(pcs) || !pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository).isRealTime()) {
+        // Only leader replica consuming from RT topic may send sync offset control message.
+        continue;
+      }
+      Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(pcs);
+      Map<CharSequence, Long> leaderConsumedUpstreamOffsetMap = new HashMap<>();
+      for (String kafkaUrl: leaderSourceKafkaURLs) {
+        long leaderConsumedUpstreamRTOffset = pcs.getLeaderConsumedUpstreamRTOffset(kafkaUrl);
+        if (leaderConsumedUpstreamRTOffset > 0) {
+          // No need to sync offset for invalid or no progress source Kafka URLs.
+          leaderConsumedUpstreamOffsetMap.put(kafkaUrl, leaderConsumedUpstreamRTOffset);
+        }
+      }
+      ControlMessage syncOffsetCM = new ControlMessage();
+      syncOffsetCM.controlMessageType = ControlMessageType.SYNC_OFFSET.getValue();
+      SyncOffset syncOffset = new SyncOffset();
+      syncOffset.upstreamLeaderOffsetMap = leaderConsumedUpstreamOffsetMap;
+      syncOffsetCM.controlMessageUnion = syncOffset;
+      // We can produce to any sub-partitions in VT since lag calculation is going to use the maximum
+      // latestLeaderOffset among the corresponding sub-partitions when calculating lag.
+      int partitionToProduce = pcs.getPartition() * amplificationFactor;
+      // TODO Currently there's no easy way to use produceToLocalKafka and LeaderProducerCallback since we cannot
+      // construct a proper PubSubMessage easily.
+      veniceWriter.get()
+          .asyncSendControlMessage(
+              syncOffsetCM,
+              partitionToProduce,
+              new HashMap<>(),
+              null,
+              DEFAULT_LEADER_METADATA_WRAPPER);
     }
   }
 

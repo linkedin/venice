@@ -187,13 +187,6 @@ public class PartitionConsumptionState {
    */
   private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
-  /**
-   * Key: source Kafka url
-   * Value: The timestamp when the latest consumed offset of a specific source RT is written to VT as a
-   * {@link com.linkedin.venice.kafka.protocol.SyncOffset} control message.
-   */
-  private Map<String, Long> latestRTSyncOffsetTimestampMap;
-
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid) {
     this.partition = partition;
     this.amplificationFactor = amplificationFactor;
@@ -223,7 +216,6 @@ public class PartitionConsumptionState {
     // checkpoint upstream offset map
     consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
     latestProcessedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
-    latestRTSyncOffsetTimestampMap = new VeniceConcurrentHashMap<>();
     if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
       offsetRecord.cloneUpstreamOffsetMap(consumedUpstreamRTOffsetMap);
       offsetRecord.cloneUpstreamOffsetMap(latestProcessedUpstreamRTOffsetMap);
@@ -787,13 +779,5 @@ public class PartitionConsumptionState {
 
   public void setLeaderHostId(String hostId) {
     this.leaderHostId = hostId;
-  }
-
-  public void setLatestRTSyncOffsetTimestamp(String kafkaURL, long timestamp) {
-    latestRTSyncOffsetTimestampMap.put(kafkaURL, timestamp);
-  }
-
-  public long getLatestRTSyncOffsetTimestamp(String kafkaURL) {
-    return latestRTSyncOffsetTimestampMap.getOrDefault(kafkaURL, 0L);
   }
 }

@@ -1974,8 +1974,15 @@ public class ConfigKeys {
   public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
 
   /**
-   * The minimum interval in milliseconds for leader replica to send sync offset control message upon consuming SOS and
-   * EOS messages from RT.
+   * The time interval in milliseconds for leader replica to send sync offset control message to VT for consumers
+   * (including the leader) to keep its latest processed upstream RT offset up-to-date in case when the RT topic ends
+   * with SOS, EOS or skipped records.
    */
-  public static final String SERVER_SYNC_OFFSET_MIN_INTERVAL_MS = "server.sync.offset.min.interval.ms";
+  public static final String SERVER_SYNC_OFFSET_INTERVAL_MS = "server.sync.offset.interval.ms";
+
+  /**
+   * Whether the leader replica will periodically send sync offset control message to VT for consumers to update its
+   * latest processed upstream RT topic offset.
+   */
+  public static final String SERVER_SYNC_OFFSET_ENABLED = "server.sync.offset.enabled";
 }
