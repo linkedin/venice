@@ -87,6 +87,7 @@ public class SystemStoreRepairTask implements Runnable {
         }
         if (unreachableSystemStoreSet.contains(systemStoreName)) {
           LOGGER.info("Skip unreachable system store: {} for repair.", systemStoreName);
+          continue;
         }
         String pushJobId = SYSTEM_STORE_REPAIR_JOB_PREFIX + System.currentTimeMillis();
         try {
@@ -140,7 +141,8 @@ public class SystemStoreRepairTask implements Runnable {
 
   /**
    *  Here we scan the store repository for two passes:
-   *  1. We check user stores
+   *  1. We check user stores and see if system stores are created or not.
+   *  2. For created system stores, we will check if they have online version and if a heartbeat can go through.
    */
   void checkAndSendHeartbeatToSystemStores(
       String clusterName,

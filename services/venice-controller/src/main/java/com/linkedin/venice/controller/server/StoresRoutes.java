@@ -62,7 +62,6 @@ import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.HeartbeatResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -79,6 +78,7 @@ import com.linkedin.venice.controllerapi.StoreComparisonResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
@@ -1044,12 +1044,8 @@ public class StoresRoutes extends AbstractRoute {
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         admin.sendHeartbeatToSystemStore(clusterName, storeName, heartbeatTimestamp);
-      } catch (ResourceStillExistsException exception) {
-        responseObject.setError(exception);
-        AdminSparkServer.handleError(exception, request, response, false);
-      } catch (Throwable throwable) {
-        responseObject.setError(throwable);
-        AdminSparkServer.handleError(new VeniceException(throwable), request, response);
+      } catch (Throwable e) {
+        responseObject.setError(e);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
@@ -1057,7 +1053,7 @@ public class StoresRoutes extends AbstractRoute {
 
   public Route getHeartbeatFromSystemStore(Admin admin) {
     return (request, response) -> {
-      HeartbeatResponse responseObject = new HeartbeatResponse();
+      SystemStoreHeartbeatResponse responseObject = new SystemStoreHeartbeatResponse();
       response.type(HttpConstants.JSON);
       try {
         if (!isAllowListUser(request)) {
@@ -1073,12 +1069,8 @@ public class StoresRoutes extends AbstractRoute {
         responseObject.setName(storeName);
         responseObject.setHeartbeatTimestamp(admin.getHeartbeatFromSystemStore(clusterName, storeName));
         responseObject.setHeartbeatTimestamp(0);
-      } catch (ResourceStillExistsException exception) {
-        responseObject.setError(exception);
-        AdminSparkServer.handleError(exception, request, response, false);
-      } catch (Throwable throwable) {
-        responseObject.setError(throwable);
-        AdminSparkServer.handleError(new VeniceException(throwable), request, response);
+      } catch (Throwable e) {
+        responseObject.setError(e);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };

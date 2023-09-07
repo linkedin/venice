@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.HeartbeatResponse;
+import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Arrays;
@@ -38,11 +38,11 @@ public class TestSystemStoreRepairTask {
     String metaStoreName2 = VeniceSystemStoreType.META_STORE.getSystemStoreName(userStoreName2);
     String pushStatusStoreName2 = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName2);
 
-    HeartbeatResponse heartbeatResponse1 = new HeartbeatResponse();
+    SystemStoreHeartbeatResponse heartbeatResponse1 = new SystemStoreHeartbeatResponse();
     heartbeatResponse1.setHeartbeatTimestamp(10L);
-    HeartbeatResponse heartbeatResponse2 = new HeartbeatResponse();
+    SystemStoreHeartbeatResponse heartbeatResponse2 = new SystemStoreHeartbeatResponse();
     heartbeatResponse2.setHeartbeatTimestamp(11L);
-    HeartbeatResponse heartbeatResponse3 = new HeartbeatResponse();
+    SystemStoreHeartbeatResponse heartbeatResponse3 = new SystemStoreHeartbeatResponse();
     heartbeatResponse3.setHeartbeatTimestamp(-1L);
 
     ControllerClient client1 = mock(ControllerClient.class);

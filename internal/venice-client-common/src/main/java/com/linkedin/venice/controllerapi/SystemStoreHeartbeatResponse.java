@@ -1,6 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
-public class HeartbeatResponse extends ControllerResponse {
+public class SystemStoreHeartbeatResponse extends ControllerResponse {
   private long heartbeatTimestamp;
 
   public long getHeartbeatTimestamp() {
