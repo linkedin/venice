@@ -606,21 +606,25 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         if (valueManifestContainer != null) {
           valueManifestContainer.setManifest(transientRecord.getValueManifest());
         }
-        ByteBuffer compressedOriginalValue = ByteBuffer
-            .wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
-        try {
-          originalValue = getCompressionStrategy().isCompressionEnabled()
-              ? compressor.get()
-                  .decompressAndPrependSchemaHeader(
-                      compressedOriginalValue.array(),
-                      compressedOriginalValue.position() + compressedOriginalValue.remaining())
-              : compressedOriginalValue;
-        } catch (IOException e) {
-          throw new VeniceException(e);
-        }
+        originalValue = getCurrentValueFromTransientRecord(transientRecord);
       }
     }
     return originalValue;
+  }
+
+  ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {
+    ByteBuffer compressedOriginalValue =
+        ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
+    try {
+      return getCompressionStrategy().isCompressionEnabled()
+          ? getCompressor().get()
+              .decompressAndPrependSchemaHeader(
+                  compressedOriginalValue.array(),
+                  compressedOriginalValue.position() + compressedOriginalValue.remaining())
+          : compressedOriginalValue;
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
   }
 
   /**
