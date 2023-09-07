@@ -77,7 +77,6 @@ public class TestVeniceCompressor {
       ByteBuffer decompressed = compressor
           .decompressAndPrependSchemaHeader(bbWithHeader.array(), bbWithHeader.remaining() + bbWithHeader.position());
       decompressed.position(0);
-      LOGGER.info("DEBUGGING: {} {}", decompressed.position(), decompressed.remaining());
       Assert.assertEquals(decompressed.getInt(), 123);
       byte[] outputBytes = new byte[decompressed.remaining()];
       decompressed.get(outputBytes, 0, decompressed.remaining());

@@ -599,16 +599,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
           LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
           currentTimeForMetricsMs);
-      if (originalValue == null) {
-        LOGGER.info("DEBUGGING GET NULL OLD VALUE FROM STORAGE ENGINE");
-      } else {
-        LOGGER.info(
-            "DEBUGGING GET OLD VALUE FROM STORAGE ENGINE: {} {} {}",
-            originalValue.position(),
-            originalValue.remaining(),
-            originalValue.array().length);
-      }
-
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
       // construct originalValue from this transient record only if it's not null.
@@ -618,11 +608,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         }
         ByteBuffer compressedOriginalValue = ByteBuffer
             .wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
-        LOGGER.info(
-            "DEBUGGING GET OLD VALUE FROM CACHE: {} {} {}",
-            compressedOriginalValue.position(),
-            compressedOriginalValue.remaining(),
-            compressedOriginalValue.array().length);
         try {
           originalValue = getCompressionStrategy().isCompressionEnabled()
               ? compressor.get()
@@ -630,11 +615,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                       compressedOriginalValue.array(),
                       compressedOriginalValue.position() + compressedOriginalValue.remaining())
               : compressedOriginalValue;
-          LOGGER.info(
-              "DEBUGGING DECOMPRESSED OLD VALUE FROM CACHE: {} {} {}",
-              originalValue.position(),
-              originalValue.remaining(),
-              originalValue.array().length);
         } catch (IOException e) {
           throw new VeniceException(e);
         }
@@ -667,13 +647,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long beforeProcessingRecordTimestampNs,
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest) {
-    if (mergeConflictResult.getNewValue() != null) {
-      LOGGER.info(
-          "DEBUGGING NEW PUT VALUE: {} {} {}",
-          mergeConflictResult.getNewValue().position(),
-          mergeConflictResult.getNewValue().remaining(),
-          mergeConflictResult.getNewValue().array().length);
-    }
 
     final ByteBuffer updatedValueBytes = maybeCompressData(
         consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -681,14 +654,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         partitionConsumptionState);
 
     final int valueSchemaId = mergeConflictResult.getValueSchemaId();
-    if (updatedValueBytes != null) {
-      LOGGER.info(
-          "DEBUGGING COMPRESSED PUT VALUE: {} {} {} {}",
-          updatedValueBytes.position(),
-          updatedValueBytes.remaining(),
-          updatedValueBytes.array().length,
-          valueSchemaId);
-    }
 
     GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
     final ByteBuffer updatedRmdBytes =

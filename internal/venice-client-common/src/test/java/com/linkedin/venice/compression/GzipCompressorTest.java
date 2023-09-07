@@ -4,8 +4,6 @@ import static org.testng.Assert.assertEquals;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import org.apache.logging.log4j.LogManager;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -49,31 +47,4 @@ public class GzipCompressorTest {
       assertEquals("Hello World", new String(decompressed.array()));
     }
   }
-
-  @Test
-  public void testCompressAndDecompress() throws IOException {
-    try (GzipCompressor compressor = new GzipCompressor()) {
-      byte[] inputBytes = "Hello World".getBytes();
-      LogManager.getLogger().info("DEBUGGING: {} {}", inputBytes, inputBytes.length);
-      ByteBuffer bbWithHeader = compressor.compress(ByteBuffer.wrap(inputBytes), VeniceCompressor.SCHEMA_HEADER_LENGTH);
-      LogManager.getLogger()
-          .info("DEBUGGING: {} {} {}", bbWithHeader.position(), bbWithHeader.remaining(), bbWithHeader.array().length);
-      bbWithHeader.position(0);
-      bbWithHeader.putInt(123);
-      LogManager.getLogger()
-          .info("DEBUGGING: {} {} {}", bbWithHeader.position(), bbWithHeader.remaining(), bbWithHeader.array().length);
-      ByteBuffer decompressed = compressor
-          .decompressAndPrependSchemaHeader(bbWithHeader.array(), bbWithHeader.remaining() + bbWithHeader.position());
-      LogManager.getLogger()
-          .info(
-              "DEBUGGING FINAL: {} {} {}",
-              decompressed.position(),
-              decompressed.remaining(),
-              decompressed.array().length);
-      byte[] outputBytes = new byte[decompressed.remaining()];
-      decompressed.get(outputBytes, 0, decompressed.remaining());
-      Assert.assertEquals("Hello World", new String(outputBytes));
-    }
-  }
-
 }
