@@ -2612,7 +2612,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return null;
     }
     if (shouldCompressData(partitionConsumptionState)) {
-      LOGGER.info("DEBUGGING compressing data with compressor: {}", compressor.get());
       try {
         // We need to expand the front of the returned bytebuffer to make room for schema header insertion
         return compressor.get().compress(data, ByteUtils.SIZE_OF_INT);
