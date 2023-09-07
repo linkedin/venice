@@ -117,7 +117,7 @@ import org.testng.annotations.Test;
 public class PartialUpdateTest {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final int TEST_TIMEOUT_MS = 120_000;
+  private static final int TEST_TIMEOUT_MS = 180_000;
   private static final String CLUSTER_NAME = "venice-cluster0";
 
   private static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
@@ -152,7 +152,7 @@ public class PartialUpdateTest {
     this.parentController = parentControllers.get(0);
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testRepushWithChunkingFlagChanged() throws IOException {
     final String storeName = Utils.getUniqueString("reproduce");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -277,7 +277,7 @@ public class PartialUpdateTest {
     }
   }
 
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testIncrementalPushPartialUpdateClassicFormat() throws IOException {
     final String storeName = Utils.getUniqueString("inc_push_update_classic_format");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -338,7 +338,7 @@ public class PartialUpdateTest {
     }
   }
 
-  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testIncrementalPushPartialUpdateNewFormat() throws IOException {
     final String storeName = Utils.getUniqueString("inc_push_update_new_format");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -406,8 +406,7 @@ public class PartialUpdateTest {
    * batch push should not throw exception, as the update logic should initialize a new RMD record for the original value
    * and apply updates on top of them.
    */
-  @Test(timeOut = 180
-      * Time.MS_PER_SECOND, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
   public void testPartialUpdateOnBatchPushedKeys(CompressionStrategy compressionStrategy) throws IOException {
     final String storeName = Utils.getUniqueString("updateBatch");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -472,7 +471,7 @@ public class PartialUpdateTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS * 4)
+  @Test(timeOut = TEST_TIMEOUT_MS * 3)
   public void testNonAAPartialUpdateChunkDeletion() throws IOException {
     final String storeName = Utils.getUniqueString("partialUpdateChunking");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -607,7 +606,7 @@ public class PartialUpdateTest {
    * (3) Send a DELETE message to partially delete some items in the map field.
    * (4) Send a DELETE message to fully delete the record.
    */
-  @Test(timeOut = TEST_TIMEOUT_MS * 5)
+  @Test(timeOut = TEST_TIMEOUT_MS * 3)
   public void testReplicationMetadataChunkingE2E() throws IOException {
     final String storeName = Utils.getUniqueString("rmdChunking");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -960,8 +959,7 @@ public class PartialUpdateTest {
     return (GenericRecord) storeReader.get(key).get();
   }
 
-  @Test(timeOut = 120
-      * Time.MS_PER_SECOND, dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class)
   public void testWriteComputeWithHybridLeaderFollowerLargeRecord(
       boolean writeComputeFromCache,
       CompressionStrategy compressionStrategy) throws Exception {
@@ -1183,7 +1181,7 @@ public class PartialUpdateTest {
     }
   }
 
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(timeOut = TEST_TIMEOUT_MS)
   public void testWriteComputeWithSamzaBatchJob() throws Exception {
 
     SystemProducer veniceProducer = null;
