@@ -111,6 +111,8 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -203,6 +205,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final BooleanSupplier isCurrentVersion;
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final Consumer<DataValidationException> divErrorMetricCallback;
+  private final ExecutorService missingSOPCheckExecutor = Executors.newSingleThreadExecutor();
 
   protected final long readCycleDelayMs;
   protected final long emptyPollSleepMs;
@@ -411,7 +414,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         amplificationFactorAdapter);
 
     this.runnableForKillIngestionTasksForMissingSOP = () -> waitForStateVersion(kafkaVersionTopic);
-    this.runnableForKillIngestionTasksForMissingSOP.run();
+    this.missingSOPCheckExecutor.execute(runnableForKillIngestionTasksForMissingSOP);
     this.cacheBackend = cacheBackend;
     this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
@@ -482,14 +485,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long startTime = System.currentTimeMillis();
 
     for (;;) {
-      try {
-        Thread.sleep(STORE_VERSION_POLLING_DELAY_MS);
-      } catch (InterruptedException e) {
-        LOGGER.info("Received interruptedException while waiting for store version.");
-        break;
-      }
       StoreVersionState state = storageEngine.getStoreVersionState();
-
       long elapsedTime = System.currentTimeMillis() - startTime;
       if (state != null || !isRunning()) {
         break;
@@ -498,6 +494,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (elapsedTime > SOP_POLLING_TIMEOUT_MS) {
         LOGGER.warn("Killing the ingestion as Version state is not available for {} after {}", kafkaTopic, elapsedTime);
         kill();
+      }
+      try {
+        Thread.sleep(STORE_VERSION_POLLING_DELAY_MS);
+      } catch (InterruptedException e) {
+        LOGGER.info("Received interruptedException while waiting for store version.");
+        break;
       }
     }
   }
