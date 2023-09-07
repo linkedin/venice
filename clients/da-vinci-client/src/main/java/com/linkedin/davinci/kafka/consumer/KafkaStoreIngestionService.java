@@ -117,6 +117,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -624,12 +625,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     final String topic = veniceStore.getStoreVersionName();
 
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-      StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.get(topic);
-      boolean shouldCreateNewIngestionTask =
-          (storeIngestionTask == null) || (!storeIngestionTask.isIngestionTaskActive());
-      if (shouldCreateNewIngestionTask) {
-        storeIngestionTask = createStoreIngestionTask(veniceStore, partitionId);
-        topicNameToIngestionTaskMap.put(topic, storeIngestionTask);
+      // Create new store ingestion task atomically.
+      AtomicBoolean createNewStoreIngestionTask = new AtomicBoolean(false);
+      StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.compute(topic, (k, v) -> {
+        if ((v == null) || (!v.isIngestionTaskActive())) {
+          createNewStoreIngestionTask.set(true);
+          return createStoreIngestionTask(veniceStore, partitionId);
+        }
+        return v;
+      });
+      if (createNewStoreIngestionTask.get()) {
         versionedIngestionStats.setIngestionTask(topic, storeIngestionTask);
         if (!isRunning()) {
           LOGGER.info(
