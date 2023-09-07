@@ -16,7 +16,6 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -61,8 +60,8 @@ public class TestKafkaInputRecordReader {
   public String getTopic(int numRecord, Pair<Integer, Integer> updateRange, Pair<Integer, Integer> deleteRange) {
     String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
     manager.createTopic(pubSubTopicRepository.getTopic(topicName), 1, 1, true);
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(
-        pubSubBrokerWrapper.getAddress(),
+    VeniceWriterFactory veniceWriterFactory = IntegrationTestPushUtils.getVeniceWriterFactory(
+        pubSubBrokerWrapper,
         pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory());
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {
