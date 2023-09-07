@@ -214,6 +214,7 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterName);
     properties.put(CHILD_CLUSTER_ALLOWLIST, "dc-0");
     properties.put(CONTROLLER_SSL_ENABLED, false);
+    properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     return properties;
   }
 

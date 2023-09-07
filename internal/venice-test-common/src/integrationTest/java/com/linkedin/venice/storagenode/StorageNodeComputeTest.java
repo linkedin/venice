@@ -28,6 +28,7 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.tehuti.MetricsUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -180,8 +181,8 @@ public class StorageNodeComputeTest {
 
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
-    VeniceWriterFactory vwFactory = TestUtils
-        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory);
+    VeniceWriterFactory vwFactory = IntegrationTestPushUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
             .setValueSerializer(new DefaultSerializer())
@@ -293,8 +294,8 @@ public class StorageNodeComputeTest {
     try (
         PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
             veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
-        VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils
-            .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory)
+        VeniceWriter<Object, byte[], byte[]> veniceWriter = IntegrationTestPushUtils
+            .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory)
             .createVeniceWriter(
                 new VeniceWriterOptions.Builder(newVersion.getKafkaTopic()).setKeySerializer(keySerializer).build());
         AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(

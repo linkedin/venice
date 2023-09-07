@@ -29,6 +29,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -265,10 +266,11 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     newVersion = versionToBePushed;
 
     String topic = versionCreationResponse.getKafkaTopic();
-    String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
+    PubSubBrokerWrapper pubSubBrokerWrapper = clusterWrapper.getPubSubBrokerWrapper();
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-        clusterWrapper.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl, pubSubProducerAdapterFactory);
+        pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory veniceWriterFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory);
 
     startKey += numKeys; // to have different version having different set of keys
     int endKey = startKey + numKeys;

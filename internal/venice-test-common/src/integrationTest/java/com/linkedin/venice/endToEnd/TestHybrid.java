@@ -53,6 +53,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
@@ -875,6 +876,8 @@ public class TestHybrid {
        */
       Properties veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
+      veniceWriterProperties.putAll(
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
       AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
@@ -1304,6 +1307,8 @@ public class TestHybrid {
         String key2 = "duplicated_message_test_key_2";
         Properties veniceWriterProperties = new Properties();
         veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
+        veniceWriterProperties.putAll(
+            PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
         AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
         AvroGenericDeserializer<String> stringDeserializer =
             new AvroGenericDeserializer<>(Schema.parse(STRING_SCHEMA), Schema.parse(STRING_SCHEMA));
@@ -1591,6 +1596,8 @@ public class TestHybrid {
        * Set max segment elapsed time to 0 to enforce creating small segments aggressively
        */
       veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
+      veniceWriterProperties.putAll(
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
       AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
       String prefix = "foo_object_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
@@ -1658,6 +1665,8 @@ public class TestHybrid {
        * Set max segment elapsed time to 0 to enforce creating small segments aggressively
        */
       veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
+      veniceWriterProperties.putAll(
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
       AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
       String prefix = "hybrid_DIV_enhancement_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =

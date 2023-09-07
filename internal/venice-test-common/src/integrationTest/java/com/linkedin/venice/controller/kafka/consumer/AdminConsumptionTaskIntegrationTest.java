@@ -78,7 +78,7 @@ public class AdminConsumptionTaskIntegrationTest {
           PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
               pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
           VeniceWriter<byte[], byte[], byte[]> writer =
-              TestUtils.getVeniceWriterFactory(pubSubBrokerWrapper.getAddress(), pubSubProducerAdapterFactory)
+              IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory)
                   .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic.getName()).build())) {
         byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1);
         long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
