@@ -338,23 +338,30 @@ public class ConfigKeys {
       "controller.parent.external.superset.schema.generation.enabled";
 
   /**
-   * Whether to check system store health in child controller. Default is false.
+   * Whether to check system store health in parent controller. Default is false.
    */
-  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED =
-      "controller.system.store.health.check.enabled";
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED =
+      "controller.parent.system.store.repair.service.enabled";
 
   /**
-   * Frequency to run system store health check in child controller. Default is 1h.
+   * Frequency to run system store health check in parent controller. Default is 30 minute (1800s).
    */
-  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL_SECONDS =
-      "controller.system.store.health.check.interval.seconds";
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS =
+      "controller.parent.system.store.repair.check.interval.seconds";
 
   /**
-   * The wait time before validating system store heartbeat during system store health check in child controller.
+   * The wait time before validating system store heartbeat during system store health check in parent controller.
    * Default is 1min.
    */
-  public static final String CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_HEARTBEAT_WAIT_TIME_SECONDS =
-      "controller.system.store.health.check.heartbeat.wait.time.seconds";
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS =
+      "controller.parent.system.store.heartbeat.check.wait.time.seconds";
+
+  /**
+   * The maximum retry count for parent controller to fix a bad system store.
+   * Default is 1.
+   */
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT =
+      "controller.parent.system.store.repair.retry.count";
 
   /**
    * Whether to initialize system schemas when controller starts. Default is true.

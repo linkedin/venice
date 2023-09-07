@@ -12,6 +12,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -46,6 +47,7 @@ public class VeniceController {
   private TopicCleanupService topicCleanupService;
   private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
   private Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
+  private Optional<SystemStoreRepairService> systemStoreRepairService;
 
   private final boolean sslEnabled;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -173,6 +175,7 @@ public class VeniceController {
     }
     storeBackupVersionCleanupService = Optional.empty();
     storeGraveyardCleanupService = Optional.empty();
+    systemStoreRepairService = Optional.empty();
     Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
       topicCleanupService =
@@ -184,6 +187,11 @@ public class VeniceController {
       storeGraveyardCleanupService =
           Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreGraveyardCleanupService is enabled");
+      if (multiClusterConfigs.getCommonConfig().isParentSystemStoreRepairServiceEnabled()) {
+        systemStoreRepairService = Optional
+            .of(new SystemStoreRepairService((VeniceParentHelixAdmin) admin, multiClusterConfigs, metricsRepository));
+        LOGGER.info("SystemStoreRepairServiceEnabled is enabled");
+      }
     } else {
       topicCleanupService = new TopicCleanupService(admin, multiClusterConfigs, pubSubTopicRepository);
       if (!(admin instanceof VeniceHelixAdmin)) {
@@ -215,6 +223,7 @@ public class VeniceController {
     topicCleanupService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
+    systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
       serviceDiscoveryAnnouncer.register();
@@ -255,6 +264,7 @@ public class VeniceController {
       LOGGER.info("Unregistered from service discovery: {}", serviceDiscoveryAnnouncer);
     });
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
+    systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     Utils.closeQuietlyWithErrorLogged(topicCleanupService);

@@ -41,14 +41,15 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_HEARTBEAT_WAIT_TIME_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_ENABLED;
@@ -280,11 +281,13 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
 
-  private final boolean systemStoreHealthCheckEnabled;
+  private final boolean parentSystemStoreRepairServiceEnabled;
 
-  private final int systemStoreHealthCheckIntervalSeconds;
+  private final int parentSystemStoreRepairCheckIntervalSeconds;
 
-  private final int systemStoreHealthCheckHeartbeatWaitTimeSeconds;
+  private final int parentSystemStoreHeartbeatCheckWaitTimeSeconds;
+
+  private final int parentSystemStoreRepairRetryCount;
 
   private final boolean parentExternalSupersetSchemaGenerationEnabled;
 
@@ -492,11 +495,13 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.storeGraveyardCleanupDelayMinutes = props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, 0);
     this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
-    this.systemStoreHealthCheckEnabled = props.getBoolean(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_ENABLED, false);
-    this.systemStoreHealthCheckIntervalSeconds =
-        props.getInt(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_INTERVAL_SECONDS, 3600);
-    this.systemStoreHealthCheckHeartbeatWaitTimeSeconds =
-        props.getInt(CONTROLLER_SYSTEM_STORE_HEALTH_CHECK_HEARTBEAT_WAIT_TIME_SECONDS, 60);
+    this.parentSystemStoreRepairServiceEnabled =
+        props.getBoolean(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED, false);
+    this.parentSystemStoreRepairCheckIntervalSeconds =
+        props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS, 1800);
+    this.parentSystemStoreHeartbeatCheckWaitTimeSeconds =
+        props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS, 60);
+    this.parentSystemStoreRepairRetryCount = props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT, 1);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     this.parentExternalSupersetSchemaGenerationEnabled =
@@ -927,16 +932,20 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
   }
 
-  public boolean isSystemStoreHealthCheckEnabled() {
-    return systemStoreHealthCheckEnabled;
+  public boolean isParentSystemStoreRepairServiceEnabled() {
+    return parentSystemStoreRepairServiceEnabled;
   }
 
-  public int getSystemStoreHealthCheckIntervalSeconds() {
-    return systemStoreHealthCheckIntervalSeconds;
+  public int getParentSystemStoreRepairCheckIntervalSeconds() {
+    return parentSystemStoreRepairCheckIntervalSeconds;
   }
 
-  public int getSystemStoreHealthCheckHeartbeatWaitTimeSeconds() {
-    return systemStoreHealthCheckHeartbeatWaitTimeSeconds;
+  public int getParentSystemStoreHeartbeatCheckWaitTimeSeconds() {
+    return parentSystemStoreHeartbeatCheckWaitTimeSeconds;
+  }
+
+  public int getParentSystemStoreRepairRetryCount() {
+    return parentSystemStoreRepairRetryCount;
   }
 
   public boolean isParentExternalSupersetSchemaGenerationEnabled() {

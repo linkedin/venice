@@ -951,4 +951,14 @@ public interface Admin extends AutoCloseable, Closeable {
   Optional<PushStatusStoreReader> getPushStatusStoreReader();
 
   Optional<PushStatusStoreWriter> getPushStatusStoreWriter();
+
+  /**
+   * Send a heartbeat timestamp to targeted system store.
+   */
+  void sendHeartbeatToSystemStore(String clusterName, String storeName, long heartbeatTimestamp);
+
+  /**
+   * Read the latest heartbeat timestamp from system store. If it failed to read from system store, this method should return -1.
+   */
+  long getHeartbeatFromSystemStore(String clusterName, String storeName);
 }
