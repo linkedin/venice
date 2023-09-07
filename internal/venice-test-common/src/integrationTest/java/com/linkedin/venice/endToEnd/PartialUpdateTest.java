@@ -406,9 +406,10 @@ public class PartialUpdateTest {
    * batch push should not throw exception, as the update logic should initialize a new RMD record for the original value
    * and apply updates on top of them.
    */
-  @Test
-  public void testPartialUpdateOnBatchPushedKeys() throws IOException {
-    final String storeName = Utils.getUniqueString("rmdChunking");
+  @Test(timeOut = 180
+      * Time.MS_PER_SECOND, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
+  public void testPartialUpdateOnBatchPushedKeys(CompressionStrategy compressionStrategy) throws IOException {
+    final String storeName = Utils.getUniqueString("updateBatch");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
@@ -428,7 +429,7 @@ public class PartialUpdateTest {
           parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setCompressionStrategy(compressionStrategy)
               .setWriteComputationEnabled(true)
               .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
@@ -606,19 +607,8 @@ public class PartialUpdateTest {
    * (3) Send a DELETE message to partially delete some items in the map field.
    * (4) Send a DELETE message to fully delete the record.
    */
-  @Test(timeOut = TEST_TIMEOUT_MS * 5, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testReplicationMetadataChunkingE2E(boolean enableCompression) throws IOException {
-    final CompressionStrategy compressionStrategy =
-        enableCompression ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP;
-    /**
-     * Before we enable ZSTD_WITH_DICT, the follow flag is always true. For now, there are several issues with ZSTD:
-     * (1) Compression rate is too high, hard to trigger chunking (not an issue for ZSTD but for testing).
-     * (2) Compression / decompression performance is slow, HttpTransportClient read timeout for default 1s. Will need to
-     * be able to update the default timeout in HttpClient5Builder.
-     * (3) Repush failed when requesting topic in controller as dictionary is too large and exceed the max request body size.
-     */
-
-    final boolean validateChunkData = compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT;
+  @Test(timeOut = TEST_TIMEOUT_MS * 5)
+  public void testReplicationMetadataChunkingE2E() throws IOException {
     final String storeName = Utils.getUniqueString("rmdChunking");
     String parentControllerUrl = parentController.getControllerUrl();
     String keySchemaStr = "{\"type\" : \"string\"}";
@@ -638,7 +628,7 @@ public class PartialUpdateTest {
           parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setCompressionStrategy(compressionStrategy)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
               .setWriteComputationEnabled(true)
               .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
@@ -701,9 +691,7 @@ public class PartialUpdateTest {
       });
 
       String kafkaTopic_v1 = Version.composeKafkaTopic(storeName, 1);
-      if (validateChunkData) {
-        validateValueChunks(kafkaTopic_v1, key, Assert::assertNotNull);
-      }
+      validateValueChunks(kafkaTopic_v1, key, Assert::assertNotNull);
       VeniceServerWrapper serverWrapper = multiRegionMultiClusterWrapper.getChildRegions()
           .get(0)
           .getClusters()
@@ -712,9 +700,8 @@ public class PartialUpdateTest {
           .get(0);
       AbstractStorageEngine storageEngine =
           serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic_v1);
-      ChunkedValueManifest valueManifest =
-          validateChunkData ? getChunkValueManifest(storageEngine, 0, key, false) : null;
-      ChunkedValueManifest rmdManifest = validateChunkData ? getChunkValueManifest(storageEngine, 0, key, true) : null;
+      ChunkedValueManifest valueManifest = getChunkValueManifest(storageEngine, 0, key, false);
+      ChunkedValueManifest rmdManifest = getChunkValueManifest(storageEngine, 0, key, true);
 
       producePartialUpdate(
           storeName,
@@ -748,24 +735,15 @@ public class PartialUpdateTest {
         List<Long> activeElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("activeElementsTimestamps");
         assertEquals(activeElementsTimestamps.size(), totalUpdateCount * singleUpdateEntryCount);
       });
-
-      if (validateChunkData) {
-        TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
-          Assert.assertNotNull(valueManifest);
-          Assert.assertNotNull(rmdManifest);
-          validateChunksFromManifests(
-              kafkaTopic_v1,
-              0,
-              valueManifest,
-              rmdManifest,
-              (valueChunkBytes, rmdChunkBytes) -> {
-                Assert.assertNull(valueChunkBytes);
-                Assert.assertNotNull(rmdChunkBytes);
-                Assert.assertEquals(rmdChunkBytes.length, 4);
-              },
-              true);
-        });
-      }
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
+        Assert.assertNotNull(valueManifest);
+        Assert.assertNotNull(rmdManifest);
+        validateChunksFromManifests(kafkaTopic_v1, 0, valueManifest, rmdManifest, (valueChunkBytes, rmdChunkBytes) -> {
+          Assert.assertNull(valueChunkBytes);
+          Assert.assertNotNull(rmdChunkBytes);
+          Assert.assertEquals(rmdChunkBytes.length, 4);
+        }, true);
+      });
 
       // <!--- Perform one time repush to make sure repush can handle RMD chunks data correctly -->
       Properties props =
