@@ -8,6 +8,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl.DEFAULT_KAFKA_OFFSET_API_TIMEOUT;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -27,6 +28,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -51,10 +53,13 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChangelogConsumerImpl<K, V>
     implements BootstrappingVeniceChangelogConsumer<K, V> {
+  private static final Logger LOGGER = LogManager.getLogger(InternalLocalBootstrappingVeniceChangelogConsumer.class);
   private final StorageService storageService;
   private final StorageMetadataService storageMetadataService;
 
@@ -121,6 +126,36 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       // is by reading the local storagemetadata bootstrap coordinate, and see if the internal client is able to
       // subscribe to that position. If it's not able to, that means that the local state is off Venice retention,
       // and therefore should be completely rebootstrapped.
+      for (Integer partition: bootstrapStateMap.keySet()) {
+        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(LOCAL_STATE_TOPIC_NAME, partition);
+        if (offsetRecord == null) {
+          // No offset info in local, need to bootstrap from beginning.
+          return false;
+        }
+
+        VeniceChangeCoordinate localCheckpoint;
+        try {
+          localCheckpoint = VeniceChangeCoordinate.decodeStringAndConvertToVeniceChangeCoordinate(
+              offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE));
+        } catch (IOException | ClassNotFoundException e) {
+          throw new VeniceException("Failed to decode local change capture coordinate checkpoint with exception: ", e);
+        }
+
+        PubSubTopicPartition topicPartition = getTopicPartition(partition);
+        Long earliestOffset = pubSubConsumer.beginningOffset(topicPartition, DEFAULT_KAFKA_OFFSET_API_TIMEOUT);
+        VeniceChangeCoordinate earliestCheckpoint = earliestOffset == null
+            ? null
+            : new VeniceChangeCoordinate(
+                topicPartition.getPubSubTopic().getName(),
+                new ApacheKafkaOffsetPosition(earliestOffset),
+                partition);
+
+        // If earliest offset is larger than the local, we should just bootstrap from beginning.
+        if (earliestCheckpoint != null && earliestCheckpoint.comparePosition(localCheckpoint) > -1) {
+          return false;
+        }
+      }
+
       return true;
     };
   }
@@ -167,6 +202,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       throw new VeniceException("Client isn't started yet!!");
     }
     // If there are any partitions which are in BOOTSTRAPPING state, play messages from those partitions first
+    int[] bootstrapCompletedCount = new int[0];
     for (Map.Entry<Integer, BootstrapState> state: bootstrapStateMap.entrySet()) {
       if (state.getValue().bootstrapState.equals(PollState.BOOTSTRAPPING)) {
         // read from storage engine
@@ -195,7 +231,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
                         getTopicPartition(state.getKey()),
                         0,
                         0,
-                        value.length * 8);
+                        value.length * 8,
+                        false);
                 resultSet.add(record);
               }
 
@@ -203,6 +240,20 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
               public void onCompletion() {
                 // Update the map so that we're no longer in bootstrap mode
                 state.getValue().bootstrapState = PollState.CONSUMING;
+                bootstrapCompletedCount[0]++;
+                if (bootstrapCompletedCount[0] == bootstrapStateMap.size()) {
+                  // Add a dummy record to mark the end of the bootstrap.
+                  resultSet.add(
+                      new ImmutableChangeCapturePubSubMessage<>(
+                          null,
+                          null,
+                          getTopicPartition(state.getKey()),
+                          0,
+                          0,
+                          0,
+                          true));
+                }
+
                 // Notify that we've caught up
                 completed.set(true);
                 completed.notify();
@@ -376,7 +427,10 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
                 VeniceChangeCoordinate
                     .convertVeniceChangeCoordinateToStringAndEncode(state.getValue().currentPubSubPosition));
           } catch (IOException e) {
-            // TODO log error
+            // TODO:
+            LOGGER.error(
+                "Failed to update change capture coordinate position: {}",
+                state.getValue().currentPubSubPosition);
           }
           storageMetadataService.put(LOCAL_STATE_TOPIC_NAME, state.getKey(), lastOffset);
         }
