@@ -19,8 +19,8 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -196,23 +196,26 @@ public class ProducerTool {
 
   private static Object getValueObject(String valueString, RouterBasedStoreSchemaFetcher schemaFetcher) {
     Object value = null;
-    List<Exception> exceptionList = new ArrayList<>();
-    for (Schema valueSchema: schemaFetcher.getAllValueSchemas()) {
+    Map<Integer, Exception> exceptionMap = new HashMap<>();
+    for (Map.Entry<Integer, Schema> valueSchemaEntry: schemaFetcher.getAllValueSchemasWithId().entrySet()) {
       try {
-        value = adaptDataToSchema(valueString, valueSchema);
+        value = adaptDataToSchema(valueString, valueSchemaEntry.getValue());
         break;
       } catch (Exception e) {
-        exceptionList.add(e);
+        exceptionMap.put(valueSchemaEntry.getKey(), e);
         // Try the next schema
       }
     }
     if (value == null) {
       String exceptionDelimiter = "\n\t";
-      String exceptionDetails =
-          exceptionList.stream().map(Throwable::getMessage).collect(Collectors.joining(exceptionDelimiter));
-      throw new VeniceException(
-          "Value schema not found. Is a schema that is compatible with the specified data already registered?\nException messages for each schema (not in order):"
+      String exceptionDetails = exceptionMap.entrySet().stream().sorted(Map.Entry.comparingByKey()).map(entry -> {
+        Exception e = entry.getValue();
+        return "Schema Id: " + entry.getKey() + ". Exception: " + e.getClass().getName() + ": " + e.getMessage();
+      }).collect(Collectors.joining(exceptionDelimiter));
+      System.out.println(
+          "[ERROR] Value schema not found. Is a schema that is compatible with the specified data already registered?\nException messages for each schema:"
               + exceptionDelimiter + exceptionDetails);
+      System.exit(1);
     }
     return value;
   }
