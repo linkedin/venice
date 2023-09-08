@@ -19,7 +19,10 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.commons.cli.CommandLine;
@@ -193,17 +196,23 @@ public class ProducerTool {
 
   private static Object getValueObject(String valueString, RouterBasedStoreSchemaFetcher schemaFetcher) {
     Object value = null;
+    List<Exception> exceptionList = new ArrayList<>();
     for (Schema valueSchema: schemaFetcher.getAllValueSchemas()) {
       try {
         value = adaptDataToSchema(valueString, valueSchema);
         break;
       } catch (Exception e) {
-        // Nothing to do. Try the next schema
+        exceptionList.add(e);
+        // Try the next schema
       }
     }
     if (value == null) {
+      String exceptionDelimiter = "\n\t";
+      String exceptionDetails =
+          exceptionList.stream().map(Throwable::getMessage).collect(Collectors.joining(exceptionDelimiter));
       throw new VeniceException(
-          "Value schema not found. Is a schema that is compatible with the specified data already registered?");
+          "Value schema not found. Is a schema that is compatible with the specified data already registered?\nException messages for each schema (not in order):"
+              + exceptionDelimiter + exceptionDetails);
     }
     return value;
   }
