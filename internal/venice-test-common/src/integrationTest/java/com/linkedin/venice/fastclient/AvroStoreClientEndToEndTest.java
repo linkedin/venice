@@ -36,7 +36,7 @@ import org.testng.annotations.Test;
  */
 
 public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
-  protected void runTest(
+  private void runTest(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       boolean batchGet,
       int batchGetKeySize,
@@ -61,7 +61,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
    * @param batchGet singleGet or batchGet
    * @throws Exception
    */
-  protected void runTest(
+  private void runTest(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       boolean batchGet,
       int batchGetKeySize,

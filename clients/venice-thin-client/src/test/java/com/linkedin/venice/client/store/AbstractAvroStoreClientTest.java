@@ -16,9 +16,12 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -87,7 +90,10 @@ public class AbstractAvroStoreClientTest {
 
     @Override
     public RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
-      return null;
+      if (schemaId != 1) {
+        throw new VeniceUnsupportedOperationException("schemaId: " + schemaId);
+      }
+      return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(VALUE_SCHEMA, VALUE_SCHEMA);
     }
 
     @Override
@@ -108,18 +114,23 @@ public class AbstractAvroStoreClientTest {
   }
 
   private static final Schema VALUE_SCHEMA = Schema.parse(
-      "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"record_schema\",\n" + "\t\"fields\": [\n"
-          + "\t\t{\"name\": \"int_field\", \"type\": \"int\", \"default\": 0, \"doc\": \"doc for int_field\"},\n"
-          + "\t\t{\"name\": \"float_field\", \"type\": \"float\", \"doc\": \"doc for float_field\"},\n" + "\t\t{\n"
-          + "\t\t\t\"name\": \"record_field\",\n" + "\t\t\t\"namespace\": \"com.linkedin.test\",\n"
-          + "\t\t\t\"type\": {\n" + "\t\t\t\t\"name\": \"Record1\",\n" + "\t\t\t\t\"type\": \"record\",\n"
-          + "\t\t\t\t\"fields\": [\n"
-          + "\t\t\t\t\t{\"name\": \"nested_field1\", \"type\": \"double\", \"doc\": \"doc for nested field\"}\n"
-          + "\t\t\t\t]\n" + "\t\t\t}\n" + "\t\t},\n"
-          + "\t\t{\"name\": \"float_array_field1\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
-          + "\t\t{\"name\": \"float_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
-          + "\t\t{\"name\": \"int_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"int\"}}\n" + "\t]\n"
-          + "}");
+      "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"record_schema\",\n" + "  \"fields\": [\n" + "    {\n"
+          + "      \"name\": \"int_field\",\n" + "      \"type\": \"int\",\n" + "      \"default\": 0,\n"
+          + "      \"doc\": \"doc for int_field\"\n" + "    },\n"
+          + "    { \"name\": \"float_field\", \"type\": \"float\", \"doc\": \"doc for float_field\" },\n" + "    {\n"
+          + "      \"name\": \"record_field\",\n" + "      \"namespace\": \"com.linkedin.test\",\n"
+          + "      \"type\": {\n" + "        \"name\": \"Record1\",\n" + "        \"type\": \"record\",\n"
+          + "        \"fields\": [\n" + "          {\n" + "            \"name\": \"nested_field1\",\n"
+          + "            \"type\": \"double\",\n" + "            \"doc\": \"doc for nested field\"\n" + "          }\n"
+          + "        ]\n" + "      }\n" + "    },\n" + "    {\n" + "      \"name\": \"float_array_field1\",\n"
+          + "      \"type\": { \"type\": \"array\", \"items\": \"float\" }\n" + "    },\n" + "    {\n"
+          + "      \"name\": \"float_array_field2\",\n"
+          + "      \"type\": { \"type\": \"array\", \"items\": \"float\" }\n" + "    },\n"
+          + "    { \"name\": \"int_array_field2\", \"type\": { \"type\": \"array\", \"items\": \"int\" } }\n" + "  ]\n"
+          + "}\n");
+
+  private static final RecordSerializer<GenericRecord> valueSerializer =
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(VALUE_SCHEMA);
 
   private static final Set<String> keys = new HashSet<>();
   static {
@@ -448,5 +459,65 @@ public class AbstractAvroStoreClientTest {
     });
 
     storeClient.close();
+  }
+
+  @Test
+  public void testMultiGet() throws ExecutionException, InterruptedException {
+    // Mock a transport client response
+    Schema recordFieldSchema = VALUE_SCHEMA.getField("record_field").schema();
+    List<MultiGetResponseRecordV1> responseRecordV1List = new ArrayList<>();
+
+    GenericRecord recordFieldValue1 = new GenericData.Record(recordFieldSchema);
+    recordFieldValue1.put("nested_field1", 5.1d);
+
+    GenericRecord result1 = new GenericData.Record(VALUE_SCHEMA);
+    result1.put("int_field", 1);
+    result1.put("float_field", 1.1f);
+    result1.put("record_field", recordFieldValue1);
+    result1.put("float_array_field1", Arrays.asList(0.1f, 0.2f));
+    result1.put("float_array_field2", Arrays.asList(1.1f, 1.2f));
+    result1.put("int_array_field2", Arrays.asList(10, 12));
+
+    MultiGetResponseRecordV1 record1 = new MultiGetResponseRecordV1();
+    record1.keyIndex = 0;
+    record1.value = ByteBuffer.wrap(valueSerializer.serialize(result1));
+    record1.schemaId = 1;
+
+    GenericRecord recordFieldValue2 = new GenericData.Record(recordFieldSchema);
+    recordFieldValue2.put("nested_field1", 7.1d);
+
+    GenericRecord result2 = new GenericData.Record(VALUE_SCHEMA);
+    result2.put("int_field", 2);
+    result2.put("float_field", 2.2f);
+    result2.put("record_field", recordFieldValue2);
+    result2.put("float_array_field1", Arrays.asList(0.9f, 0.7f));
+    result2.put("float_array_field2", Arrays.asList(1.2f, 1.5f));
+    result2.put("int_array_field2", Arrays.asList(15, 13));
+    MultiGetResponseRecordV1 record2 = new MultiGetResponseRecordV1();
+    record2.keyIndex = 1;
+    record2.value = ByteBuffer.wrap(valueSerializer.serialize(result2));
+    record2.schemaId = 1;
+    responseRecordV1List.add(record1);
+    responseRecordV1List.add(record2);
+
+    RecordSerializer<MultiGetResponseRecordV1> computeResponseSerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    byte[] serializedResponse = computeResponseSerializer.serializeObjects(responseRecordV1List);
+
+    TransportClient mockTransportClient =
+        new ParameterizedComputeTransportClient(Optional.of(serializedResponse), Optional.empty());
+
+    String storeName = "test_store";
+    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(
+        mockTransportClient,
+        storeName,
+        true,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+
+    CompletableFuture<Map<String, GenericRecord>> requestFuture = storeClient.batchGet(keys);
+    Map<String, GenericRecord> result = requestFuture.get();
+    Assert.assertEquals(result.size(), 2);
+    Assert.assertEquals(result.get("key1"), result1);
+    Assert.assertEquals(result.get("key2"), result2);
   }
 }

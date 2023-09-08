@@ -383,13 +383,6 @@ subprojects {
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
 
-    if (!project.ext.has("skipAlpnBoot") || !project.ext.skipAlpnBoot) {
-      // The ALPN version should match the JVM version
-      if (JavaVersion.current() < JavaVersion.VERSION_11) {
-        jvmArgs "-javaagent:${rootProject.configurations.alpnAgent.asPath}"
-      }
-    }
-
     forkEvery = Integer.valueOf(System.getProperty('forkEvery', '0'))
     maxParallelForks = Integer.valueOf(System.getProperty('maxParallelForks', '4'))
     minHeapSize = System.getProperty('minHeapSize', '1g')

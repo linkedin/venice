@@ -37,7 +37,7 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
       StreamingCallback<GenericRecord, GenericRecord> callback) {
     byte[] prefixBytes = extractKeyPrefixBytesFromPredicate(requiredPrefixFields, storeClient.getKeySchema());
     SchemaAndToString resultSchema = getResultSchema();
-    ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema);
+    ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema, true);
     storeClient.computeWithKeyPrefixFilter(prefixBytes, computeRequestWrapper, callback);
   }
 

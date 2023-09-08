@@ -1,11 +1,15 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.AvroGenericReadComputeStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
+import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
-import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
@@ -61,27 +65,21 @@ import org.apache.avro.Schema;
 
 public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   private final InternalAvroStoreClient<K, V> delegate;
+  private final ClientConfig clientConfig;
 
-  public DelegatingAvroStoreClient(InternalAvroStoreClient<K, V> delegate) {
+  public DelegatingAvroStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     this.delegate = delegate;
+    this.clientConfig = clientConfig;
+  }
+
+  @Override
+  public ClientConfig getClientConfig() {
+    return clientConfig;
   }
 
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     return delegate.get(requestContext, key);
-  }
-
-  /**
-   * Transient change to support {@link ClientConfig#useStreamingBatchGetAsDefault}
-   */
-  protected CompletableFuture<Map<K, V>> batchGetUsingSingleGet(Set<K> keys) throws VeniceClientException {
-    return delegate.batchGet(keys);
-  }
-
-  @Override
-  protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
-      throws VeniceClientException {
-    return delegate.batchGet(requestContext, keys);
   }
 
   @Override
@@ -93,10 +91,14 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   }
 
   @Override
-  protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
-      BatchGetRequestContext<K, V> requestContext,
-      Set<K> keys) {
-    return delegate.streamingBatchGet(requestContext, keys);
+  public void compute(
+      ComputeRequestContext<K, V> requestContext,
+      ComputeRequestWrapper computeRequestWrapper,
+      Set<K> keys,
+      Schema resultSchema,
+      StreamingCallback<K, ComputeGenericRecord> callback,
+      long preRequestTimeInNS) throws VeniceClientException {
+    delegate.compute(requestContext, computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
   }
 
   @Override
@@ -122,5 +124,14 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   @Override
   public Schema getLatestValueSchema() {
     return delegate.getLatestValueSchema();
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> compute(
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      AvroGenericReadComputeStoreClient computeStoreClient,
+      long preRequestTimeInNS) throws VeniceClientException {
+    return delegate.compute(stats, streamingStats, computeStoreClient, preRequestTimeInNS);
   }
 }

@@ -20,6 +20,8 @@ dependencies {
   implementation libraries.restliCommon
   implementation libraries.r2
 
+  testImplementation project(':internal:venice-client-common')
+  testImplementation project(':internal:venice-client-common').sourceSets.test.output
   testImplementation project(':internal:venice-common')
   testImplementation project(':internal:venice-test-common')
   testImplementation libraries.kafkaClients

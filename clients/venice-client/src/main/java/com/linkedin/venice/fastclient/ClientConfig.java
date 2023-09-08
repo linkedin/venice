@@ -18,6 +18,8 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
+import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -81,6 +83,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    */
   private final GrpcClientConfig grpcClientConfig;
 
+  private boolean projectionFieldValidation = true;
+  private Predicate<Schema> preferredSchemaFilter = null;
+
   private ClientConfig(
       String storeName,
       Client r2Client,
@@ -112,7 +117,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       String clusterDiscoveryD2Service,
       boolean useStreamingBatchGetAsDefault,
       boolean useGrpc,
-      GrpcClientConfig grpcClientConfig) {
+      GrpcClientConfig grpcClientConfig,
+      boolean projectionFieldValidation,
+      Predicate<Schema> preferredSchemaFilter) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -236,6 +243,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     this.useGrpc = useGrpc;
     this.grpcClientConfig = grpcClientConfig;
+
+    this.projectionFieldValidation = projectionFieldValidation;
+    this.preferredSchemaFilter = preferredSchemaFilter;
   }
 
   public String getStoreName() {
@@ -363,6 +373,24 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return grpcClientConfig;
   }
 
+  public boolean isProjectionFieldValidationEnabled() {
+    return projectionFieldValidation;
+  }
+
+  public ClientConfig setProjectionFieldValidationEnabled(boolean projectionFieldValidation) {
+    this.projectionFieldValidation = projectionFieldValidation;
+    return this;
+  }
+
+  public Predicate<Schema> getPreferredSchemaFilter() {
+    return preferredSchemaFilter;
+  }
+
+  public ClientConfig setPreferredSchemaFilter(Predicate<Schema> preferredSchemaFilter) {
+    this.preferredSchemaFilter = preferredSchemaFilter;
+    return this;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -406,6 +434,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean useStreamingBatchGetAsDefault = false;
     private boolean useGrpc = false;
     private GrpcClientConfig grpcClientConfig = null;
+
+    private boolean projectionFieldValidation = true;
+    private Predicate<Schema> preferredSchemaFilter = null;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -573,6 +604,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setProjectionFieldValidationEnabled(boolean projectionFieldValidation) {
+      this.projectionFieldValidation = projectionFieldValidation;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setPreferredSchemaFilter(Predicate<Schema> preferredSchemaFilter) {
+      this.preferredSchemaFilter = preferredSchemaFilter;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -604,7 +645,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setClusterDiscoveryD2Service(clusterDiscoveryD2Service)
           .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault)
           .setUseGrpc(useGrpc)
-          .setGrpcClientConfig(grpcClientConfig);
+          .setGrpcClientConfig(grpcClientConfig)
+          .setProjectionFieldValidationEnabled(projectionFieldValidation)
+          .setPreferredSchemaFilter(preferredSchemaFilter);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -639,7 +682,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           clusterDiscoveryD2Service,
           useStreamingBatchGetAsDefault,
           useGrpc,
-          grpcClientConfig);
+          grpcClientConfig,
+          projectionFieldValidation,
+          preferredSchemaFilter);
     }
   }
 }

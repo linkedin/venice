@@ -1,6 +1,7 @@
 package com.linkedin.davinci.client;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -78,6 +79,9 @@ public class StatsAvroGenericDaVinciClientTest {
     resultMap.put("key1", "value1");
     resultMap.put("key2", "value2");
     okFuture.complete(resultMap);
+
+    doCallRealMethod().when(mockClient).streamingBatchGet(any(), any());
+
     when(mockClient.batchGet(any())).thenReturn(okFuture)
         .thenReturn(errorFuture)
         .thenThrow(new RuntimeException("mock_exception_by_function_directly"));

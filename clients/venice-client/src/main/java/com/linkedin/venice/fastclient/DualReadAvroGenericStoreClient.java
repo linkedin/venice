@@ -23,7 +23,6 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   private final AvroGenericStoreClient<K, V> thinClient;
   private final FastClientStats clientStatsForSingleGet;
   private final FastClientStats clientStatsForMultiGet;
-  private final boolean useStreamingBatchGetAsDefault;
 
   public DualReadAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig config) {
     this(delegate, config, config.getGenericThinClient());
@@ -37,20 +36,19 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
       InternalAvroStoreClient<K, V> delegate,
       ClientConfig config,
       AvroGenericStoreClient<K, V> thinClient) {
-    super(delegate);
+    super(delegate, config);
     this.thinClient = thinClient;
     this.clientStatsForSingleGet = config.getStats(RequestType.SINGLE_GET);
     this.clientStatsForMultiGet = config.getStats(RequestType.MULTI_GET);
-    this.useStreamingBatchGetAsDefault = config.useStreamingBatchGetAsDefault();
   }
 
   private static <T> CompletableFuture<T> sendRequest(
       Supplier<CompletableFuture<T>> supplier,
-      long startTimeNS,
       AtomicBoolean error,
       AtomicReference<Double> latency,
       CompletableFuture<T> valueFuture) {
     CompletableFuture<T> requestFuture;
+    long startTimeNS = System.nanoTime();
     try {
       requestFuture = supplier.get();
     } catch (Exception e) {
@@ -94,15 +92,14 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
       Supplier<CompletableFuture<T>> thinClientFutureSupplier,
       FastClientStats clientStats) {
     CompletableFuture<T> valueFuture = new CompletableFuture<>();
-    long startTimeNS = System.nanoTime();
     AtomicBoolean fastClientError = new AtomicBoolean(false);
     AtomicBoolean thinClientError = new AtomicBoolean(false);
     AtomicReference<Double> fastClientLatency = new AtomicReference<>();
     AtomicReference<Double> thinClientLatency = new AtomicReference<>();
     CompletableFuture<T> fastClientFuture =
-        sendRequest(fastClientFutureSupplier, startTimeNS, fastClientError, fastClientLatency, valueFuture);
+        sendRequest(fastClientFutureSupplier, fastClientError, fastClientLatency, valueFuture);
     CompletableFuture<T> thinClientFuture =
-        sendRequest(thinClientFutureSupplier, startTimeNS, thinClientError, thinClientLatency, valueFuture);
+        sendRequest(thinClientFutureSupplier, thinClientError, thinClientLatency, valueFuture);
 
     CompletableFuture.allOf(fastClientFuture, thinClientFuture).whenComplete((response, throwable) -> {
       /**
@@ -135,6 +132,9 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
    *  Needs to be investigated */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+    if (requestContext != null && requestContext.isTriggeredByBatchGet) {
+      return super.get(requestContext, key);
+    }
     return dualExecute(() -> super.get(requestContext, key), () -> thinClient.get(key), clientStatsForSingleGet);
   }
 
@@ -142,9 +142,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   public CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
     return dualExecute(
-        this.useStreamingBatchGetAsDefault
-            ? () -> super.batchGet(requestContext, keys)
-            : () -> super.batchGetUsingSingleGet(keys),
+        () -> super.batchGet(requestContext, keys),
         () -> thinClient.batchGet(keys),
         clientStatsForMultiGet);
   }

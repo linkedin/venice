@@ -16,10 +16,28 @@ import org.apache.avro.generic.GenericRecord;
  * @param <V>
  */
 public interface AvroGenericReadComputeStoreClient<K, V> extends AvroGenericStoreClient<K, V> {
-  ComputeRequestBuilder<K> compute(
+  boolean isProjectionFieldValidationEnabled();
+
+  @Override
+  default ComputeRequestBuilder<K> compute() throws VeniceClientException {
+    return compute(Optional.empty(), Optional.empty(), 0);
+  }
+
+  default ComputeRequestBuilder<K> compute(
       Optional<ClientStats> stats,
       Optional<ClientStats> streamingStats,
-      long preRequestTimeInNS) throws VeniceClientException;
+      long preRequestTimeInNS) throws VeniceClientException {
+    return compute(stats, streamingStats, this, preRequestTimeInNS);
+  }
+
+  default ComputeRequestBuilder<K> compute(
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      AvroGenericReadComputeStoreClient computeStoreClient,
+      long preRequestTimeInNS) throws VeniceClientException {
+    return new AvroComputeRequestBuilderV3<K>(computeStoreClient, getLatestValueSchema()).setStats(streamingStats)
+        .setValidateProjectionFields(isProjectionFieldValidationEnabled());
+  }
 
   void compute(
       ComputeRequestWrapper computeRequestWrapper,

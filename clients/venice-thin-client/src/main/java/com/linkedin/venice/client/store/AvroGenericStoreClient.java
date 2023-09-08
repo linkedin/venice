@@ -1,14 +1,19 @@
 package com.linkedin.venice.client.store;
 
-import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.avro.Schema;
 
 
@@ -48,13 +53,24 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @throws VeniceClientException
    */
   default CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    throw new VeniceClientException(
-        "Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() "
-            + "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
+    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
+    CompletableFuture<VeniceResponseMap<K, V>> streamingResultFuture = streamingBatchGet(keys);
+
+    streamingResultFuture.whenComplete((response, throwable) -> {
+      if (throwable != null) {
+        resultFuture.completeExceptionally(throwable);
+      } else if (!response.isFullResponse()) {
+        resultFuture.completeExceptionally(
+            new VeniceClientException(
+                "Received partial response, returned entry count: " + response.getTotalEntryCount()
+                    + ", and key count: " + keys.size()));
+      } else {
+        resultFuture.complete(response);
+      }
+    });
+    return resultFuture;
   }
 
-  // TODO: Once batchGet() defaults to start using streamingBatchGet(), need to rethink whether
-  // streamingBatchGet() should be exposed
   /**
    * Get the values associated with the given keys and return them in a map of keys to values.
    *
@@ -68,9 +84,37 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @throws VeniceClientException
    */
   default CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
-    throw new VeniceClientException(
-        "Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() "
-            + "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
+    Map<K, V> resultMap = new VeniceConcurrentHashMap<>(keys.size());
+    Queue<K> nonExistingKeyList = new ConcurrentLinkedQueue<>();
+
+    VeniceResponseCompletableFuture<VeniceResponseMap<K, V>> resultFuture = new VeniceResponseCompletableFuture<>(
+        () -> new VeniceResponseMapImpl(resultMap, nonExistingKeyList, false),
+        keys.size(),
+        Optional.empty());
+    streamingBatchGet(keys, new StreamingCallback<K, V>() {
+      @Override
+      public void onRecordReceived(K key, V value) {
+        if (value != null) {
+          /**
+           * {@link java.util.concurrent.ConcurrentHashMap#put} won't take 'null' as the value.
+           */
+          resultMap.put(key, value);
+        } else {
+          nonExistingKeyList.add(key);
+        }
+      }
+
+      @Override
+      public void onCompletion(Optional<Exception> exception) {
+        if (exception.isPresent()) {
+          resultFuture.completeExceptionally(exception.get());
+        } else {
+          boolean isFullResponse = (resultMap.size() + nonExistingKeyList.size() == keys.size());
+          resultFuture.complete(new VeniceResponseMapImpl(resultMap, nonExistingKeyList, isFullResponse));
+        }
+      }
+    });
+    return resultFuture;
   }
 
   /**
@@ -81,22 +125,13 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @param callback
    * @throws VeniceClientException
    */
-  default void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
-    throw new VeniceClientException(
-        "Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() "
-            + "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
-  }
+  void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException;
 
   /**
    * This experimental feature is subject to backwards-incompatible changes and may even be removed in the future.
    * @return
    */
-  @Experimental
-  default ComputeRequestBuilder<K> compute() {
-    throw new VeniceClientException(
-        "Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() "
-            + "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
-  }
+  ComputeRequestBuilder<K> compute();
 
   void start() throws VeniceClientException;
 

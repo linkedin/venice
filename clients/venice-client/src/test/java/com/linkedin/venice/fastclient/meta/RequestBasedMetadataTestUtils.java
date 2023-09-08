@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
@@ -38,6 +39,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.Schema;
 
 
 public class RequestBasedMetadataTestUtils {
@@ -60,7 +62,11 @@ public class RequestBasedMetadataTestUtils {
     return clientConfig;
   }
 
-  public static D2TransportClient getMockD2TransportClient(String storeName, boolean changeMetadata) {
+  public static D2TransportClient getMockD2TransportClient(
+      String storeName,
+      boolean changeMetadata,
+      Schema storeKeySchema,
+      Schema storeValueSchema) {
     D2TransportClient d2TransportClient = mock(D2TransportClient.class);
 
     VersionProperties versionProperties = new VersionProperties(
@@ -79,8 +85,8 @@ public class RequestBasedMetadataTestUtils {
     MetadataResponseRecord metadataResponse = new MetadataResponseRecord(
         versionProperties,
         Collections.singletonList(CURRENT_VERSION),
-        Collections.singletonMap("1", KEY_SCHEMA),
-        Collections.singletonMap("1", VALUE_SCHEMA),
+        Collections.singletonMap("1", storeKeySchema.toString()),
+        Collections.singletonMap("1", storeValueSchema.toString()),
         1,
         routeMap,
         helixGroupMap);
@@ -196,7 +202,30 @@ public class RequestBasedMetadataTestUtils {
       boolean mockMetadataUpdateFailure,
       boolean firstUpdateFails,
       ScheduledExecutorService scheduler) throws InterruptedException {
-    D2TransportClient d2TransportClient = getMockD2TransportClient(storeName, metadataChange);
+    return getMockMetaData(
+        clientConfig,
+        storeName,
+        routerBackedSchemaReader,
+        metadataChange,
+        mockMetadataUpdateFailure,
+        firstUpdateFails,
+        scheduler,
+        AvroCompatibilityHelper.parse(KEY_SCHEMA),
+        AvroCompatibilityHelper.parse(VALUE_SCHEMA));
+  }
+
+  public static RequestBasedMetadata getMockMetaData(
+      ClientConfig clientConfig,
+      String storeName,
+      RouterBackedSchemaReader routerBackedSchemaReader,
+      boolean metadataChange,
+    boolean mockMetadataUpdateFailure,
+    boolean firstUpdateFails,
+    ScheduledExecutorService scheduler,
+      Schema storeKeySchema,
+      Schema storeValueSchema) throws InterruptedException {
+    D2TransportClient d2TransportClient =
+        getMockD2TransportClient(storeName, metadataChange, storeKeySchema, storeValueSchema);
     D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
     RequestBasedMetadata requestBasedMetadata;
     if (mockMetadataUpdateFailure) {

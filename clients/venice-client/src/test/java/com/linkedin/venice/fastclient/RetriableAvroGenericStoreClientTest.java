@@ -11,7 +11,6 @@ import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
@@ -200,13 +199,6 @@ public class RetriableAvroGenericStoreClientTest {
           throw new VeniceClientException("Unexpected request cnt: " + requestCnt);
         }
       }
-
-      @Override
-      protected CompletableFuture<VeniceResponseMap> streamingBatchGet(
-          BatchGetRequestContext requestContext,
-          Set keys) {
-        throw new VeniceClientException("Implementation not added");
-      }
     };
   }
 
@@ -244,7 +236,7 @@ public class RetriableAvroGenericStoreClientTest {
       }
     }
 
-    validateMetrics(false, false, errorRetry, longTailRetry, retryWin);
+    validateMetrics(false, errorRetry, longTailRetry, retryWin);
   }
 
   private void testBatchGetAndValidateMetrics(
@@ -272,7 +264,7 @@ public class RetriableAvroGenericStoreClientTest {
       }
     }
 
-    validateMetrics(true, false, false, longTailRetry, retryWin);
+    validateMetrics(true, false, longTailRetry, retryWin);
   }
 
   private void testStreamingBatchGetAndValidateMetrics(
@@ -301,7 +293,7 @@ public class RetriableAvroGenericStoreClientTest {
       }
     }
 
-    validateMetrics(true, true, false, longTailRetry, retryWin);
+    validateMetrics(true, false, longTailRetry, retryWin);
   }
 
   /**
@@ -311,15 +303,9 @@ public class RetriableAvroGenericStoreClientTest {
    * @param longTailRetry request is retried because the original request is taking more time
    * @param retryWin retry request wins
    */
-  private void validateMetrics(
-      boolean batchGet,
-      boolean streamingBatchGet,
-      boolean errorRetry,
-      boolean longTailRetry,
-      boolean retryWin) {
+  private void validateMetrics(boolean batchGet, boolean errorRetry, boolean longTailRetry, boolean retryWin) {
     metrics = getStats(clientConfig);
-    String metricsPrefix =
-        "." + STORE_NAME + (batchGet ? (streamingBatchGet ? "--multiget_streaming_" : "--multiget_") : "--");
+    String metricsPrefix = "." + STORE_NAME + (batchGet ? "--multiget_streaming_" : "--");
     double expectedKeyCount = batchGet ? 2.0 : 1.0;
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {

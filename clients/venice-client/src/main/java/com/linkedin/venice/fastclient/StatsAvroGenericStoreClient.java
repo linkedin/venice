@@ -3,21 +3,20 @@ package com.linkedin.venice.fastclient;
 import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AppTimeOutTrackingCompletableFuture;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -30,21 +29,16 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private static final int TIMEOUT_IN_SECOND = 5;
 
   private final FastClientStats clientStatsForSingleGet;
-  private final FastClientStats clientStatsForBatchGet;
   private final FastClientStats clientStatsForStreamingBatchGet;
+  private final FastClientStats clientStatsForStreamingCompute;
   private final ClusterStats clusterStats;
 
-  private final int maxAllowedKeyCntInBatchGetReq;
-  private final boolean useStreamingBatchGetAsDefault;
-
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
-    super(delegate);
+    super(delegate, clientConfig);
     this.clientStatsForSingleGet = clientConfig.getStats(RequestType.SINGLE_GET);
-    this.clientStatsForBatchGet = clientConfig.getStats(RequestType.MULTI_GET);
     this.clientStatsForStreamingBatchGet = clientConfig.getStats(RequestType.MULTI_GET_STREAMING);
+    this.clientStatsForStreamingCompute = clientConfig.getStats(RequestType.COMPUTE_STREAMING);
     this.clusterStats = clientConfig.getClusterStats();
-    this.maxAllowedKeyCntInBatchGetReq = clientConfig.getMaxAllowedKeyCntInBatchGetReq();
-    this.useStreamingBatchGetAsDefault = clientConfig.useStreamingBatchGetAsDefault();
   }
 
   @Override
@@ -52,64 +46,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     long startTimeInNS = System.nanoTime();
     CompletableFuture<V> innerFuture = super.get(requestContext, key);
     return recordMetrics(requestContext, 1, innerFuture, startTimeInNS, clientStatsForSingleGet);
-  }
-
-  protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
-      throws VeniceClientException {
-    return this.useStreamingBatchGetAsDefault
-        ? batchGetUsingStreamingBatchGet(requestContext, keys)
-        : batchGetUsingSingleGet(keys);
-  }
-
-  protected CompletableFuture<Map<K, V>> batchGetUsingStreamingBatchGet(
-      BatchGetRequestContext<K, V> requestContext,
-      Set<K> keys) throws VeniceClientException {
-    long startTimeInNS = System.nanoTime();
-
-    CompletableFuture<Map<K, V>> innerFuture = super.batchGet(requestContext, keys);
-    return recordMetrics(requestContext, keys.size(), innerFuture, startTimeInNS, clientStatsForBatchGet);
-  }
-
-  /**
-   *  Leverage single-get implementation here:
-   *  1. Looping through all keys and call get() for each of the keys
-   *  2. Collect the replies and pass it to the caller
-   *
-   *  Transient change to support {@link ClientConfig#useStreamingBatchGetAsDefault}
-   */
-  protected CompletableFuture<Map<K, V>> batchGetUsingSingleGet(Set<K> keys) throws VeniceClientException {
-    if (keys.isEmpty()) {
-      return CompletableFuture.completedFuture(Collections.emptyMap());
-    }
-    int keyCnt = keys.size();
-    if (keyCnt > maxAllowedKeyCntInBatchGetReq) {
-      throw new VeniceKeyCountLimitException(
-          getStoreName(),
-          RequestType.MULTI_GET,
-          keyCnt,
-          maxAllowedKeyCntInBatchGetReq);
-    }
-    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
-    Map<K, CompletableFuture<V>> valueFutures = new HashMap<>();
-    keys.forEach(k -> valueFutures.put(k, (get(k))));
-    CompletableFuture.allOf(valueFutures.values().toArray(new CompletableFuture[keyCnt]))
-        .whenComplete(((aVoid, throwable) -> {
-          if (throwable != null) {
-            resultFuture.completeExceptionally(throwable);
-          }
-          Map<K, V> resultMap = new HashMap<>();
-          valueFutures.forEach((k, f) -> {
-            try {
-              resultMap.put(k, f.get());
-            } catch (Exception e) {
-              resultFuture.completeExceptionally(
-                  new VeniceClientException("Failed to complete future for key: " + k.toString(), e));
-            }
-          });
-          resultFuture.complete(resultMap);
-        }));
-
-    return resultFuture;
   }
 
   @Override
@@ -127,13 +63,23 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   }
 
   @Override
-  protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
-      BatchGetRequestContext<K, V> requestContext,
-      Set<K> keys) {
+  public void compute(
+      ComputeRequestContext<K, V> requestContext,
+      ComputeRequestWrapper computeRequestWrapper,
+      Set<K> keys,
+      Schema resultSchema,
+      StreamingCallback<K, ComputeGenericRecord> callback,
+      long preRequestTimeInNS) throws VeniceClientException {
     long startTimeInNS = System.nanoTime();
-    CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGetFuture = super.streamingBatchGet(requestContext, keys);
-    recordMetrics(requestContext, keys.size(), streamingBatchGetFuture, startTimeInNS, clientStatsForStreamingBatchGet);
-    return streamingBatchGetFuture;
+    CompletableFuture<Void> statFuture = new CompletableFuture<>();
+    super.compute(
+        requestContext,
+        computeRequestWrapper,
+        keys,
+        resultSchema,
+        new StatTrackingStreamingCallBack<>(callback, statFuture, requestContext),
+        preRequestTimeInNS);
+    recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForStreamingCompute);
   }
 
   private <R> CompletableFuture<R> recordMetrics(
@@ -164,7 +110,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       CompletableFuture<R> innerFuture,
       long startTimeInNS,
       FastClientStats clientStats) {
-
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
       clientStats.recordRequestKeyCount(numberOfKeys);
@@ -226,6 +171,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           }
         }
       } else if (requestContext instanceof BatchGetRequestContext) {
+        // BatchGetRequestContext is also the superclass for ComputeRequestContext
         BatchGetRequestContext<K, V> batchGetRequestContext = (BatchGetRequestContext<K, V>) requestContext;
         if (batchGetRequestContext.longTailRetryTriggered) {
           clientStats.recordLongTailRetryRequest();
@@ -304,12 +250,12 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     private final StreamingCallback<K, V> inner;
     // This future is completed with a number of keys whose values were successfully received.
     private final CompletableFuture<Void> statFuture;
-    private final RequestContext requestContext;
+    private final BatchGetRequestContext requestContext;
 
     StatTrackingStreamingCallBack(
         StreamingCallback<K, V> callback,
         CompletableFuture<Void> statFuture,
-        RequestContext requestContext) {
+        BatchGetRequestContext requestContext) {
       this.inner = callback;
       this.statFuture = statFuture;
       this.requestContext = requestContext;

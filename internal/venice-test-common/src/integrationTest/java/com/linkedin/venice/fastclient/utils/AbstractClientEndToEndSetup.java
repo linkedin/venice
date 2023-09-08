@@ -74,8 +74,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -86,7 +84,6 @@ import org.testng.annotations.DataProvider;
  */
 
 public abstract class AbstractClientEndToEndSetup {
-  private static final Logger LOGGER = LogManager.getLogger(AbstractClientEndToEndSetup.class);
   protected VeniceClusterWrapper veniceCluster;
   protected String storeVersionName;
   protected int valueSchemaId;
@@ -255,7 +252,9 @@ public abstract class AbstractClientEndToEndSetup {
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     veniceCluster.useControllerClient(
-        client -> client.updateStore(storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true)));
+        client -> client.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true).setReadComputationEnabled(true)));
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // TODO: Make serializers parameterized so we test them all.
@@ -527,8 +526,8 @@ public abstract class AbstractClientEndToEndSetup {
       int expectedBatchGetKeySizeMetricsCount,
       int expectedBatchGetKeySizeSuccessMetricsCount,
       boolean retryEnabled) {
-    String metricPrefix = "." + storeName
-        + (streamingBatchGetApi ? "--multiget_streaming_" : (useStreamingBatchGetAsDefault ? "--multiget_" : "--"));
+    String metricPrefix =
+        "." + storeName + ((streamingBatchGetApi || useStreamingBatchGetAsDefault) ? "--multiget_streaming_" : "--");
     double keyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeMetricsCount : 1;
     double successKeyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeSuccessMetricsCount : 1;
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
@@ -555,7 +554,10 @@ public abstract class AbstractClientEndToEndSetup {
     });
     // incorrect metric should not be incremented
     assertFalse(
-        metrics.get("." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_") + "request_key_count.Rate")
+        metrics
+            .get(
+                "." + storeName + (useStreamingBatchGetAsDefault ? "--" : "--multiget_streaming_")
+                    + "request_key_count.Rate")
             .value() > 0,
         "Incorrect request_key_count should not be incremented");
 

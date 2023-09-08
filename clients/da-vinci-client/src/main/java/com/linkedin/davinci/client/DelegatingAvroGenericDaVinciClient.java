@@ -7,7 +7,6 @@ import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -62,8 +61,8 @@ public class DelegatingAvroGenericDaVinciClient<K, V>
   }
 
   @Override
-  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    return delegate.batchGet(keys);
+  public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+    delegate.streamingBatchGet(keys, callback);
   }
 
   @Override
@@ -92,11 +91,17 @@ public class DelegatingAvroGenericDaVinciClient<K, V>
   }
 
   @Override
+  public boolean isProjectionFieldValidationEnabled() {
+    return delegate.isProjectionFieldValidationEnabled();
+  }
+
+  @Override
   public ComputeRequestBuilder<K> compute(
       Optional<ClientStats> stats,
       Optional<ClientStats> streamingStats,
+      AvroGenericReadComputeStoreClient computeStoreClient,
       long preRequestTimeInNS) throws VeniceClientException {
-    return delegate.compute(stats, streamingStats, preRequestTimeInNS);
+    return delegate.compute(stats, streamingStats, computeStoreClient, preRequestTimeInNS);
   }
 
   @Override

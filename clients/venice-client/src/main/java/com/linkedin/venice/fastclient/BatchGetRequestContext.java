@@ -47,6 +47,7 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
   // Number of keys that were successfully resolved in retry request
   AtomicInteger numberOfKeysCompletedInOriginalRequest;
   AtomicInteger numberOfKeysCompletedInRetryRequest;
+  boolean isPartialSuccessAllowed;
 
   BatchGetRequestContext() {
     routeRequests = new VeniceConcurrentHashMap<>();
@@ -58,11 +59,12 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
     numberOfKeysSentInRetryRequest = 0;
     numberOfKeysCompletedInOriginalRequest = new AtomicInteger();
     numberOfKeysCompletedInRetryRequest = new AtomicInteger();
+    isPartialSuccessAllowed = true;
   }
 
-  void addKey(String route, K key, int partitionId) {
+  void addKey(String route, K key, byte[] serializedKey, int partitionId) {
     Validate.notNull(route);
-    routeRequests.computeIfAbsent(route, r -> new RouteRequestContext<>()).addKeyInfo(key, partitionId);
+    routeRequests.computeIfAbsent(route, r -> new RouteRequestContext<>()).addKeyInfo(key, serializedKey, partitionId);
     routesForPartition.computeIfAbsent(partitionId, (k) -> new HashSet<>()).add(route);
   }
 
@@ -191,8 +193,8 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
     AtomicLong recordDeserializationTime = new AtomicLong();
     AtomicLong requestSerializationTime = new AtomicLong();
 
-    void addKeyInfo(K key, int partitionId) {
-      keysRequested.add(new KeyInfo<>(key, partitionId));
+    void addKeyInfo(K key, byte[] serializedKey, int partitionId) {
+      keysRequested.add(new KeyInfo<>(key, serializedKey, partitionId));
     }
 
     void setComplete(TransportClientResponseForRoute response) {
@@ -210,15 +212,21 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
    */
   public static class KeyInfo<K> {
     private final K key;
+    private final byte[] serializedKey;
     private final int partitionId;
 
-    public KeyInfo(K key, int partitionId) {
+    public KeyInfo(K key, byte[] serializedKey, int partitionId) {
       this.key = key;
+      this.serializedKey = serializedKey;
       this.partitionId = partitionId;
     }
 
     public K getKey() {
       return key;
+    }
+
+    public byte[] getSerializedKey() {
+      return serializedKey;
     }
 
     public int getPartitionId() {
