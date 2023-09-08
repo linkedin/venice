@@ -198,7 +198,8 @@ public class ProducerTool {
         value = adaptDataToSchema(valueString, valueSchema);
         break;
       } catch (Exception e) {
-        // Nothing to do. Try the next schema
+        System.out.println("Could not construct value object " + ExceptionUtils.stackTraceToString(e));
+        // Try the next schema
       }
     }
     if (value == null) {
