@@ -6,5 +6,6 @@ package com.linkedin.avro.fastserde;
 public class FastDeserializerGeneratorAccessor {
   public static void setFieldsPerPopulationMethod(int limit) {
     FastDeserializerGenerator.setFieldsPerPopulationMethod(limit);
+    FastSerializerGenerator.setFieldsPerRecordSerializationMethod(limit);
   }
 }
