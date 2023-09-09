@@ -1,9 +1,9 @@
 package com.linkedin.venice.schema;
 
-import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING;
-import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING_V2;
-import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING_V3;
-import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING_V4;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V4_SCHEMA;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -459,10 +459,14 @@ public class TestAvroSupersetSchemaUtils {
 
   @Test
   public void testValidateSubsetSchema() {
-    Assert.assertTrue(AvroSupersetSchemaUtils.validateSubsetValueSchema(NESTED_SCHEMA_STRING, NESTED_SCHEMA_STRING_V2));
+    Assert.assertTrue(
+        AvroSupersetSchemaUtils
+            .validateSubsetValueSchema(NAME_RECORD_V1_SCHEMA.toString(), NAME_RECORD_V2_SCHEMA.toString()));
     Assert.assertFalse(
-        AvroSupersetSchemaUtils.validateSubsetValueSchema(NESTED_SCHEMA_STRING_V2, NESTED_SCHEMA_STRING_V3));
+        AvroSupersetSchemaUtils
+            .validateSubsetValueSchema(NAME_RECORD_V2_SCHEMA.toString(), NAME_RECORD_V3_SCHEMA.toString()));
     Assert.assertFalse(
-        AvroSupersetSchemaUtils.validateSubsetValueSchema(NESTED_SCHEMA_STRING_V3, NESTED_SCHEMA_STRING_V4));
+        AvroSupersetSchemaUtils
+            .validateSubsetValueSchema(NAME_RECORD_V3_SCHEMA.toString(), NAME_RECORD_V4_SCHEMA.toString()));
   }
 }

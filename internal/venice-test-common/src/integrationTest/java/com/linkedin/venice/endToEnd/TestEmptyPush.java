@@ -8,8 +8,9 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.USER_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeEmptyAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeEmptyAvroFile;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
@@ -80,14 +81,14 @@ public class TestEmptyPush {
     String storeName = Utils.getUniqueString("test_empty_push_store");
     try (ControllerClient controllerClient =
         new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs())) {
-      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
       controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      writeEmptyAvroFileWithUserSchema(inputDir);
+      writeEmptyAvroFile(inputDir, USER_SCHEMA);
 
       Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
       vpjProperties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, Boolean.toString(sendControlMessageDirectly));
@@ -113,7 +114,7 @@ public class TestEmptyPush {
                     venice.getPubSubBrokerWrapper(),
                     venice.getPubSubTopicRepository())
                 .getTopicManager()) {
-      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
       controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -123,7 +124,7 @@ public class TestEmptyPush {
 
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      writeEmptyAvroFileWithUserSchema(inputDir);
+      writeEmptyAvroFile(inputDir, USER_SCHEMA);
 
       // First empty push with dict compression enabled.
       Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);

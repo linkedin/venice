@@ -19,7 +19,6 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEI
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.WARNING;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -48,6 +47,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -114,7 +114,7 @@ public class PushJobDetailsTest {
         TimeUnit.MINUTES);
     File inputDir = getTempDataDirectory();
     inputDirPath = "file://" + inputDir.getAbsolutePath();
-    recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+    recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     for (int i = 1; i <= latestSchemaId; i++) {
       schemaVersionMap.put(i, Utils.getSchemaFromResource("avro/PushJobDetails/v" + i + "/PushJobDetails.avsc"));
     }

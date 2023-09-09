@@ -24,7 +24,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProduce
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -55,6 +54,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -139,7 +139,7 @@ public class DaVinciClientMemoryLimitTest {
     // Test a small push
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, true, 100, 100);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 100, 100);
     Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
     String storeNameWithoutMemoryEnforcement = Utils.getUniqueString("store_without_memory_enforcement");
@@ -197,7 +197,7 @@ public class DaVinciClientMemoryLimitTest {
         // Run a bigger push and the push should fail
         inputDir = getTempDataDirectory();
         inputDirPath = "file://" + inputDir.getAbsolutePath();
-        writeSimpleAvroFileWithUserSchema(inputDir, true, 1000, 100000);
+        TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 1000, 100000);
         final Properties vpjPropertiesForV2 = defaultVPJProps(venice, inputDirPath, storeName);
 
         VeniceException exception =
@@ -240,7 +240,7 @@ public class DaVinciClientMemoryLimitTest {
     // Test a small push
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, true, 100, 100);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 100, 100);
     Properties vpjProperties = defaultVPJProps(venice, inputDirPath, batchOnlyStoreName);
 
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
@@ -348,7 +348,7 @@ public class DaVinciClientMemoryLimitTest {
         // Run a bigger push and the push should fail
         inputDir = getTempDataDirectory();
         inputDirPath = "file://" + inputDir.getAbsolutePath();
-        writeSimpleAvroFileWithUserSchema(inputDir, true, 1000, 100000);
+        TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 1000, 100000);
         final Properties vpjPropertiesForV2 = defaultVPJProps(venice, inputDirPath, batchOnlyStoreName);
 
         VeniceException exception =
@@ -382,7 +382,7 @@ public class DaVinciClientMemoryLimitTest {
     // Test a medium push close to the memory limit
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, true, 190, 100000); // ~19MB
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 190, 100000); // ~19MB
     Properties vpjProperties = defaultVPJProps(venice, inputDirPath, batchOnlyStoreName);
 
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);

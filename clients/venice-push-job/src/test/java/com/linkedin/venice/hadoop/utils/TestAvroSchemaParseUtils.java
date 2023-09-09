@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.utils;
 
+import static com.linkedin.venice.utils.TestWriteUtils.USER_WITH_DEFAULT_SCHEMA;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import org.apache.avro.Schema;
@@ -42,6 +44,14 @@ public class TestAvroSchemaParseUtils {
   public void testParseSchemaFailWhenExtendedValidationEnabled() {
     final boolean extendedSchemaValidityCheckEnabled = true;
     AvroSchemaParseUtils.parseSchemaFromJSON(SCHEMA_FAIL_EXTENDED_VALIDATION, extendedSchemaValidityCheckEnabled);
+  }
+
+  @Test
+  public void test() {
+    // System.out.println(TestWriteUtils.NEW_INT_TO_STRING_SCHEMA.toString(true));
+    // System.out.println(AvroSchemaParseUtils.parseSchemaFromJSON(TestWriteUtils.ETL_VALUE_SCHEMA_STRING,
+    // false).toString(true));
+    System.out.println(USER_WITH_DEFAULT_SCHEMA.getField("value").schema().toString(true));
   }
 
   @Test

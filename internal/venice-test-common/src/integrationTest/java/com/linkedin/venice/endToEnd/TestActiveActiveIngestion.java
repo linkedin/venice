@@ -29,7 +29,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDe
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.generateInput;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.ChangeEvent;
@@ -208,7 +207,7 @@ public class TestActiveActiveIngestion {
     // create a active-active enabled store and run batch push job
     // batch job contains 100 records
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props =
@@ -283,7 +282,7 @@ public class TestActiveActiveIngestion {
     // create a active-active enabled store and run batch push job
     // batch job contains 100 records
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store-kif-repush");
     Properties props =
@@ -456,7 +455,7 @@ public class TestActiveActiveIngestion {
   public void testActiveActiveStoreRestart() throws Exception {
     // create a active-active enabled store and run batch push job
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props =
@@ -537,7 +536,7 @@ public class TestActiveActiveIngestion {
     // create a active-active enabled store and run batch push job
     // batch job contains 100 records
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props =

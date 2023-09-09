@@ -76,7 +76,7 @@ public class TestPushJobVersionCleanup {
   public void testMultipleBatchPushWithVersionCleanup() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 50);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 50);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
