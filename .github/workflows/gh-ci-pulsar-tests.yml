@@ -8,7 +8,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
