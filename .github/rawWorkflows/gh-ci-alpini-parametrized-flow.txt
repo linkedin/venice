@@ -2,7 +2,7 @@
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: $TimeOut
     outputs:
@@ -28,7 +28,7 @@
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       # - name: Allow Deprecated TLS versions for Alpini tests
       #   run: |

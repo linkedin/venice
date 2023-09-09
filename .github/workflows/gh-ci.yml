@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -40,7 +40,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -71,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -82,7 +82,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -113,7 +113,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -124,7 +124,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -155,7 +155,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -166,7 +166,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -197,7 +197,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -208,7 +208,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -239,7 +239,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -250,7 +250,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -281,7 +281,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -292,7 +292,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -323,7 +323,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -334,7 +334,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -365,7 +365,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -376,7 +376,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -407,7 +407,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -418,7 +418,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -449,7 +449,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -460,7 +460,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -491,7 +491,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -502,7 +502,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -533,7 +533,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -544,7 +544,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -575,7 +575,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -586,7 +586,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -617,7 +617,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -628,7 +628,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -659,7 +659,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -670,7 +670,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -701,7 +701,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -712,7 +712,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -743,7 +743,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -754,7 +754,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -785,7 +785,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -796,7 +796,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -827,7 +827,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -838,7 +838,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -869,7 +869,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -880,7 +880,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
@@ -911,7 +911,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -937,7 +937,7 @@ jobs:
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       # - name: Allow Deprecated TLS versions for Alpini tests
       #   run: |
@@ -981,7 +981,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -1007,7 +1007,7 @@ jobs:
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       # - name: Allow Deprecated TLS versions for Alpini tests
       #   run: |
@@ -1051,7 +1051,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        jdk: [11, 17]
+        jdk: [8, 11, 17]
     runs-on: ubuntu-latest
     needs: [ValidateGradleWrapper, StaticAnalysis, UnitTestsAndCodeCoverage, AvroCompatibilityTests, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ, AlpiniUnitTests, AlpiniFunctionalTests]
     timeout-minutes: 120
@@ -1063,7 +1063,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |
