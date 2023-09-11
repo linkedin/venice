@@ -16,8 +16,8 @@ import com.linkedin.venice.utils.RetryUtils;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -104,12 +104,12 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   }
 
   @Override
-  public Set<Schema> getAllValueSchemas() {
+  public Map<Integer, Schema> getAllValueSchemasWithId() {
     MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas();
-    Set<Schema> schemaSet = new HashSet<>();
+    Map<Integer, Schema> schemaSet = new HashMap<>();
     try {
       for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
-        schemaSet.add(parseSchemaFromJSONLooseValidation(schema.getSchemaStr()));
+        schemaSet.put(schema.getId(), parseSchemaFromJSONLooseValidation(schema.getSchemaStr()));
       }
     } catch (Exception e) {
       throw new VeniceException("Got exception while parsing value schema", e);
