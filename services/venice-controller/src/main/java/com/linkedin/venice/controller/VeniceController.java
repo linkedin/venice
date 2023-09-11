@@ -374,7 +374,6 @@ public class VeniceController {
             .setD2Client(d2Client)
             .setAuthenticationService(authenticationService.orElse(null))
             .setAuthorizerService(authorizerService.orElse(null))
-            .setPubSubClientsFactory(pubSubClientsFactory)
             .build());
 
     controller.start();
