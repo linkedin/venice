@@ -10,23 +10,22 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authentication.AuthenticationService;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.controller.init.ControllerClientBackedSystemSchemaInitializer;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -53,6 +52,7 @@ public class VeniceController {
   private TopicCleanupService topicCleanupService;
   private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
   private Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
+  private Optional<SystemStoreRepairService> systemStoreRepairService;
 
   private final boolean sslEnabled;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -158,11 +158,6 @@ public class VeniceController {
             .setRouterClientConfig(routerClientConfig.orElse(null))
             .setIcProvider(icProvider.orElse(null))
             .setExternalSupersetSchemaGenerator(externalSupersetSchemaGenerator.orElse(null))
-            .setPubSubClientsFactory(
-                new PubSubClientsFactory(
-                    new ApacheKafkaProducerAdapterFactory(),
-                    new ApacheKafkaConsumerAdapterFactory(),
-                    new ApacheKafkaAdminAdapterFactory()))
             .build());
   }
 
@@ -180,7 +175,6 @@ public class VeniceController {
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
     this.pubSubClientsFactory = Objects.requireNonNull(ctx.getPubSubClientsFactory(), "PubSubClientsFactory is null");
-
     createServices();
   }
 
@@ -238,6 +232,7 @@ public class VeniceController {
     }
     storeBackupVersionCleanupService = Optional.empty();
     storeGraveyardCleanupService = Optional.empty();
+    systemStoreRepairService = Optional.empty();
     Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
       topicCleanupService =
@@ -249,6 +244,11 @@ public class VeniceController {
       storeGraveyardCleanupService =
           Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreGraveyardCleanupService is enabled");
+      if (multiClusterConfigs.getCommonConfig().isParentSystemStoreRepairServiceEnabled()) {
+        systemStoreRepairService = Optional
+            .of(new SystemStoreRepairService((VeniceParentHelixAdmin) admin, multiClusterConfigs, metricsRepository));
+        LOGGER.info("SystemStoreRepairServiceEnabled is enabled");
+      }
     } else {
       topicCleanupService = new TopicCleanupService(admin, multiClusterConfigs, pubSubTopicRepository);
       if (!(admin instanceof VeniceHelixAdmin)) {
@@ -280,6 +280,7 @@ public class VeniceController {
     topicCleanupService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
+    systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
       serviceDiscoveryAnnouncer.register();
@@ -293,15 +294,19 @@ public class VeniceController {
     VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemStoreCluster);
     if (!multiClusterConfigs.isParent() && multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
         && systemStoreClusterConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+      String regionName = systemStoreClusterConfig.getRegionName();
       ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
           new ControllerClientBackedSystemSchemaInitializer(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
               systemStoreCluster,
-              (VeniceHelixAdmin) admin,
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
-              VeniceHelixAdmin.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
+              VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
               true,
-              systemStoreClusterConfig);
+              ((VeniceHelixAdmin) admin).getSslFactory(),
+              systemStoreClusterConfig.getChildControllerUrl(regionName),
+              systemStoreClusterConfig.getChildControllerD2ServiceName(),
+              systemStoreClusterConfig.getChildControllerD2ZkHost(regionName),
+              systemStoreClusterConfig.isControllerEnforceSSLOnly());
       metaSystemStoreSchemaInitializer.execute();
     }
   }
@@ -316,11 +321,12 @@ public class VeniceController {
       LOGGER.info("Unregistered from service discovery: {}", serviceDiscoveryAnnouncer);
     });
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
-    Utils.closeQuietlyWithErrorLogged(topicCleanupService);
-    storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
-    Utils.closeQuietlyWithErrorLogged(adminServer);
+    storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    Utils.closeQuietlyWithErrorLogged(topicCleanupService);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);
+    Utils.closeQuietlyWithErrorLogged(adminServer);
     Utils.closeQuietlyWithErrorLogged(controllerService);
     authenticationService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     authorizerService.ifPresent(Utils::closeQuietlyWithErrorLogged);
@@ -333,7 +339,7 @@ public class VeniceController {
     return controllerService;
   }
 
-  public static void main(String args[]) {
+  public static void main(String[] args) {
     if (args.length != 2) {
       Utils.exit("USAGE: java -jar venice-controller-all.jar <cluster_config_file_path> <controller_config_file_path>");
     }
@@ -343,12 +349,14 @@ public class VeniceController {
   public static void run(String clusterConfigFilePath, String controllerConfigFilePath, boolean joinThread) {
 
     VeniceProperties controllerProps = null;
+    String zkAddress = null;
     try {
       VeniceProperties clusterProps = Utils.parseProperties(clusterConfigFilePath);
       VeniceProperties controllerBaseProps = Utils.parseProperties(controllerConfigFilePath);
 
       controllerProps =
           new PropertyBuilder().put(clusterProps.toProperties()).put(controllerBaseProps.toProperties()).build();
+      zkAddress = controllerProps.getString(ZOOKEEPER_ADDRESS);
     } catch (Exception e) {
       String errorMessage = "Can not load configuration from file.";
       LOGGER.error(errorMessage, e);
@@ -358,13 +366,7 @@ public class VeniceController {
     Optional<AuthenticationService> authenticationService = buildAuthenticationService(controllerProps);
     Optional<AuthorizerService> authorizerService = buildAuthorizerService(controllerProps);
 
-    String zkAddress = controllerProps.getString(ZOOKEEPER_ADDRESS);
     D2Client d2Client = D2ClientFactory.getD2Client(zkAddress, Optional.empty());
-
-    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(
-        new ApacheKafkaProducerAdapterFactory(),
-        new ApacheKafkaConsumerAdapterFactory(),
-        new ApacheKafkaAdminAdapterFactory());
     VeniceController controller = new VeniceController(
         new VeniceControllerContext.Builder()
             .setPropertiesList(Arrays.asList(new VeniceProperties[] { controllerProps }))
@@ -387,12 +389,9 @@ public class VeniceController {
   }
 
   private static void addShutdownHook(VeniceController controller, String zkAddress) {
-    Runtime.getRuntime().addShutdownHook(new Thread() {
-      @Override
-      public void run() {
-        controller.stop();
-        D2ClientFactory.release(zkAddress);
-      }
-    });
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      controller.stop();
+      D2ClientFactory.release(zkAddress);
+    }));
   }
 }

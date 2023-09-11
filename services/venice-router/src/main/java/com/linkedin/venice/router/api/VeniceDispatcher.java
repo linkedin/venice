@@ -3,7 +3,6 @@ package com.linkedin.venice.router.api;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.HttpConstants.VENICE_REQUEST_RCU;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
-import static io.netty.handler.codec.http.HttpResponseStatus.METHOD_NOT_ALLOWED;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
@@ -128,20 +127,9 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       @Nonnull AsyncPromise<HttpResponseStatus> retryFuture,
       @Nonnull AsyncFuture<Void> timeoutFuture,
       @Nonnull Executor executor) throws RouterException {
-
     String storeName = path.getStoreName();
     RequestType requestType = path.getRequestType();
     path.recordOriginalRequestStartTimestamp();
-
-    if (requestType.equals(RequestType.COMPUTE) || requestType.equals(RequestType.COMPUTE_STREAMING)) {
-      if (!storeRepository.isReadComputationEnabled(storeName)) {
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(storeName),
-            Optional.of(requestType),
-            METHOD_NOT_ALLOWED,
-            "Read compute is not enabled for the store. Please contact Venice team to enable the feature.");
-      }
-    }
 
     if (part.getHosts().size() != 1) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
@@ -182,7 +170,6 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       Instance storageNode,
       VenicePath path,
       AsyncPromise<HttpResponseStatus> retryFuture) throws RouterException {
-
     String storeName = path.getStoreName();
     String hostName = storageNode.getHost();
     RequestType requestType = path.getRequestType();

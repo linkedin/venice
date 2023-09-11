@@ -23,6 +23,7 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
@@ -165,7 +166,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(badPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
     // short circuit isReadyToServe
     when(badPartitionConsumptionState.isEndOfPushReceived()).thenReturn(false);
-    ingestionTask.addPartititionConsumptionState(1, badPartitionConsumptionState);
+    ingestionTask.addPartitionConsumptionState(1, badPartitionConsumptionState);
 
     Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
 
@@ -173,11 +174,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(goodPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);
     when(goodPartitionConsumptionState.isEndOfPushReceived()).thenReturn(true);
     when(goodPartitionConsumptionState.isWaitingForReplicationLag()).thenReturn(false);
-    ingestionTask.addPartititionConsumptionState(1, goodPartitionConsumptionState);
+    ingestionTask.addPartitionConsumptionState(1, goodPartitionConsumptionState);
 
     Assert.assertFalse(ingestionTask.isReadyToServeAnnouncedWithRTLag());
 
-    ingestionTask.addPartititionConsumptionState(2, badPartitionConsumptionState);
+    ingestionTask.addPartitionConsumptionState(2, badPartitionConsumptionState);
 
     Assert.assertTrue(ingestionTask.isReadyToServeAnnouncedWithRTLag());
   }
@@ -201,8 +202,9 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getKafkaVersionTopic()).thenReturn(testTopic);
     when(ingestionTask.createProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
         .thenCallRealMethod();
-    when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), anyInt(), anyBoolean())).thenCallRealMethod();
-    when(ingestionTask.getRmdProtocolVersionID()).thenReturn(rmdProtocolVersionID);
+    when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), any(), any(), anyInt(), anyBoolean()))
+        .thenCallRealMethod();
+    when(ingestionTask.getRmdProtocolVersionId()).thenReturn(rmdProtocolVersionID);
     doCallRealMethod().when(ingestionTask)
         .produceToLocalKafka(any(), any(), any(), any(), anyInt(), anyString(), anyInt(), anyLong());
     byte[] key = "foo".getBytes();
@@ -242,9 +244,11 @@ public class ActiveActiveStoreIngestionTaskTest {
         new VeniceWriterOptions.Builder(testTopic).setPartitioner(new DefaultVenicePartitioner())
             .setTime(SystemTime.INSTANCE)
             .setChunkingEnabled(true)
+            .setRmdChunkingEnabled(true)
             .build();
     VeniceWriter<byte[], byte[], byte[]> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+    when(ingestionTask.isTransientRecordBufferUsed()).thenReturn(true);
     when(ingestionTask.getVeniceWriter()).thenReturn(Lazy.of(() -> writer));
     StringBuilder stringBuilder = new StringBuilder();
     for (int i = 0; i < 50000; i++) {
@@ -268,7 +272,14 @@ public class ActiveActiveStoreIngestionTaskTest {
     LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
         .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
 
+    PartitionConsumptionState.TransientRecord transientRecord =
+        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);
+
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
+    when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);
+    KafkaKey kafkaKey = mock(KafkaKey.class);
+    when(consumerRecord.getKey()).thenReturn(kafkaKey);
+    when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
     ingestionTask.produceToLocalKafka(
         consumerRecord,
         partitionConsumptionState,
@@ -277,6 +288,8 @@ public class ActiveActiveStoreIngestionTaskTest {
             updatedKeyBytes,
             updatedValueBytes,
             updatedRmdBytes,
+            null,
+            null,
             valueSchemaId,
             resultReuseInput),
         subPartition,
@@ -284,11 +297,17 @@ public class ActiveActiveStoreIngestionTaskTest {
         kafkaClusterId,
         beforeProcessingRecordTimestamp);
 
-    // Send 1 SOS, 2 Chunks, 1 Manifest.
-    verify(mockedProducer, times(4)).sendMessage(any(), any(), any(), any(), any(), any());
+    // RMD chunking not enabled in this case...
+    Assert.assertNotNull(transientRecord.getValueManifest());
+    Assert.assertNotNull(transientRecord.getRmdManifest());
+    Assert.assertEquals(transientRecord.getValueManifest().getKeysWithChunkIdSuffix().size(), 2);
+    Assert.assertEquals(transientRecord.getRmdManifest().getKeysWithChunkIdSuffix().size(), 1);
+
+    // Send 1 SOS, 2 Value Chunks, 1 RMD Chunk, 1 Manifest.
+    verify(mockedProducer, times(5)).sendMessage(any(), any(), any(), any(), any(), any());
     ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
         ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
-    verify(ingestionTask, times(3)).produceToStoreBufferService(
+    verify(ingestionTask, times(4)).produceToStoreBufferService(
         any(),
         leaderProducedRecordContextArgumentCaptor.capture(),
         anyInt(),
@@ -315,6 +334,9 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(2).getKeyBytes(),
         kafkaKeyArgumentCaptor.getAllValues().get(3).getKey());
+    Assert.assertEquals(
+        leaderProducedRecordContextArgumentCaptor.getAllValues().get(3).getKeyBytes(),
+        kafkaKeyArgumentCaptor.getAllValues().get(4).getKey());
   }
 
   @Test
@@ -368,7 +390,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     when(serverConfig.isComputeFastAvroEnabled()).thenReturn(false);
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
-    when(ingestionTask.getRmdProtocolVersionID()).thenReturn(1);
+    when(ingestionTask.getRmdProtocolVersionId()).thenReturn(1);
     Lazy<VeniceCompressor> compressor = Lazy.of(NoopCompressor::new);
     when(ingestionTask.getCompressor()).thenReturn(compressor);
     when(ingestionTask.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
@@ -376,13 +398,15 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getStorageEngine()).thenReturn(storageEngine);
     when(ingestionTask.getSchemaRepo()).thenReturn(schemaRepository);
     when(ingestionTask.getServerConfig()).thenReturn(serverConfig);
-    when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(anyInt(), any(), anyLong())).thenCallRealMethod();
+    when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(anyInt(), any(), any(), anyLong()))
+        .thenCallRealMethod();
     when(ingestionTask.isChunked()).thenReturn(true);
     when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
-
+    ChunkedValueManifestContainer container = new ChunkedValueManifestContainer();
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey1)).thenReturn(expectedNonChunkedValue);
-    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1, 0L);
+    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1, container, 0L);
     Assert.assertNotNull(result);
+    Assert.assertNull(container.getManifest());
     Assert.assertEquals(result, expectedNonChunkedValue);
 
     /**
@@ -414,8 +438,10 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey2)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
-    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2, 0L);
+    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2, container, 0L);
     Assert.assertNotNull(result2);
+    Assert.assertNotNull(container.getManifest());
+    Assert.assertEquals(container.getManifest().getKeysWithChunkIdSuffix().size(), 1);
     Assert.assertEquals(result2, expectedChunkedValue1);
 
     /**
@@ -453,8 +479,10 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey3)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey3)).thenReturn(chunkedValue1);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey2InKey3)).thenReturn(chunkedValue2);
-    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3, 0L);
+    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3, container, 0L);
     Assert.assertNotNull(result3);
+    Assert.assertNotNull(container.getManifest());
+    Assert.assertEquals(container.getManifest().getKeysWithChunkIdSuffix().size(), 2);
     Assert.assertEquals(result3, expectedChunkedValue2);
   }
 }

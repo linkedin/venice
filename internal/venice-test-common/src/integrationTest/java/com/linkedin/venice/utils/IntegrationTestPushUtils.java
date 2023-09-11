@@ -32,6 +32,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.KafkaTestUtils;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -39,13 +40,11 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -195,6 +194,8 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, "invalid_parent_d2_service");
     samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
+    samzaConfig.putAll(
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
     return samzaConfig;
   }
 
@@ -212,14 +213,6 @@ public class IntegrationTestPushUtils {
     SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
     veniceProducer.start();
     return veniceProducer;
-  }
-
-  public static PubSubConsumerAdapterFactory getVeniceConsumerFactory() {
-    return new ApacheKafkaConsumerAdapterFactory();
-  }
-
-  public static PubSubAdminAdapterFactory getVeniceAdminFactory() {
-    return new ApacheKafkaAdminAdapterFactory();
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName, Schema recordSchema, Properties props) {
@@ -375,19 +368,31 @@ public class IntegrationTestPushUtils {
       long kafkaOperationTimeoutMs,
       long topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
-      String pubSubBootstrapServers,
+      PubSubBrokerWrapper pubSubBrokerWrapper,
       PubSubTopicRepository pubSubTopicRepository) {
     Properties properties = new Properties();
+    String pubSubBootstrapServers = pubSubBrokerWrapper.getAddress();
+    properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     return TopicManagerRepository.builder()
         .setPubSubProperties(k -> new VeniceProperties(properties))
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setLocalKafkaBootstrapServers(pubSubBootstrapServers)
-        .setPubSubConsumerAdapterFactory(getVeniceConsumerFactory())
-        .setPubSubAdminAdapterFactory(getVeniceAdminFactory())
+        .setPubSubConsumerAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory())
+        .setPubSubAdminAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory())
         .setKafkaOperationTimeoutMs(kafkaOperationTimeoutMs)
         .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollIntervalMs)
         .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
         .build();
+  }
+
+  public static VeniceWriterFactory getVeniceWriterFactory(
+      PubSubBrokerWrapper pubSubBrokerWrapper,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+    Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+    veniceWriterProperties
+        .putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
+    return TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory);
   }
 }

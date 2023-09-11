@@ -67,4 +67,8 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
   public void recordStorageExecutionQueueLen(int len) {
     totalStats.recordStorageExecutionQueueLen(len);
   }
+
+  public void recordMisroutedStoreVersionRequest() {
+    totalStats.recordMisroutedStoreVersionRequest();
+  }
 }

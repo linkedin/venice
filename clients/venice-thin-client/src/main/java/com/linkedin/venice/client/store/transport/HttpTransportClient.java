@@ -200,6 +200,15 @@ public class HttpTransportClient extends TransportClient {
     }
   }
 
+  /**
+   * The same {@link CloseableHttpAsyncClient} could not be used to send out another request in its own callback function.
+   * @return
+   */
+  @Override
+  public TransportClient getCopyIfNotUsableInCallback() {
+    return new HttpTransportClient(routerUrl, maxConnectionsTotal, maxConnectionsPerRoute);
+  }
+
   private static class HttpTransportClientCallback extends TransportClientCallback
       implements FutureCallback<SimpleHttpResponse> {
     public HttpTransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {

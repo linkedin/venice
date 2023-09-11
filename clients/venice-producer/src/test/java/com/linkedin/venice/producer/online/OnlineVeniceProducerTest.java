@@ -1,18 +1,22 @@
 package com.linkedin.venice.producer.online;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsStringQuietlyWithErrorLogged;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -20,7 +24,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
 import com.linkedin.avroutil1.compatibility.RecordGenerationConfig;
-import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.ClientFactoryTestUtils;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -42,13 +51,12 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
-import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -59,6 +67,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -70,6 +79,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
+import org.testng.annotations.AfterTest;
+import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 
@@ -120,63 +131,63 @@ public class OnlineVeniceProducerTest {
   private static final String MIN_PENDING_OPERATION_METRIC_NAME = ".test_store--pending_write_operation.Min";
   private static final String MAX_PENDING_OPERATION_METRIC_NAME = ".test_store--pending_write_operation.Max";
 
+  @BeforeTest
+  public void setUp() {
+    ClientFactoryTestUtils.setUnitTestMode();
+    ClientFactoryTestUtils.resetTransportClientProvider();
+  }
+
+  @AfterTest
+  public void tearDown() {
+    ClientFactoryTestUtils.resetUnitTestMode();
+  }
+
   @Test
-  public void testConstructor() throws IOException, ExecutionException, InterruptedException {
-    AbstractAvroStoreClient storeClient = getMockStoreClient();
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
+  public void testConstructor() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    VeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository);
+    VeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository);
     producer.close();
   }
 
   @Test
-  public void testFailRequestTopic() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    MetricsRepository metricsRepository = new MetricsRepository();
-    Properties backendConfigs = new Properties();
-
+  public void testFailRequestTopic() throws IOException {
     VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
     versionCreationResponse.setError("ERROR RESPONSE");
 
-    AbstractAvroStoreClient storeClient =
-        getMockStoreClientWithRequestTopicResponse(MAPPER.writeValueAsBytes(versionCreationResponse));
-    Assert.assertThrows(
-        VeniceException.class,
-        () -> new TestOnlineVeniceProducer(
-            storeClient,
-            kmeSchemaReader,
-            new VeniceProperties(backendConfigs),
-            metricsRepository));
+    ClientConfig storeClientConfig =
+        configureMocksAndGetStoreConfig(storeName, false, MAPPER.writeValueAsBytes(versionCreationResponse));
 
-    AbstractAvroStoreClient storeClient2 =
-        getMockStoreClientWithRequestTopicResponse(versionCreationResponse.getError().getBytes(StandardCharsets.UTF_8));
+    MetricsRepository metricsRepository = new MetricsRepository();
+    Properties backendConfigs = new Properties();
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository));
+
+    // Error response which doesn't deserialize to VersionCreationResponse
+    ClientConfig storeClientConfig2 = configureMocksAndGetStoreConfig(
+        storeName,
+        false,
+        versionCreationResponse.getError().getBytes(StandardCharsets.UTF_8));
     Assert.assertThrows(
         VeniceException.class,
         () -> new TestOnlineVeniceProducer(
-            storeClient2,
-            kmeSchemaReader,
+            storeClientConfig2,
             new VeniceProperties(backendConfigs),
             metricsRepository));
   }
 
   @Test
   public void testPut() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient();
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository)) {
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
       ArgumentCaptor<byte[]> keyArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<byte[]> valueArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<Integer> valueSchemaIdArg = ArgumentCaptor.forClass(int.class);
@@ -220,16 +231,12 @@ public class OnlineVeniceProducerTest {
 
   @Test
   public void testPutWithLogicalTs() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient();
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository)) {
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
 
       ArgumentCaptor<byte[]> keyArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<byte[]> valueArg = ArgumentCaptor.forClass(byte[].class);
@@ -284,17 +291,13 @@ public class OnlineVeniceProducerTest {
   }
 
   @Test
-  public void testPutWithInvalidSchema() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient();
+  public void testPutWithInvalidSchema() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository)) {
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
       assertThrowsExceptionFromFuture(VeniceException.class, () -> producer.asyncPut("KEY1", true).get());
       assertThrowsExceptionFromFuture(VeniceException.class, () -> producer.asyncPut("KEY1", "random_string").get());
       assertThrowsExceptionFromFuture(VeniceException.class, () -> producer.asyncPut("KEY1", 10).get());
@@ -319,15 +322,13 @@ public class OnlineVeniceProducerTest {
   }
 
   @Test
-  public void testPutWithFailedWrite() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient();
+  public void testPutWithFailedWrite() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
+        storeClientConfig,
         new VeniceProperties(backendConfigs),
         metricsRepository,
         true)) {
@@ -346,16 +347,12 @@ public class OnlineVeniceProducerTest {
 
   @Test
   public void testDelete() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient();
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository)) {
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
       ArgumentCaptor<byte[]> keyArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<PubSubProducerCallback> producerCallbackArg =
           ArgumentCaptor.forClass(PubSubProducerCallback.class);
@@ -385,16 +382,12 @@ public class OnlineVeniceProducerTest {
 
   @Test
   public void testDeleteWithLogicalTs() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient();
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository)) {
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
       ArgumentCaptor<byte[]> keyArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<Long> logicalTsArg = ArgumentCaptor.forClass(long.class);
       ArgumentCaptor<PubSubProducerCallback> producerCallbackArg =
@@ -430,15 +423,13 @@ public class OnlineVeniceProducerTest {
   }
 
   @Test
-  public void testDeleteWithFailedWrite() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient();
+  public void testDeleteWithFailedWrite() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
+        storeClientConfig,
         new VeniceProperties(backendConfigs),
         metricsRepository,
         true)) {
@@ -457,16 +448,12 @@ public class OnlineVeniceProducerTest {
 
   @Test
   public void testUpdate() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient(true);
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository)) {
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
       ArgumentCaptor<byte[]> keyArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<byte[]> updateArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<Integer> valueSchemaIdArg = ArgumentCaptor.forClass(int.class);
@@ -547,16 +534,12 @@ public class OnlineVeniceProducerTest {
 
   @Test
   public void testUpdateWithLogicalTs() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient(true);
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository)) {
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
       ArgumentCaptor<byte[]> keyArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<byte[]> updateArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<Integer> valueSchemaIdArg = ArgumentCaptor.forClass(int.class);
@@ -628,17 +611,13 @@ public class OnlineVeniceProducerTest {
   }
 
   @Test
-  public void testUpdateOnUnsupportedStore() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient();
+  public void testUpdateOnUnsupportedStore() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository)) {
+    try (TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
       ArgumentCaptor<byte[]> keyArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<byte[]> updateArg = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<Integer> valueSchemaIdArg = ArgumentCaptor.forClass(int.class);
@@ -675,15 +654,13 @@ public class OnlineVeniceProducerTest {
   }
 
   @Test
-  public void testUpdateWithFailedWrite() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient(true);
+  public void testUpdateWithFailedWrite() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
     try (TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
+        storeClientConfig,
         new VeniceProperties(backendConfigs),
         metricsRepository,
         true)) {
@@ -707,17 +684,13 @@ public class OnlineVeniceProducerTest {
   }
 
   @Test
-  public void testOperationsOnClosedProducer() throws IOException, ExecutionException, InterruptedException {
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
-    AbstractAvroStoreClient storeClient = getMockStoreClient(true);
+  public void testOperationsOnClosedProducer() throws IOException {
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
-    TestOnlineVeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository);
+    TestOnlineVeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository);
     producer.close();
 
     assertThrowsExceptionFromFuture(VeniceException.class, () -> producer.asyncPut("KEY1", mockValue1).get());
@@ -736,17 +709,13 @@ public class OnlineVeniceProducerTest {
 
   @Test
   public void testFetchLatestValueAndUpdateSchemas() throws IOException, ExecutionException, InterruptedException {
-    AbstractAvroStoreClient storeClient = getMockStoreClient(true);
-    SchemaReader kmeSchemaReader = getKmeSchemaReader();
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
 
     MetricsRepository metricsRepository = new MetricsRepository();
     Properties backendConfigs = new Properties();
     backendConfigs.put(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS, 1);
-    try (VeniceProducer producer = new TestOnlineVeniceProducer(
-        storeClient,
-        kmeSchemaReader,
-        new VeniceProperties(backendConfigs),
-        metricsRepository)) {
+    try (VeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
       producer.asyncUpdate(1000, "KEY1", updateBuilderObj -> {
         UpdateBuilder updateBuilder = ((UpdateBuilder) updateBuilderObj);
         updateBuilder.setNewFieldValue(FIELD_COLOR, "green");
@@ -755,7 +724,7 @@ public class OnlineVeniceProducerTest {
 
       // Register 2 new value schemas with one of them as a new superset schema
       configureSchemaResponseMocks(
-          storeClient,
+          ClientFactory.getTransportClient(storeClientConfig),
           Arrays.asList(VALUE_SCHEMA_1, VALUE_SCHEMA_2, VALUE_SCHEMA_3, VALUE_SCHEMA_4),
           3,
           Arrays.asList(UPDATE_SCHEMA_1, UPDATE_SCHEMA_2, UPDATE_SCHEMA_3, UPDATE_SCHEMA_4),
@@ -774,19 +743,69 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  private SchemaReader getKmeSchemaReader() {
-    SchemaReader kmeSchemaReader = mock(SchemaReader.class);
-    when(kmeSchemaReader.getValueSchema(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion()))
-        .thenReturn(KafkaMessageEnvelope.SCHEMA$);
-    return kmeSchemaReader;
+  private void configureMockKmeTransportClient(TransportClient transportClient) throws JsonProcessingException {
+    doCallRealMethod().when(transportClient).getCopyIfNotUsableInCallback();
+    doCallRealMethod().when(transportClient).get(anyString());
+    doCallRealMethod().when(transportClient).post(anyString(), any());
+
+    Map<Integer, Schema> schemasInLocalResources = Utils.getAllSchemasFromResources(KAFKA_MESSAGE_ENVELOPE);
+
+    MultiSchemaResponse.Schema[] valueSchemaArr = new MultiSchemaResponse.Schema[schemasInLocalResources.size()];
+    for (int i = 0; i < schemasInLocalResources.size(); i++) {
+      MultiSchemaResponse.Schema valueSchema = new MultiSchemaResponse.Schema();
+      valueSchema.setId(i + 1);
+      valueSchema.setSchemaStr(schemasInLocalResources.get(i + 1).toString());
+
+      valueSchemaArr[i] = valueSchema;
+    }
+
+    MultiSchemaResponse multiSchemaResponse = new MultiSchemaResponse();
+    multiSchemaResponse.setSchemas(valueSchemaArr);
+    multiSchemaResponse.setCluster(clusterName);
+
+    CompletableFuture<TransportClientResponse> requestTopicFuture =
+        getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaResponse));
+    doReturn(requestTopicFuture).when(transportClient)
+        .get(eq("value_schema/" + KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()), anyMap());
   }
 
-  private AbstractAvroStoreClient getMockStoreClient() throws IOException, ExecutionException, InterruptedException {
-    return getMockStoreClient(false);
+  private ClientConfig configureMocksAndGetStoreConfig(String storeName) throws IOException {
+    return configureMocksAndGetStoreConfig(storeName, false, null);
   }
 
-  private AbstractAvroStoreClient getMockStoreClient(boolean updateEnabled)
-      throws IOException, ExecutionException, InterruptedException {
+  private ClientConfig configureMocksAndGetStoreConfig(String storeName, boolean updateEnabled) throws IOException {
+    return configureMocksAndGetStoreConfig(storeName, updateEnabled, null);
+  }
+
+  private ClientConfig configureMocksAndGetStoreConfig(
+      String storeName,
+      boolean updateEnabled,
+      byte[] requestTopicResponse) throws IOException {
+    TransportClient mockTransportClient = mock(TransportClient.class);
+    TransportClient mockKmeTransportClient = mock(TransportClient.class);
+
+    ClientConfig storeClientConfig = ClientConfig.defaultGenericClientConfig(storeName);
+    ClientConfig<KafkaMessageEnvelope> kmeClientConfig = ClientConfig.cloneConfig(storeClientConfig)
+        .setStoreName(KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
+        .setSpecificValueClass(KafkaMessageEnvelope.class);
+
+    configureMockTransportClient(mockTransportClient, updateEnabled, requestTopicResponse);
+    configureMockKmeTransportClient(mockKmeTransportClient);
+
+    ClientFactoryTestUtils.registerTransportClient(storeClientConfig, mockTransportClient);
+    ClientFactoryTestUtils.registerTransportClient(kmeClientConfig, mockKmeTransportClient);
+
+    return storeClientConfig;
+  }
+
+  private void configureMockTransportClient(
+      TransportClient transportClient,
+      boolean updateEnabled,
+      byte[] requestTopicResponse) throws IOException {
+    doCallRealMethod().when(transportClient).getCopyIfNotUsableInCallback();
+    doCallRealMethod().when(transportClient).get(anyString());
+    doCallRealMethod().when(transportClient).post(anyString(), any());
+
     int partitionCount = 10;
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     Version version = new VersionImpl(storeName, 1, "test-job-id");
@@ -817,50 +836,49 @@ public class OnlineVeniceProducerTest {
     store.setVersions(Collections.singletonList(version));
     store.setWriteComputationEnabled(updateEnabled);
 
-    AbstractAvroStoreClient storeClient = mock(AbstractAvroStoreClient.class);
-    Mockito.doReturn(storeName).when(storeClient).getStoreName();
+    CompletableFuture<TransportClientResponse> requestTopicFuture;
+    if (requestTopicResponse == null) {
+      VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
+      versionCreationResponse.setPartitions(partitionCount);
+      versionCreationResponse.setPartitionerClass(partitionerConfig.getPartitionerClass());
+      versionCreationResponse.setPartitionerParams(partitionerConfig.getPartitionerParams());
+      versionCreationResponse.setKafkaBootstrapServers("localhost:9092");
+      versionCreationResponse.setKafkaTopic(Version.composeRealTimeTopic(storeName));
+      versionCreationResponse.setAmplificationFactor(1);
+      versionCreationResponse.setEnableSSL(false);
 
-    VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
-    versionCreationResponse.setPartitions(partitionCount);
-    versionCreationResponse.setPartitionerClass(partitionerConfig.getPartitionerClass());
-    versionCreationResponse.setPartitionerParams(partitionerConfig.getPartitionerParams());
-    versionCreationResponse.setKafkaBootstrapServers("localhost:9092");
-    versionCreationResponse.setKafkaTopic(Version.composeRealTimeTopic(storeName));
-    versionCreationResponse.setAmplificationFactor(1);
-    versionCreationResponse.setEnableSSL(false);
+      requestTopicFuture = getTransportClientFuture(MAPPER.writeValueAsBytes(versionCreationResponse));
+    } else {
+      requestTopicFuture = getTransportClientFuture(requestTopicResponse);
+    }
+    doReturn(requestTopicFuture).when(transportClient).get(eq("request_topic/" + storeName), anyMap());
 
-    CompletableFuture<byte[]> requestTopicFuture = mock(CompletableFuture.class);
-    Mockito.doReturn(MAPPER.writeValueAsBytes(versionCreationResponse)).when(requestTopicFuture).get();
-    Mockito.doReturn(requestTopicFuture).when(storeClient).getRaw("request_topic/" + storeName);
-
-    CompletableFuture<byte[]> storeStateFuture = mock(CompletableFuture.class);
-    Mockito.doReturn(STORE_SERIALIZER.serialize(store, null)).when(storeStateFuture).get();
-    Mockito.doReturn(storeStateFuture).when(storeClient).getRaw("store_state/" + storeName);
+    CompletableFuture<TransportClientResponse> storeStateFuture =
+        getTransportClientFuture(STORE_SERIALIZER.serialize(store, null));
+    doReturn(storeStateFuture).when(transportClient).get(eq("store_state/" + storeName), anyMap());
 
     configureSchemaResponseMocks(
-        storeClient,
+        transportClient,
         Arrays.asList(VALUE_SCHEMA_1, VALUE_SCHEMA_2),
         2,
         Arrays.asList(UPDATE_SCHEMA_1, UPDATE_SCHEMA_2),
         updateEnabled);
-
-    return storeClient;
   }
 
   private void configureSchemaResponseMocks(
-      AbstractAvroStoreClient storeClient,
+      TransportClient transportClient,
       List<Schema> valueSchemas,
       int supersetSchemaId,
       List<Schema> updateSchemas,
-      boolean updateEnabled) throws JsonProcessingException, ExecutionException, InterruptedException {
+      boolean updateEnabled) throws JsonProcessingException {
     String keySchemaStr = KEY_SCHEMA.toString();
     SchemaResponse keySchemaResponse = new SchemaResponse();
     keySchemaResponse.setId(1);
     keySchemaResponse.setSchemaStr(keySchemaStr);
 
-    CompletableFuture<byte[]> keySchemaFuture = mock(CompletableFuture.class);
-    Mockito.doReturn(MAPPER.writeValueAsBytes(keySchemaResponse)).when(keySchemaFuture).get();
-    Mockito.doReturn(keySchemaFuture).when(storeClient).getRaw("key_schema/" + storeName);
+    CompletableFuture<TransportClientResponse> keySchemaFuture =
+        getTransportClientFuture(MAPPER.writeValueAsBytes(keySchemaResponse));
+    doReturn(keySchemaFuture).when(transportClient).get(eq("key_schema/" + storeName), anyMap());
 
     MultiSchemaResponse.Schema[] valueSchemaArr = new MultiSchemaResponse.Schema[valueSchemas.size()];
     for (int i = 0; i < valueSchemas.size(); i++) {
@@ -878,9 +896,9 @@ public class OnlineVeniceProducerTest {
       multiSchemaResponse.setSuperSetSchemaId(supersetSchemaId);
     }
 
-    CompletableFuture<byte[]> valueSchemasFuture = mock(CompletableFuture.class);
-    Mockito.doReturn(MAPPER.writeValueAsBytes(multiSchemaResponse)).when(valueSchemasFuture).get();
-    Mockito.doReturn(valueSchemasFuture).when(storeClient).getRaw("value_schema/" + storeName);
+    CompletableFuture<TransportClientResponse> valueSchemasFuture =
+        getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaResponse));
+    doReturn(valueSchemasFuture).when(transportClient).get(eq("value_schema/" + storeName), anyMap());
 
     if (updateEnabled) {
       MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
@@ -896,9 +914,10 @@ public class OnlineVeniceProducerTest {
         updateSchemaResponse.setDerivedSchemaId(1);
         updateSchemaResponse.setSchemaStr(updateSchemas.get(i).toString());
 
-        CompletableFuture<byte[]> updateSchemaFuture = mock(CompletableFuture.class);
-        Mockito.doReturn(MAPPER.writeValueAsBytes(updateSchemaResponse)).when(updateSchemaFuture).get();
-        Mockito.doReturn(updateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName + "/" + (i + 1));
+        CompletableFuture<TransportClientResponse> updateSchemaFuture =
+            getTransportClientFuture(MAPPER.writeValueAsBytes(updateSchemaResponse));
+        doReturn(updateSchemaFuture).when(transportClient)
+            .get(eq("update_schema/" + storeName + "/" + (i + 1)), anyMap());
 
         MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
         schema.setId(i + 1);
@@ -907,18 +926,20 @@ public class OnlineVeniceProducerTest {
         multiSchemas[i] = schema;
       }
       allUpdateSchemaResponse.setSchemas(multiSchemas);
-      CompletableFuture<byte[]> allUpdateSchemaFuture = mock(CompletableFuture.class);
-      Mockito.doReturn(MAPPER.writeValueAsBytes(allUpdateSchemaResponse)).when(allUpdateSchemaFuture).get();
-      Mockito.doReturn(allUpdateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName);
+
+      CompletableFuture<TransportClientResponse> allUpdateSchemaFuture =
+          getTransportClientFuture(MAPPER.writeValueAsBytes(allUpdateSchemaResponse));
+      doReturn(allUpdateSchemaFuture).when(transportClient).get(eq("update_schema/" + storeName), anyMap());
     } else {
       for (int i = 0; i < updateSchemas.size(); i++) {
         SchemaResponse noUpdateSchemaResponse = new SchemaResponse();
         noUpdateSchemaResponse
             .setError("Update schema doesn't exist for value schema id: " + (i + 1) + " of store: " + storeName);
 
-        CompletableFuture<byte[]> updateSchemaFuture = mock(CompletableFuture.class);
-        Mockito.doReturn(MAPPER.writeValueAsBytes(noUpdateSchemaResponse)).when(updateSchemaFuture).get();
-        Mockito.doReturn(updateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName + "/" + (i + 1));
+        CompletableFuture<TransportClientResponse> updateSchemaFuture =
+            getTransportClientFuture(MAPPER.writeValueAsBytes(noUpdateSchemaResponse));
+        doReturn(updateSchemaFuture).when(transportClient)
+            .get(eq("update_schema/" + storeName + "/" + (i + 1)), anyMap());
       }
 
       MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
@@ -927,24 +948,11 @@ public class OnlineVeniceProducerTest {
 
       MultiSchemaResponse.Schema[] multiSchemas = new MultiSchemaResponse.Schema[0];
       allUpdateSchemaResponse.setSchemas(multiSchemas);
-      CompletableFuture<byte[]> allUpdateSchemaFuture = mock(CompletableFuture.class);
-      Mockito.doReturn(MAPPER.writeValueAsBytes(allUpdateSchemaResponse)).when(allUpdateSchemaFuture).get();
-      Mockito.doReturn(allUpdateSchemaFuture).when(storeClient).getRaw("update_schema/" + storeName);
+
+      CompletableFuture<TransportClientResponse> allUpdateSchemaFuture =
+          getTransportClientFuture(MAPPER.writeValueAsBytes(allUpdateSchemaResponse));
+      doReturn(allUpdateSchemaFuture).when(transportClient).get(eq("update_schema/" + storeName), anyMap());
     }
-  }
-
-  private AbstractAvroStoreClient getMockStoreClientWithRequestTopicResponse(byte[] requestTopicResponse)
-      throws IOException, ExecutionException, InterruptedException {
-    String storeName = "test_store";
-
-    AbstractAvroStoreClient storeClient = mock(AbstractAvroStoreClient.class);
-    Mockito.doReturn(storeName).when(storeClient).getStoreName();
-
-    CompletableFuture<byte[]> requestTopicFuture = mock(CompletableFuture.class);
-    Mockito.doReturn(requestTopicResponse).when(requestTopicFuture).get();
-    Mockito.doReturn(requestTopicFuture).when(storeClient).getRaw("request_topic/" + storeName);
-
-    return storeClient;
   }
 
   private static class TestOnlineVeniceProducer<K, V> extends OnlineVeniceProducer<K, V> {
@@ -953,20 +961,18 @@ public class OnlineVeniceProducerTest {
     private boolean failPubSubWrites;
 
     public TestOnlineVeniceProducer(
-        AbstractAvroStoreClient storeClient,
-        SchemaReader kmeSchemaReader,
+        ClientConfig storeClientConfig,
         VeniceProperties backendConfigs,
         MetricsRepository metricsRepository) {
-      this(storeClient, kmeSchemaReader, backendConfigs, metricsRepository, false);
+      this(storeClientConfig, backendConfigs, metricsRepository, false);
     }
 
     public TestOnlineVeniceProducer(
-        AbstractAvroStoreClient storeClient,
-        SchemaReader kmeSchemaReader,
+        ClientConfig storeClientConfig,
         VeniceProperties backendConfigs,
         MetricsRepository metricsRepository,
         boolean failPubSubWrites) {
-      super(storeClient, kmeSchemaReader, backendConfigs, metricsRepository, null);
+      super(storeClientConfig, backendConfigs, metricsRepository, null);
       this.failPubSubWrites = failPubSubWrites;
 
       configureVeniceWriteMock();
@@ -1050,5 +1056,15 @@ public class OnlineVeniceProducerTest {
     }
 
     throw new AssertionError(thrown.getMessage(), thrown);
+  }
+
+  private CompletableFuture<TransportClientResponse> getTransportClientFuture(byte[] body) {
+    return CompletableFuture.supplyAsync(() -> {
+      try {
+        return new TransportClientResponse(1, CompressionStrategy.NO_OP, body);
+      } catch (Throwable t) {
+        return null;
+      }
+    });
   }
 }

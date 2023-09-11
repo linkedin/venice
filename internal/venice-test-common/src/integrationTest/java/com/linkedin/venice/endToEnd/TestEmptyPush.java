@@ -1,6 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
@@ -28,9 +30,11 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -64,15 +68,38 @@ public class TestEmptyPush {
   }
 
   private ByteBuffer getDictFromTopic(String topic, Properties properties) {
-    String kafkaUrl = venice.getKafka().getAddress();
+    String kafkaUrl = venice.getPubSubBrokerWrapper().getAddress();
 
     Properties props = (Properties) properties.clone();
     props.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     return DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
   }
 
-  @Test(timeOut = 120 * 1000)
-  public void testEmptyPushByChangingCompressionStrategy() throws IOException {
+  @Test(timeOut = 30 * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testEmptyPushWithZstdWithDictCompression(boolean sendControlMessageDirectly) throws IOException {
+    String storeName = Utils.getUniqueString("test_empty_push_store");
+    try (ControllerClient controllerClient =
+        new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs())) {
+      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+      controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      writeEmptyAvroFileWithUserSchema(inputDir);
+
+      Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
+      vpjProperties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, Boolean.toString(sendControlMessageDirectly));
+      vpjProperties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, Boolean.toString(true));
+      runVPJ(vpjProperties, 1, controllerClient);
+      ByteBuffer dict = getDictFromTopic(Version.composeKafkaTopic(storeName, 1), vpjProperties);
+      assertNotNull(dict, "Dict shouldn't be null for the empty push with CompressionStrategy as ZSTD_WITH_DICT");
+    }
+  }
+
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  public void testEmptyPushByChangingCompressionStrategyForHybridStore() throws IOException {
     String storeName = Utils.getUniqueString("test_empty_push_store");
     try (
         ControllerClient controllerClient =
@@ -83,7 +110,7 @@ public class TestEmptyPush {
                     DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                     100,
                     0l,
-                    venice.getKafka().getAddress(),
+                    venice.getPubSubBrokerWrapper(),
                     venice.getPubSubTopicRepository())
                 .getTopicManager()) {
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
@@ -169,6 +196,5 @@ public class TestEmptyPush {
       assertEquals(dictForVersion4, dictForVersion3, "Venice Push Job should build a same dict for the same input");
       dataValidator.run();
     }
-
   }
 }

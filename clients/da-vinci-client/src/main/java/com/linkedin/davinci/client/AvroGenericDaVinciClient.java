@@ -41,18 +41,20 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ComplementSet;
-import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -389,11 +391,30 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ComputeUtils.checkResultSchema(
           computeResultSchema,
           computeRequestWrapper.getValueSchema(),
-          computeRequestWrapper.getComputeRequestVersion(),
           computeRequestWrapper.getOperations());
       computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
     }
     return computeResultSchema;
+  }
+
+  static int getValueSchemaIdForComputeRequest(
+      String storeName,
+      Schema computeValueSchema,
+      ReadOnlySchemaRepository repo) {
+    SchemaEntry latestSchemaEntry = repo.getSupersetOrLatestValueSchema(storeName);
+    if (computeValueSchema == latestSchemaEntry.getSchema()) {
+      /**
+       * For most of the scenario, the compute request will execute this efficient path since the request is trying to
+       * use the latest value schema all the time.
+       */
+      return latestSchemaEntry.getId();
+    } else {
+      /**
+       * This slow path shouldn't be executed frequently, and it is a little inefficient because of the schema parsing logic internally.
+       * Refactoring SchemaRepository is a slightly bigger effort.
+       */
+      return repo.getValueSchemaId(storeName, computeValueSchema.toString());
+    }
   }
 
   @Override
@@ -425,13 +446,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
       ReusableObjects reusableObjects = REUSABLE_OBJECTS.get();
       Schema valueSchema = computeRequestWrapper.getValueSchema();
+      int valueSchemaId =
+          getValueSchemaIdForComputeRequest(getStoreName(), valueSchema, daVinciBackend.get().getSchemaRepository());
       GenericRecord reuseValueRecord =
           reusableObjects.reuseValueRecordMap.computeIfAbsent(valueSchema, k -> new GenericData.Record(valueSchema));
 
       Map<String, Object> globalContext = new HashMap<>();
       Schema computeResultSchema = getComputeResultSchema(computeRequestWrapper);
 
-      int readerSchemaId = versionBackend.getSupersetOrLatestValueSchemaId();
       for (K key: keys) {
         byte[] keyBytes = keySerializer.serialize(key);
         int partition = versionBackend.getPartition(keyBytes);
@@ -442,7 +464,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
               keyBytes,
               getGenericRecordChunkingAdapter(),
               genericRecordStoreDeserializerCache,
-              readerSchemaId,
+              valueSchemaId,
               reusableObjects.binaryDecoder,
               reusableObjects.rawValue,
               reuseValueRecord,

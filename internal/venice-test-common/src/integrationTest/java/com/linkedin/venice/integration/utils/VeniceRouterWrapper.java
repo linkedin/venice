@@ -20,8 +20,8 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.authentication.AuthenticationService;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -48,6 +48,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -63,6 +65,8 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   private final String d2ClusterName;
   private final String clusterDiscoveryD2ClusterName;
   private final String regionName;
+
+  private static final Logger LOGGER = LogManager.getLogger(VeniceRouterWrapper.class);
 
   VeniceRouterWrapper(
       String regionName,
@@ -114,9 +118,16 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     }
 
     return (serviceName, dataDirectory) -> {
-      String listenerPort =
-          properties.getOrDefault(ConfigKeys.LISTENER_PORT, Integer.toString(TestUtils.getFreePort())).toString();
-      int port = Integer.parseInt(listenerPort);
+      int port;
+      // If a port is specified using ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER, this port will be used,
+      // as the requester will be connecting to the router via this port.
+      // This method will not honor the port specified with LISTENER_PORT as it might be used by
+      // VeniceServerWrapper, since it is passed via the shared properties.
+      if (properties.containsKey(ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER)) {
+        port = Integer.parseInt(properties.getProperty(ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER));
+      } else {
+        port = TestUtils.getFreePort();
+      }
       int sslPort = TestUtils.getFreePort();
       PropertyBuilder builder = new PropertyBuilder().put(CLUSTER_NAME, clusterName)
           .put(LISTENER_PORT, port)
@@ -196,11 +207,11 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   @Override
   protected void internalStart() throws Exception {
     service.start();
-
     TestUtils.waitForNonDeterministicCompletion(
         IntegrationTestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
         TimeUnit.MILLISECONDS,
         () -> service.isRunning());
+    LOGGER.info("Started VeniceRouterWrapper: {}", this);
   }
 
   @Override
@@ -224,6 +235,8 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
         Optional.empty(),
         Optional.empty(),
         Optional.of(SslUtils.getVeniceLocalSslFactory()));
+    LOGGER.info("Started VeniceRouterWrapper: {}", this);
+
   }
 
   @Override
@@ -254,5 +267,12 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
   public void refresh() {
     service.refresh();
+  }
+
+  @Override
+  public String toString() {
+    return "VeniceRouterWrapper{" + "address=http://" + getAddress() + ", sslAddress=https://" + getHost() + ":"
+        + getSslPort() + ", regionName=" + regionName + ", d2ClusterName=" + d2ClusterName
+        + ", clusterDiscoveryD2ClusterName=" + clusterDiscoveryD2ClusterName + "}";
   }
 }

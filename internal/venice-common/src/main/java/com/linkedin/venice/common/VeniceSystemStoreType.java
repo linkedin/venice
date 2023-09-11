@@ -26,16 +26,15 @@ import java.util.List;
  */
 public enum VeniceSystemStoreType {
   DAVINCI_PUSH_STATUS_STORE(
-      String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store"), true, PushStatusKey.SCHEMA$.toString(),
+      VeniceSystemStoreUtils.DAVINCI_PUSH_STATUS_STORE_STR, true, PushStatusKey.SCHEMA$.toString(),
       PushStatusValue.SCHEMA$.toString(), AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName(),
       true, Method.WRITE_SYSTEM_STORE
   ),
 
   // New Metadata system store
   META_STORE(
-      String.format(Store.SYSTEM_STORE_FORMAT, "meta_store"), true, StoreMetaKey.SCHEMA$.toString(),
-      StoreMetaValue.SCHEMA$.toString(), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(), true,
-      Method.READ_SYSTEM_STORE
+      VeniceSystemStoreUtils.META_STORE_STR, true, StoreMetaKey.SCHEMA$.toString(), StoreMetaValue.SCHEMA$.toString(),
+      AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(), true, Method.READ_SYSTEM_STORE
   ),
 
   // This system store's prefix is used as its full name since it is not a per-user-store system store

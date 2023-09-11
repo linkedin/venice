@@ -206,12 +206,15 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_SEPARATE_RMD_CACHE_ENABLED = "rocksdb.separate.rmd.cache.enabled";
   public static final String ROCKSDB_BLOCK_BASE_FORMAT_VERSION = "rocksdb.block.base.format.version";
 
+  public static final String ROCKSDB_MAX_LOG_FILE_NUM = "rocksdb.max.log.file.num";
+  public static final String ROCKSDB_MAX_LOG_FILE_SIZE = "rocksdb.max.log.file.size";
+
   private final boolean rocksDBUseDirectReads;
 
   private final int rocksDBEnvFlushPoolSize;
   private final int rocksDBEnvCompactionPoolSize;
 
-  private final CompressionType rocksDBOptionsCompressionType;
+  private CompressionType rocksDBOptionsCompressionType;
   private final CompactionStyle rocksDBOptionsCompactionStyle;
 
   private final long rocksDBBlockCacheSizeInBytes;
@@ -264,6 +267,8 @@ public class RocksDBServerConfig {
   private final boolean atomicFlushEnabled;
   private final boolean separateRMDCacheEnabled;
   private int blockBaseFormatVersion;
+  private final int maxLogFileNum;
+  private final long maxLogFileSize;
 
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
@@ -372,6 +377,12 @@ public class RocksDBServerConfig {
     this.separateRMDCacheEnabled = props.getBoolean(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, false);
 
     this.blockBaseFormatVersion = props.getInt(ROCKSDB_BLOCK_BASE_FORMAT_VERSION, 2);
+
+    /**
+     * The following configs are per store partition.
+     */
+    this.maxLogFileNum = props.getInt(ROCKSDB_MAX_LOG_FILE_NUM, 3);
+    this.maxLogFileSize = props.getSizeInBytes(ROCKSDB_MAX_LOG_FILE_SIZE, 10 * 1024 * 1024); // 10MB;
   }
 
   public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {
@@ -551,5 +562,17 @@ public class RocksDBServerConfig {
   // For test only
   public void setBlockBaseFormatVersion(int version) {
     this.blockBaseFormatVersion = version;
+  }
+
+  public void setRocksdbOptionsCompressionType(String compressionType) {
+    this.rocksDBOptionsCompressionType = CompressionType.valueOf(compressionType);
+  }
+
+  public int getMaxLogFileNum() {
+    return maxLogFileNum;
+  }
+
+  public long getMaxLogFileSize() {
+    return maxLogFileSize;
   }
 }

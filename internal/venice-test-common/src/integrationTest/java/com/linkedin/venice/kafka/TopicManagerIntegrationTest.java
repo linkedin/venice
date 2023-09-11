@@ -13,7 +13,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,21 +36,15 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     TestMockTime mockTime = new TestMockTime();
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setMockTime(mockTime).setRegionName(STANDALONE_REGION_NAME).build());
-    topicManager =
-        IntegrationTestPushUtils
-            .getTopicManagerRepo(
-                500L,
-                100L,
-                MIN_COMPACTION_LAG,
-                pubSubBrokerWrapper.getAddress(),
-                new PubSubTopicRepository())
-            .getTopicManager();
+    topicManager = IntegrationTestPushUtils
+        .getTopicManagerRepo(500L, 100L, MIN_COMPACTION_LAG, pubSubBrokerWrapper, new PubSubTopicRepository())
+        .getTopicManager();
   }
 
   protected PubSubProducerAdapter createPubSubProducerAdapter() {
     return pubSubBrokerWrapper.getPubSubClientsFactory()
         .getProducerAdapterFactory()
-        .create(new VeniceProperties(new Properties()), "topicManagerTestProducer", pubSubBrokerWrapper.getAddress());
+        .create(VeniceProperties.empty(), "topicManagerTestProducer", pubSubBrokerWrapper.getAddress());
   }
 
   @Test

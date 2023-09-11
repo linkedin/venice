@@ -1,9 +1,7 @@
   $FlowName:
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: $TimeOut
     steps:
       - uses: actions/checkout@v3

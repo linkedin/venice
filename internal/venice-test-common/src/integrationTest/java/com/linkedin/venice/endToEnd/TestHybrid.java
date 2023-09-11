@@ -53,6 +53,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
@@ -81,6 +82,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.producer.online.OnlineProducerFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
@@ -185,9 +187,12 @@ public class TestHybrid {
             ServiceFactory.getVeniceCluster(1, 2, 1, 1, 1000000, false, false, extraProperties);
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), parentZk, venice.getKafka())
-                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                .build());
+            new VeniceControllerCreateOptions.Builder(
+                venice.getClusterName(),
+                parentZk,
+                venice.getPubSubBrokerWrapper())
+                    .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                    .build());
         ControllerClient controllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
         TopicManager topicManager =
@@ -196,7 +201,7 @@ public class TestHybrid {
                     DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                     100,
                     0l,
-                    venice.getKafka().getAddress(),
+                    venice.getPubSubBrokerWrapper(),
                     venice.getPubSubTopicRepository())
                 .getTopicManager()) {
       long streamingRewindSeconds = 25L;
@@ -329,7 +334,7 @@ public class TestHybrid {
                       DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                       100,
                       0l,
-                      venice.getKafka().getAddress(),
+                      venice.getPubSubBrokerWrapper(),
                       sharedVenice.getPubSubTopicRepository())
                   .getTopicManager()) {
 
@@ -394,6 +399,12 @@ public class TestHybrid {
           }
         });
 
+        // Update min compaction lag
+        long expectedMinCompactionLagSeconds = TimeUnit.MINUTES.toSeconds(10); // 10mins
+        controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setMinCompactionLagSeconds(expectedMinCompactionLagSeconds));
+
         // Run one more VPJ
         runVPJ(vpjProperties, 2, controllerClient);
         // verify the topic compaction policy
@@ -402,10 +413,12 @@ public class TestHybrid {
         Assert.assertTrue(
             topicManager.isTopicCompactionEnabled(topicForStoreVersion2),
             "topic: " + topicForStoreVersion2 + " should have compaction enabled");
+        long expectedMinCompactionLagMS = TimeUnit.SECONDS.toMillis(expectedMinCompactionLagSeconds);
         Assert.assertEquals(
             topicManager.getTopicMinLogCompactionLagMs(topicForStoreVersion2),
-            MIN_COMPACTION_LAG,
-            "topic:" + topicForStoreVersion2 + " should have min compaction lag config set to " + MIN_COMPACTION_LAG);
+            expectedMinCompactionLagMS,
+            "topic:" + topicForStoreVersion2 + " should have min compaction lag config set to "
+                + expectedMinCompactionLagMS);
 
         // Verify streaming record in second version
         checkLargeRecord(client, 2);
@@ -862,10 +875,16 @@ public class TestHybrid {
        *  Build a producer that writes to {@link tmpTopic1}
        */
       Properties veniceWriterProperties = new Properties();
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
+      veniceWriterProperties.putAll(
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
       AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
-      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter1 = TestUtils.getVeniceWriterFactory(veniceWriterProperties)
-          .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic1.getName()).build())) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+
+      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter1 =
+          TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic1.getName()).build())) {
         // Write 10 records
         for (int i = 0; i < 10; ++i) {
           tmpWriter1.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
@@ -875,8 +894,9 @@ public class TestHybrid {
       /**
        *  Build a producer that writes to {@link tmpTopic2}
        */
-      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter2 = TestUtils.getVeniceWriterFactory(veniceWriterProperties)
-          .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic2.getName()).build())) {
+      try (VeniceWriter<byte[], byte[], byte[]> tmpWriter2 =
+          TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic2.getName()).build())) {
         // Write 10 records
         for (int i = 10; i < 20; ++i) {
           tmpWriter2.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
@@ -898,16 +918,16 @@ public class TestHybrid {
           AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
           VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = TestUtils
-              .getVeniceWriterFactory(veniceWriterProperties)
+              .getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
               .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build());) {
         // Build a producer to produce 2 TS messages into RT
         realTimeTopicWriter.broadcastTopicSwitch(
-            Collections.singletonList(venice.getKafka().getAddress()),
+            Collections.singletonList(venice.getPubSubBrokerWrapper().getAddress()),
             tmpTopic1.getName(),
             -1L,
             null);
         realTimeTopicWriter.broadcastTopicSwitch(
-            Collections.singletonList(venice.getKafka().getAddress()),
+            Collections.singletonList(venice.getPubSubBrokerWrapper().getAddress()),
             tmpTopic2.getName(),
             -1L,
             null);
@@ -1148,7 +1168,7 @@ public class TestHybrid {
                       DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                       100L,
                       MIN_COMPACTION_LAG,
-                      venice.getKafka().getAddress(),
+                      venice.getPubSubBrokerWrapper(),
                       sharedVenice.getPubSubTopicRepository())
                   .getTopicManager()) {
 
@@ -1246,6 +1266,8 @@ public class TestHybrid {
     SystemProducer veniceProducer = null;
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = isIngestionIsolationEnabled ? ingestionIsolationEnabledSharedVenice : sharedVenice;
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
     try {
       LOGGER.info("Finished creating VeniceClusterWrapper");
 
@@ -1284,12 +1306,14 @@ public class TestHybrid {
         String value2 = "duplicated_message_test_value_2";
         String key2 = "duplicated_message_test_key_2";
         Properties veniceWriterProperties = new Properties();
-        veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+        veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
+        veniceWriterProperties.putAll(
+            PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
         AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
         AvroGenericDeserializer<String> stringDeserializer =
             new AvroGenericDeserializer<>(Schema.parse(STRING_SCHEMA), Schema.parse(STRING_SCHEMA));
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-            TestUtils.getVeniceWriterFactory(veniceWriterProperties)
+            TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
                 .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
           // Send <key1, value1, seq: 1>
           Pair<KafkaKey, KafkaMessageEnvelope> record = getKafkaKeyAndValueEnvelope(
@@ -1567,17 +1591,20 @@ public class TestHybrid {
       runVPJ(vpjProperties, 1, controllerClient);
 
       Properties veniceWriterProperties = new Properties();
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
       /**
        * Set max segment elapsed time to 0 to enforce creating small segments aggressively
        */
       veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
+      veniceWriterProperties.putAll(
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
       AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
       String prefix = "foo_object_";
-
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
       for (int i = 0; i < 2; i++) {
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-            TestUtils.getVeniceWriterFactory(veniceWriterProperties)
+            TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
                 .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
           for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
             realTimeTopicWriter
@@ -1633,20 +1660,24 @@ public class TestHybrid {
       // Do a VPJ push
       runVPJ(vpjProperties, 1, controllerClient);
       Properties veniceWriterProperties = new Properties();
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
       /**
        * Set max segment elapsed time to 0 to enforce creating small segments aggressively
        */
       veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
+      veniceWriterProperties.putAll(
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
       AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
       String prefix = "hybrid_DIV_enhancement_";
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
 
       // chunk the data into 2 parts and send each part by different producers. Also, close the producers
       // as soon as it finishes writing. This makes sure that closing or switching producers won't
       // impact the ingestion
       for (int i = 0; i < 2; i++) {
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
-            TestUtils.getVeniceWriterFactory(veniceWriterProperties)
+            TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
                 .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
           for (int j = i * 50 + 1; j <= i * 50 + 50; j++) {
             realTimeTopicWriter

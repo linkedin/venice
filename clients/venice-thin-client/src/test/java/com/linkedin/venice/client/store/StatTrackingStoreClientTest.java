@@ -4,6 +4,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
@@ -67,6 +68,11 @@ public class StatTrackingStoreClientTest {
     }
 
     @Override
+    protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
+      return this;
+    }
+
+    @Override
     public RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
       return null;
     }
@@ -105,6 +111,7 @@ public class StatTrackingStoreClientTest {
   private static class StoreClientForMultiGetStreamTest<K, V> extends SimpleStoreClient<K, V> {
     private final Map<K, V> resultMap;
     private final boolean fullResponse;
+    private final boolean noCompletion;
 
     public StoreClientForMultiGetStreamTest(
         TransportClient transportClient,
@@ -112,10 +119,12 @@ public class StatTrackingStoreClientTest {
         boolean needSchemaReader,
         Executor deserializationExecutor,
         Map<K, V> resultMap,
-        boolean fullResponse) {
+        boolean fullResponse,
+        boolean noCompletion) {
       super(transportClient, storeName, needSchemaReader, deserializationExecutor);
       this.resultMap = resultMap;
       this.fullResponse = fullResponse;
+      this.noCompletion = noCompletion;
     }
 
     @Override
@@ -135,11 +144,14 @@ public class StatTrackingStoreClientTest {
         } else {
           if (keys.size() > 1) {
             // Only return one result
-            trackingStreamingCallback.onRecordReceived(keys.iterator().next(), null);
+            K key = keys.iterator().next();
+            trackingStreamingCallback.onRecordReceived(key, resultMap.get(key));
           }
         }
-        trackingStreamingCallback.onDeserializationCompletion(Optional.empty(), 10, 5);
-        trackingStreamingCallback.onCompletion(Optional.empty());
+        if (!noCompletion) {
+          trackingStreamingCallback.onDeserializationCompletion(Optional.empty(), 10, 5);
+          trackingStreamingCallback.onCompletion(Optional.empty());
+        }
       }
     }
   }
@@ -232,7 +244,8 @@ public class StatTrackingStoreClientTest {
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
         result,
-        true);
+        true,
+        false);
 
     StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(
         innerClient,
@@ -274,12 +287,73 @@ public class StatTrackingStoreClientTest {
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
         Collections.emptyMap(),
+        false,
         false);
 
     StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(
         innerClient,
         ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
     statTrackingStoreClient.batchGet(keySet).get();
+  }
+
+  @Test(expectedExceptions = TimeoutException.class)
+  public void testMultiGetWithPartialResponseAfterTimeout()
+      throws ExecutionException, InterruptedException, TimeoutException {
+    Set<String> keySet = new HashSet<>();
+    String keyPrefix = "key_";
+    for (int i = 0; i < 10; ++i) {
+      keySet.add(keyPrefix + i);
+    }
+
+    MetricsRepository repository = new MetricsRepository();
+
+    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(
+        mock(TransportClient.class),
+        storeName,
+        true,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        Collections.emptyMap(),
+        false,
+        true);
+
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(
+        innerClient,
+        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+    statTrackingStoreClient.batchGet(keySet).get(2000, TimeUnit.MILLISECONDS);
+    fail();
+  }
+
+  @Test
+  public void testStreamingMultiGetWithPartialResponseAfterTimeout()
+      throws ExecutionException, InterruptedException, TimeoutException {
+    Map<String, String> result = new HashMap<>();
+    Set<String> keySet = new HashSet<>();
+    String keyPrefix = "key_";
+    for (int i = 0; i < 5; ++i) {
+      result.put(keyPrefix + i, "value_" + i);
+    }
+    for (int i = 0; i < 10; ++i) {
+      keySet.add(keyPrefix + i);
+    }
+
+    MetricsRepository repository = new MetricsRepository();
+
+    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(
+        mock(TransportClient.class),
+        storeName,
+        true,
+        AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
+        result,
+        false,
+        true);
+
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(
+        innerClient,
+        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+    CompletableFuture<VeniceResponseMap<String, Object>> future = statTrackingStoreClient.streamingBatchGet(keySet);
+    VeniceResponseMap<String, Object> batchGetResult = future.get(2000, TimeUnit.MILLISECONDS);
+    Assert.assertEquals(batchGetResult.size(), 1);
+    Assert.assertTrue(!batchGetResult.isFullResponse());
   }
 
   @Test
@@ -296,7 +370,7 @@ public class StatTrackingStoreClientTest {
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
     try {
       statTrackingStoreClient.get("key").get();
-      Assert.fail("ExecutionException should be thrown");
+      fail("ExecutionException should be thrown");
     } catch (ExecutionException e) {
       // expected
     }
@@ -337,7 +411,7 @@ public class StatTrackingStoreClientTest {
     keySet.add("key");
     try {
       statTrackingStoreClient.batchGet(keySet).get();
-      Assert.fail("ExecutionException should be thrown");
+      fail("ExecutionException should be thrown");
     } catch (ExecutionException e) {
       // expected
     }
@@ -467,7 +541,8 @@ public class StatTrackingStoreClientTest {
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
         Collections.emptyMap(),
-        true);
+        true,
+        false);
     MetricsRepository repository = new MetricsRepository();
     StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
         innerClient,
@@ -643,7 +718,7 @@ public class StatTrackingStoreClientTest {
             callback.onRecordReceived((K) ("key_" + (i + 1)), null);
           }
           if (callback instanceof TrackingStreamingCallback) {
-            TrackingStreamingCallback<K, org.apache.avro.generic.GenericRecord> trackingStreamingCallback =
+            TrackingStreamingCallback<K, GenericRecord> trackingStreamingCallback =
                 (TrackingStreamingCallback) callback;
             trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
           }

@@ -17,8 +17,8 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -428,9 +428,9 @@ public class ServiceFactory {
       int numberOfServers,
       int numberOfRouters,
       int replicationFactor,
-      Optional<VeniceProperties> parentControllerProps,
+      Optional<Properties> parentControllerProps,
       Optional<Properties> childControllerProperties,
-      Optional<VeniceProperties> serverProps) {
+      Optional<Properties> serverProps) {
     return getService(
         VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
@@ -455,9 +455,9 @@ public class ServiceFactory {
       int numberOfServers,
       int numberOfRouters,
       int replicationFactor,
-      Optional<VeniceProperties> parentControllerProps,
+      Optional<Properties> parentControllerProps,
       Optional<Properties> childControllerProperties,
-      Optional<VeniceProperties> serverProps,
+      Optional<Properties> serverProps,
       boolean forkServer) {
     return getService(
         VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,

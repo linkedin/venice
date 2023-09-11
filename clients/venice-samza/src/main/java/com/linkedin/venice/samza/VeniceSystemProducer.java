@@ -27,6 +27,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
@@ -416,7 +417,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     Properties finalWriterConfigs = new Properties();
     finalWriterConfigs.putAll(properties);
     finalWriterConfigs.putAll(additionalWriterConfigs);
-    return new VeniceWriterFactory(finalWriterConfigs).createVeniceWriter(writerOptions);
+    return new VeniceWriterFactory(finalWriterConfigs, new ApacheKafkaProducerAdapterFactory(), null)
+        .createVeniceWriter(writerOptions);
   }
 
   @Override

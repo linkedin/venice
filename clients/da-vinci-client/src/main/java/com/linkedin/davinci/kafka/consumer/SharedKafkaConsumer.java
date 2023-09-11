@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
-import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
@@ -10,6 +9,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -216,7 +216,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
 
   @Override
   public synchronized void resetOffset(PubSubTopicPartition pubSubTopicPartition)
-      throws UnsubscribedTopicPartitionException {
+      throws PubSubUnsubscribedTopicPartitionException {
     this.delegate.resetOffset(pubSubTopicPartition);
   }
 

@@ -8,12 +8,21 @@ import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.Method;
 import com.linkedin.venice.authorization.Principal;
 import com.linkedin.venice.authorization.Resource;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.utils.NettyUtils;
 import com.linkedin.venice.utils.SslUtils;
+import io.grpc.ForwardingServerCallListener;
+import io.grpc.Grpc;
+import io.grpc.Metadata;
+import io.grpc.ServerCall;
+import io.grpc.ServerCallHandler;
+import io.grpc.ServerInterceptor;
+import io.grpc.Status;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -31,6 +40,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLPeerUnverifiedException;
+import javax.net.ssl.SSLSession;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -39,7 +49,7 @@ import org.apache.logging.log4j.Logger;
  * Store-level access control handler, which is being used by both Router and Server.
  */
 @ChannelHandler.Sharable
-public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
+public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> implements ServerInterceptor {
   private static final Logger LOGGER = LogManager.getLogger(StoreAclHandler.class);
 
   private final ReadOnlyStoreRepository metadataRepository;
@@ -97,6 +107,15 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static AttributeKey<String> FIRST_AUTHORIZATION_ATTRIBUTE =
       AttributeKey.valueOf("first_authorization_attribute");
 
+  protected X509Certificate extractClientCert(ServerCall<?, ?> call) throws SSLPeerUnverifiedException {
+    SSLSession sslSession = call.getAttributes().get(Grpc.TRANSPORT_ATTR_SSL_SESSION);
+    if (sslSession == null) {
+      throw new SSLPeerUnverifiedException("SSL session not found");
+    }
+
+    return SslUtils.getX509Certificate(sslSession.getPeerCertificates()[0]);
+  }
+
   /**
    * Verify if client has permission to access.
    *
@@ -121,11 +140,18 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
       return;
     }
 
-    // Ignore ACL for requests to /metadata as there's no sensitive information in the response.
-    if (requestParts[1].equals(QueryAction.METADATA.toString().toLowerCase())) {
-      ReferenceCountUtil.retain(req);
-      ctx.fireChannelRead(req);
-      return;
+    /**
+     *  Skip ACL for requests to /metadata and /admin as there's no sensitive information in the response.
+     */
+    try {
+      QueryAction queryAction = QueryAction.valueOf(requestParts[1].toUpperCase());
+      if (queryAction.equals(QueryAction.METADATA) || queryAction.equals(QueryAction.ADMIN)) {
+        ReferenceCountUtil.retain(req);
+        ctx.fireChannelRead(req);
+        return;
+      }
+    } catch (IllegalArgumentException illegalArgumentException) {
+      throw new VeniceException("Unknown query action: " + requestParts[1]);
     }
 
     String storeName = extractStoreName(requestParts[2]);
@@ -305,4 +331,96 @@ public class StoreAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
     return principal;
   }
+
+  @Override
+  public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
+      ServerCall<ReqT, RespT> call,
+      Metadata headers,
+      ServerCallHandler<ReqT, RespT> next) {
+    return new ForwardingServerCallListener.SimpleForwardingServerCallListener<ReqT>(next.startCall(call, headers)) {
+      @Override
+      public void onMessage(ReqT message) {
+        X509Certificate clientCert;
+        try {
+          clientCert = extractClientCert(call);
+        } catch (SSLPeerUnverifiedException e) {
+          throw new VeniceException(e);
+        }
+        VeniceClientRequest request = (VeniceClientRequest) message;
+
+        String storeName = extractStoreName(request.getResourceName());
+        String method = request.getMethod();
+
+        if (storeName.equals("") || method.equals("")) {
+          call.close(Status.INVALID_ARGUMENT.withDescription("Invalid request"), new Metadata());
+        }
+
+        Store store;
+        try {
+          store = metadataRepository.getStoreOrThrow(storeName);
+        } catch (VeniceNoStoreException noStoreException) {
+          String client = Objects.requireNonNull(call.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR)).toString();
+          LOGGER.debug("Requested store does not exist: {} requested {} {}", client, method, storeName);
+          call.close(
+              Status.INVALID_ARGUMENT.withDescription("Invalid Venice store name: " + storeName),
+              new Metadata());
+          return;
+        }
+
+        if (store.isSystemStore()) {
+          super.onMessage(message);
+          return;
+        }
+
+        try {
+          if (accessController.hasAccess(clientCert, storeName, method)) {
+            super.onMessage(message);
+          } else {
+            String client =
+                Objects.requireNonNull(call.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR)).toString();
+            String errLine = String.format("%s requested %s %s", client, method, storeName);
+
+            if (!accessController.isFailOpen() && !accessController.hasAcl(storeName)) {
+              LOGGER.warn("Requested store does not have ACL: {}", errLine);
+              LOGGER.debug(
+                  "Existing stores: {}",
+                  () -> metadataRepository.getAllStores()
+                      .stream()
+                      .map(Store::getName)
+                      .sorted()
+                      .collect(Collectors.toList()));
+              LOGGER.debug(
+                  "Access-controlled stores: {}",
+                  () -> accessController.getAccessControlledResources().stream().sorted().collect(Collectors.toList()));
+              String responseMessage = "ACL not found!\n" + "Either it has not been created, or can not be loaded.\n"
+                  + "Please create the ACL, or report the error if you know for sure that ACL exists for this store: "
+                  + storeName;
+              call.close(Status.PERMISSION_DENIED.withDescription(responseMessage), new Metadata());
+            } else {
+              String responseMessage = "Access denied!\n"
+                  + "If you are the store owner, add this application (or your own username for Venice shell client) to the store ACL.\n"
+                  + "Otherwise, ask the store owner for read permission.";
+              call.close(Status.PERMISSION_DENIED.withDescription(responseMessage), new Metadata());
+            }
+            return;
+          }
+        } catch (AclException e) {
+          String client = Objects.requireNonNull(call.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR)).toString();
+          String errLine = String.format("%s requested %s %s", client, method, storeName);
+
+          if (accessController.isFailOpen()) {
+            LOGGER.warn("Exception occurred! Access granted: {} {}", errLine, e);
+            super.onMessage(message);
+          } else {
+            LOGGER.warn("Exception occurred! Access rejected: {} {}", errLine, e);
+            call.close(Status.PERMISSION_DENIED.withDescription("Access denied"), new Metadata());
+          }
+          return;
+        }
+
+        super.onMessage(message);
+      }
+    };
+  }
+
 }

@@ -1,5 +1,4 @@
 import com.github.spotbugs.snom.SpotBugsTask
-import org.apache.tools.ant.taskdefs.condition.Os
 import org.gradle.internal.logging.text.StyledTextOutput.Style
 import org.gradle.internal.logging.text.StyledTextOutputFactory
 
@@ -38,24 +37,27 @@ if (project.hasProperty('overrideBuildEnvironment')) {
   }
 }
 
-def avroVersion = '1.9.2'
-def avroUtilVersion = '0.2.150'
-def grpcVersion = '1.54.1'
+def avroVersion = '1.10.2'
+def avroUtilVersion = '0.3.17'
+def grpcVersion = '1.49.2'
 def kafkaGroup = 'com.linkedin.kafka'
 def kafkaVersion = '2.4.1.65'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
 def protobufVersion = '3.21.7'
 def jacksonVersion = '2.13.3'
-
+def pulsarGroup = 'org.apache.pulsar'
+def pulsarVersion = '2.10.3'
+def alpnAgentVersion = '2.0.10'
 
 ext.libraries = [
-    avro: 'org.apache.avro:avro:' + avroVersion,
-    avroCompiler: 'org.apache.avro:avro-compiler:' + avroVersion,
-    avroMapred: 'org.apache.avro:avro-mapred:' + avroVersion,
-    avroUtilBuilder: 'com.linkedin.avroutil1:builder:' + avroUtilVersion,
-    avroUtilCompatHelper: 'com.linkedin.avroutil1:helper-all:' + avroUtilVersion,
-    avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:' + avroUtilVersion,
+    alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
+    avro: "org.apache.avro:avro:${avroVersion}",
+    avroCompiler: "org.apache.avro:avro-compiler:${avroVersion}",
+    avroMapred: "org.apache.avro:avro-mapred:${avroVersion}",
+    avroUtilBuilder: "com.linkedin.avroutil1:builder:${avroUtilVersion}",
+    avroUtilCompatHelper: "com.linkedin.avroutil1:helper-all:${avroUtilVersion}",
+    avroUtilFastserde: "com.linkedin.avroutil1:avro-fastserde:${avroUtilVersion}",
     avroUtilSpotbugsPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
     bouncyCastle: 'org.bouncycastle:bcprov-jdk15on:1.55',
     caffeine: 'com.github.ben-manes.caffeine:caffeine:2.8.5',
@@ -66,42 +68,42 @@ ext.libraries = [
     commonsCli: 'commons-cli:commons-cli:1.5.0',
     commonsLang: 'commons-lang:commons-lang:2.6',
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.5.2',
-    d2: 'com.linkedin.pegasus:d2:' + pegasusVersion,
+    d2: "com.linkedin.pegasus:d2:${pegasusVersion}",
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
-    helix: 'org.apache.helix:helix-core:1.0.4',
+    helix: 'org.apache.helix:helix-core:1.1.0',
     httpAsyncClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
     httpClient5: 'org.apache.httpcomponents.client5:httpclient5:5.2.1',
     httpCore5: 'org.apache.httpcomponents.core5:httpcore5:5.2.2',
     httpCore5H2: 'org.apache.httpcomponents.core5:httpcore5-h2:5.2.2',
     httpClient: 'org.apache.httpcomponents:httpclient:4.5.2',
     httpCore: 'org.apache.httpcomponents:httpcore:4.4.5',
-    jacksonCore: 'com.fasterxml.jackson.core:jackson-core:' + jacksonVersion,
-    jacksonAnnotations: 'com.fasterxml.jackson.core:jackson-annotations:' + jacksonVersion,
-    jacksonDatabind: 'com.fasterxml.jackson.core:jackson-databind:' + jacksonVersion,
+    jacksonCore: "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}",
+    jacksonAnnotations: "com.fasterxml.jackson.core:jackson-annotations:${jacksonVersion}",
+    jacksonDatabind: "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}",
     javax: 'javax.servlet:javax.servlet-api:3.1.0',
     javaxActivation: 'com.sun.activation:javax.activation:1.2.0',
     jdom: 'org.jdom:jdom:1.1',
     jna: 'net.java.dev.jna:jna:4.5.1',
     jsr305: 'com.google.code.findbugs:jsr305:3.0.2',
     joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
-    kafka: kafkaGroup + ':kafka_2.12:' + kafkaVersion,
-    kafkaClients: kafkaGroup + ':kafka-clients:' + kafkaVersion,
-    kafkaClientsTest: kafkaGroup + ':kafka-clients:' + kafkaVersion + ':test',
-    log4j2api: 'org.apache.logging.log4j:log4j-api:' + log4j2Version,
-    log4j2core: 'org.apache.logging.log4j:log4j-core:' + log4j2Version,
+    kafka: "${kafkaGroup}:kafka_2.12:${kafkaVersion}",
+    kafkaClients: "${kafkaGroup}:kafka-clients:${kafkaVersion}",
+    kafkaClientsTest: "${kafkaGroup}:kafka-clients:${kafkaVersion}:test",
+    log4j2api: "org.apache.logging.log4j:log4j-api:${log4j2Version}",
+    log4j2core: "org.apache.logging.log4j:log4j-core:${log4j2Version}",
     mail: 'javax.mail:mail:1.4.4',
     mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
     mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
-    mockito: 'org.mockito:mockito-core:3.3.3',
+    mockito: 'org.mockito:mockito-core:4.11.0',
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
     pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
     pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
     pulsarIoCommon: "${pulsarGroup}:pulsar-io-common:${pulsarVersion}",
-    r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
-    restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
+    r2: "com.linkedin.pegasus:r2:${pegasusVersion}",
+    restliCommon: "com.linkedin.pegasus:restli-common:${pegasusVersion}",
     rocksdbjni: 'org.rocksdb:rocksdbjni:7.9.2',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     slf4j: 'org.slf4j:slf4j:1.7.36',
@@ -122,10 +124,10 @@ ext.libraries = [
     jjwtapi: 'io.jsonwebtoken:jjwt-api:0.11.2',
     jjwtimpl: 'io.jsonwebtoken:jjwt-impl:0.11.2',
     jjwtjackson: 'io.jsonwebtoken:jjwt-jackson:0.11.2',
-    grpcNettyShaded: 'io.grpc:grpc-netty-shaded:' + grpcVersion,
-    grpcProtobuf: 'io.grpc:grpc-protobuf:' + grpcVersion,
-    grpcStub: 'io.grpc:grpc-stub:' + grpcVersion,
-    tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53',
+    grpcNettyShaded: "io.grpc:grpc-netty-shaded:${grpcVersion}",
+    grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
+    grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
+    tomcatAnnotations: 'org.apache.tomcat:annotations-api:6.0.53'
 ]
 
 group = 'com.linkedin.venice'
@@ -156,6 +158,15 @@ parser.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dt
 // attempts together.
 def removeSquareBrackets(String testName) {
   return testName.replaceFirst('\\[[0-9]+\\]', '')
+}
+
+configurations {
+  alpnAgent {
+  }
+}
+
+dependencies {
+  alpnAgent libraries.alpnAgent
 }
 
 subprojects {
@@ -239,7 +250,6 @@ subprojects {
     }
     compileOnly {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
-      exclude group: 'com.google.guava'
       exclude group: 'com.typesafe.scala-logging'
       exclude group: 'log4j'
       exclude group: 'org.slf4j'
@@ -264,7 +274,7 @@ subprojects {
     avroCompiler libraries.avroCompiler
     avroCompiler libraries.avroUtilBuilder
     avroCompiler 'org.slf4j:slf4j-simple:1.7.32'
-    runtimeOnly libraries.grpcNettyShaded
+    implementation libraries.grpcNettyShaded
     implementation libraries.grpcProtobuf
     implementation libraries.grpcStub
     compileOnly libraries.tomcatAnnotations
@@ -379,14 +389,7 @@ subprojects {
     if (!project.ext.has("skipAlpnBoot") || !project.ext.skipAlpnBoot) {
       // The ALPN version should match the JVM version
       if (JavaVersion.current() < JavaVersion.VERSION_11) {
-        if (Os.isFamily(Os.FAMILY_MAC)) {
-          jvmArgs '-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
-        } else if (Os.isFamily(Os.FAMILY_UNIX)) {
-          jvmArgs '-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
-        } else {
-          def osName = System.getProperty('os.name').toLowerCase(Locale.ENGLISH)
-          throw new GradleException("$osName is not supported since ALPN only works for either Mac or Linux right now.")
-        }
+        jvmArgs "-javaagent:${rootProject.configurations.alpnAgent.asPath}"
       }
     }
 
@@ -518,7 +521,7 @@ subprojects {
         }
 
         violationRules {
-          minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.33
+          minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.40
           failOnViolation = true
         }
       }
@@ -717,23 +720,46 @@ idea.project.ipr {
 ext.createDiffFile = { ->
   // Files that we don't plan to write unit tests for now. Will be worked in the future
   def exclusionFilter = [
-        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
-        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java',
-        ':!internal/venice-test-common/*',
-        ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java',
-        ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
-        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/init/*',
-        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceController.java',
-        ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',
-        ':!services/venice-router/src/main/java/com/linkedin/venice/router/streaming/VeniceChunkedResponse.java',
-        ':!services/venice-standalone/*', // exclude the entire standalone project
-        ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
-        ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',
-        ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/OnlineProducerFactory.java',
-        ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/ProducerTool.java',
+      // Keep this sorted
+      // da-vinci-client
+      ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/DaVinciBackend.java',
+      ':!clients/da-vinci-client/src/main/java/com/linkedin/davinci/ingestion/isolated/IsolatedIngestionServer.java',
 
-        // Other files that have tests but are not executed in the regular unit test task
-        ':!internal/alpini/*'
+      // venice-client
+      ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/factory/ClientFactory.java',
+      // unit test for gRPC Transport Client is not straightforward, adding to exclusion list for now
+      ':!clients/venice-client/src/main/java/com/linkedin/venice/fastclient/transport/GrpcTransportClient.java',
+
+      // venice-producer
+      ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/OnlineProducerFactory.java',
+      ':!clients/venice-producer/src/main/java/com/linkedin/venice/producer/online/ProducerTool.java',
+
+      // venice-common
+      ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
+      ':!internal/venice-common/src/main/java/com/linkedin/venice/acl/handler/StoreAclHandler.java',
+
+      // venice-test-common
+      ':!internal/venice-test-common/*',
+
+      // venice-controller
+      ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceController.java',
+      ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceControllerService.java',
+      ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
+      ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java',
+
+      // venice-router
+      ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',
+      ':!services/venice-router/src/main/java/com/linkedin/venice/router/streaming/VeniceChunkedResponse.java',
+
+      // venice-server
+      ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java',
+
+      // venice-standalone
+      ':!services/venice-standalone/*', // exclude the entire standalone project
+
+      // Keep this last
+      // Other files that have tests but are not executed in the regular unit test task
+      ':!internal/alpini/*'
   ]
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"

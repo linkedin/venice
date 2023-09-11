@@ -34,6 +34,7 @@ import org.apache.hc.core5.http.nio.RequestChannel;
 import org.apache.hc.core5.http.protocol.HttpContext;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpStatus;
+import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -66,7 +67,6 @@ public class TestTransportClient {
         FutureCallback<T> futureCallback) {
       return null;
     }
-
   }
 
   @BeforeMethod
@@ -74,7 +74,7 @@ public class TestTransportClient {
     mockD2Client = mock(D2Client.class);
     d2TransportClient = new D2TransportClient(SERVICE_NAME, mockD2Client, ClientAuthenticationProvider.DISABLED);
 
-    mockHttpClient = mock(MockableCloseableHttpAsyncClient.class);
+    mockHttpClient = mock(MockableCloseableHttpAsyncClient.class, Answers.CALLS_REAL_METHODS);
     httpTransportClient =
         new HttpTransportClient(HTTP_PREFIX + SERVICE_NAME, mockHttpClient, ClientAuthenticationProvider.DISABLED);
   }
@@ -96,10 +96,12 @@ public class TestTransportClient {
 
     ArgumentCaptor<AsyncRequestProducer> httpRequestCaptor = ArgumentCaptor.forClass(AsyncRequestProducer.class);
 
-    when(mockHttpClient.doExecute(any(), httpRequestCaptor.capture(), any(), any(), any(), any())).thenReturn(null);
+    when(mockHttpClient.doExecute(any(), any(), any(), any(), any(), any())).thenReturn(null);
 
     // test HttpTransportClient
     httpTransportClient.get(TEST_REQUEST);
+
+    verify(mockHttpClient).doExecute(any(), httpRequestCaptor.capture(), any(), any(), any(), any());
 
     httpRequestCaptor.getValue().sendRequest(new RequestChannel() {
       @Override

@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.StandardCharsets;
+import org.apache.avro.AvroTypeException;
 import org.apache.avro.Schema;
 import org.apache.avro.io.parsing.Symbol;
 
@@ -36,6 +37,19 @@ public class ByteBufferToHexFormatJsonEncoder extends JsonEncoder {
      */
     parser.pushSymbol(Symbol.STRING);
     writeString(ByteUtils.toHexString(bytes, start, len));
+  }
+
+  @Override
+  public void writeFixed(byte[] bytes, int start, int len) throws IOException {
+    parser.advance(Symbol.FIXED);
+    Symbol.IntCheckAction top = (Symbol.IntCheckAction) parser.popSymbol();
+    if (len != top.size) {
+      throw new AvroTypeException(
+          "Incorrect length for fixed binary: expected " + top.size + " but received " + len + " bytes.");
+    }
+    // Write human-readable string instead
+    parser.pushSymbol(Symbol.STRING);
+    writeString((ByteUtils.toHexString(bytes, start, len)));
   }
 
   /**

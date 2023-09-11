@@ -41,6 +41,10 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
@@ -71,6 +75,9 @@ import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
@@ -91,7 +98,14 @@ import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
@@ -267,9 +281,19 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
 
+  private final boolean parentSystemStoreRepairServiceEnabled;
+
+  private final int parentSystemStoreRepairCheckIntervalSeconds;
+
+  private final int parentSystemStoreHeartbeatCheckWaitTimeSeconds;
+
+  private final int parentSystemStoreRepairRetryCount;
+
   private final boolean parentExternalSupersetSchemaGenerationEnabled;
 
   private final boolean systemSchemaInitializationAtStartTimeEnabled;
+
+  private final PubSubClientsFactory pubSubClientsFactory;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -471,12 +495,43 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.storeGraveyardCleanupDelayMinutes = props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, 0);
     this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
+    this.parentSystemStoreRepairServiceEnabled =
+        props.getBoolean(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED, false);
+    this.parentSystemStoreRepairCheckIntervalSeconds =
+        props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS, 1800);
+    this.parentSystemStoreHeartbeatCheckWaitTimeSeconds =
+        props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS, 60);
+    this.parentSystemStoreRepairRetryCount = props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT, 1);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     this.parentExternalSupersetSchemaGenerationEnabled =
         props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
     this.systemSchemaInitializationAtStartTimeEnabled =
-        props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true);
+        props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
+
+    try {
+      String producerFactoryClassName =
+          props.getString(PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS, ApacheKafkaProducerAdapterFactory.class.getName());
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+          (PubSubProducerAdapterFactory) Class.forName(producerFactoryClassName).newInstance();
+      String consumerFactoryClassName =
+          props.getString(PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS, ApacheKafkaConsumerAdapterFactory.class.getName());
+      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
+          (PubSubConsumerAdapterFactory) Class.forName(consumerFactoryClassName).newInstance();
+      String adminFactoryClassName =
+          props.getString(PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS, ApacheKafkaAdminAdapterFactory.class.getName());
+      PubSubAdminAdapterFactory pubSubAdminAdapterFactory =
+          (PubSubAdminAdapterFactory) Class.forName(adminFactoryClassName).newInstance();
+
+      pubSubClientsFactory = new PubSubClientsFactory(
+          pubSubProducerAdapterFactory,
+          pubSubConsumerAdapterFactory,
+          pubSubAdminAdapterFactory);
+    } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
+      LOGGER.error("Failed to create an instance of pub sub clients factory", e);
+      throw new VeniceException(e);
+    }
+
   }
 
   private void validateActiveActiveConfigs() {
@@ -877,12 +932,32 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
   }
 
+  public boolean isParentSystemStoreRepairServiceEnabled() {
+    return parentSystemStoreRepairServiceEnabled;
+  }
+
+  public int getParentSystemStoreRepairCheckIntervalSeconds() {
+    return parentSystemStoreRepairCheckIntervalSeconds;
+  }
+
+  public int getParentSystemStoreHeartbeatCheckWaitTimeSeconds() {
+    return parentSystemStoreHeartbeatCheckWaitTimeSeconds;
+  }
+
+  public int getParentSystemStoreRepairRetryCount() {
+    return parentSystemStoreRepairRetryCount;
+  }
+
   public boolean isParentExternalSupersetSchemaGenerationEnabled() {
     return parentExternalSupersetSchemaGenerationEnabled;
   }
 
   public boolean isSystemSchemaInitializationAtStartTimeEnabled() {
     return systemSchemaInitializationAtStartTimeEnabled;
+  }
+
+  public PubSubClientsFactory getPubSubClientsFactory() {
+    return pubSubClientsFactory;
   }
 
   /**

@@ -17,6 +17,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
+import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestWriteUtils.UPDATE_SCHEMA_OF_NESTED_SCHEMA_STRING;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -32,6 +34,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -54,6 +57,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
@@ -92,6 +96,14 @@ public class VenicePushJobTest {
   private static final String PUSH_JOB_ID = "push_job_number_101";
   private static final String DISCOVERY_URL = "d2://d2Clusters/venice-discovery";
   private static final String PARENT_REGION_NAME = "dc-parent";
+
+  @Test
+  public void testVPJcheckInputUpdateSchema() {
+    VenicePushJob vpj = mock(VenicePushJob.class);
+    when(vpj.isUpdateSchema(anyString())).thenCallRealMethod();
+    Assert.assertTrue(vpj.isUpdateSchema(UPDATE_SCHEMA_OF_NESTED_SCHEMA_STRING));
+    Assert.assertFalse(vpj.isUpdateSchema(NESTED_SCHEMA_STRING));
+  }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")
   public void testRepushTTLJobWithNonKafkaInput() {
@@ -442,74 +454,35 @@ public class VenicePushJobTest {
     new VenicePushJob(PUSH_JOB_ID, props);
   }
 
-  @Test
-  public void testShouldBuildDictionary() {
+  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testShouldBuildZstdCompressionDictionary(
+      boolean compressionMetricCollectionEnabled,
+      boolean isSourceKafka,
+      boolean isIncrementalPush,
+      boolean inputFileHasRecords) {
     VenicePushJob.PushJobSetting pushJobSetting = new VenicePushJob.PushJobSetting();
     VenicePushJob.StoreSetting storeSetting = new VenicePushJob.StoreSetting();
+    pushJobSetting.compressionMetricCollectionEnabled = compressionMetricCollectionEnabled;
+    pushJobSetting.isSourceKafka = isSourceKafka;
+    pushJobSetting.isIncrementalPush = isIncrementalPush;
 
-    // Test with inputFileHasRecords == false
-    assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, false));
+    for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
+      storeSetting.compressionStrategy = compressionStrategy;
 
-    // Below tests will use inputFileHasRecords == true
-
-    // Test with isSourceKafka == true
-    pushJobSetting.isSourceKafka = true;
-    assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    // reset settings for the below tests
-    pushJobSetting.isSourceKafka = false;
-
-    // Test with isIncrementalPush == true
-    pushJobSetting.isIncrementalPush = true;
-
-    // Test with compressionMetricCollectionEnabled == true
-    pushJobSetting.compressionMetricCollectionEnabled = true;
-    storeSetting.compressionStrategy = CompressionStrategy.NO_OP;
-    assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    storeSetting.compressionStrategy = CompressionStrategy.GZIP;
-    assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    storeSetting.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
-    assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    // reset settings for the below tests
-    pushJobSetting.compressionMetricCollectionEnabled = false;
-
-    storeSetting.compressionStrategy = CompressionStrategy.NO_OP;
-    assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    storeSetting.compressionStrategy = CompressionStrategy.GZIP;
-    assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    storeSetting.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
-    assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    // reset settings for the below tests
-    pushJobSetting.isIncrementalPush = false;
-
-    // Test with compressionMetricCollectionEnabled == true
-    pushJobSetting.compressionMetricCollectionEnabled = true;
-    storeSetting.compressionStrategy = CompressionStrategy.NO_OP;
-    assertTrue(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    storeSetting.compressionStrategy = CompressionStrategy.GZIP;
-    assertTrue(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    storeSetting.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
-    assertTrue(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    // reset settings for the below tests
-    pushJobSetting.compressionMetricCollectionEnabled = false;
-
-    storeSetting.compressionStrategy = CompressionStrategy.NO_OP;
-    assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    storeSetting.compressionStrategy = CompressionStrategy.GZIP;
-    assertFalse(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
-
-    storeSetting.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
-    assertTrue(VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, true));
+      if (isSourceKafka || isIncrementalPush) {
+        assertFalse(
+            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
+      } else if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+        assertTrue(
+            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
+      } else if (compressionMetricCollectionEnabled && inputFileHasRecords) {
+        assertTrue(
+            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
+      } else {
+        assertFalse(
+            VenicePushJob.shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords));
+      }
+    }
   }
 
   @Test

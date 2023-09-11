@@ -130,7 +130,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   protected VeniceWriterMessage extract(BytesWritable key, Iterator<BytesWritable> valueIterator, Reporter reporter) {
     KafkaInputMapperKey mapperKey = KAFKA_INPUT_MAPPER_KEY_AVRO_SPECIFIC_DESERIALIZER
         .deserialize(ByteBuffer.wrap(key.getBytes(), 0, key.getLength()));
-    byte[] keyBytes = mapperKey.key.array();
+    byte[] keyBytes = ByteUtils.extractByteArray(mapperKey.key);
     if (!valueIterator.hasNext()) {
       throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }

@@ -668,6 +668,7 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setPartitions(partitionNum);
         responseObject.setReplicas(replicationFactor);
         responseObject.setKafkaTopic(version.kafkaTopicName());
+        responseObject.setKafkaBootstrapServers(version.getPushStreamSourceAddress());
 
         admin.writeEndOfPush(clusterName, storeName, versionNumber, true);
 

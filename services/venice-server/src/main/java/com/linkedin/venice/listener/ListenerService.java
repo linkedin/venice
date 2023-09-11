@@ -10,13 +10,18 @@ import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.authentication.AuthenticationService;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
+import com.linkedin.venice.grpc.VeniceGrpcServer;
+import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
+import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
+import io.grpc.ServerInterceptor;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -27,6 +32,7 @@ import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -46,14 +52,19 @@ public class ListenerService extends AbstractVeniceService {
   private EventLoopGroup workerGroup;
   private ChannelFuture serverFuture;
   private final int port;
+  private final int grpcPort;
+  private VeniceGrpcServer grpcServer;
+  private final boolean isGrpcEnabled;
   private final VeniceServerConfig serverConfig;
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
-
+  private final ThreadPoolExecutor grpcExecutor;
   private ThreadPoolExecutor sslHandshakeExecutor;
 
   // TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
+
+  private StorageReadRequestHandler storageReadRequestHandler;
 
   public ListenerService(
       StorageEngineRepository storageEngineRepository,
@@ -74,6 +85,8 @@ public class ListenerService extends AbstractVeniceService {
 
     this.serverConfig = serverConfig;
     this.port = serverConfig.getListenerPort();
+    this.isGrpcEnabled = serverConfig.isGrpcEnabled();
+    this.grpcPort = serverConfig.getGrpcPort();
 
     executor = createThreadPool(
         serverConfig.getRestServiceStorageThreadNum(),
@@ -95,7 +108,7 @@ public class ListenerService extends AbstractVeniceService {
       new ThreadPoolStats(metricsRepository, this.sslHandshakeExecutor, "ssl_handshake_thread_pool");
     }
 
-    StorageReadRequestsHandler requestHandler = createRequestHandler(
+    StorageReadRequestHandler requestHandler = createRequestHandler(
         executor,
         computeExecutor,
         storageEngineRepository,
@@ -108,6 +121,8 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.getParallelBatchGetChunkSize(),
         compressorFactory,
         resourceReadUsageTracker);
+
+    storageReadRequestHandler = requestHandler;
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository,
@@ -149,12 +164,34 @@ public class ListenerService extends AbstractVeniceService {
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
+
+    if (isGrpcEnabled && grpcServer == null) {
+      List<ServerInterceptor> interceptors = channelInitializer.initGrpcInterceptors();
+      VeniceServerGrpcRequestProcessor requestProcessor = channelInitializer.initGrpcRequestProcessor();
+      grpcExecutor = createThreadPool(serverConfig.getGrpcWorkerThreadCount(), "GrpcWorkerThread", nettyBacklogSize);
+
+      VeniceGrpcServerConfig.Builder grpcServerBuilder = new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
+          .setService(new VeniceReadServiceImpl(requestProcessor))
+          .setExecutor(grpcExecutor)
+          .setInterceptors(interceptors);
+
+      sslFactory.ifPresent(grpcServerBuilder::setSslFactory);
+
+      grpcServer = new VeniceGrpcServer(grpcServerBuilder.build());
+    } else {
+      grpcExecutor = null;
+    }
   }
 
   @Override
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
     LOGGER.info("Listener service started on port: {}", port);
+
+    if (isGrpcEnabled) {
+      grpcServer.start();
+      LOGGER.info("gRPC service started on port: {}", grpcPort);
+    }
 
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;
@@ -175,6 +212,11 @@ public class ListenerService extends AbstractVeniceService {
     workerGroup.shutdownGracefully();
     bossGroup.shutdownGracefully();
     shutdown.sync();
+
+    if (grpcServer != null) {
+      LOGGER.info("Stopping gRPC service on port {}", grpcPort);
+      grpcServer.stop();
+    }
   }
 
   protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix, int capacity) {
@@ -182,7 +224,7 @@ public class ListenerService extends AbstractVeniceService {
         .createThreadPool(threadCount, threadNamePrefix, capacity, serverConfig.getBlockingQueueType());
   }
 
-  protected StorageReadRequestsHandler createRequestHandler(
+  protected StorageReadRequestHandler createRequestHandler(
       ThreadPoolExecutor executor,
       ThreadPoolExecutor computeExecutor,
       StorageEngineRepository storageEngineRepository,
@@ -195,7 +237,7 @@ public class ListenerService extends AbstractVeniceService {
       int parallelBatchGetChunkSize,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
-    return new StorageReadRequestsHandler(
+    return new StorageReadRequestHandler(
         executor,
         computeExecutor,
         storageEngineRepository,

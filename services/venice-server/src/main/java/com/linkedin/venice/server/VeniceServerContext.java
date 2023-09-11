@@ -8,7 +8,6 @@ import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.authentication.AuthenticationService;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
@@ -33,7 +32,6 @@ public class VeniceServerContext {
   private final ClientConfig clientConfigForConsumer;
   private final ICProvider icProvider;
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
-  private final PubSubClientsFactory pubSubClientsFactory;
 
   public VeniceConfigLoader getVeniceConfigLoader() {
     return veniceConfigLoader;
@@ -75,10 +73,6 @@ public class VeniceServerContext {
     return serviceDiscoveryAnnouncers;
   }
 
-  public PubSubClientsFactory getPubSubClientsFactory() {
-    return pubSubClientsFactory;
-  }
-
   private VeniceServerContext(Builder builder) {
     this.veniceConfigLoader = builder.veniceConfigLoader;
     this.metricsRepository = builder.metricsRepository;
@@ -90,7 +84,6 @@ public class VeniceServerContext {
     this.authorizerService = builder.authorizerService;
     this.icProvider = builder.icProvider;
     this.serviceDiscoveryAnnouncers = builder.serviceDiscoveryAnnouncers;
-    this.pubSubClientsFactory = builder.pubSubClientsFactory;
   }
 
   public static class Builder {
@@ -106,7 +99,6 @@ public class VeniceServerContext {
     private ICProvider icProvider;
     private List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
     private boolean isServiceDiscoveryAnnouncerSet;
-    private PubSubClientsFactory pubSubClientsFactory;
 
     public Builder setVeniceConfigLoader(VeniceConfigLoader veniceConfigLoader) {
       this.veniceConfigLoader = veniceConfigLoader;
@@ -157,11 +149,6 @@ public class VeniceServerContext {
     public Builder setServiceDiscoveryAnnouncers(List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers) {
       this.isServiceDiscoveryAnnouncerSet = true;
       this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
-      return this;
-    }
-
-    public Builder setPubSubClientsFactory(PubSubClientsFactory pubSubClientsFactory) {
-      this.pubSubClientsFactory = pubSubClientsFactory;
       return this;
     }
 

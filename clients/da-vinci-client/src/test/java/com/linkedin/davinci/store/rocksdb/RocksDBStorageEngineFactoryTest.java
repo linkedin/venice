@@ -5,8 +5,10 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.File;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -20,7 +22,7 @@ public class RocksDBStorageEngineFactoryTest {
 
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
 
-    final String testStore = Utils.getUniqueString("test_store");
+    final String testStore = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     VeniceStoreVersionConfig testStoreConfig =
         new VeniceStoreVersionConfig(testStore, veniceServerProperties, PersistenceType.ROCKS_DB);
     AbstractStorageEngine storeEngine = factory.getStorageEngine(testStoreConfig);
@@ -37,11 +39,11 @@ public class RocksDBStorageEngineFactoryTest {
 
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
 
-    final String testStore1 = Utils.getUniqueString("test_store");
+    final String testStore1 = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     VeniceStoreVersionConfig testStoreConfig1 =
         new VeniceStoreVersionConfig(testStore1, veniceServerProperties, PersistenceType.ROCKS_DB);
     factory.getStorageEngine(testStoreConfig1);
-    final String testStore2 = Utils.getUniqueString("test_store");
+    final String testStore2 = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     VeniceStoreVersionConfig testStoreConfig2 =
         new VeniceStoreVersionConfig(testStore2, veniceServerProperties, PersistenceType.ROCKS_DB);
     factory.getStorageEngine(testStoreConfig2);
@@ -61,7 +63,7 @@ public class RocksDBStorageEngineFactoryTest {
 
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
 
-    final String testStore = Utils.getUniqueString("test_store");
+    final String testStore = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     VeniceStoreVersionConfig testStoreConfig =
         new VeniceStoreVersionConfig(testStore, veniceServerProperties, PersistenceType.ROCKS_DB);
     AbstractStorageEngine storageEngine = factory.getStorageEngine(testStoreConfig);
@@ -74,12 +76,34 @@ public class RocksDBStorageEngineFactoryTest {
   }
 
   @Test
+  public void testRemoveStorageEnginePartition() {
+    // Create one databases
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+
+    final String testStore = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    VeniceStoreVersionConfig testStoreConfig =
+        new VeniceStoreVersionConfig(testStore, veniceServerProperties, PersistenceType.ROCKS_DB);
+    AbstractStorageEngine storageEngine = factory.getStorageEngine(testStoreConfig);
+    File file = new File(factory.getRocksDBPath(testStore, 1));
+    file.mkdirs();
+    Assert.assertTrue(file.exists());
+    // drop the database
+    factory.removeStorageEngine(storageEngine);
+    factory.removeStorageEnginePartition(testStore, 1);
+    factory.close();
+    Assert.assertFalse(file.exists());
+  }
+
+  @Test
   public void testAddNewPartitionAfterRemoving() {
     VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
 
-    final String testStore = Utils.getUniqueString("test_store_");
+    final String testStore = Version.composeKafkaTopic(Utils.getUniqueString("test_store_"), 1);
     VeniceStoreVersionConfig testStoreConfig =
         new VeniceStoreVersionConfig(testStore, veniceServerProperties, PersistenceType.ROCKS_DB);
     AbstractStorageEngine storeEngine = factory.getStorageEngine(testStoreConfig);

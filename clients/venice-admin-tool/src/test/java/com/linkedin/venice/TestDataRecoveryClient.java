@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -23,6 +24,8 @@ import com.linkedin.venice.datarecovery.DataRecoveryTask;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.MonitorCommand;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
+import com.linkedin.venice.datarecovery.meta.RepushViabilityInfo;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
@@ -158,13 +161,20 @@ public class TestDataRecoveryClient {
         .setTimestamp(LocalDateTime.parse("2999-12-31T00:00:00", DateTimeFormatter.ISO_LOCAL_DATE_TIME))
         .setSSLFactory(Optional.empty())
         .setDestFabric("ei-ltx1")
-        .setSourceFabric("ei-ltx1");
-
-    StoreRepushCommand.Params cmdParams = builder.build();
+        .setSourceFabric("ei4");
 
     D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
     r.setCluster("test");
     doReturn(r).when(controllerClient).discoverCluster(anyString());
+
+    StoreRepushCommand.Params cmdParams = builder.build();
+
+    ControllerResponse mockRecoveryResponse = spy(ControllerResponse.class);
+    doReturn(false).when(mockRecoveryResponse).isError();
+    doReturn(mockRecoveryResponse).when(controllerClient)
+        .prepareDataRecovery(anyString(), anyString(), anyString(), anyInt(), any());
+    doReturn(mockRecoveryResponse).when(controllerClient)
+        .dataRecovery(anyString(), anyString(), anyString(), anyInt(), anyBoolean(), anyBoolean(), any());
 
     // Partial mock of Module class to take password from console input.
     executor = spy(DataRecoveryExecutor.class);
@@ -182,10 +192,14 @@ public class TestDataRecoveryClient {
     StoreRepushCommand mockStoreRepushCmd = spy(StoreRepushCommand.class);
     mockStoreRepushCmd.setParams(cmdParams);
     doReturn(mockCmd).when(mockStoreRepushCmd).getShellCmd();
+    doCallRealMethod().when(mockStoreRepushCmd).toString();
+    doReturn(true).when(mockStoreRepushCmd).isShellCmdExecuted();
+    doReturn(new StoreRepushCommand.Result()).when(mockStoreRepushCmd).getResult();
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));
-    List<DataRecoveryTask> tasks = buildExecuteDataRecoveryTasks(storeName, mockStoreRepushCmd, cmdParams);
+    List<DataRecoveryTask> tasks =
+        buildExecuteDataRecoveryTasks(storeName, mockStoreRepushCmd, cmdParams, isSuccess, controllerClient);
     doReturn(tasks).when(executor).buildTasks(any(), any());
 
     // Store filtering mocks
@@ -199,33 +213,54 @@ public class TestDataRecoveryClient {
 
     MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
     Map<String, String> storeStatusMap = new HashMap<>();
+    storeStatusMap.put("ei-ltx1", "0");
     doReturn(storeStatusMap).when(storeStatusResponse).getStoreStatusMap();
     doReturn(storeStatusResponse).when(controllerClient).getFutureVersions(anyString(), anyString());
+
+    StoreResponse storeResponse = mock(StoreResponse.class);
+    StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0L, 0L, 0L, null, null));
+    storeInfo.setCurrentVersion(1);
+    doReturn(storeInfo).when(storeResponse).getStore();
+    doReturn(storeResponse).when(controllerClient).getStore(anyString());
 
     // Partial mock of Client class to confirm to-be-repushed stores from standard input.
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
     doReturn(executor).when(dataRecoveryClient).getExecutor();
     doCallRealMethod().when(dataRecoveryClient).execute(any(), any());
     doReturn(true).when(dataRecoveryClient).confirmStores(any());
-    doCallRealMethod().when(dataRecoveryClient).getRepushViability(any(), any());
-    doReturn(controllerClient).when(dataRecoveryClient).buildControllerClient(anyString(), anyString(), any());
     // client executes three store recovery.
     DataRecoveryClient.DataRecoveryParams drParams = new DataRecoveryClient.DataRecoveryParams(storeName);
     drParams.setNonInteractive(true);
-    dataRecoveryClient.execute(drParams, cmdParams);
 
+    dataRecoveryClient.execute(drParams, cmdParams);
     verifyExecuteRecoveryResults(isSuccess);
+    dataRecoveryClient.getExecutor().getTasks().clear();
+
+    // test batch store
+    storeInfo.setHybridStoreConfig(null);
+    dataRecoveryClient.execute(drParams, cmdParams);
+    for (DataRecoveryTask t: dataRecoveryClient.getExecutor().getTasks()) {
+      Assert.assertFalse(t.getTaskResult().getCmdResult().isError());
+    }
+
+    dataRecoveryClient.getExecutor().getTasks().clear();
 
     // testing repush with invalid timestamps
 
     storeStatusMap.put("ei-ltx1", "7");
     builder.setTimestamp(LocalDateTime.parse("1999-12-31T00:00:00", DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+    cmdParams = builder.build();
     doReturn("2999-12-31T23:59:59.171961").when(regionPushDetailsMock).getPushStartTimestamp();
     Assert.assertEquals(
         storeHealthInfoMock.getRegionPushDetails().get("ei-ltx1").getPushStartTimestamp(),
         "2999-12-31T23:59:59.171961");
     dataRecoveryClient.execute(drParams, cmdParams);
-    Assert.assertEquals(dataRecoveryClient.getExecutor().getSkippedStores().contains("store3"), true);
+
+    // verify
+    for (DataRecoveryTask t: dataRecoveryClient.getExecutor().getTasks()) {
+      Assert.assertTrue(t.getCommand().getResult().isError());
+    }
 
     drParams = new DataRecoveryClient.DataRecoveryParams(null);
     dataRecoveryClient.execute(drParams, cmdParams);
@@ -234,14 +269,33 @@ public class TestDataRecoveryClient {
   private List<DataRecoveryTask> buildExecuteDataRecoveryTasks(
       Set<String> storeNames,
       Command cmd,
-      StoreRepushCommand.Params params) {
+      StoreRepushCommand.Params params,
+      boolean isSuccess,
+      ControllerClient controllerClient) {
     List<DataRecoveryTask> tasks = new ArrayList<>();
     StoreRepushCommand.Params.Builder builder = new StoreRepushCommand.Params.Builder(params);
     for (String name: storeNames) {
+      builder.setPCtrlCliWithoutCluster(controllerClient);
       StoreRepushCommand.Params p = builder.build();
       p.setStore(name);
       DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
-      tasks.add(new DataRecoveryTask(cmd, taskParams));
+      StoreRepushCommand newCmd = spy(StoreRepushCommand.class);
+      doReturn(controllerClient).when(newCmd).buildControllerClient(anyString(), anyString(), any());
+      doReturn(p).when(newCmd).getParams();
+      List<String> mockCmd = new ArrayList<>();
+      mockCmd.add("sh");
+      mockCmd.add("-c");
+
+      if (isSuccess) {
+        mockCmd.add("echo \"success: https://example.com/executor?execid=21585379\"");
+      } else {
+        mockCmd.add("echo \"failure: Incorrect Login. Username/Password+VIP not found.\"");
+      }
+      doReturn(mockCmd).when(newCmd).getShellCmd();
+
+      doCallRealMethod().when(newCmd).toString();
+      doReturn(true).when(newCmd).isShellCmdExecuted();
+      tasks.add(new DataRecoveryTask(newCmd, taskParams));
     }
     return tasks;
   }
@@ -436,4 +490,35 @@ public class TestDataRecoveryClient {
       storeNames.add(monitor.getTasks().get(i).getTaskParams().getStore());
     }
   }
+
+  @Test
+  public void testRepushViabilityInfo() {
+    RepushViabilityInfo info = new RepushViabilityInfo();
+    info.viableWithResult(RepushViabilityInfo.Result.SUCCESS);
+    Assert.assertFalse(info.isError());
+
+    info.inViableWithResult(RepushViabilityInfo.Result.CURRENT_VERSION_IS_NEWER);
+    Assert.assertFalse(info.isError());
+
+    info.inViableWithError(RepushViabilityInfo.Result.DISCOVERY_ERROR);
+    Assert.assertTrue(info.isError());
+  }
+
+  @Test
+  public void testRepushCommandExecute() {
+    StoreRepushCommand repushCommand = spy(StoreRepushCommand.class);
+    RepushViabilityInfo info = new RepushViabilityInfo();
+    info.inViableWithResult(RepushViabilityInfo.Result.CURRENT_VERSION_IS_NEWER);
+    StoreRepushCommand.Params repushParams = new StoreRepushCommand.Params();
+    doReturn(info).when(repushCommand).getRepushViability();
+    doReturn(repushParams).when(repushCommand).getParams();
+
+    repushCommand.execute();
+    Assert.assertFalse(repushCommand.getResult().isError());
+
+    info.inViableWithError(RepushViabilityInfo.Result.DISCOVERY_ERROR);
+    repushCommand.execute();
+    Assert.assertTrue(repushCommand.getResult().isError());
+  }
+
 }

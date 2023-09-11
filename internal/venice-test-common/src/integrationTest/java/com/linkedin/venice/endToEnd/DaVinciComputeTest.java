@@ -25,15 +25,17 @@ import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
-import com.linkedin.venice.compute.ComputeOperationUtils;
+import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -79,6 +81,8 @@ public class DaVinciComputeTest {
   private static final int TEST_TIMEOUT = 120_000; // ms
 
   private VeniceClusterWrapper cluster;
+
+  private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
   private D2Client d2Client;
   private final List<Float> mfEmbedding = generateRandomFloatList(100);
   private final List<Float> companiesEmbedding = generateRandomFloatList(100);
@@ -144,6 +148,8 @@ public class DaVinciComputeTest {
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
     D2ClientUtils.startClient(d2Client);
+    pubSubProducerAdapterFactory =
+        cluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
   }
 
   @AfterClass
@@ -179,7 +185,8 @@ public class DaVinciComputeTest {
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
 
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD);
@@ -242,10 +249,10 @@ public class DaVinciComputeTest {
         // Results for key 1 should be non-null since the nullable field in the value of key 1 is non-null
         Assert.assertEquals(
             readComputeResult.get(key1).get("dot_product_result"),
-            ComputeOperationUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+            ComputeUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
         Assert.assertEquals(
             readComputeResult.get(key1).get("hadamard_product_result"),
-            ComputeOperationUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+            ComputeUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
         Assert.assertEquals(readComputeResult.get(key1).get("cosine_similarity_result"), 1.0f); // Cosine similarity
                                                                                                 // between a vector and
                                                                                                 // itself is 1.0
@@ -286,7 +293,8 @@ public class DaVinciComputeTest {
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
 
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
@@ -295,12 +303,9 @@ public class DaVinciComputeTest {
 
     int numRecords = 100;
     Map<Integer, ComputeGenericRecord> computeResult;
-    Set<Integer> keySetForCompute = new HashSet<Integer>() {
-      {
-        add(1);
-        add(2);
-      }
-    };
+    Set<Integer> keySetForCompute = new HashSet<>();
+    keySetForCompute.add(1);
+    keySetForCompute.add(2);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
@@ -422,7 +427,8 @@ public class DaVinciComputeTest {
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
 
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
@@ -534,7 +540,8 @@ public class DaVinciComputeTest {
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
 
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STEAMING_COMPUTE);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STREAMING_COMPUTE);
@@ -632,7 +639,8 @@ public class DaVinciComputeTest {
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
 
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_PARTIAL_KEY_LOOKUP);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
@@ -732,7 +740,8 @@ public class DaVinciComputeTest {
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    VeniceWriterFactory vwFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
 
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_PARTIAL_KEY_LOOKUP);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
@@ -872,7 +881,7 @@ public class DaVinciComputeTest {
       String key = KEY_PREFIX + i;
       GenericRecord record = resultMap.get(key);
       Assert.assertEquals(record.get("int_field"), i);
-      Assert.assertNull(record.get("float_field"));
+      TestUtils.checkMissingFieldInAvroRecord(record, "float_field");
     }
   }
 

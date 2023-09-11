@@ -1,8 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedDerivedSchemaEntry;
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedRmdSchemaEntry;
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedValueSchemaEntry;
+import static com.linkedin.davinci.schema.SchemaUtils.getAnnotatedDerivedSchemaEntry;
+import static com.linkedin.davinci.schema.SchemaUtils.getAnnotatedRmdSchemaEntry;
+import static com.linkedin.davinci.schema.SchemaUtils.getAnnotatedValueSchemaEntry;
 
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;

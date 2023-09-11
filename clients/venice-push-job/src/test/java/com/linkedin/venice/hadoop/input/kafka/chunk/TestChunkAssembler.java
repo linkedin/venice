@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka.chunk;
 
-import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.createChunkBytes;
-import static com.linkedin.venice.hadoop.input.kafka.chunk.TestChunkingUtils.createChunkedKeySuffix;
+import static com.linkedin.venice.chunking.TestChunkingUtils.createChunkBytes;
+import static com.linkedin.venice.chunking.TestChunkingUtils.createChunkedKeySuffix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
@@ -16,6 +16,7 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -120,7 +121,7 @@ public class TestChunkAssembler {
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-    values.remove(0); // Remove the first value which should be a manifest
+    values.remove(1); // Remove the second value which should be a manifest
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
@@ -145,7 +146,7 @@ public class TestChunkAssembler {
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values.size() - 2) + 1;
+    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values.size() - 3) + 2;
     values.remove(indexOfMissingChunk); // Remove a chunk
     chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
   }
@@ -188,7 +189,7 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID_2,
         totalChunkCount1 + 1);
 
-    values2.remove(0); // Remove the manifest from the second sequence
+    values2.remove(1); // Remove the manifest from the second sequence
     List<BytesWritable> allValues = new ArrayList<>();
     allValues.addAll(values2);
     allValues.addAll(values1);
@@ -240,9 +241,9 @@ public class TestChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        totalChunkCount1);
+        values1.size());
 
-    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values2.size() - 2) + 1;
+    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values2.size() - 3) + 2;
     values2.remove(indexOfMissingChunk); // Remove a chunk from the second sequence
     List<BytesWritable> allValues = new ArrayList<>();
     allValues.addAll(values2);
@@ -457,8 +458,6 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
-    chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
     ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
@@ -471,7 +470,7 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID,
         0);
     // Randomly remove a value to simulate the incomplete large value
-    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
+    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 3) + 2);
 
     byte[] regularValueBytes = createChunkBytes(100, 23);
     values.add(0, createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
@@ -583,7 +582,7 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID,
         0);
     // Randomly remove a value to simulate the incomplete large value
-    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
+    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 3) + 2);
 
     // "Delete value" at the end
     values.add(0, createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
@@ -637,7 +636,7 @@ public class TestChunkAssembler {
             VALUE_SCHEMA_ID,
             1));
     // Randomly remove a value chunk to simulate the incomplete large value
-    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
+    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 3) + 2);
     byte[] regularValueBytes = createChunkBytes(100, 23);
     values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
 
@@ -719,8 +718,6 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
-    chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
     ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
@@ -735,7 +732,7 @@ public class TestChunkAssembler {
             VALUE_SCHEMA_ID,
             1));
     // Randomly remove a chunk value to simulate the incomplete large value
-    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
+    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 3) + 2);
     values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
@@ -759,6 +756,7 @@ public class TestChunkAssembler {
 
   /**
    * Create a sequence of chunks and a manifest. E.g. chunk_0, chunk_1, ..., chunk_N, chunk_manifest
+   * This function will also add a chunk cleanup message after manifest.
    */
   private List<BytesWritable> createKafkaInputMapperValues(
       byte[] serializedKey,
@@ -828,19 +826,35 @@ public class TestChunkAssembler {
       chunkedRmdManifest.schemaId = valueSchemaID;
       chunkedRmdManifest.size = rmdChunkInfo.totalChunkCount * rmdChunkInfo.eachCountSizeInBytes;
     }
-    KafkaInputMapperValue lastMapperValue = new KafkaInputMapperValue();
-    lastMapperValue.valueType = MapperValueType.PUT;
-    lastMapperValue.offset = currOffset;
-    lastMapperValue.schemaId = CHUNK_MANIFEST_SCHEMA_ID;
-    lastMapperValue.value = ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize("", chunkedValueManifest));
-    lastMapperValue.chunkedKeySuffix = ByteBuffer
+    KafkaInputMapperValue mapperValueForManifest = new KafkaInputMapperValue();
+    mapperValueForManifest.valueType = MapperValueType.PUT;
+    mapperValueForManifest.offset = currOffset++;
+    mapperValueForManifest.schemaId = CHUNK_MANIFEST_SCHEMA_ID;
+    mapperValueForManifest.value =
+        ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize("", chunkedValueManifest));
+    mapperValueForManifest.chunkedKeySuffix = ByteBuffer
         .wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX));
-    lastMapperValue.replicationMetadataPayload = (rmdChunkInfo == null)
+    mapperValueForManifest.replicationMetadataPayload = (rmdChunkInfo == null)
         ? ByteBuffer.wrap(new byte[0])
         : ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize("", chunkedRmdManifest));
-    lastMapperValue.replicationMetadataVersionId = 1;
+    mapperValueForManifest.replicationMetadataVersionId = 1;
+    values.add(serialize(mapperValueForManifest));
 
-    values.add(serialize(lastMapperValue));
+    // Add one chunk cleanup message
+    KafkaInputMapperValue valueChunkCleanupMessage = new KafkaInputMapperValue();
+    valueChunkCleanupMessage.valueType = MapperValueType.DELETE;
+    valueChunkCleanupMessage.offset = currOffset++;
+    valueChunkCleanupMessage.schemaId = CHUNK_VALUE_SCHEMA_ID;
+    valueChunkCleanupMessage.value = VeniceWriter.EMPTY_BYTE_BUFFER;
+
+    ChunkedKeySuffix chunkedKeySuffix =
+        createChunkedKeySuffix(segmentNumber, sequenceNumber, valueChunkInfo.totalChunkCount * 2);
+    valueChunkCleanupMessage.chunkedKeySuffix =
+        ByteBuffer.wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", chunkedKeySuffix));
+    valueChunkCleanupMessage.replicationMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    valueChunkCleanupMessage.replicationMetadataPayload = VeniceWriter.EMPTY_BYTE_BUFFER;
+    values.add(serialize(valueChunkCleanupMessage));
+
     // The offset of the messages will be in descending order.
     Collections.reverse(values);
     return values;

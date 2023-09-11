@@ -257,7 +257,7 @@ public class RocksDBSstFileWriter {
                     + recordNumInLastSSTFile + ", latency(ms): " + LatencyUtils.getElapsedTimeInMs(startMs));
           }
         }
-      } else {
+      } else if (!isRMD) {
         LOGGER.warn(
             "Sync gets invoked for store: {}, partition id: {}, but the last sst file: {} is empty",
             storeName,

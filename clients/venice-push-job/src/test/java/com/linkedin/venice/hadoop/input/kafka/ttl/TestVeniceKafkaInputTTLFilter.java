@@ -2,7 +2,7 @@ package com.linkedin.venice.hadoop.input.kafka.ttl;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.mockito.Mockito.doReturn;
@@ -16,11 +16,12 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
-import com.linkedin.venice.schema.rmd.RmdUtils;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -157,8 +158,9 @@ public class TestVeniceKafkaInputTTLFilter {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
     value.schemaId = isChunkedRecord ? -10 : 1;
     value.replicationMetadataVersionId = 1;
-    value.replicationMetadataPayload =
-        RmdUtils.serializeRmdRecord(rmdSchema, generateRmdRecordWithValueLevelTimeStamp(timestamp));
+    value.replicationMetadataPayload = ByteBuffer.wrap(
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema)
+            .serialize(generateRmdRecordWithValueLevelTimeStamp(timestamp)));
     return value;
   }
 
@@ -166,7 +168,7 @@ public class TestVeniceKafkaInputTTLFilter {
     List<Long> vectors = Arrays.asList(1L, 2L, 3L);
     GenericRecord record = new GenericData.Record(rmdSchema);
     record.put(TIMESTAMP_FIELD_NAME, timestamp);
-    record.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, vectors);
+    record.put(REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, vectors);
     return record;
   }
 }

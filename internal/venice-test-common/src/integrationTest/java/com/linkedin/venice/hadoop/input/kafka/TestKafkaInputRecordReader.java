@@ -16,7 +16,6 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -34,20 +33,20 @@ public class TestKafkaInputRecordReader {
   private static final String KAFKA_MESSAGE_KEY_PREFIX = "key_";
   private static final String KAFKA_MESSAGE_VALUE_PREFIX = "value_";
 
-  private PubSubBrokerWrapper kafka;
+  private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager manager;
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
-    kafka = ServiceFactory.getPubSubBroker();
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     manager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
                 DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
                 100L,
                 24 * Time.MS_PER_HOUR,
-                kafka.getAddress(),
+                pubSubBrokerWrapper,
                 pubSubTopicRepository)
             .getTopicManager();
   }
@@ -55,13 +54,15 @@ public class TestKafkaInputRecordReader {
   @AfterClass
   public void cleanUp() throws IOException {
     Utils.closeQuietlyWithErrorLogged(manager);
-    Utils.closeQuietlyWithErrorLogged(kafka);
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper);
   }
 
   public String getTopic(int numRecord, Pair<Integer, Integer> updateRange, Pair<Integer, Integer> deleteRange) {
     String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
     manager.createTopic(pubSubTopicRepository.getTopic(topicName), 1, 1, true);
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
+    VeniceWriterFactory veniceWriterFactory = IntegrationTestPushUtils.getVeniceWriterFactory(
+        pubSubBrokerWrapper,
+        pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory());
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {
       for (int i = 0; i < numRecord; ++i) {
@@ -83,7 +84,7 @@ public class TestKafkaInputRecordReader {
   @Test
   public void testNext() throws IOException {
     JobConf conf = new JobConf();
-    conf.set(KAFKA_INPUT_BROKER_URL, kafka.getAddress());
+    conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(-1, -1));
     conf.set(KAFKA_INPUT_TOPIC, topic);
@@ -106,7 +107,7 @@ public class TestKafkaInputRecordReader {
   @Test
   public void testNextWithDeleteMessage() throws IOException {
     JobConf conf = new JobConf();
-    conf.set(KAFKA_INPUT_BROKER_URL, kafka.getAddress());
+    conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(0, 10));
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
@@ -134,7 +135,7 @@ public class TestKafkaInputRecordReader {
   @Test
   public void testNextWithUpdateMessage() throws IOException {
     JobConf conf = new JobConf();
-    conf.set(KAFKA_INPUT_BROKER_URL, kafka.getAddress());
+    conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
     String topic = getTopic(100, new Pair<>(21, 30), new Pair<>(11, 20));
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());

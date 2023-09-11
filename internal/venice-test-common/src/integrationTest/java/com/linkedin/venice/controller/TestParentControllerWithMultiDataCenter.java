@@ -24,7 +24,6 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -71,7 +70,7 @@ public class TestParentControllerWithMultiDataCenter {
         1,
         1,
         1,
-        Optional.of(new VeniceProperties(controllerProps)),
+        Optional.of(controllerProps),
         Optional.of(controllerProps),
         Optional.empty());
 
@@ -451,6 +450,18 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
           Assert.assertEquals(storeInfo.getCurrentVersion(), 1);
+        });
+      }
+
+      // Now lets go back to the future version for fun
+      response = parentControllerClient.rollForwardToFutureVersion(storeName);
+      Assert.assertFalse(response.isError());
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          Assert.assertEquals(storeInfo.getCurrentVersion(), 2);
         });
       }
     }

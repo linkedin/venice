@@ -161,13 +161,6 @@ public class MonitorCommand extends Command {
     result.setCoreWorkDone(true);
   }
 
-  public ControllerClient buildControllerClient(
-      String clusterName,
-      String discoveryUrls,
-      Optional<SSLFactory> sslFactory) {
-    return new ControllerClient(clusterName, discoveryUrls, sslFactory);
-  }
-
   public static class Params extends Command.Params {
     // Target region.
     private String targetRegion;

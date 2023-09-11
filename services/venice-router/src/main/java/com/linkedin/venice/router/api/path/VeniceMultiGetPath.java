@@ -82,7 +82,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
     initialize(storeName, resourceName, keys, partitionFinder, maxKeyCount, stats);
   }
 
-  private VeniceMultiGetPath(
+  VeniceMultiGetPath(
       String storeName,
       int versionNumber,
       String resourceName,
@@ -104,9 +104,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   @Nonnull
   @Override
   public String getLocation() {
-    StringBuilder sb = new StringBuilder();
-    sb.append(TYPE_STORAGE).append(VenicePathParser.SEP).append(getResourceName());
-    return sb.toString();
+    return TYPE_STORAGE + VenicePathParser.SEP + getResourceName();
   }
 
   @Override

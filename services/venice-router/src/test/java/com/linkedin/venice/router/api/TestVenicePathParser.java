@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.api;
 
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -15,13 +15,18 @@ import com.linkedin.alpini.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.api.path.TestVeniceComputePath;
+import com.linkedin.venice.router.api.path.VeniceComputePath;
+import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
@@ -38,9 +43,12 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.mockito.Mockito;
@@ -79,8 +87,8 @@ public class TestVenicePathParser {
         compressorFactory);
   }
 
-  RouterStats getMockedStats() {
-    RouterStats mockRouterStats = mock(RouterStats.class);
+  RouterStats<AggRouterHttpRequestStats> getMockedStats() {
+    RouterStats<AggRouterHttpRequestStats> mockRouterStats = mock(RouterStats.class);
     when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
     return mockRouterStats;
   }
@@ -102,12 +110,75 @@ public class TestVenicePathParser {
   }
 
   @Test
+  public void testParseResourceUri_ComputeRequest() throws RouterException {
+    VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
+    doReturn(10).when(partitionFinder).getNumPartitions(any());
+    doReturn(3).when(partitionFinder).findPartitionNumber(any(), anyInt(), any(), anyInt());
+    doReturn(new DefaultVenicePartitioner()).when(partitionFinder).findPartitioner(any(), anyInt());
+
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    doReturn(10).when(storeRepository).getBatchGetLimit(any());
+
+    VenicePathParser parser = new VenicePathParser<BasicFullHttpRequest>(
+        getVersionFinder(),
+        partitionFinder,
+        getMockedStats(),
+        storeRepository,
+        mock(VeniceRouterConfig.class),
+        mock(CompressorFactory.class));
+
+    String storeName = "test-store";
+    String uri = "storage/" + storeName;
+    List<ByteBuffer> keys = Collections.singletonList(ByteBuffer.wrap(("test-key").getBytes()));
+    BasicFullHttpRequest request = TestVeniceComputePath.getComputeHttpRequest(
+        storeName,
+        TestVeniceComputePath.getComputeRequest(),
+        keys,
+        ComputeRequestWrapper.LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
+
+    // Verify request rejection when neither read-compute or client-compute is available.
+    doReturn(false).when(storeRepository).isReadComputationEnabled(any());
+    RouterException e = Assert.expectThrows(RouterException.class, () -> parser.parseResourceUri(uri, request));
+    Assert.assertEquals(
+        e.getMessage(),
+        "Read compute is not enabled for the store. Please contact Venice team to enable the feature.");
+
+    // Verify request handling when read-compute is enabled.
+    doReturn(true).when(storeRepository).isReadComputationEnabled(any());
+    request.content().resetReaderIndex();
+    VenicePath path = parser.parseResourceUri(uri, request);
+    Assert.assertTrue(path instanceof VeniceComputePath);
+    path.getResponseHeaders()
+        .ifPresent(headers -> Assert.assertFalse(headers.containsKey(HttpConstants.VENICE_CLIENT_COMPUTE)));
+
+    // Verify request handling when both read-compute and client-compute are available.
+    request.headers().add(HttpConstants.VENICE_CLIENT_COMPUTE, "1");
+    request.content().resetReaderIndex();
+    path = parser.parseResourceUri(uri, request);
+    Assert.assertTrue(path instanceof VeniceComputePath);
+    path.getResponseHeaders()
+        .ifPresent(headers -> Assert.assertFalse(headers.containsKey(HttpConstants.VENICE_CLIENT_COMPUTE)));
+
+    // Verify compute to multi-get conversion when read-compute is disabled, but client-compute is available.
+    doReturn(false).when(storeRepository).isReadComputationEnabled(any());
+    request.headers().add(HttpConstants.VENICE_CLIENT_COMPUTE, "1");
+    request.content().resetReaderIndex();
+    path = parser.parseResourceUri(uri, request);
+    Assert.assertTrue(path instanceof VeniceMultiGetPath);
+    Assert.assertTrue(path.getResponseHeaders().isPresent());
+    Assert.assertTrue(
+        path.getResponseHeaders()
+            .get()
+            .entrySet()
+            .contains(new AbstractMap.SimpleEntry<>(HttpConstants.VENICE_CLIENT_COMPUTE, "1")));
+  }
+
+  @Test
   public void parsesQueries() throws RouterException {
     String uri = "storage/store/key";
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    doReturn(3).when(partitionFinder)
-        .findPartitionNumber(Mockito.anyObject(), Mockito.anyInt(), Mockito.anyString(), Mockito.anyInt());
+    doReturn(3).when(partitionFinder).findPartitionNumber(any(), anyInt(), anyString(), anyInt());
     VenicePathParser parser = new VenicePathParser(
         getVersionFinder(),
         partitionFinder,
@@ -235,6 +306,5 @@ public class TestVenicePathParser {
     for (String name: badNames) {
       Assert.assertFalse(VenicePathParser.isStoreNameValid(name), "Store name: " + name + " should not be valid");
     }
-
   }
 }

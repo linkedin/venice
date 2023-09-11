@@ -25,13 +25,18 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -116,7 +121,7 @@ public class RocksDBStoragePartitionTest {
       boolean reopenDatabaseDuringInterruption,
       boolean verifyChecksum) {
     CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
-    String storeName = Utils.getUniqueString("test_store");
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
@@ -257,7 +262,7 @@ public class RocksDBStoragePartitionTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testIngestionFormatVersionChange(boolean sorted) throws RocksDBException {
     CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
-    String storeName = Utils.getUniqueString("test_store");
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
@@ -378,6 +383,37 @@ public class RocksDBStoragePartitionTest {
     // Verify all the key/value pairs can be read using the new format
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
       Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), entry.getValue().getBytes());
+      // Try to read via multi-get API
+      List<byte[]> values = storagePartition.multiGet(Arrays.asList(entry.getKey().getBytes()));
+      Assert.assertEquals(values.get(0), entry.getValue().getBytes());
+
+      // Try to read via multi-get buffer reuse API
+      List<ByteBuffer> keys = new ArrayList<>();
+      ByteBuffer key = ByteBuffer.allocateDirect(100);
+      key.put(entry.getKey().getBytes());
+      key.flip();
+      keys.add(key);
+      List<ByteBuffer> byteBufferList = new ArrayList<>();
+      byteBufferList.add(ByteBuffer.allocateDirect(100));
+      // Test with a large enough buffer
+      Assert.assertEquals(
+          ByteUtils.copyByteArray(storagePartition.multiGet(keys, byteBufferList).get(0)),
+          entry.getValue().getBytes());
+
+      // Test with a small buffer
+      byteBufferList.set(0, ByteBuffer.allocateDirect(1));
+      Assert.assertEquals(
+          ByteUtils.copyByteArray(storagePartition.multiGet(keys, byteBufferList).get(0)),
+          entry.getValue().getBytes());
+      // test it again with the internally enlarged buffer
+      Assert.assertTrue(byteBufferList.get(0).capacity() > 1);
+      Assert.assertEquals(
+          ByteUtils.copyByteArray(storagePartition.multiGet(keys, byteBufferList).get(0)),
+          entry.getValue().getBytes());
+
+      // Test with a non-existing key
+      keys.set(0, ByteBuffer.allocateDirect(1));
+      Assert.assertNull(storagePartition.multiGet(keys, byteBufferList).get(0));
     }
 
     // Test deletion
@@ -400,7 +436,7 @@ public class RocksDBStoragePartitionTest {
       boolean reopenDatabaseDuringInterruption,
       boolean verifyChecksum) {
     CheckSum runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
-    String storeName = Utils.getUniqueString("test_store");
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
@@ -541,7 +577,7 @@ public class RocksDBStoragePartitionTest {
 
   @Test
   public void testChecksumVerificationFailure() {
-    String storeName = "test_store_c1";
+    String storeName = Version.composeKafkaTopic("test_store_c1", 1);
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
@@ -575,7 +611,7 @@ public class RocksDBStoragePartitionTest {
 
   @Test
   public void testRocksDBValidityCheck() {
-    String storeName = Utils.getUniqueString("test_store");
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
@@ -607,7 +643,7 @@ public class RocksDBStoragePartitionTest {
 
   @Test
   public void testPlainTableCompactionTriggerSetting() {
-    String storeName = Utils.getUniqueString("test_store");
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
     Properties properties = new Properties();
     properties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.toString());
@@ -665,7 +701,7 @@ public class RocksDBStoragePartitionTest {
 
   @Test
   public void checkMemoryLimitAtDatabaseOpen() {
-    String storeName = Utils.getUniqueString("test_store");
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
     RocksDBStoragePartition storagePartition = null;
     try {
@@ -692,7 +728,7 @@ public class RocksDBStoragePartitionTest {
           AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
           AvroProtocolDefinition.PARTITION_STATE.getSerializer());
       Mockito.verify(mockMemoryStats).setMemoryLimit(anyLong());
-      Mockito.verify(mockMemoryStats).setSstFileManager(factory.getSstFileManager());
+      Mockito.verify(mockMemoryStats).setSstFileManager(factory.getSstFileManagerForMemoryLimiter());
       storagePartition = new RocksDBStoragePartition(
           partitionConfig,
           factory,

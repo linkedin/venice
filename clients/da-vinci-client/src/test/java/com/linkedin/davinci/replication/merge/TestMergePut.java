@@ -7,8 +7,8 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.schema.rmd.RmdConstants;
-import com.linkedin.venice.utils.IndexedHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collections;
 import org.apache.avro.generic.GenericRecord;

@@ -29,6 +29,7 @@ public class ControllerApiConstants {
   public static final String VALUE_SCHEMA = "value_schema";
   public static final String DERIVED_SCHEMA = "derived_schema";
   public static final String SCHEMA_ID = "schema_id";
+  public static final String SCHEMA_COMPAT_TYPE = "schema_compat_type";
   public static final String DERIVED_SCHEMA_ID = "derived_schema_id";
   public static final String TOPIC = "topic";
   public static final String OFFSET = "offset";
@@ -211,4 +212,8 @@ public class ControllerApiConstants {
   public static final String TARGETED_REGIONS = "targeted_regions";
 
   public static final String STORAGE_NODE_READ_QUOTA_ENABLED = "storage_node_read_quota_enabled";
+
+  public static final String MIN_COMPACTION_LAG_SECONDS = "min_compaction_lag_seconds";
+
+  public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
 }

@@ -1,5 +1,7 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -13,9 +15,11 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -86,7 +90,7 @@ public class VeniceClusterInitializer implements Closeable {
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
     routerProperties.put(ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
-    routerProperties.put(ConfigKeys.LISTENER_PORT, Integer.toString(routerPort));
+    routerProperties.put(ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER, Integer.toString(routerPort));
     this.veniceCluster.addVeniceRouter(routerProperties);
     String routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
     LOGGER.info("Router address: {}", routerAddr);
@@ -181,7 +185,10 @@ public class VeniceClusterInitializer implements Closeable {
       values.add(i, serializedBytes);
     }
 
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = IntegrationTestPushUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder(pushVersionTopic).setKeySerializer(keySerializer).build())) {
       veniceWriter.broadcastStartOfPush(Collections.emptyMap());
@@ -229,7 +236,7 @@ public class VeniceClusterInitializer implements Closeable {
    */
   public static void main(String[] args) {
     LOGGER.info("Avro version in VeniceClusterInitializer: {}", AvroCompatibilityHelperCommon.getRuntimeAvroVersion());
-    Assert.assertEquals(AvroCompatibilityHelperCommon.getRuntimeAvroVersion(), AvroVersion.AVRO_1_9);
+    Assert.assertEquals(AvroCompatibilityHelperCommon.getRuntimeAvroVersion(), AvroVersion.AVRO_1_10);
     Assert.assertEquals(args.length, 2, "Store name and router port arguments are expected");
 
     String storeName = args[0];

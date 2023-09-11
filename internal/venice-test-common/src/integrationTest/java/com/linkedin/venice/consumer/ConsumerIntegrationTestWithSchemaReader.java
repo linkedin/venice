@@ -1,6 +1,5 @@
 package com.linkedin.venice.consumer;
 
-import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -32,13 +31,14 @@ public class ConsumerIntegrationTestWithSchemaReader extends ConsumerIntegration
           AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
     });
 
-    ((VeniceHelixAdmin) cluster.getRandomVeniceController().getVeniceAdmin()).addValueSchema(
-        cluster.getClusterName(),
-        systemStoreName,
-        NEW_PROTOCOL_SCHEMA.toString(),
-        NEW_PROTOCOL_VERSION,
-        DirectionalSchemaCompatibilityType.NONE,
-        false);
+    cluster.getRandomVeniceController()
+        .getVeniceAdmin()
+        .addValueSchema(
+            cluster.getClusterName(),
+            systemStoreName,
+            NEW_PROTOCOL_SCHEMA.toString(),
+            NEW_PROTOCOL_VERSION,
+            DirectionalSchemaCompatibilityType.NONE);
   }
 
   @Override

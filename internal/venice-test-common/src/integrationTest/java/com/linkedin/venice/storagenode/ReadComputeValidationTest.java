@@ -10,7 +10,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
-import com.linkedin.venice.compute.ComputeOperationUtils;
+import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -20,10 +20,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -142,8 +144,10 @@ public class ReadComputeValidationTest {
     VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName);
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
-
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = IntegrationTestPushUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
             new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
@@ -205,10 +209,12 @@ public class ReadComputeValidationTest {
             .execute(keySet)
             .get();
 
+        // Venice Server won't report any missing field error since it would always use the schema passed by the client
+        // to decode the value.
         computeResult.forEach(
             (key, value) -> Assert.assertEquals(
                 ((HashMap<String, String>) value.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)).size(),
-                1));
+                0));
       });
     }
   }
@@ -226,8 +232,10 @@ public class ReadComputeValidationTest {
     VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName);
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
-
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = IntegrationTestPushUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
             .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer).build());
@@ -339,8 +347,10 @@ public class ReadComputeValidationTest {
     Map<Integer, GenericRecord> valuesByKey = new HashMap<>(2);
     valuesByKey.put(key1, value1);
     valuesByKey.put(key2, value2);
-
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = IntegrationTestPushUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (
         VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
             .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer).build());
@@ -373,10 +383,10 @@ public class ReadComputeValidationTest {
         // Results for key 1 should be non-null since the nullable field in the value of key 1 is non-null
         Assert.assertEquals(
             computeResult.get(key1).get("dot_product_result"),
-            ComputeOperationUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+            ComputeUtils.dotProduct(memberFeatureEmbedding, memberFeatureEmbedding));
         Assert.assertEquals(
             computeResult.get(key1).get("hadamard_product_result"),
-            ComputeOperationUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
+            ComputeUtils.hadamardProduct(memberFeatureEmbedding, memberFeatureEmbedding));
         Assert.assertEquals(computeResult.get(key1).get("cosine_similarity_result"), 1.0f); // Cosine similarity between
                                                                                             // a vector and itself is
                                                                                             // 1.0

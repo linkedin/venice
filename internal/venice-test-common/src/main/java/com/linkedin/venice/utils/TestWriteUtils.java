@@ -29,6 +29,7 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -120,11 +121,36 @@ public class TestWriteUtils {
       + "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" },  "
       + "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }  " + "  ]" + " } ";
 
+  public static final String NESTED_SCHEMA_STRING_V3 = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"nameRecord\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"firstName\", \"type\": \"string\", \"default\": \"\" },  "
+      + "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" },  "
+      + "       { \"name\": \"height\", \"type\": \"int\", \"default\": -1 }  " + "  ]" + " } ";
+
+  public static final String NESTED_SCHEMA_STRING_V4 = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"nameRecord\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"firstName\", \"type\": \"string\", \"default\": \"\" },  "
+      + "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" },  "
+      + "       { \"name\": \"height\", \"type\": \"long\", \"default\": -1 }  " + "  ]" + " } ";
+
   public static final String STRING_RECORD_SCHEMA_STRING =
       "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
           + "  \"name\": \"StringToRecord\",     " + "  \"fields\": [           " + "       { \"name\": \""
           + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\", \"default\": \"\"}, " + "       { \"name\": \""
           + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": " + NESTED_SCHEMA_STRING + " }  " + "  ] " + " } ";
+
+  public static final String UPDATE_SCHEMA_OF_NESTED_SCHEMA_STRING = "{\n" + "  \"type\" : \"record\",\n"
+      + "  \"name\" : \"nameRecordWriteOpRecord\",\n" + "  \"namespace\" : \"example.avro\",\n" + "  \"fields\" : [ {\n"
+      + "    \"name\" : \"firstName\",\n" + "    \"type\" : [ {\n" + "      \"type\" : \"record\",\n"
+      + "      \"name\" : \"NoOp\",\n" + "      \"fields\" : [ ]\n" + "    }, \"string\" ],\n"
+      + "    \"default\" : { }\n" + "  }, {\n" + "    \"name\" : \"lastName\",\n"
+      + "    \"type\" : [ \"NoOp\", \"string\" ],\n" + "    \"default\" : { }\n" + "  } ]\n" + "}";
+
+  public static final String PARTIAL_UPDATE_STRING_RECORD_SCHEMA_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
+      + "  \"type\": \"record\",   " + "  \"name\": \"StringToRecord\",     " + "  \"fields\": [           "
+      + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\", \"default\": \"\"}, "
+      + "       { \"name\": \"" + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": " + UPDATE_SCHEMA_OF_NESTED_SCHEMA_STRING
+      + " }  " + "  ] " + " } ";
 
   public static final String STRING_SCHEMA = "\"string\"";
 
@@ -521,6 +547,31 @@ public class TestWriteUtils {
         GenericRecord valueRecord = new GenericData.Record(valueSchema);
         valueRecord.put("firstName", firstName + i);
         valueRecord.put("lastName", lastName + i);
+        keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+        writer.append(keyValueRecord);
+      }
+    });
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(
+      File parentDir,
+      boolean fileNameWithAvroSuffix) throws IOException {
+    String fileName;
+    if (fileNameWithAvroSuffix) {
+      fileName = "simple_string2record.avro";
+    } else {
+      fileName = "simple_string2record";
+    }
+    return writeAvroFile(parentDir, fileName, PARTIAL_UPDATE_STRING_RECORD_SCHEMA_STRING, (recordSchema, writer) -> {
+      Schema valueSchema = AvroCompatibilityHelper.parse(UPDATE_SCHEMA_OF_NESTED_SCHEMA_STRING);
+      String firstName = "first_name_";
+      String lastName = "last_name_";
+      for (int i = 1; i <= 100; ++i) {
+        GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
+        keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
+        GenericRecord valueRecord = new UpdateBuilderImpl(valueSchema).setNewFieldValue("firstName", firstName + i)
+            .setNewFieldValue("lastName", lastName + i)
+            .build();
         keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
         writer.append(keyValueRecord);
       }

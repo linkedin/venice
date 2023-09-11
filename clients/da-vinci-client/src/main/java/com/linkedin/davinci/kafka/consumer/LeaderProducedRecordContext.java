@@ -103,6 +103,10 @@ public class LeaderProducedRecordContext {
     return new LeaderProducedRecordContext(NO_UPSTREAM, NO_UPSTREAM, PUT, keyBytes, valueUnion);
   }
 
+  public static LeaderProducedRecordContext newChunkDeleteRecord(byte[] keyBytes, Delete valueUnion) {
+    return new LeaderProducedRecordContext(NO_UPSTREAM, NO_UPSTREAM, DELETE, keyBytes, valueUnion);
+  }
+
   public static LeaderProducedRecordContext newPutRecordWithFuture(
       int consumedKafkaClusterId,
       long consumedOffset,

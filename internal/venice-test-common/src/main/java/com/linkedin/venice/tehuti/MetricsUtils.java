@@ -13,24 +13,15 @@ import java.util.concurrent.atomic.DoubleAccumulator;
  */
 public class MetricsUtils {
   public static double getMax(String metricName, List<? extends MetricsAware> metricsAwareWrapperList) {
-    return getMetricValue(
-        metricName,
-        metricsAwareWrapperList,
-        new DoubleAccumulator((left, right) -> Math.max(left, right), Double.MIN_VALUE));
+    return getMetricValue(metricName, metricsAwareWrapperList, new DoubleAccumulator(Math::max, Double.MIN_VALUE));
   }
 
   public static double getMin(String metricName, List<? extends MetricsAware> metricsAwareWrapperList) {
-    return getMetricValue(
-        metricName,
-        metricsAwareWrapperList,
-        new DoubleAccumulator((left, right) -> Math.min(left, right), Double.MAX_VALUE));
+    return getMetricValue(metricName, metricsAwareWrapperList, new DoubleAccumulator(Math::min, Double.MAX_VALUE));
   }
 
   public static double getSum(String metricName, List<? extends MetricsAware> metricsAwareWrapperList) {
-    return getMetricValue(
-        metricName,
-        metricsAwareWrapperList,
-        new DoubleAccumulator((left, right) -> left + right, 0.0));
+    return getMetricValue(metricName, metricsAwareWrapperList, new DoubleAccumulator(Double::sum, 0.0));
   }
 
   public static double getAvg(String metricName, List<? extends MetricsAware> metricsAwareWrapperList) {

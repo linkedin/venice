@@ -282,7 +282,7 @@ public class IngestionStats {
     if (!hasActiveIngestionTask()) {
       return 0;
     }
-    if (getLeaderOffsetLag() > 0 && getLeaderBytesConsumed() == 0) {
+    if (getHybridLeaderOffsetLag() > 0 && getLeaderBytesConsumed() == 0) {
       return 1;
     } else {
       return 0;

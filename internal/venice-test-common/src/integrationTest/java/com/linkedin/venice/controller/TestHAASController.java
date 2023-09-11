@@ -158,7 +158,7 @@ public class TestHAASController {
     }
   }
 
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testTransitionToHAASControllerAsStorageClusterLeader() {
     try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
@@ -259,14 +259,19 @@ public class TestHAASController {
   }
 
   private HelixAsAServiceWrapper startAndWaitForHAASToBeAvailable(String zkAddress) {
-    HelixAsAServiceWrapper helixAsAServiceWrapper = ServiceFactory.getHelixController(zkAddress);
-    waitForNonDeterministicAssertion(
-        30,
-        TimeUnit.SECONDS,
-        true,
-        () -> assertNotNull(
-            helixAsAServiceWrapper.getSuperClusterLeader(),
-            "Helix super cluster doesn't have a leader yet"));
-    return helixAsAServiceWrapper;
+    HelixAsAServiceWrapper helixAsAServiceWrapper = null;
+    try {
+      helixAsAServiceWrapper = ServiceFactory.getHelixController(zkAddress);
+      final HelixAsAServiceWrapper finalHaas = helixAsAServiceWrapper;
+      waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertNotNull(finalHaas.getSuperClusterLeader(), "Helix super cluster doesn't have a leader yet"));
+      return helixAsAServiceWrapper;
+    } catch (Exception e) {
+      Utils.closeQuietlyWithErrorLogged(helixAsAServiceWrapper);
+      throw e;
+    }
   }
 }

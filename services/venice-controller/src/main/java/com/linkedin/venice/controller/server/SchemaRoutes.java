@@ -4,6 +4,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_DERIVED_SCHEMA;
@@ -31,6 +32,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Utils;
@@ -81,7 +83,8 @@ public class SchemaRoutes extends AbstractRoute {
 
   /**
    * Route to handle adding value schema request.
-   * @see Admin#addValueSchema(String, String, String, int, boolean)
+   * @see Admin#addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType)
+   * @see Admin#addValueSchema(String, String, String, DirectionalSchemaCompatibilityType)
    */
   public Route addValueSchema(Admin admin) {
     return (request, response) -> {
@@ -101,13 +104,18 @@ public class SchemaRoutes extends AbstractRoute {
         String schemaIdString = request.queryParams(SCHEMA_ID);
         SchemaEntry valueSchemaEntry;
         if (schemaIdString != null) {
-          // Schema id is specified which suggests that the request is coming from metadata copy.
+          // Schema id is specified during metadata copy or internal system schema initialization.
+          String schemaCompatTypeString = request.queryParams(SCHEMA_COMPAT_TYPE);
+          DirectionalSchemaCompatibilityType schemaCompatType = SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE;
+          if (schemaCompatTypeString != null) {
+            schemaCompatType = DirectionalSchemaCompatibilityType.valueOf(schemaCompatTypeString);
+          }
           valueSchemaEntry = admin.addValueSchema(
               responseObject.getCluster(),
               responseObject.getName(),
               request.queryParams(VALUE_SCHEMA),
               Integer.parseInt(schemaIdString),
-              false);
+              schemaCompatType);
         } else {
           valueSchemaEntry = admin.addValueSchema(
               responseObject.getCluster(),

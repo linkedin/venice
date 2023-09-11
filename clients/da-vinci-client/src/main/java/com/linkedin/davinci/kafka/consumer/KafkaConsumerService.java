@@ -5,11 +5,13 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
+import com.linkedin.davinci.utils.IndexedHashMap;
+import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -17,8 +19,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.IndexedHashMap;
-import com.linkedin.venice.utils.IndexedMap;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Time;
@@ -68,11 +68,13 @@ import org.apache.logging.log4j.Logger;
  * @see AggKafkaConsumerService which wraps one instance of this class per Kafka cluster.
  */
 public abstract class KafkaConsumerService extends AbstractVeniceService {
+  private static final int SHUTDOWN_TIMEOUT_IN_SECOND = 1;
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final ExecutorService consumerExecutor;
   protected final String kafkaUrl;
+  protected final String kafkaUrlForLogger;
   private final Logger LOGGER;
 
   protected KafkaConsumerServiceStats stats;
@@ -101,7 +103,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       final KafkaConsumerServiceStats statsOverride,
       final boolean isKafkaConsumerOffsetCollectionEnabled) {
     this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
-    this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrl + "]");
+    this.kafkaUrlForLogger = Utils.getSanitizedStringForLogger(kafkaUrl);
+    this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrlForLogger + "]");
 
     // Initialize consumers and consumerExecutor
     consumerExecutor = Executors.newFixedThreadPool(
@@ -275,11 +278,9 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   @Override
   public void stopInner() throws Exception {
     consumerToConsumptionTask.values().forEach(ConsumptionTask::stop);
-
-    int timeOutInSeconds = 1;
-    long gracefulShutdownBeginningTime = System.currentTimeMillis();
-    boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(timeOutInSeconds, TimeUnit.SECONDS);
-    long gracefulShutdownDuration = System.currentTimeMillis() - gracefulShutdownBeginningTime;
+    long beginningTime = System.currentTimeMillis();
+    boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(SHUTDOWN_TIMEOUT_IN_SECOND, TimeUnit.SECONDS);
+    long gracefulShutdownDuration = System.currentTimeMillis() - beginningTime;
     if (gracefulShutdownSuccess) {
       LOGGER.info("consumerExecutor terminated gracefully in {} ms.", gracefulShutdownDuration);
     } else {
@@ -288,7 +289,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
           gracefulShutdownDuration);
       long forcefulShutdownBeginningTime = System.currentTimeMillis();
       consumerExecutor.shutdownNow();
-      boolean forcefulShutdownSuccess = consumerExecutor.awaitTermination(timeOutInSeconds, TimeUnit.SECONDS);
+      boolean forcefulShutdownSuccess = consumerExecutor.awaitTermination(SHUTDOWN_TIMEOUT_IN_SECOND, TimeUnit.SECONDS);
       long forcefulShutdownDuration = System.currentTimeMillis() - forcefulShutdownBeginningTime;
       if (forcefulShutdownSuccess) {
         LOGGER.info("consumerExecutor terminated forcefully in {} ms.", forcefulShutdownDuration);
@@ -298,8 +299,9 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
             forcefulShutdownDuration);
       }
     }
-
+    beginningTime = System.currentTimeMillis();
     consumerToConsumptionTask.keySet().forEach(SharedKafkaConsumer::close);
+    LOGGER.info("SharedKafkaConsumer closed in {} ms.", System.currentTimeMillis() - beginningTime);
   }
 
   public boolean hasAnySubscriptionFor(PubSubTopic versionTopic) {

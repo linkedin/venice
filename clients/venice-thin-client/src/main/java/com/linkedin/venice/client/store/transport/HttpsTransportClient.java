@@ -8,6 +8,7 @@ import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 
 public class HttpsTransportClient extends HttpTransportClient {
   private boolean requireHTTP2;
+  private SSLFactory sslFactory;
 
   public HttpsTransportClient(
       String routerUrl,
@@ -23,7 +24,7 @@ public class HttpsTransportClient extends HttpTransportClient {
     this.maxConnectionsTotal = maxConnectionsTotal;
     this.maxConnectionsPerRoute = maxConnectionsPerRoute;
     this.requireHTTP2 = requireHTTP2;
-
+    this.sslFactory = sslFactory;
   }
 
   public HttpsTransportClient(
@@ -38,5 +39,20 @@ public class HttpsTransportClient extends HttpTransportClient {
 
   public boolean isRequireHTTP2() {
     return requireHTTP2;
+  }
+
+  /**
+   * The same {@link CloseableHttpAsyncClient} could not be used to send out another request in its own callback function.
+   * @return
+   */
+  @Override
+  public TransportClient getCopyIfNotUsableInCallback() {
+    return new HttpsTransportClient(
+        routerUrl,
+        maxConnectionsTotal,
+        maxConnectionsPerRoute,
+        requireHTTP2,
+        sslFactory,
+        authenticationProvider);
   }
 }

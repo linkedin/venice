@@ -36,8 +36,9 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
   void report(String kafkaTopic, int partitionId, ExecutionStatus status) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
-      // No replica status reporting for meta system stores
+    if (systemStoreType != null && (systemStoreType.equals(VeniceSystemStoreType.META_STORE)
+        || systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE))) {
+      // No replica status reporting for system stores
       return;
     }
     Store store;

@@ -2,7 +2,6 @@ package com.linkedin.davinci.validation;
 
 import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
 
-import com.linkedin.davinci.utils.locks.ReentrantLockWithRef;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
@@ -67,13 +66,10 @@ public class PartitionTracker {
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  private static final Function<GUID, ReentrantLockWithRef<Segment>> segmentProvider =
-      guid -> new ReentrantLockWithRef<>();
-
   private final Logger logger;
   private final String topicName;
   private final int partition;
-  private final Map<GUID, ReentrantLockWithRef<Segment>> segments = new VeniceConcurrentHashMap<>();
+  private final Map<GUID, Segment> segments = new VeniceConcurrentHashMap<>();
 
   public PartitionTracker(String topicName, int partition) {
     this.topicName = topicName;
@@ -96,17 +92,9 @@ public class PartitionTracker {
 
   /**
    * @param guid for which to retrieve the lock and segment
-   * @return a non-null {@link ReentrantLockWithRef} (but which can have {@link ReentrantLockWithRef#containsRef()} == false)
+   * @return a {@link Segment} or null if it's absent
    */
-  private ReentrantLockWithRef<Segment> getLockAndSegment(GUID guid) {
-    return this.segments.computeIfAbsent(guid, segmentProvider);
-  }
-
-  /**
-   * @param guid for which to retrieve the lock and segment
-   * @return a {@link ReentrantLockWithRef} or null if it's absent
-   */
-  ReentrantLockWithRef<Segment> getLockAndSegmentIfPresent(GUID guid) {
+  Segment getSegment(GUID guid) {
     return this.segments.get(guid);
   }
 
@@ -137,100 +125,66 @@ public class PartitionTracker {
   }
 
   private void setSegment(GUID guid, Segment segment) {
-    ReentrantLockWithRef<Segment> lockAndSegment = getLockAndSegment(guid);
-    lockAndSegment.lock();
-    try {
-      if (lockAndSegment.containsRef()) {
-        logger.info(
-            "{} will overwrite previous state for partition: {}, Previous state: {}, New state: {}",
-            this,
-            partition,
-            lockAndSegment.getRef(),
-            segment);
-      } else {
-        logger.info("{} will set state for partition: {}, New state: {}", this, partition, segment);
-      }
-      lockAndSegment.setRef(segment);
-    } finally {
-      lockAndSegment.unlock();
+    Segment previousSegment = this.segments.put(guid, segment);
+    if (previousSegment == null) {
+      logger.info(" set state for partition: {}, New state: {}", partition, segment);
+    } else {
+      logger.info(
+          " will overwrite previous state for partition: {}, Previous state: {}, New state: {}",
+          partition,
+          previousSegment,
+          segment);
     }
   }
 
   public void cloneProducerStates(PartitionTracker destProducerTracker) {
-    ReentrantLockWithRef<Segment> lockAndSegment;
-    for (Map.Entry<GUID, ReentrantLockWithRef<Segment>> entry: this.segments.entrySet()) {
-      lockAndSegment = entry.getValue();
-      if (!lockAndSegment.containsRef()) {
-        // This producer didn't write anything to this GUID (lock-free check)
-        continue;
-      }
-      lockAndSegment.lock();
-      try {
-        if (!lockAndSegment.containsRef()) {
-          // This producer didn't write anything to this GUID
-          continue;
-        }
-        Segment sourceSegment = lockAndSegment.getRef();
-        destProducerTracker.setSegment(entry.getKey(), new Segment(sourceSegment));
-      } finally {
-        lockAndSegment.unlock();
-      }
+    for (Map.Entry<GUID, Segment> entry: this.segments.entrySet()) {
+      destProducerTracker.setSegment(entry.getKey(), new Segment(entry.getValue()));
     }
   }
 
-  private void updateOffsetRecord(GUID guid, ReentrantLockWithRef<Segment> lockAndSegment, OffsetRecord offsetRecord) {
-    if (!lockAndSegment.containsRef()) {
-      // This producer didn't write anything to this GUID (lock-free check)
+  private void updateOffsetRecord(GUID guid, Segment segment, OffsetRecord offsetRecord) {
+    if (segment == null) {
+      // This producer didn't write anything to this GUID
       return;
     }
-    lockAndSegment.lock();
-    try {
-      if (!lockAndSegment.containsRef()) {
-        // This producer didn't write anything to this GUID
-        return;
-      }
+    ProducerPartitionState state = offsetRecord.getProducerPartitionState(guid);
+    if (state == null) {
+      state = new ProducerPartitionState();
 
-      Segment segment = lockAndSegment.getRef();
-      ProducerPartitionState state = offsetRecord.getProducerPartitionState(guid);
-      if (state == null) {
-        state = new ProducerPartitionState();
-
-        /**
-         * The aggregates and debugInfo being stored in the {@link ProducerPartitionState} will add a bit
-         * of overhead when we checkpoint this metadata to disk, so we should be careful not to add a very
-         * large number of elements to these arbitrary collections.
-         *
-         * In the case of the debugInfo, it is expected (at the time of writing this comment) that all
-         * partitions produced by the same producer GUID would have the same debug values (though nothing
-         * precludes us from having per-partition debug values in the future if there is a use case for
-         * that). It is redundant that we store the same debug values once per partition. In the future,
-         * if we want to eliminate this redundancy, we could move the per-producer debug info to another
-         * data structure, though that would increase bookkeeping complexity. This is expected to be a
-         * minor overhead, and therefore it appears to be a premature to optimize this now.
-         */
-        state.aggregates = segment.getAggregates();
-        state.debugInfo = segment.getDebugInfo();
-      }
-      state.checksumType = segment.getCheckSumType().getValue();
       /**
-       * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate state,
-       * which is expensive. We should only invoke this closure when necessary.
+       * The aggregates and debugInfo being stored in the {@link ProducerPartitionState} will add a bit
+       * of overhead when we checkpoint this metadata to disk, so we should be careful not to add a very
+       * large number of elements to these arbitrary collections.
+       *
+       * In the case of the debugInfo, it is expected (at the time of writing this comment) that all
+       * partitions produced by the same producer GUID would have the same debug values (though nothing
+       * precludes us from having per-partition debug values in the future if there is a use case for
+       * that). It is redundant that we store the same debug values once per partition. In the future,
+       * if we want to eliminate this redundancy, we could move the per-producer debug info to another
+       * data structure, though that would increase bookkeeping complexity. This is expected to be a
+       * minor overhead, and therefore it appears to be a premature to optimize this now.
        */
-      state.checksumState = ByteBuffer.wrap(segment.getCheckSumState());
-      state.segmentNumber = segment.getSegmentNumber();
-      state.messageSequenceNumber = segment.getSequenceNumber();
-      state.messageTimestamp = segment.getLastRecordProducerTimestamp();
-      state.segmentStatus = segment.getStatus().getValue();
-      state.isRegistered = segment.isRegistered();
-
-      offsetRecord.setProducerPartitionState(guid, state);
-    } finally {
-      lockAndSegment.unlock();
+      state.aggregates = segment.getAggregates();
+      state.debugInfo = segment.getDebugInfo();
     }
+    state.checksumType = segment.getCheckSumType().getValue();
+    /**
+     * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate state,
+     * which is expensive. We should only invoke this closure when necessary.
+     */
+    state.checksumState = ByteBuffer.wrap(segment.getCheckSumState());
+    state.segmentNumber = segment.getSegmentNumber();
+    state.messageSequenceNumber = segment.getSequenceNumber();
+    state.messageTimestamp = segment.getLastRecordProducerTimestamp();
+    state.segmentStatus = segment.getStatus().getValue();
+    state.isRegistered = segment.isRegistered();
+
+    offsetRecord.setProducerPartitionState(guid, state);
   }
 
   public void updateOffsetRecord(OffsetRecord offsetRecord) {
-    for (Map.Entry<GUID, ReentrantLockWithRef<Segment>> entry: this.segments.entrySet()) {
+    for (Map.Entry<GUID, Segment> entry: this.segments.entrySet()) {
       updateOffsetRecord(entry.getKey(), entry.getValue(), offsetRecord);
     }
   }
@@ -251,21 +205,14 @@ public class PartitionTracker {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
-    ReentrantLockWithRef<Segment> lockAndSegment =
-        getLockAndSegment(consumerRecord.getValue().getProducerMetadata().getProducerGUID());
-    lockAndSegment.lock();
-    try {
-      Segment segment = lockAndSegment.getRef();
-      boolean hasPreviousSegment = segment != null;
-      segment = trackSegment(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-      trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
-      // This is the last step, because we want failures in the previous steps to short-circuit execution.
-      trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-      segment.setLastSuccessfulOffset(consumerRecord.getOffset());
-      segment.setNewSegment(false);
-    } finally {
-      lockAndSegment.unlock();
-    }
+    Segment segment = getSegment(consumerRecord.getValue().getProducerMetadata().getProducerGUID());
+    boolean hasPreviousSegment = segment != null;
+    segment = trackSegment(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+    trackSequenceNumber(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs, hasPreviousSegment);
+    // This is the last step, because we want failures in the previous steps to short-circuit execution.
+    trackCheckSum(segment, consumerRecord, endOfPushReceived, tolerateMissingMsgs);
+    segment.setLastSuccessfulOffset(consumerRecord.getOffset());
+    segment.setNewSegment(false);
   }
 
   /**
@@ -360,14 +307,7 @@ public class PartitionTracker {
         debugInfo,
         aggregates);
     newSegment.setLastRecordProducerTimestamp(consumerRecord.getValue().getProducerMetadata().getMessageTimestamp());
-    ReentrantLockWithRef<Segment> lockAndSegment =
-        getLockAndSegment(consumerRecord.getValue().getProducerMetadata().getProducerGUID());
-    lockAndSegment.lock();
-    try {
-      lockAndSegment.setRef(newSegment);
-    } finally {
-      lockAndSegment.unlock();
-    }
+    this.segments.put(consumerRecord.getValue().getProducerMetadata().getProducerGUID(), newSegment);
 
     if (unregisteredProducer) {
       handleUnregisteredProducer(
@@ -636,94 +576,65 @@ public class PartitionTracker {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       Optional<PartitionTracker.DIVErrorMetricCallback> errorMetricCallback,
       long kafkaLogCompactionDelayInMs) throws DataValidationException {
-    ReentrantLockWithRef<Segment> lockAndSegment =
-        getLockAndSegment(consumerRecord.getValue().getProducerMetadata().getProducerGUID());
+    Segment segment = getSegment(consumerRecord.getValue().getProducerMetadata().getProducerGUID());
 
-    Segment segment;
-    lockAndSegment.lock();
     try {
-      try {
-        /**
-         * Explicitly suppress UNREGISTERED_PRODUCER DIV error.
-         */
-        segment = trackSegment(lockAndSegment.getRef(), consumerRecord, true, Lazy.FALSE);
-      } catch (DuplicateDataException duplicate) {
-        /**
-         * Tolerate a segment rewind and not necessary to validate a previous segment;
-         */
-        return;
-      } catch (MissingDataException missingSegment) {
-        /**
-         * Missing an entire segment is not acceptable, even though Kafka log compaction kicks in and all the data
-         * messages within a segment are compacted; START_OF_SEGMENT and END_OF_SEGMENT messages should still be there.
-         */
-        logger.error(
-            "Encountered a missing segment. This is unacceptable even if log compaction kicks in. Error msg: {}",
-            missingSegment.getMessage());
-        if (errorMetricCallback.isPresent()) {
-          errorMetricCallback.get().execute(missingSegment);
-        }
-        throw missingSegment;
-      }
-
       /**
-       * Check missing sequence number.
+       * Explicitly suppress UNREGISTERED_PRODUCER DIV error.
        */
-      validateSequenceNumber(segment, consumerRecord, kafkaLogCompactionDelayInMs, errorMetricCallback);
-      segment.setLastRecordTimestamp(consumerRecord.getPubSubMessageTime());
-
+      segment = trackSegment(segment, consumerRecord, true, Lazy.FALSE);
+    } catch (DuplicateDataException duplicate) {
       /**
-       * End the segment without checking checksum if END_OF_SEGMENT received
+       * Tolerate a segment rewind and not necessary to validate a previous segment;
        */
-      KafkaMessageEnvelope messageEnvelope = consumerRecord.getValue();
-      switch (MessageType.valueOf(messageEnvelope)) {
-        case CONTROL_MESSAGE:
-          ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
-          switch (ControlMessageType.valueOf(controlMessage)) {
-            case END_OF_SEGMENT:
-              // End the segment
-              segment.end(true);
-              break;
-            default:
-              // no-op
-          }
-        default:
-          // no-op
+      return;
+    } catch (MissingDataException missingSegment) {
+      /**
+       * Missing an entire segment is not acceptable, even though Kafka log compaction kicks in and all the data
+       * messages within a segment are compacted; START_OF_SEGMENT and END_OF_SEGMENT messages should still be there.
+       */
+      logger.error(
+          "Encountered a missing segment. This is unacceptable even if log compaction kicks in. Error msg: {}",
+          missingSegment.getMessage());
+      if (errorMetricCallback.isPresent()) {
+        errorMetricCallback.get().execute(missingSegment);
       }
-    } finally {
-      lockAndSegment.unlock();
+      throw missingSegment;
+    }
+
+    /**
+     * Check missing sequence number.
+     */
+    validateSequenceNumber(segment, consumerRecord, kafkaLogCompactionDelayInMs, errorMetricCallback);
+    segment.setLastRecordTimestamp(consumerRecord.getPubSubMessageTime());
+
+    /**
+     * End the segment without checking checksum if END_OF_SEGMENT received
+     */
+    KafkaMessageEnvelope messageEnvelope = consumerRecord.getValue();
+    if (MessageType.valueOf(messageEnvelope) == MessageType.CONTROL_MESSAGE) {
+      ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
+      if (ControlMessageType.valueOf(controlMessage) == ControlMessageType.END_OF_SEGMENT) {
+        segment.end(true);
+      }
     }
   }
 
   void clearExpiredStateAndUpdateOffsetRecord(OffsetRecord offsetRecord, long maxAgeInMs) {
     long minimumRequiredRecordProducerTimestamp = offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
     int numberOfClearedGUIDs = 0;
-    Iterator<Map.Entry<GUID, ReentrantLockWithRef<Segment>>> iterator = this.segments.entrySet().iterator();
-    Map.Entry<GUID, ReentrantLockWithRef<Segment>> entry;
-    ReentrantLockWithRef<Segment> lockAndSegment;
+    Iterator<Map.Entry<GUID, Segment>> iterator = this.segments.entrySet().iterator();
+    Map.Entry<GUID, Segment> entry;
+    Segment segment;
     while (iterator.hasNext()) {
       entry = iterator.next();
-      lockAndSegment = entry.getValue();
-      if (!lockAndSegment.containsRef()) {
-        // lock-free check
-        continue;
-      }
-      lockAndSegment.lock();
-      try {
-        if (!lockAndSegment.containsRef()) {
-          // lock-ful check
-          continue;
-        }
-        if (lockAndSegment.getRef().getLastRecordProducerTimestamp() < minimumRequiredRecordProducerTimestamp) {
-          lockAndSegment.removeRef();
-          iterator.remove();
-          offsetRecord.removeProducerPartitionState(entry.getKey());
-          numberOfClearedGUIDs++;
-        } else {
-          updateOffsetRecord(entry.getKey(), lockAndSegment, offsetRecord);
-        }
-      } finally {
-        lockAndSegment.unlock();
+      segment = entry.getValue();
+      if (segment.getLastRecordProducerTimestamp() < minimumRequiredRecordProducerTimestamp) {
+        iterator.remove();
+        offsetRecord.removeProducerPartitionState(entry.getKey());
+        numberOfClearedGUIDs++;
+      } else {
+        updateOffsetRecord(entry.getKey(), segment, offsetRecord);
       }
     }
     if (numberOfClearedGUIDs > 0) {

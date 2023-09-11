@@ -8,9 +8,9 @@ import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.IndexedHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.nio.ByteBuffer;

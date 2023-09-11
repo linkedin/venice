@@ -1,5 +1,6 @@
 package com.linkedin.venice.server;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_IS_AUTO_JOIN;
 
@@ -10,15 +11,20 @@ import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestVeniceServer;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -108,7 +114,7 @@ public class VeniceServerTest {
           .assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
 
       // Create a storage engine.
-      String storeName = Utils.getUniqueString("testCheckBeforeJoinCluster");
+      String storeName = Version.composeKafkaTopic(Utils.getUniqueString("testCheckBeforeJoinCluster"), 1);
       server.getVeniceServer()
           .getStorageService()
           .openStoreForNewPartition(
@@ -284,6 +290,26 @@ public class VeniceServerTest {
       RestResponse response = d2Client.restRequest(request).get();
 
       Assert.assertEquals(response.getStatus(), HttpStatus.SC_OK);
+    }
+  }
+
+  @Test
+  public void testStartServerWithSystemSchemaInitialization() {
+    Properties controllerProperties = new Properties();
+    // Disable controller meta system store initialization so that server spun up after controller will register schemas
+    controllerProperties.setProperty(CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED, "false");
+    VeniceClusterCreateOptions options =
+        new VeniceClusterCreateOptions.Builder().extraProperties(controllerProperties).build();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(options)) {
+      cluster.useControllerClient(controllerClient -> {
+        String storeName = AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName();
+        int currentProtocolVersion = AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertNotNull(storeResponse.getStore());
+        MultiSchemaResponse schemaResponse = controllerClient.getAllValueAndDerivedSchema(storeName);
+        Assert.assertNotNull(schemaResponse.getSchemas());
+        Assert.assertEquals(schemaResponse.getSchemas().length, currentProtocolVersion * 2);
+      });
     }
   }
 }

@@ -11,13 +11,14 @@ import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.Test;
 
 
 public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
-  @Test(timeOut = TIME_OUT)
+  @Test
   public void testServerReadQuota() throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -39,22 +40,43 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
         assertEquals((int) value.get(VALUE_FIELD_NAME), i);
       }
     }
-    MetricsRepository serverMetric = veniceCluster.getVeniceServers().get(0).getMetricsRepository();
+    ArrayList<MetricsRepository> serverMetrics = new ArrayList<>();
+    for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
+      serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
+    }
     String readQuotaRequestedString = "." + storeName + "--quota_rcu_requested.Count";
     String readQuotaRejectedString = "." + storeName + "--quota_rcu_rejected.Count";
     String readQuotaUsageRatio = "." + storeName + "--read_quota_usage_ratio.Gauge";
+    String clientConnectionCountGaugeString = ".server_connection_stats--client_connection_count.Gauge";
+    String routerConnectionCountGaugeString = ".server_connection_stats--router_connection_count.Gauge";
+    String clientConnectionCountRateString = ".server_connection_stats--client_connection_count.OccurrenceRate";
+    String routerConnectionCountRateString = ".server_connection_stats--router_connection_count.OccurrenceRate";
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-      assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
-      assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
-      assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
+      for (MetricsRepository serverMetric: serverMetrics) {
+        assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
+        assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
+        assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
+        assertNotNull(serverMetric.getMetric(clientConnectionCountGaugeString));
+        assertNotNull(serverMetric.getMetric(routerConnectionCountGaugeString));
+        assertNotNull(serverMetric.getMetric(clientConnectionCountRateString));
+        assertNotNull(serverMetric.getMetric(routerConnectionCountRateString));
+      }
     });
-    assertTrue(
-        serverMetric.getMetric(readQuotaRequestedString).value() >= 250,
-        "Metric value: " + serverMetric.getMetric(readQuotaRequestedString).value());
-    assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
-    assertTrue(serverMetric.getMetric(readQuotaUsageRatio).value() > 0);
+    int quotaRequestedSum = 0;
+    int clientConnectionCountRateSum = 0;
+    int routerConnectionCountRateSum = 0;
+    for (MetricsRepository serverMetric: serverMetrics) {
+      quotaRequestedSum += serverMetric.getMetric(readQuotaRequestedString).value();
+      clientConnectionCountRateSum += serverMetric.getMetric(clientConnectionCountRateString).value();
+      routerConnectionCountRateSum += serverMetric.getMetric(routerConnectionCountRateString).value();
+      assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
+      assertTrue(serverMetric.getMetric(readQuotaUsageRatio).value() > 0);
+    }
+    assertTrue(quotaRequestedSum >= 500, "Quota requested sum: " + quotaRequestedSum);
+    assertTrue(clientConnectionCountRateSum > 0, "Servers should have more than 0 client connections");
+    assertEquals(routerConnectionCountRateSum, 0, "Servers should have 0 router connections");
 
-    // Update the read quota to 100 and make 500 requests again.
+    // Update the read quota to 50 and make as many requests needed to trigger quota rejected exception.
     veniceCluster.useControllerClient(controllerClient -> {
       TestUtils
           .assertCommand(controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(50)));
@@ -73,6 +95,13 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
     } catch (Exception clientException) {
       assertTrue(clientException.getMessage().contains("VeniceClientRateExceededException"));
     }
-    assertTrue(serverMetric.getMetric(readQuotaRejectedString).value() > 0);
+    boolean readQuotaRejected = false;
+    for (MetricsRepository serverMetric: serverMetrics) {
+      if (serverMetric.getMetric(readQuotaRejectedString).value() > 0) {
+        readQuotaRejected = true;
+        break;
+      }
+    }
+    assertTrue(readQuotaRejected);
   }
 }

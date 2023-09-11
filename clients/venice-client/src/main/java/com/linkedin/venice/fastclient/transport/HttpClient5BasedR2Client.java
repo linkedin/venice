@@ -13,6 +13,7 @@ import com.linkedin.venice.httpclient5.HttpClient5Utils;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
 import org.apache.hc.client5.http.async.methods.SimpleRequestBuilder;
@@ -29,6 +30,8 @@ import org.apache.hc.core5.io.CloseMode;
  * TODO: get rid of R2 Client inferface completely from venice-client.
  */
 public class HttpClient5BasedR2Client {
+  private static final long requestTimeOutInMilliseconds = TimeUnit.SECONDS.toMillis(1); // 1s by default
+
   public static final String HTTP_METHOD_GET_LOWER_CASE = "get";
   public static final String HTTP_METHOD_POST_LOWER_CASE = "post";
 
@@ -44,12 +47,17 @@ public class HttpClient5BasedR2Client {
   }
 
   public static Client getR2Client(SSLContext sslContext, int ioThreadCount) throws Exception {
+    return getR2Client(sslContext, ioThreadCount, requestTimeOutInMilliseconds);
+  }
+
+  public static Client getR2Client(SSLContext sslContext, int ioThreadCount, long responseTimeout) throws Exception {
     if (ioThreadCount <= 0) {
       throw new VeniceClientException("ioThreadCount should be greater than 0");
     }
 
     final CloseableHttpAsyncClient client = new HttpClient5Utils.HttpClient5Builder().setIoThreadCount(ioThreadCount)
         .setSslContext(sslContext)
+        .setRequestTimeOutInMilliseconds(responseTimeout)
         // Disable cipher check for now.
         .setSkipCipherCheck(true)
         .buildAndStart();

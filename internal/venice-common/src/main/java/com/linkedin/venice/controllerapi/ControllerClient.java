@@ -17,6 +17,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXPECTED_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
@@ -50,6 +51,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_F
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SKIP_DIV;
@@ -82,6 +84,7 @@ import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
@@ -650,6 +653,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.ROLLBACK_TO_BACKUP_VERSION, params, ControllerResponse.class);
   }
 
+  public ControllerResponse rollForwardToFutureVersion(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION, params, ControllerResponse.class);
+  }
+
   public ControllerResponse killOfflinePushJob(String kafkaTopic) {
     String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
@@ -953,6 +961,18 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.ADD_VALUE_SCHEMA, params, SchemaResponse.class);
   }
 
+  public SchemaResponse addValueSchema(
+      String storeName,
+      String valueSchemaStr,
+      int valueSchemaId,
+      DirectionalSchemaCompatibilityType schemaCompatType) {
+    QueryParams params = newParams().add(NAME, storeName)
+        .add(VALUE_SCHEMA, valueSchemaStr)
+        .add(SCHEMA_ID, valueSchemaId)
+        .add(SCHEMA_COMPAT_TYPE, schemaCompatType.toString());
+    return request(ControllerRoute.ADD_VALUE_SCHEMA, params, SchemaResponse.class);
+  }
+
   public SchemaResponse addDerivedSchema(String storeName, int valueSchemaId, String derivedSchemaStr) {
     QueryParams params =
         newParams().add(NAME, storeName).add(SCHEMA_ID, valueSchemaId).add(DERIVED_SCHEMA, derivedSchemaStr);
@@ -1076,6 +1096,19 @@ public class ControllerClient implements Closeable {
   public AclResponse deleteAclForStore(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.DELETE_ACL, params, AclResponse.class);
+  }
+
+  public ControllerResponse sendHeartbeatToSystemStore(String storeName, long heartbeatTimestamp) {
+    QueryParams params = newParams().add(NAME, storeName).add(HEARTBEAT_TIMESTAMP, heartbeatTimestamp);
+    return request(ControllerRoute.SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE, params, ControllerResponse.class);
+  }
+
+  public SystemStoreHeartbeatResponse getHeartbeatFromSystemStore(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(
+        ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE,
+        params,
+        SystemStoreHeartbeatResponse.class);
   }
 
   public ControllerResponse configureNativeReplicationForCluster(

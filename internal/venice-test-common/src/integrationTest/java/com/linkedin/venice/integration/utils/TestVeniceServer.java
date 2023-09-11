@@ -12,7 +12,7 @@ import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.ListenerService;
-import com.linkedin.venice.listener.StorageReadRequestsHandler;
+import com.linkedin.venice.listener.StorageReadRequestHandler;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
@@ -72,7 +72,7 @@ public class TestVeniceServer extends VeniceServer {
         compressorFactory,
         resourceReadUsageTracker) {
       @Override
-      protected StorageReadRequestsHandler createRequestHandler(
+      protected StorageReadRequestHandler createRequestHandler(
           ThreadPoolExecutor executor,
           ThreadPoolExecutor computeExecutor,
           StorageEngineRepository storageEngineRepository,
@@ -86,7 +86,7 @@ public class TestVeniceServer extends VeniceServer {
           StorageEngineBackedCompressorFactory compressorFactory,
           Optional<ResourceReadUsageTracker> resourceReadUsageTracker) {
 
-        return new StorageReadRequestsHandler(
+        return new StorageReadRequestHandler(
             executor,
             computeExecutor,
             storageEngineRepository,

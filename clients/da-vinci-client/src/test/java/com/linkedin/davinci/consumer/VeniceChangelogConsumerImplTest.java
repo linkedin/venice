@@ -40,7 +40,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
-import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -353,8 +352,9 @@ public class VeniceChangelogConsumerImplTest {
       List<Long> replicationCheckpointVector) {
     final GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, 0L);
-    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, replicationCheckpointVector);
-    ByteBuffer bytes = RmdUtils.serializeRmdRecord(rmdSchema, rmdRecord);
+    rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME, replicationCheckpointVector);
+    ByteBuffer bytes =
+        ByteBuffer.wrap(FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema).serialize(rmdRecord));
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope(
         MessageType.PUT.getValue(),
         new ProducerMetadata(),

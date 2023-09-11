@@ -25,10 +25,11 @@ import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
-import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -38,6 +39,7 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -119,10 +121,6 @@ public interface Admin extends AutoCloseable, Closeable {
   void initStorageCluster(String clusterName);
 
   boolean isClusterValid(String clusterName);
-
-  default boolean isBatchJobHeartbeatEnabled() {
-    return false;
-  }
 
   default void createStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
     createStore(clusterName, storeName, owner, keySchema, valueSchema, false, Optional.empty());
@@ -340,19 +338,28 @@ public interface Admin extends AutoCloseable, Closeable {
       String valueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType);
 
-  /**
-   * This method skips most of precondition checks and is intended for only internal use.
-   * Code from outside should call
-   * {@link #addValueSchema(String, String, String, DirectionalSchemaCompatibilityType)} instead.
-   *
-   * TODO: make it private and remove from the interface list
-   */
   SchemaEntry addValueSchema(
       String clusterName,
       String storeName,
       String valueSchemaStr,
       int schemaId,
-      boolean doUpdateSupersetSchemaID);
+      DirectionalSchemaCompatibilityType expectedCompatibilityType);
+
+  /**
+   * This method skips most precondition checks and is intended for only internal use.
+   * Code from outside should call
+   * {@link #addValueSchema(String, String, String, DirectionalSchemaCompatibilityType)} instead.
+   *
+   * @see #addValueSchema(String, String, String, int, DirectionalSchemaCompatibilityType)
+   */
+  default SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
+    return addValueSchema(
+        clusterName,
+        storeName,
+        valueSchemaStr,
+        schemaId,
+        SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE);
+  }
 
   SchemaEntry addSupersetSchema(
       String clusterName,
@@ -401,6 +408,8 @@ public interface Admin extends AutoCloseable, Closeable {
   DerivedSchemaEntry removeDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId);
 
   void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber);
+
+  void rollForwardToFutureVersion(String clusterName, String storeName);
 
   void rollbackToBackupVersion(String clusterName, String storeName);
 
@@ -738,6 +747,8 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   MetaStoreWriter getMetaStoreWriter();
 
+  MetaStoreReader getMetaStoreReader();
+
   /**
    * Return {@link PushStatusStoreRecordDeleter}.
    */
@@ -938,4 +949,16 @@ public interface Admin extends AutoCloseable, Closeable {
   }
 
   Optional<PushStatusStoreReader> getPushStatusStoreReader();
+
+  Optional<PushStatusStoreWriter> getPushStatusStoreWriter();
+
+  /**
+   * Send a heartbeat timestamp to targeted system store.
+   */
+  void sendHeartbeatToSystemStore(String clusterName, String storeName, long heartbeatTimestamp);
+
+  /**
+   * Read the latest heartbeat timestamp from system store. If it failed to read from system store, this method should return -1.
+   */
+  long getHeartbeatFromSystemStore(String clusterName, String storeName);
 }

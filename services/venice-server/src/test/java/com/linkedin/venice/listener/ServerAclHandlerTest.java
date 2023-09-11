@@ -10,6 +10,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.protocols.VeniceClientRequest;
+import io.grpc.Attributes;
+import io.grpc.Grpc;
+import io.grpc.Metadata;
+import io.grpc.ServerCall;
+import io.grpc.ServerCallHandler;
+import io.grpc.Status;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
@@ -35,6 +42,12 @@ public class ServerAclHandlerTest {
   private ChannelHandlerContext ctx;
   private HttpRequest req;
   private ServerAclHandler aclHandler;
+
+  // gRPC related variables
+  private ServerCall call;
+  private Metadata headers;
+  private ServerCallHandler handler;
+
   protected Attribute<Boolean> serverAclApprovedAttr;
 
   @BeforeMethod
@@ -56,6 +69,16 @@ public class ServerAclHandlerTest {
     when(sslEngine.getSession()).thenReturn(sslSession);
     X509Certificate cert = mock(X509Certificate.class);
     when(sslSession.getPeerCertificates()).thenReturn(new Certificate[] { cert });
+
+    // gRPC
+    call = mock(ServerCall.class);
+    headers = new Metadata();
+    handler = mock(ServerCallHandler.class);
+    Attributes attr = Attributes.newBuilder()
+        .set(Grpc.TRANSPORT_ATTR_SSL_SESSION, sslSession)
+        .set(Grpc.TRANSPORT_ATTR_REMOTE_ADDR, mock(SocketAddress.class))
+        .build();
+    when(call.getAttributes()).thenReturn(attr);
 
     // Host
     Channel channel = mock(Channel.class);
@@ -94,6 +117,15 @@ public class ServerAclHandlerTest {
     verify(ctx).fireChannelRead(req);
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
     verify(serverAclApprovedAttr).set(false);
+  }
+
+  @Test
+  public void testDenyGrpc() {
+    when(accessController.hasAccess(any(), any(), any())).thenReturn(false);
+    ServerCall.Listener response = aclHandler.interceptCall(call, headers, handler);
+    VeniceClientRequest request = VeniceClientRequest.newBuilder().setMethod("GET").build();
+    response.onMessage(request);
+    verify(call).close(Status.PERMISSION_DENIED, headers);
   }
 
   public static class ContextMatcher implements ArgumentMatcher<FullHttpResponse> {

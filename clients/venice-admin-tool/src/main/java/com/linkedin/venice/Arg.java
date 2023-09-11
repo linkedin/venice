@@ -9,6 +9,7 @@ import com.linkedin.venice.migration.MigrationPushStrategy;
 public enum Arg {
   ACCESS_CONTROL("access-control", "acl", true, "Enable/disable store-level access control"),
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
+  SERVER_URL("server-url", "su", true, "Venice server url, eg. http://localhost:1690  This has to be a storage node"),
   VENICE_ZOOKEEPER_URL("venice-zookeeper-url", "vzu", true, "Venice Zookeeper url, eg. localhost:2622"),
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   CLUSTER_SRC("cluster-src", "cs", true, "Store migration original Venice cluster name"),
@@ -98,7 +99,7 @@ public enum Arg {
   KAFKA_TOPIC_NAME("kafka-topic-name", "ktn", true, "Kafka topic name"),
   KAFKA_TOPIC_PARTITION("kafka-topic-partition", "ktp", true, "Kafka topic partition number"),
   KAFKA_CONSUMER_CONFIG_FILE(
-      "kafka-conumer-config-file", "kcc", true, "Configuration file for SSL (optional, if plain-text is available)"
+      "kafka-consumer-config-file", "kcc", true, "Configuration file for SSL (optional, if plain-text is available)"
   ),
   KAFKA_OPERATION_TIMEOUT(
       "kafka-operation-timeout", "kot", true, "Timeout in seconds for Kafka operations (default: 30 sec)"
@@ -166,7 +167,7 @@ public enum Arg {
   SOURCE_FABRIC("source-fabric", "sf", true, "The fabric where metadata/data copy over starts from"),
   DEST_FABRIC("dest-fabric", "df", true, "The fabric where metadata/data gets copy over into"),
   ACL_PERMS("acl-perms", "ap", true, "Acl permissions for the store"),
-  LOG_METADATA("log-metedata", "lm", false, "Only log the metadata for each kafka message on console"),
+  LOG_METADATA("log-metadata", "lm", false, "Only log the metadata for each kafka message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC(
       "native-replication-source-fabric", "nrsf", true,
       "The source fabric name to be used in native replication. Remote consumption will happen from kafka in this fabric."
@@ -230,6 +231,9 @@ public enum Arg {
   EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
   ENABLE_DISABLED_REPLICA("enable-disabled-replicas", "edr", true, "Reenable disabled replicas"),
   NON_INTERACTIVE("non-interactive", "nita", false, "non-interactive mode"),
+  MIN_COMPACTION_LAG_SECONDS(
+      "min-compaction-lag-seconds", "mcls", true, "Min compaction lag seconds for version topic of hybrid stores"
+  ), PARTITION("partition", "p", true, "Partition Id"),
   INTERVAL(
       "interval", "itv", true,
       "monitor data recovery progress at seconds close to the number specified by the interval parameter until tasks are finished"

@@ -59,12 +59,14 @@ import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.Arg.MESSAGE_COUNT;
 import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
+import static com.linkedin.venice.Arg.MIN_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.NON_INTERACTIVE;
 import static com.linkedin.venice.Arg.NUM_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.Arg.OFFSET;
 import static com.linkedin.venice.Arg.OWNER;
+import static com.linkedin.venice.Arg.PARTITION;
 import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
 import static com.linkedin.venice.Arg.PARTITION_COUNT;
@@ -84,6 +86,7 @@ import static com.linkedin.venice.Arg.REPLICATION_FACTOR;
 import static com.linkedin.venice.Arg.RETRY;
 import static com.linkedin.venice.Arg.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
+import static com.linkedin.venice.Arg.SERVER_URL;
 import static com.linkedin.venice.Arg.SKIP_DIV;
 import static com.linkedin.venice.Arg.SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
@@ -220,7 +223,7 @@ public enum Command {
           ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
-          STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID }
+          STORAGE_PERSONA, STORE_VIEW_CONFIGS, LATEST_SUPERSET_SCHEMA_ID, MIN_COMPACTION_LAG_SECONDS }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -461,6 +464,16 @@ public enum Command {
       "monitor-data-recovery",
       "Monitor data recovery progress for a group of stores. ('--stores' overwrites '--cluster' value)",
       new Arg[] { URL, DEST_FABRIC, DATETIME }, new Arg[] { STORES, CLUSTER, INTERVAL }
+  ),
+  REQUEST_BASED_METADATA(
+      "request-based-metadata",
+      "Get the store's metadata using request based metadata endpoint via a transport client and a server URL",
+      new Arg[] { URL, SERVER_URL, STORE }
+  ),
+  DUMP_INGESTION_STATE(
+      "dump-ingestion-state",
+      "Dump the real-time ingestion state for a certain store version in a certain storage node",
+      new Arg[] { SERVER_URL, STORE, VERSION }, new Arg[] { PARTITION }
   );
 
   private final String commandName;

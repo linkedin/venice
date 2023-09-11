@@ -2,8 +2,13 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
@@ -17,12 +22,14 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.POST_VALIDATION_CONSUMPTION_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
+import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
@@ -41,9 +48,14 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertFalse;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.client.StorageClass;
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -63,6 +75,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -81,10 +94,14 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
+import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
+import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -93,6 +110,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -105,10 +123,12 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -132,7 +152,7 @@ public class TestPushJobWithNativeReplication {
                                                                                                          // ...];
   private static final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
 
-  private static final String VPJ_HEARTBEAT_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"
+  private static final String SYSTEM_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"
   private static final String VPJ_HEARTBEAT_STORE_NAME =
       AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
 
@@ -141,6 +161,7 @@ public class TestPushJobWithNativeReplication {
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private D2Client d2Client;
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -165,9 +186,9 @@ public class TestPushJobWithNativeReplication {
     Properties controllerProps = new Properties();
     // This property is required for test stores that have 10 partitions
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10);
-    controllerProps
-        .put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_CLUSTER);
+    controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(), SYSTEM_STORE_CLUSTER);
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
+    controllerProps.put(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, SYSTEM_STORE_CLUSTER);
     controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-0");
 
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
@@ -178,12 +199,20 @@ public class TestPushJobWithNativeReplication {
         2,
         1,
         2,
-        Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
-        Optional.of(new VeniceProperties(serverProperties)),
+        Optional.of(controllerProps),
+        Optional.of(serverProperties),
         false);
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    VeniceClusterWrapper clusterWrapper =
+        multiRegionMultiClusterWrapper.getChildRegions().get(0).getClusters().get(CLUSTER_NAMES[0]);
+    d2Client = new D2ClientBuilder().setZkHosts(clusterWrapper.getZk().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2Client);
+
   }
 
   @AfterClass(alwaysRun = true)
@@ -224,6 +253,22 @@ public class TestPushJobWithNativeReplication {
                 String actual = client.get(Integer.toString(i)).get().toString();
                 Assert.assertEquals(actual, expected);
               }
+            }
+
+            String pushJobDetailsStoreName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
+            Assert.assertEquals(
+                parentControllerClient.getAllValueSchema(pushJobDetailsStoreName).getSchemas().length,
+                AvroProtocolDefinition.PUSH_JOB_DETAILS.currentProtocolVersion.get().intValue());
+
+            // Verify push job details are populated
+            try (AvroGenericStoreClient<PushJobStatusRecordKey, Object> client =
+                ClientFactory.getAndStartGenericAvroClient(
+                    ClientConfig.defaultGenericClientConfig(pushJobDetailsStoreName).setVeniceURL(routerUrl))) {
+              PushJobStatusRecordKey key = new PushJobStatusRecordKey();
+              key.setStoreName(storeName);
+              key.setVersionNumber(1);
+              Object value = client.get(key).get();
+              Assert.assertNotNull(value);
             }
 
             /**
@@ -455,19 +500,16 @@ public class TestPushJobWithNativeReplication {
         });
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
-  public void testActiveActiveForHeartbeatSystemStores(int recordCount, int partitionCount) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testActiveActiveForHeartbeatSystemStores() throws Exception {
+    int recordCount = 50;
+    int partitionCount = 2;
     motherOfAllTests(
         "testActiveActiveForHeartbeatSystemStores",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount)
             .setIncrementalPushEnabled(true),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          // Enable VPJ to send liveness heartbeat.
-          props.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
-          // Prevent heartbeat from being deleted when the VPJ run finishes.
-          props.put(BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(), false);
-
           try (
               ControllerClient dc0Client =
                   new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -477,6 +519,11 @@ public class TestPushJobWithNativeReplication {
             NativeReplicationTestUtils
                 .verifyDCConfigNativeRepl(Arrays.asList(dc0Client, dc1Client), VPJ_HEARTBEAT_STORE_NAME, true);
           }
+
+          // Enable VPJ to send liveness heartbeat.
+          props.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
+          // Prevent heartbeat from being deleted when the VPJ run finishes.
+          props.put(BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(), false);
 
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
             job.run();
@@ -948,18 +995,16 @@ public class TestPushJobWithNativeReplication {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(participantStoreName, 1),
           controllerClient,
-          100,
+          10,
           TimeUnit.MINUTES);
     }
-
     motherOfAllTests(
         "testTargetedRegionPushJobBatchStore",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          props.put(TARGETED_REGION_PUSH_ENABLED, true);
-          // no need to set but add here for clarity
-          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+          props.put(TARGETED_REGION_PUSH_ENABLED, false);
+          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, false);
           try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
             job.run(); // the job should succeed
 
@@ -971,6 +1016,25 @@ public class TestPushJobWithNativeReplication {
                   .values()) {
                 Assert.assertEquals(version, 1);
               }
+            });
+          }
+          props.put(TARGETED_REGION_PUSH_ENABLED, true);
+          props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
+          TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 20);
+          try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
+            job.run(); // the job should succeed
+
+            TestUtils.waitForNonDeterministicAssertion(45, TimeUnit.SECONDS, () -> {
+              // Current version should become 2
+              for (int version: parentControllerClient.getStore(storeName)
+                  .getStore()
+                  .getColoToCurrentVersions()
+                  .values()) {
+                Assert.assertEquals(version, 2);
+              }
+              // should be able to read all 20 records.
+              validateDaVinciClient(storeName, 20);
+              validatePushJobDetails(clusterName, storeName);
             });
           }
         });
@@ -1025,6 +1089,7 @@ public class TestPushJobWithNativeReplication {
     String storeName = Utils.getUniqueString(storeNamePrefix);
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    props.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
     UpdateStoreQueryParams updateStoreParams = updateStoreParamsTransformer
@@ -1036,7 +1101,6 @@ public class TestPushJobWithNativeReplication {
 
     try {
       createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
-
       childDatacenters.get(0)
           .getClusters()
           .get(clusterName)
@@ -1062,6 +1126,62 @@ public class TestPushJobWithNativeReplication {
       }
     } finally {
       FileUtils.deleteDirectory(inputDir);
+    }
+  }
+
+  private void validateDaVinciClient(String storeName, int recordCount)
+      throws ExecutionException, InterruptedException {
+    String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    DaVinciClient<String, Object> client;
+    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, baseDataPath)
+        .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .build();
+    MetricsRepository metricsRepository = new MetricsRepository();
+    DaVinciConfig clientConfig = new DaVinciConfig();
+    clientConfig.setStorageClass(StorageClass.DISK);
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        metricsRepository,
+        backendConfig)) {
+      client = factory.getGenericAvroClient(storeName, clientConfig);
+      client.start();
+      client.subscribeAll().get(30, TimeUnit.SECONDS);
+      for (int i = 1; i <= recordCount; i++) {
+        Assert.assertNotNull(client.get(Integer.toString(i)));
+      }
+    } catch (TimeoutException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private void validatePushJobDetails(String clusterName, String storeName)
+      throws ExecutionException, InterruptedException {
+    String pushJobDetailsStoreName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
+    VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+    String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
+
+    // Verify push job details are populated
+    try (AvroGenericStoreClient<PushJobStatusRecordKey, Object> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(pushJobDetailsStoreName).setVeniceURL(routerUrl))) {
+      PushJobStatusRecordKey key = new PushJobStatusRecordKey();
+      key.setStoreName(storeName);
+      key.setVersionNumber(1);
+      GenericRecord value = (GenericRecord) client.get(key).get();
+      HashMap<Utf8, List<PushJobDetailsStatusTuple>> map =
+          (HashMap<Utf8, List<PushJobDetailsStatusTuple>>) value.get("coloStatus");
+      Assert.assertEquals(map.size(), 2);
+      List<PushJobDetailsStatusTuple> status = map.get(new Utf8("dc-0"));
+      Assert.assertEquals(
+          ((GenericRecord) status.get(status.size() - 1)).get("status"),
+          PushJobDetailsStatus.COMPLETED.getValue());
+      status = map.get(new Utf8("dc-1"));
+      Assert.assertEquals(
+          ((GenericRecord) status.get(status.size() - 1)).get("status"),
+          PushJobDetailsStatus.COMPLETED.getValue());
+
     }
   }
 

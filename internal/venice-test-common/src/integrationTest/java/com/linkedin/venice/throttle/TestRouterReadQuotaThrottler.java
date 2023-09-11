@@ -14,9 +14,11 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -52,7 +54,10 @@ public class TestRouterReadQuotaThrottler {
     currentVersion = response.getVersion();
 
     String stringSchema = "\"string\"";
-    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        cluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory writerFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     try (VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
         VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
         VeniceWriter<Object, Object, Object> writer = writerFactory.createVeniceWriter(

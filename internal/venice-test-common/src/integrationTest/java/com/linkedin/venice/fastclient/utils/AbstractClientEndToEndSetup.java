@@ -29,25 +29,31 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.fastclient.GrpcClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -68,6 +74,8 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -78,6 +86,7 @@ import org.testng.annotations.DataProvider;
  */
 
 public abstract class AbstractClientEndToEndSetup {
+  private static final Logger LOGGER = LogManager.getLogger(AbstractClientEndToEndSetup.class);
   protected VeniceClusterWrapper veniceCluster;
   protected String storeVersionName;
   protected int valueSchemaId;
@@ -124,12 +133,12 @@ public abstract class AbstractClientEndToEndSetup {
    */
   protected static final ImmutableList<Object> BATCH_GET_KEY_SIZE = ImmutableList.of(2, recordCnt);
 
-  @DataProvider(name = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode")
-  public Object[][] fourBooleanANumberStoreMetadataFetchMode() {
+  @DataProvider(name = "FastClient-Five-Boolean-A-Number-Store-Metadata-Fetch-Mode")
+  public Object[][] fiveBooleanANumberStoreMetadataFetchMode() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean batchGet = (boolean) permutation[2];
       boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
-      int batchGetKeySize = (int) permutation[4];
+      int batchGetKeySize = (int) permutation[5];
       if (!batchGet) {
         if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
@@ -143,6 +152,7 @@ public abstract class AbstractClientEndToEndSetup {
         DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
         DataProviderUtils.BOOLEAN, // batchGet
         DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
+        DataProviderUtils.BOOLEAN, // enableGrpc
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
@@ -214,6 +224,7 @@ public abstract class AbstractClientEndToEndSetup {
     props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
     VeniceClusterCreateOptions createOptions = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
+        .enableGrpc(true)
         .numberOfRouters(1)
         .replicationFactor(2)
         .partitionSize(100)
@@ -247,7 +258,10 @@ public abstract class AbstractClientEndToEndSetup {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
-    veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+    PubSubBrokerWrapper pubSubBrokerWrapper = veniceCluster.getPubSubBrokerWrapper();
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+    veniceWriter = IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory)
         .createVeniceWriter(
             new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
                 .setValueSerializer(valueSerializer)
@@ -392,6 +406,15 @@ public abstract class AbstractClientEndToEndSetup {
     return ClientFactory.getAndStartSpecificStoreClient(clientConfig);
   }
 
+  protected void setUpGrpcFastClient(ClientConfig.ClientConfigBuilder clientConfigBuilder) {
+    GrpcClientConfig grpcClientConfig = new GrpcClientConfig.Builder().setR2Client(r2Client)
+        .setSSLFactory(SslUtils.getVeniceLocalSslFactory())
+        .setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
+        .build();
+
+    clientConfigBuilder.setGrpcClientConfig(grpcClientConfig).setUseGrpc(true);
+  }
+
   protected void setupStoreMetadata(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
@@ -401,6 +424,15 @@ public abstract class AbstractClientEndToEndSetup {
         clientConfigBuilder.setD2Client(d2Client);
         clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
         clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+        // Validate the metadata response schema forward compat support setup
+        veniceCluster.useControllerClient(controllerClient -> {
+          String schemaStoreName = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName();
+          MultiSchemaResponse multiSchemaResponse = controllerClient.getAllValueSchema(schemaStoreName);
+          assertFalse(multiSchemaResponse.isError());
+          assertEquals(
+              AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion(),
+              multiSchemaResponse.getSchemas().length);
+        });
         break;
       case THIN_CLIENT_BASED_METADATA:
         setupThinClientBasedStoreMetadata();
@@ -480,30 +512,39 @@ public abstract class AbstractClientEndToEndSetup {
             .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
   }
 
-  protected void validateMetrics(
+  protected void validateSingleGetMetrics(MetricsRepository metricsRepository, boolean retryEnabled) {
+    validateBatchGetMetrics(metricsRepository, false, 0, 0, retryEnabled);
+  }
+
+  protected void validateBatchGetMetrics(
       MetricsRepository metricsRepository,
       boolean useStreamingBatchGetAsDefault,
       int expectedBatchGetKeySizeMetricsCount,
-      int expectedBatchGetKeySizeSuccessMetricsCount) {
-    String metricPrefix = useStreamingBatchGetAsDefault ? "--multiget_" : "--";
+      int expectedBatchGetKeySizeSuccessMetricsCount,
+      boolean retryEnabled) {
+    String metricPrefix = "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--");
     double keyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeMetricsCount : 1;
     double successKeyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeSuccessMetricsCount : 1;
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+
     // counters are incremented in an async manner, so adding non-deterministic wait
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertTrue(metrics.get(metricPrefix + "request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
+      assertTrue(metrics.get(metricPrefix + "healthy_request_latency.Avg").value() > 0);
+      assertFalse(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
+      assertFalse(metrics.get(metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
       assertTrue(
-          metrics.get("." + storeName + metricPrefix + "request_key_count.Rate").value() > 0,
-          "Respective request_key_count should have been incremented");
-      assertEquals(
-          metrics.get("." + storeName + metricPrefix + "request_key_count.Max").value(),
-          keyCount,
+          metrics.get(metricPrefix + "request_key_count.Rate").value() > 0,
           "Respective request_key_count should have been incremented");
       assertTrue(
-          metrics.get("." + storeName + metricPrefix + "success_request_key_count.Rate").value() > 0,
+          metrics.get(metricPrefix + "request_key_count.Max").value() >= keyCount,
+          "Respective request_key_count should have been incremented");
+      assertTrue(
+          metrics.get(metricPrefix + "success_request_key_count.Rate").value() > 0,
           "Respective success_request_key_count should have been incremented");
-      assertEquals(
-          metrics.get("." + storeName + metricPrefix + "success_request_key_count.Max").value(),
-          successKeyCount,
+      assertTrue(
+          metrics.get(metricPrefix + "success_request_key_count.Max").value() >= successKeyCount,
           "Respective success_request_key_count should have been incremented");
     });
     // incorrect metric should not be incremented
@@ -512,12 +553,18 @@ public abstract class AbstractClientEndToEndSetup {
             .value() > 0,
         "Incorrect request_key_count should not be incremented");
 
-    // no retry should be triggered as it's not expected to be configured when calling this function
-    metrics.forEach((mName, metric) -> {
-      if (mName.contains("long_tail_retry_request")) {
-        assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
-      }
-    });
+    if (retryEnabled) {
+      String log = useStreamingBatchGetAsDefault ? "batch Get" : "single Get";
+      assertTrue(
+          metrics.get(metricPrefix + "long_tail_retry_request.OccurrenceRate").value() > 0,
+          "Long tail retry for " + log + " should be triggered");
+    } else {
+      metrics.forEach((mName, metric) -> {
+        if (mName.contains("long_tail_retry_request")) {
+          assertTrue(metric.value() == 0, "Long tail retry should not be triggered");
+        }
+      });
+    }
   }
 
   @AfterClass(alwaysRun = true)

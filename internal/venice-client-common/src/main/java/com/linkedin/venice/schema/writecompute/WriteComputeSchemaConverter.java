@@ -13,7 +13,7 @@ import static org.apache.avro.Schema.Type.UNION;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
-import com.linkedin.venice.schema.SchemaUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import io.tehuti.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -395,8 +395,8 @@ public class WriteComputeSchemaConverter {
     if (unionSchema.getType() != UNION) {
       throw new VeniceException("Expect schema to be UNION type. Got: " + unionSchema);
     }
-    SchemaUtils.containsOnlyOneCollection(unionSchema);
-    return SchemaUtils.createFlattenedUnionSchema(unionSchema.getTypes().stream().sequential().map(schema -> {
+    AvroSchemaUtils.containsOnlyOneCollection(unionSchema);
+    return AvroSchemaUtils.createFlattenedUnionSchema(unionSchema.getTypes().stream().sequential().map(schema -> {
       Schema.Type type = schema.getType();
       if (type == RECORD) {
         return schema;
@@ -416,7 +416,7 @@ public class WriteComputeSchemaConverter {
     // always put NO_OP at the first place so that it will be the default value of the union
     list.addFirst(getNoOpOperation(namespace));
 
-    return SchemaUtils.createFlattenedUnionSchema(list);
+    return AvroSchemaUtils.createFlattenedUnionSchema(list);
   }
 
   private Schema createCollectionOperationSchema(

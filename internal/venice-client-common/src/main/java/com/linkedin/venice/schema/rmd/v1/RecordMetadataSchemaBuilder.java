@@ -9,7 +9,7 @@ import static org.apache.avro.Schema.Type.STRING;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.SchemaUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import io.tehuti.utils.Utils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -74,7 +74,7 @@ class RecordMetadataSchemaBuilder {
     if (fieldMetadataSchema == LONG_TYPE_TIMESTAMP_SCHEMA) {
       defaultValue = 0;
     } else if (fieldMetadataSchema.getType() == RECORD) {
-      defaultValue = SchemaUtils.createGenericRecord(fieldMetadataSchema);
+      defaultValue = AvroSchemaUtils.createGenericRecord(fieldMetadataSchema);
     } else {
       throw new IllegalStateException(
           "Generated field metadata schema is expected to be either of a type Long or of a "
@@ -128,7 +128,7 @@ class RecordMetadataSchemaBuilder {
   }
 
   private Schema generateSchemaForUnionField(Schema.Field unionField, String namespace) {
-    if (!SchemaUtils.isNullableUnionPair(unionField.schema())) {
+    if (!AvroSchemaUtils.isNullableUnionPair(unionField.schema())) {
       return LONG_TYPE_TIMESTAMP_SCHEMA;
     }
     List<Schema> internalSchemas = unionField.schema().getTypes();

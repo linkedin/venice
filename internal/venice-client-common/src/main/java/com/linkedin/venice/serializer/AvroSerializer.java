@@ -18,7 +18,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * {@code AvroSerializer} provides the functionality to serialize and deserialize objects by using Avro.
+ * {@code AvroSerializer} provides the functionality to serialize objects by using Avro.
  */
 public class AvroSerializer<K> implements RecordSerializer<K> {
   private static final Logger LOGGER = LogManager.getLogger(AvroSerializer.class);

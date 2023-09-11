@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -489,6 +490,7 @@ public class PartitionConsumptionState {
     if (replicationMetadataRecord != null) {
       transientRecord.setReplicationMetadataRecord(replicationMetadataRecord);
     }
+
     transientRecordMap.put(ByteArrayKey.wrap(key), transientRecord);
   }
 
@@ -563,7 +565,10 @@ public class PartitionConsumptionState {
     private final long kafkaConsumedOffset;
     private GenericRecord replicationMetadataRecord;
 
-    TransientRecord(
+    private ChunkedValueManifest valueManifest;
+    private ChunkedValueManifest rmdManifest;
+
+    public TransientRecord(
         byte[] value,
         int valueOffset,
         int valueLen,
@@ -576,6 +581,22 @@ public class PartitionConsumptionState {
       this.valueSchemaId = valueSchemaId;
       this.kafkaClusterId = kafkaClusterId;
       this.kafkaConsumedOffset = kafkaConsumedOffset;
+    }
+
+    public ChunkedValueManifest getRmdManifest() {
+      return rmdManifest;
+    }
+
+    public void setRmdManifest(ChunkedValueManifest rmdManifest) {
+      this.rmdManifest = rmdManifest;
+    }
+
+    public ChunkedValueManifest getValueManifest() {
+      return valueManifest;
+    }
+
+    public void setValueManifest(ChunkedValueManifest valueManifest) {
+      this.valueManifest = valueManifest;
     }
 
     public void setReplicationMetadataRecord(GenericRecord replicationMetadataRecord) {
