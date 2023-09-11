@@ -200,6 +200,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -3483,6 +3484,29 @@ public abstract class StoreIngestionTaskTest {
     storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);
     String dataRecoverySourceTopic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
     verify(offsetRecord, times(1)).setLeaderTopic(pubSubTopicRepository.getTopic(dataRecoverySourceTopic));
+  }
+
+  @Test
+  public void testCheckIngestionTaskActiveness() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    AtomicBoolean result = new AtomicBoolean(true);
+    when(storeIngestionTask.getIsRunning()).thenReturn(result);
+    doCallRealMethod().when(storeIngestionTask).close();
+    doCallRealMethod().when(storeIngestionTask).isRunning();
+
+    // Case 1: idle time pass, close(), then startConsumption(), SIT should be closed
+    when(storeIngestionTask.getMaxIdleCounter()).thenReturn(10);
+    when(storeIngestionTask.getIdleCounter()).thenReturn(11);
+    when(storeIngestionTask.maybeSetIngestionTaskActiveState(anyBoolean())).thenCallRealMethod();
+    storeIngestionTask.maybeSetIngestionTaskActiveState(false);
+    Assert.assertFalse(storeIngestionTask.maybeSetIngestionTaskActiveState(true));
+
+    // Case 2: idle time pass, startConsumption() then close(), SIT should keep active.
+    result.set(true);
+    when(storeIngestionTask.getIsRunning()).thenReturn(result);
+    storeIngestionTask.maybeSetIngestionTaskActiveState(true);
+    when(storeIngestionTask.getIdleCounter()).thenReturn(0);
+    Assert.assertTrue(storeIngestionTask.maybeSetIngestionTaskActiveState(false));
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

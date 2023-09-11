@@ -117,6 +117,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -519,7 +520,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return true;
   }
 
-  private StoreIngestionTask createConsumerTask(VeniceStoreVersionConfig veniceStoreVersionConfig, int partitionId) {
+  private StoreIngestionTask createStoreIngestionTask(
+      VeniceStoreVersionConfig veniceStoreVersionConfig,
+      int partitionId) {
     String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
     int versionNumber = Version.parseVersionFromKafkaTopicName(veniceStoreVersionConfig.getStoreVersionName());
 
@@ -620,20 +623,27 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       Optional<LeaderFollowerStateType> leaderState) {
 
     final String topic = veniceStore.getStoreVersionName();
+
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
-      StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
-      if (consumerTask == null || !consumerTask.isRunning()) {
-        consumerTask = createConsumerTask(veniceStore, partitionId);
-        topicNameToIngestionTaskMap.put(topic, consumerTask);
-        versionedIngestionStats.setIngestionTask(topic, consumerTask);
+      // Create new store ingestion task atomically.
+      AtomicBoolean createNewStoreIngestionTask = new AtomicBoolean(false);
+      StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.compute(topic, (k, v) -> {
+        if ((v == null) || (!v.isIngestionTaskActive())) {
+          createNewStoreIngestionTask.set(true);
+          return createStoreIngestionTask(veniceStore, partitionId);
+        }
+        return v;
+      });
+      if (createNewStoreIngestionTask.get()) {
+        versionedIngestionStats.setIngestionTask(topic, storeIngestionTask);
         if (!isRunning()) {
           LOGGER.info(
-              "Ignoring Start consumption message as service is stopping. Topic {} Partition {}",
+              "Ignore start consumption for topic: {}, partition: {} as service is stopping.",
               topic,
               partitionId);
           return;
         }
-        ingestionExecutorService.submit(consumerTask);
+        ingestionExecutorService.submit(storeIngestionTask);
       }
 
       /**
@@ -660,7 +670,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
       updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
 
-      consumerTask.subscribePartition(
+      storeIngestionTask.subscribePartition(
           new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId),
           leaderState);
     }

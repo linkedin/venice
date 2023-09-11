@@ -144,7 +144,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private static final long SOP_POLLING_TIMEOUT_MS = HOURS.toMillis(1);
 
   private static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
-  private static final int MAX_IDLE_COUNTER = 100;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
@@ -217,6 +216,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** Message bytes consuming interval before persisting offset in offset db for deferred-write database. */
   protected final long databaseSyncBytesIntervalForDeferredWriteMode;
   protected final VeniceServerConfig serverConfig;
+
+  private final int ingestionTaskMaxIdleCount;
 
   /** Used for reporting error when the {@link #partitionConsumptionStateMap} is empty */
   protected final int errorPartitionId;
@@ -450,6 +451,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     this.runnableForKillIngestionTasksForNonCurrentVersions =
         builder.getRunnableForKillIngestionTasksForNonCurrentVersions();
+    this.ingestionTaskMaxIdleCount = serverConfig.getIngestionTaskMaxIdleCount();
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -1191,7 +1193,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * {@link IllegalStateException} with empty subscription.
      */
     if (!consumerHasAnySubscription()) {
-      if (++idleCounter <= MAX_IDLE_COUNTER) {
+      if (++idleCounter <= getMaxIdleCounter()) {
         String message = consumerTaskId + " Not subscribed to any partitions ";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
           LOGGER.info(message);
@@ -1208,13 +1210,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Thread.sleep(readCycleDelayMs * 20);
           idleCounter = 0;
         } else {
-          LOGGER.warn("{} Has expired due to not being subscribed to any partitions for too long.", consumerTaskId);
-          complete();
+          maybeCloseInactiveIngestionTask();
         }
       }
       return;
     }
-
     idleCounter = 0;
     maybeUnsubscribeCompletedPartitions(store);
     recordQuotaMetrics(store);
@@ -1265,6 +1265,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       hostLevelIngestionStats
           .recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage(), currentTimeForMetricsMs);
     }
+  }
+
+  public boolean isIngestionTaskActive() {
+    return maybeSetIngestionTaskActiveState(true);
   }
 
   /**
@@ -3219,12 +3223,48 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private synchronized void complete() {
-    if (consumerActionsQueue.isEmpty()) {
-      close();
-    } else {
-      LOGGER.info("{} consumerActionsQueue is not empty, ignoring complete() call.", consumerTaskId);
+  private void maybeCloseInactiveIngestionTask() {
+    LOGGER.warn("{} Has expired due to not being subscribed to any partitions for too long.", consumerTaskId);
+    if (!consumerActionsQueue.isEmpty()) {
+      LOGGER.info("{} consumerActionsQueue is not empty, will not close ingestion task.", consumerTaskId);
+      return;
     }
+    maybeSetIngestionTaskActiveState(false);
+  }
+
+  /**
+   * This method tries to update ingestion task active state.
+   * It is used in two place: (1) Subscribe new partition; (2) Close idle store ingestion task.
+   * We use synchronized modifier to avoid the below race condition edge case:
+   * 1. Thread 1: startConsumption() API fetch ingestion task and check its running state.
+   * 2. Thread 2: Due to idleness, ingestion task call close() to change running state.
+   * 3. Thread 1: startConsumption() API call ingestionTask#subscribePartition() API and throws exception.
+   */
+  synchronized boolean maybeSetIngestionTaskActiveState(boolean isNewStateActive) {
+    if (isNewStateActive) {
+      setIdleCounter(0);
+    } else {
+      if (getIdleCounter() > getMaxIdleCounter()) {
+        close();
+      }
+    }
+    return isRunning();
+  }
+
+  void setIdleCounter(int counter) {
+    idleCounter = counter;
+  }
+
+  int getIdleCounter() {
+    return idleCounter;
+  }
+
+  int getMaxIdleCounter() {
+    return ingestionTaskMaxIdleCount;
+  }
+
+  AtomicBoolean getIsRunning() {
+    return isRunning;
   }
 
   /**
@@ -3232,7 +3272,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void close() {
     // Evict any pending repair tasks
-    isRunning.set(false);
+    getIsRunning().set(false);
     // KafkaConsumer is closed at the end of the run method.
     // The operation is executed on a single thread in run method.
     // This method signals the run method to end, which closes the
@@ -3262,7 +3302,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This would allow the service to create a new task if required.
    */
   public boolean isRunning() {
-    return isRunning.get();
+    return getIsRunning().get();
   }
 
   public PubSubTopic getVersionTopic() {
