@@ -3,6 +3,8 @@ package com.linkedin.venice.client.schema;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.Closeable;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -30,7 +32,14 @@ public interface StoreSchemaFetcher extends Closeable {
   /**
    * Returns all value schemas of the store.
    */
-  Set<Schema> getAllValueSchemas();
+  default Set<Schema> getAllValueSchemas() {
+    return new HashSet<>(getAllValueSchemasWithId().values());
+  }
+
+  /**
+   * Returns all value schemas of the store as a map with schema id as the key.
+   */
+  Map<Integer, Schema> getAllValueSchemasWithId();
 
   /**
    * Returns the Update (Write Compute) schema of the provided Value schema. The returned schema is used to construct
