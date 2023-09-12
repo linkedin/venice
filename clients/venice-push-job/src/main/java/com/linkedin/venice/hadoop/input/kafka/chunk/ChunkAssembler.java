@@ -222,7 +222,7 @@ public class ChunkAssembler {
           concatenateAllChunks(valueChunks, totalValueByteCount),
           latestChunkedValueManifest.schemaId,
           latestChunkedValueManifestRMDVersionId,
-          ByteBuffer.wrap(concatenateAllChunks(rmdChunks, totalValueByteCount)));
+          ByteBuffer.wrap(concatenateAllChunks(rmdChunks, totalRmdByteCount)));
 
     }
   }

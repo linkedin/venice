@@ -85,6 +85,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -606,8 +607,9 @@ public class PartialUpdateTest {
    * (3) Send a DELETE message to partially delete some items in the map field.
    * (4) Send a DELETE message to fully delete the record.
    */
-  @Test(timeOut = TEST_TIMEOUT_MS * 3)
-  public void testReplicationMetadataChunkingE2E() throws IOException {
+  @Test(timeOut = TEST_TIMEOUT_MS
+      * 3, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
+  public void testActiveAcitvePartialUpdateWithCompression(CompressionStrategy compressionStrategy) throws IOException {
     final String storeName = Utils.getUniqueString("rmdChunking");
     String parentControllerUrl = parentController.getControllerUrl();
     String keySchemaStr = "{\"type\" : \"string\"}";
@@ -627,7 +629,7 @@ public class PartialUpdateTest {
           parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setCompressionStrategy(compressionStrategy)
               .setWriteComputationEnabled(true)
               .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
@@ -655,21 +657,21 @@ public class PartialUpdateTest {
 
     String key = "key1";
     String primitiveFieldName = "name";
-    String mapFieldName = "stringMap";
+    String listFieldName = "floatArray";
 
-    int totalUpdateCount = 30;
+    int totalUpdateCount = 40;
     // Insert large amount of Map entries to trigger RMD chunking.
     int singleUpdateEntryCount = 10000;
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
       for (int i = 0; i < (totalUpdateCount - 1); i++) {
-        producePartialUpdate(
+        producePartialUpdateToArray(
             storeName,
             veniceProducer,
             partialUpdateSchema,
             key,
             primitiveFieldName,
-            mapFieldName,
+            listFieldName,
             singleUpdateEntryCount,
             i);
       }
@@ -680,10 +682,9 @@ public class PartialUpdateTest {
           boolean nullRecord = (valueRecord == null);
           assertFalse(nullRecord);
           assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
-          Map<String, String> mapFieldResult = new HashMap<>();
-          ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
-              .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
-          assertEquals(mapFieldResult.size(), (totalUpdateCount - 1) * singleUpdateEntryCount);
+          assertEquals(
+              ((List<Float>) (valueRecord.get(listFieldName))).size(),
+              (totalUpdateCount - 1) * singleUpdateEntryCount);
         } catch (Exception e) {
           throw new VeniceException(e);
         }
@@ -702,13 +703,13 @@ public class PartialUpdateTest {
       ChunkedValueManifest valueManifest = getChunkValueManifest(storageEngine, 0, key, false);
       ChunkedValueManifest rmdManifest = getChunkValueManifest(storageEngine, 0, key, true);
 
-      producePartialUpdate(
+      producePartialUpdateToArray(
           storeName,
           veniceProducer,
           partialUpdateSchema,
           key,
           primitiveFieldName,
-          mapFieldName,
+          listFieldName,
           singleUpdateEntryCount,
           totalUpdateCount - 1);
 
@@ -719,10 +720,9 @@ public class PartialUpdateTest {
           boolean nullRecord = (valueRecord == null);
           assertFalse(nullRecord);
           assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
-          Map<String, String> mapFieldResult = new HashMap<>();
-          ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
-              .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
-          assertEquals(mapFieldResult.size(), totalUpdateCount * singleUpdateEntryCount);
+          assertEquals(
+              ((List<Float>) (valueRecord.get(listFieldName))).size(),
+              totalUpdateCount * singleUpdateEntryCount);
         } catch (Exception e) {
           throw new VeniceException(e);
         }
@@ -730,8 +730,9 @@ public class PartialUpdateTest {
       // Validate RMD bytes after PUT requests.
       validateRmdData(rmdSerDe, kafkaTopic_v1, key, rmdWithValueSchemaId -> {
         GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get("timestamp");
-        GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
-        List<Long> activeElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("activeElementsTimestamps");
+        GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
+        List<Long> activeElementsTimestamps =
+            (List<Long>) collectionFieldTimestampRecord.get("activeElementsTimestamps");
         assertEquals(activeElementsTimestamps.size(), totalUpdateCount * singleUpdateEntryCount);
       });
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
@@ -743,6 +744,11 @@ public class PartialUpdateTest {
           Assert.assertEquals(rmdChunkBytes.length, 4);
         }, true);
       });
+
+      // For now, repush with large ZSTD dictionary will fail as the size exceeds max request size.
+      if (compressionStrategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+        return;
+      }
 
       // <!--- Perform one time repush to make sure repush can handle RMD chunks data correctly -->
       Properties props =
@@ -768,10 +774,9 @@ public class PartialUpdateTest {
           boolean nullRecord = (valueRecord == null);
           assertFalse(nullRecord);
           assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
-          Map<String, String> mapFieldResult = new HashMap<>();
-          ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
-              .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
-          assertEquals(mapFieldResult.size(), totalUpdateCount * singleUpdateEntryCount);
+          assertEquals(
+              ((List<Float>) (valueRecord.get(listFieldName))).size(),
+              totalUpdateCount * singleUpdateEntryCount);
         } catch (Exception e) {
           throw new VeniceException(e);
         }
@@ -780,8 +785,9 @@ public class PartialUpdateTest {
       String kafkaTopic_v2 = Version.composeKafkaTopic(storeName, 2);
       validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
         GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get("timestamp");
-        GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
-        List<Long> activeElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("activeElementsTimestamps");
+        GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
+        List<Long> activeElementsTimestamps =
+            (List<Long>) collectionFieldTimestampRecord.get("activeElementsTimestamps");
         assertEquals(activeElementsTimestamps.size(), totalUpdateCount * singleUpdateEntryCount);
       });
 
@@ -792,19 +798,17 @@ public class PartialUpdateTest {
         GenericRecord valueRecord = readValue(storeReader, key);
         boolean nullRecord = (valueRecord == null);
         assertFalse(nullRecord);
-
-        Map<String, String> mapFieldResult = new HashMap<>();
-        ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
-            .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
-        assertEquals(mapFieldResult.size(), singleUpdateEntryCount);
+        assertEquals(((List<Float>) (valueRecord.get(listFieldName))).size(), singleUpdateEntryCount);
       });
 
       validateRmdData(rmdSerDe, kafkaTopic_v2, key, rmdWithValueSchemaId -> {
         GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get("timestamp");
-        GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
-        List<Long> activeElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("activeElementsTimestamps");
+        GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
+        List<Long> activeElementsTimestamps =
+            (List<Long>) collectionFieldTimestampRecord.get("activeElementsTimestamps");
         assertEquals(activeElementsTimestamps.size(), singleUpdateEntryCount);
-        List<Long> deletedElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("deletedElementsTimestamps");
+        List<Long> deletedElementsTimestamps =
+            (List<Long>) collectionFieldTimestampRecord.get("deletedElementsTimestamps");
         assertEquals(deletedElementsTimestamps.size(), 0);
       });
 
@@ -820,8 +824,8 @@ public class PartialUpdateTest {
             rmdWithValueSchemaId.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME) instanceof GenericRecord);
         GenericRecord timestampRecord =
             (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
-        GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
-        assertEquals(stringMapTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), (long) (totalUpdateCount) * 10);
+        GenericRecord collectionFieldTimestampRecord = (GenericRecord) timestampRecord.get(listFieldName);
+        assertEquals(collectionFieldTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), (long) (totalUpdateCount) * 10);
       });
     } finally {
       veniceProducer.stop();
@@ -1334,6 +1338,27 @@ public class PartialUpdateTest {
       newEntries.put("key_" + idx, "value_" + idx);
     }
     updateBuilder.setEntriesToAddToMapField(mapFieldName, newEntries);
+    GenericRecord partialUpdateRecord = updateBuilder.build();
+    sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord, updateCount * 10L + 1);
+  }
+
+  private void producePartialUpdateToArray(
+      String storeName,
+      SystemProducer veniceProducer,
+      Schema partialUpdateSchema,
+      String key,
+      String primitiveFieldName,
+      String arrayField,
+      int singleUpdateEntryCount,
+      int updateCount) {
+    UpdateBuilder updateBuilder = new UpdateBuilderImpl(partialUpdateSchema);
+    updateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
+    List<Float> newEntries = new ArrayList<>();
+    for (int j = 0; j < singleUpdateEntryCount; j++) {
+      float value = (float) (updateCount * singleUpdateEntryCount + j);
+      newEntries.add(value);
+    }
+    updateBuilder.setElementsToAddToListField(arrayField, newEntries);
     GenericRecord partialUpdateRecord = updateBuilder.build();
     sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord, updateCount * 10L + 1);
   }
