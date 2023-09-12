@@ -1,5 +1,6 @@
 package com.linkedin.venice.compression;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.io.ZeroCopyByteArrayOutputStream;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.ByteArrayInputStream;
@@ -96,16 +97,22 @@ public class GzipCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int length) throws IOException {
-    int valueSchema = ByteUtils.readInt(data, 0);
+  public ByteBuffer decompressAndMaybePrependSchemaHeader(
+      byte[] data,
+      int offset,
+      int length,
+      boolean prependSchemaHeader) throws IOException {
+    if (prependSchemaHeader && offset < SCHEMA_HEADER_LENGTH) {
+      throw new VeniceException("Start offset does not have enough room for schema header.");
+    }
+    int schemaHeader = prependSchemaHeader ? ByteUtils.readInt(data, offset - SCHEMA_HEADER_LENGTH) : 0;
     byte[] decompressedByteArray;
-    try (InputStream gis =
-        decompress(new ByteArrayInputStream(data, SCHEMA_HEADER_LENGTH, length - SCHEMA_HEADER_LENGTH))) {
+    try (InputStream gis = decompress(new ByteArrayInputStream(data, offset, length))) {
       decompressedByteArray = IOUtils.toByteArray(gis);
       ByteBuffer byteBufferWithHeader = ByteBuffer.allocate(SCHEMA_HEADER_LENGTH + decompressedByteArray.length)
-          .putInt(valueSchema)
+          .putInt(schemaHeader)
           .put(decompressedByteArray);
-      byteBufferWithHeader.flip();
+      byteBufferWithHeader.limit(byteBufferWithHeader.position());
       byteBufferWithHeader.position(SCHEMA_HEADER_LENGTH);
       return byteBufferWithHeader;
     }

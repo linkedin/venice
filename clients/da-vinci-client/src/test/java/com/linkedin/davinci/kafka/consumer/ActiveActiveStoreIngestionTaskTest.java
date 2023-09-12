@@ -79,6 +79,7 @@ import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -526,12 +527,10 @@ public class ActiveActiveStoreIngestionTaskTest {
   }
 
   private VeniceCompressor getCompressor(CompressionStrategy strategy) {
-    switch (strategy) {
-      case ZSTD_WITH_DICT:
-        byte[] dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
-        return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
-      default:
-        return new CompressorFactory().getCompressor(strategy);
+    if (Objects.requireNonNull(strategy) == CompressionStrategy.ZSTD_WITH_DICT) {
+      byte[] dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
+      return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
     }
+    return new CompressorFactory().getCompressor(strategy);
   }
 }

@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,13 +50,11 @@ public class TestVeniceCompressor {
   }
 
   private VeniceCompressor getCompressor(CompressionStrategy strategy) {
-    switch (strategy) {
-      case ZSTD_WITH_DICT:
-        byte[] dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
-        return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
-      default:
-        return new CompressorFactory().getCompressor(strategy);
+    if (Objects.requireNonNull(strategy) == CompressionStrategy.ZSTD_WITH_DICT) {
+      byte[] dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
+      return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
     }
+    return new CompressorFactory().getCompressor(strategy);
   }
 
   @Test(dataProvider = "CompressionStrategy", timeOut = TEST_TIMEOUT)
@@ -74,13 +73,30 @@ public class TestVeniceCompressor {
         bbWithHeader.position(0);
         bbWithHeader.putInt(schemaId);
       }
-      ByteBuffer decompressed = compressor
-          .decompressAndPrependSchemaHeader(bbWithHeader.array(), bbWithHeader.remaining() + bbWithHeader.position());
-      decompressed.position(0);
-      Assert.assertEquals(decompressed.getInt(), 123);
-      byte[] outputBytes = new byte[decompressed.remaining()];
-      decompressed.get(outputBytes, 0, decompressed.remaining());
-      Assert.assertEquals("Hello World", new String(outputBytes));
+
+      // Prepend schema header.
+      ByteBuffer decompressedWithPrependedSchemaHeader = compressor.decompressAndMaybePrependSchemaHeader(
+          bbWithHeader.array(),
+          bbWithHeader.position(),
+          bbWithHeader.remaining(),
+          true);
+      decompressedWithPrependedSchemaHeader.position(0);
+      Assert.assertEquals(decompressedWithPrependedSchemaHeader.getInt(), schemaId);
+      byte[] outputBytes = new byte[decompressedWithPrependedSchemaHeader.remaining()];
+      decompressedWithPrependedSchemaHeader.get(outputBytes, 0, decompressedWithPrependedSchemaHeader.remaining());
+      Assert.assertEquals(new String(outputBytes), "Hello World");
+
+      // Does not prepend schema header.
+      ByteBuffer decompressedWithoutPrependedSchemaHeader = compressor.decompressAndMaybePrependSchemaHeader(
+          bbWithHeader.array(),
+          bbWithHeader.position(),
+          bbWithHeader.remaining(),
+          false);
+      outputBytes = new byte[decompressedWithoutPrependedSchemaHeader.remaining()];
+      decompressedWithoutPrependedSchemaHeader
+          .get(outputBytes, 0, decompressedWithoutPrependedSchemaHeader.remaining());
+      Assert.assertEquals(new String(outputBytes), "Hello World");
+
     }
   }
 

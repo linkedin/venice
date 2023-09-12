@@ -12,6 +12,7 @@ import com.github.luben.zstd.ZstdDictTrainer;
 import com.github.luben.zstd.ZstdException;
 import com.github.luben.zstd.ZstdInputStream;
 import com.linkedin.venice.compression.protocol.FakeCompressingSchema;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.concurrent.CloseableThreadLocal;
@@ -125,24 +126,24 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int length) throws IOException {
-    int schemaHeader = ByteUtils.readInt(data, 0);
-    int expectedSize = validateExpectedDecompressedSize(
-        Zstd.decompressedSize(data, SCHEMA_HEADER_LENGTH, length - SCHEMA_HEADER_LENGTH));
-    ByteBuffer returnedData = ByteBuffer.allocate(expectedSize + SCHEMA_HEADER_LENGTH);
-    returnedData.position(SCHEMA_HEADER_LENGTH);
+  public ByteBuffer decompressAndMaybePrependSchemaHeader(
+      byte[] data,
+      int offset,
+      int length,
+      boolean prependSchemaHeader) throws IOException {
+    if (prependSchemaHeader && offset < SCHEMA_HEADER_LENGTH) {
+      throw new VeniceException("Start offset does not have enough room for schema header.");
+    }
+    int schemaHeader = prependSchemaHeader ? ByteUtils.readInt(data, offset - SCHEMA_HEADER_LENGTH) : 0;
+    int expectedDecompressedDataSize = validateExpectedDecompressedSize(Zstd.decompressedSize(data, offset, length));
+
+    ByteBuffer result = ByteBuffer.allocate(expectedDecompressedDataSize + SCHEMA_HEADER_LENGTH);
+    result.putInt(schemaHeader);
     int actualSize = decompressor.get()
-        .decompressByteArray(
-            returnedData.array(),
-            returnedData.position(),
-            returnedData.remaining(),
-            data,
-            SCHEMA_HEADER_LENGTH,
-            length - SCHEMA_HEADER_LENGTH);
-    validateActualDecompressedSize(actualSize, expectedSize);
-    returnedData.position(0);
-    returnedData.putInt(schemaHeader);
-    return returnedData;
+        .decompressByteArray(result.array(), result.position(), result.remaining(), data, offset, length);
+    validateActualDecompressedSize(actualSize, expectedDecompressedDataSize);
+    result.position(SCHEMA_HEADER_LENGTH);
+    return result;
   }
 
   @Override

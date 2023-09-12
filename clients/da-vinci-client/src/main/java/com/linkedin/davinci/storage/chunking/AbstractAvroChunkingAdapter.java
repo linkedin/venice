@@ -264,7 +264,11 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         try {
           return deserializer.deserialize(
               reusedValue,
-              compressor.decompressAndPrependSchemaHeader(bytes, inputBytesLength),
+              compressor.decompressAndMaybePrependSchemaHeader(
+                  bytes,
+                  ValueRecord.SCHEMA_HEADER_LENGTH,
+                  inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH,
+                  true),
               reusedDecoder);
         } catch (IOException e) {
           throw new VeniceException(

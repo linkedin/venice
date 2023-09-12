@@ -613,15 +613,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {
-    ByteBuffer compressedOriginalValue =
+    ByteBuffer compressedValue =
         ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
     try {
       return getCompressionStrategy().isCompressionEnabled()
           ? getCompressor().get()
-              .decompressAndPrependSchemaHeader(
-                  compressedOriginalValue.array(),
-                  compressedOriginalValue.position() + compressedOriginalValue.remaining())
-          : compressedOriginalValue;
+              .decompressAndMaybePrependSchemaHeader(
+                  compressedValue.array(),
+                  compressedValue.position(),
+                  compressedValue.remaining(),
+                  false)
+          : compressedValue;
     } catch (IOException e) {
       throw new VeniceException(e);
     }
