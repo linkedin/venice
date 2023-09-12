@@ -9,9 +9,11 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl.DEFAULT_KAFKA_OFFSET_API_TIMEOUT;
+import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -27,6 +29,7 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -53,6 +56,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -73,6 +77,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
   private final VeniceConcurrentHashMap<Integer, BootstrapState> bootstrapStateMap = new VeniceConcurrentHashMap<>();
   private final Thread checkpointTask;
+  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
   private VeniceConfigLoader configLoader;
 
@@ -92,8 +97,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         ClientConfig.cloneConfig(changelogClientConfig.getInnerClientConfig())
             .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()),
         null);
-    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
 
     SchemaReader versionStateSchemaReader = ClientFactory.getSchemaReader(
@@ -170,8 +174,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
       if (!versionSwap.isRepush) {
         // Clean up all local data and seek existing
-        this.storageService.cleanupAllStores(this.configLoader);
         storageMetadataService.clearStoreVersionState(LOCAL_STATE_TOPIC_NAME);
+        this.storageService.cleanupAllStores(this.configLoader);
         seekToBeginningOfPush(Collections.singleton(pubSubTopicPartition.getPartitionNumber()));
       }
     }
@@ -187,6 +191,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         .put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION, 40)
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 60)
         .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 80)
+        .put(changelogClientConfig.getConsumerProperties())
         .put(DATA_BASE_PATH, baseDataPath)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false)
         .build();
@@ -256,7 +261,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
                 // Notify that we've caught up
                 completed.set(true);
-                completed.notify();
+                completed.notifyAll();
               }
             });
         try {
@@ -286,7 +291,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> polledResults =
         super.internalPoll(timeoutInMs, topicSuffix);
     for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> record: polledResults) {
-      BootstrapState currentPartitionState = bootstrapStateMap.get(record.getKey());
+      BootstrapState currentPartitionState = bootstrapStateMap.get(record.getPartition());
       currentPartitionState.currentPubSubPosition = record.getOffset();
       if (currentPartitionState.bootstrapState.equals(PollState.CATCHING_UP)) {
         if (currentPartitionState.isCaughtUp()) {
@@ -335,13 +340,34 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         throw new VeniceException("Failed to bootstrap change log consumer with exception: ", e);
       }
       for (Integer partition: partitions) {
-        OffsetRecord offsetRecord = storageMetadataService.getLastOffset(LOCAL_STATE_TOPIC_NAME, partition);
+        OffsetRecord offsetRecord;
+        try {
+          offsetRecord = storageMetadataService.getLastOffset(LOCAL_STATE_TOPIC_NAME, partition);
+          if (offsetRecord.getLocalVersionTopicOffset() == LOWEST_OFFSET) {
+            VeniceStoreVersionConfig storeConfig =
+                configLoader.getStoreConfig(LOCAL_STATE_TOPIC_NAME, PersistenceType.ROCKS_DB);
+            storageService.openStoreForNewPartition(storeConfig, partition, () -> null);
+          }
+        } catch (VeniceException e) {
+          // storageMetadataService will throw exception if there is no local store, it could happen the first
+          // time to run this code or local store has become invalid, we need to re-create the store in this case.
+          VeniceStoreVersionConfig storeConfig =
+              configLoader.getStoreConfig(LOCAL_STATE_TOPIC_NAME, PersistenceType.ROCKS_DB);
+          storageService.openStoreForNewPartition(storeConfig, partition, () -> null);
+          offsetRecord = new OffsetRecord(partitionStateSerializer);
+        }
 
         // Where we're at now
-        VeniceChangeCoordinate localCheckpoint = null;
+        String offsetString = offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE);
+        VeniceChangeCoordinate localCheckpoint;
         try {
-          localCheckpoint = VeniceChangeCoordinate.decodeStringAndConvertToVeniceChangeCoordinate(
-              offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE));
+          localCheckpoint = StringUtils.isEmpty(offsetString)
+              ? new VeniceChangeCoordinate(
+                  getTopicPartition(partition).getPubSubTopic().getName(),
+                  new ApacheKafkaOffsetPosition(offsetRecord.getLocalVersionTopicOffset()),
+                  partition)
+              : VeniceChangeCoordinate.decodeStringAndConvertToVeniceChangeCoordinate(
+                  offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE));
         } catch (IOException | ClassNotFoundException e) {
           throw new VeniceException("Failed to decode local hhange capture coordinate chekcpoint with exception: ", e);
         }
@@ -374,8 +400,16 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     if (isStarted) {
       throw new VeniceException("Bootstrapping Changelog client is already started!");
     }
+
     storageService.start();
-    storeRepository.start();
+    try {
+      storeRepository.start();
+      storeRepository.subscribe(storeName);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+
+    storeRepository.refresh();
     checkpointTask.start();
 
     return seekWithBootStrap(partitions);
