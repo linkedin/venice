@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
@@ -67,6 +68,11 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   }
 
   @Override
+  public CompletableFuture<V> get(K key) throws VeniceClientException {
+    return delegate.get(key);
+  }
+
+  @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     return delegate.get(requestContext, key);
   }
@@ -79,9 +85,24 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   }
 
   @Override
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    return delegate.batchGet(keys);
+  }
+
+  @Override
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
     return delegate.batchGet(requestContext, keys);
+  }
+
+  @Override
+  public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+    delegate.streamingBatchGet(keys, callback);
+  }
+
+  @Override
+  public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
+    return delegate.streamingBatchGet(keys);
   }
 
   @Override
@@ -97,6 +118,16 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) {
     return delegate.streamingBatchGet(requestContext, keys);
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> compute() {
+    return delegate.compute();
+  }
+
+  @Override
+  public CompletableFuture<V> get(K key, V reusedValue) throws VeniceClientException {
+    return delegate.get(key, reusedValue);
   }
 
   @Override

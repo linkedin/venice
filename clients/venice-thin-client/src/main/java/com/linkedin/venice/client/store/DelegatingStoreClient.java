@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import java.util.Map;
 import java.util.Optional;
@@ -10,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 
 
 public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
@@ -20,46 +22,11 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
-  public CompletableFuture<V> get(K key) throws VeniceClientException {
-    return innerStoreClient.get(key);
-  }
-
-  @Override
-  public CompletableFuture<V> get(K key, Optional<ClientStats> stats, long preRequestTimeInNS)
-      throws VeniceClientException {
-    return innerStoreClient.get(key, stats, preRequestTimeInNS);
-  }
-
-  @Override
-  public CompletableFuture<byte[]> getRaw(String requestPath) {
-    return innerStoreClient.getRaw(requestPath);
-  }
-
-  @Override
-  public CompletableFuture<byte[]> getRaw(String requestPath, Optional<ClientStats> stats, long preRequestTimeInNS) {
-    return innerStoreClient.getRaw(requestPath, stats, preRequestTimeInNS);
-  }
-
-  @Override
-  public ComputeRequestBuilder<K> compute() {
-    return innerStoreClient.compute();
-  }
-
-  @Override
   public ComputeRequestBuilder<K> compute(
       Optional<ClientStats> stats,
       Optional<ClientStats> streamingStats,
       long preRequestTimeInNS) throws VeniceClientException {
     return innerStoreClient.compute(stats, streamingStats, preRequestTimeInNS);
-  }
-
-  @Override
-  public ComputeRequestBuilder<K> compute(
-      Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats,
-      InternalAvroStoreClient computeStoreClient,
-      long preRequestTimeInNS) throws VeniceClientException {
-    return innerStoreClient.compute(stats, streamingStats, computeStoreClient, preRequestTimeInNS);
   }
 
   @Override
@@ -73,8 +40,18 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
+  public CompletableFuture<V> get(K key, V reusedValue) throws VeniceClientException {
+    return innerStoreClient.get(key, reusedValue);
+  }
+
+  @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     return innerStoreClient.batchGet(keys);
+  }
+
+  @Override
+  public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
+    return innerStoreClient.streamingBatchGet(keys);
   }
 
   @Override
@@ -108,8 +85,51 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
+  public CompletableFuture<byte[]> getRaw(String requestPath) {
+    return innerStoreClient.getRaw(requestPath);
+  }
+
+  @Override
+  public CompletableFuture<V> get(K key) throws VeniceClientException {
+    return innerStoreClient.get(key);
+  }
+
+  @Override
+  public CompletableFuture<V> get(K key, Optional<ClientStats> stats, long preRequestTimeInNS)
+      throws VeniceClientException {
+    return innerStoreClient.get(key, stats, preRequestTimeInNS);
+  }
+
+  @Override
+  public CompletableFuture<byte[]> getRaw(String requestPath, Optional<ClientStats> stats, long preRequestTimeInNS) {
+    return innerStoreClient.getRaw(requestPath, stats, preRequestTimeInNS);
+  }
+
+  @Override
   public Executor getDeserializationExecutor() {
     return innerStoreClient.getDeserializationExecutor();
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> compute() throws VeniceClientException {
+    return innerStoreClient.compute();
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> compute(
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats,
+      InternalAvroStoreClient computeStoreClient,
+      long preRequestTimeInNS) throws VeniceClientException {
+    return innerStoreClient.compute(stats, streamingStats, computeStoreClient, preRequestTimeInNS);
+  }
+
+  @Override
+  public void computeWithKeyPrefixFilter(
+      byte[] keyPrefix,
+      ComputeRequestWrapper computeRequestWrapper,
+      StreamingCallback<GenericRecord, GenericRecord> callback) {
+    innerStoreClient.computeWithKeyPrefixFilter(keyPrefix, computeRequestWrapper, callback);
   }
 
   // for testing
