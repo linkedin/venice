@@ -12,9 +12,7 @@ import com.github.luben.zstd.ZstdDictTrainer;
 import com.github.luben.zstd.ZstdException;
 import com.github.luben.zstd.ZstdInputStream;
 import com.linkedin.venice.compression.protocol.FakeCompressingSchema;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.concurrent.CloseableThreadLocal;
 import java.io.IOException;
 import java.io.InputStream;
@@ -126,15 +124,8 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer decompressAndMaybePrependSchemaHeader(
-      byte[] data,
-      int offset,
-      int length,
-      boolean prependSchemaHeader) throws IOException {
-    if (prependSchemaHeader && offset < SCHEMA_HEADER_LENGTH) {
-      throw new VeniceException("Start offset does not have enough room for schema header.");
-    }
-    int schemaHeader = prependSchemaHeader ? ByteUtils.readInt(data, offset - SCHEMA_HEADER_LENGTH) : 0;
+  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int offset, int length, int schemaHeader)
+      throws IOException {
     int expectedDecompressedDataSize = validateExpectedDecompressedSize(Zstd.decompressedSize(data, offset, length));
 
     ByteBuffer result = ByteBuffer.allocate(expectedDecompressedDataSize + SCHEMA_HEADER_LENGTH);

@@ -75,28 +75,16 @@ public class TestVeniceCompressor {
       }
 
       // Prepend schema header.
-      ByteBuffer decompressedWithPrependedSchemaHeader = compressor.decompressAndMaybePrependSchemaHeader(
+      ByteBuffer decompressedWithPrependedSchemaHeader = compressor.decompressAndPrependSchemaHeader(
           bbWithHeader.array(),
           bbWithHeader.position(),
           bbWithHeader.remaining(),
-          true);
+          schemaId);
       decompressedWithPrependedSchemaHeader.position(0);
       Assert.assertEquals(decompressedWithPrependedSchemaHeader.getInt(), schemaId);
       byte[] outputBytes = new byte[decompressedWithPrependedSchemaHeader.remaining()];
       decompressedWithPrependedSchemaHeader.get(outputBytes, 0, decompressedWithPrependedSchemaHeader.remaining());
       Assert.assertEquals(new String(outputBytes), "Hello World");
-
-      // Does not prepend schema header.
-      ByteBuffer decompressedWithoutPrependedSchemaHeader = compressor.decompressAndMaybePrependSchemaHeader(
-          bbWithHeader.array(),
-          bbWithHeader.position(),
-          bbWithHeader.remaining(),
-          false);
-      outputBytes = new byte[decompressedWithoutPrependedSchemaHeader.remaining()];
-      decompressedWithoutPrependedSchemaHeader
-          .get(outputBytes, 0, decompressedWithoutPrependedSchemaHeader.remaining());
-      Assert.assertEquals(new String(outputBytes), "Hello World");
-
     }
   }
 

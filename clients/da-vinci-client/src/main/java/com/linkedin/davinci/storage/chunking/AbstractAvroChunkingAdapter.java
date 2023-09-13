@@ -13,6 +13,7 @@ import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.io.IOException;
 import java.io.InputStream;
@@ -262,13 +263,15 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   private final DecoderWrapper<byte[], T> decompressingByteArrayDecoder =
       (reusedDecoder, bytes, inputBytesLength, reusedValue, deserializer, readResponse, compressor) -> {
         try {
+          // Fetch the schema id.
+          int schemaId = ByteUtils.readInt(bytes, 0);
           return deserializer.deserialize(
               reusedValue,
-              compressor.decompressAndMaybePrependSchemaHeader(
+              compressor.decompressAndPrependSchemaHeader(
                   bytes,
                   ValueRecord.SCHEMA_HEADER_LENGTH,
                   inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH,
-                  true),
+                  schemaId),
               reusedDecoder);
         } catch (IOException e) {
           throw new VeniceException(

@@ -618,11 +618,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     try {
       return getCompressionStrategy().isCompressionEnabled()
           ? getCompressor().get()
-              .decompressAndMaybePrependSchemaHeader(
-                  compressedValue.array(),
-                  compressedValue.position(),
-                  compressedValue.remaining(),
-                  false)
+              .decompress(compressedValue.array(), compressedValue.position(), compressedValue.remaining())
           : compressedValue;
     } catch (IOException e) {
       throw new VeniceException(e);

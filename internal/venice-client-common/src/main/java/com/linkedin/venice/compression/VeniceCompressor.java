@@ -25,19 +25,12 @@ public abstract class VeniceCompressor implements Closeable {
 
   /**
    * This method tries to decompress data and maybe prepend the schema header.
-   * The returned ByteBuffer will be backed by byte array that starts with schema header headroom, followed by the
+   * The returned ByteBuffer will be backed by byte array that starts with schema header, followed by the
    * decompressed data. The ByteBuffer will be positioned at the beginning of the decompressed data and the remaining of
    * the ByteBuffer will be the length of the decompressed data.
-   * If prependSchemaHeader is set to true, it will try to fetch the schema header from the original data array, from the
-   * position of (offset - SCHEMA_HEADER_LENGTH), and fill in the beginning of the new byte array that backs the returned
-   * ByteBuffer.
-   * If offset is smaller than SCHEMA_HEADER_LENGTH, this method will throw {@link com.linkedin.venice.exceptions.VeniceException}.
    */
-  public abstract ByteBuffer decompressAndMaybePrependSchemaHeader(
-      byte[] data,
-      int offset,
-      int length,
-      boolean prependSchemaHeader) throws IOException;
+  public abstract ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int offset, int length, int schemaHeader)
+      throws IOException;
 
   public CompressionStrategy getCompressionStrategy() {
     return compressionStrategy;
