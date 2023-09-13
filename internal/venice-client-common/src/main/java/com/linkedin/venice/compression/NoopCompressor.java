@@ -43,6 +43,8 @@ public class NoopCompressor extends VeniceCompressor {
       throws IOException {
     ByteBuffer result = ByteBuffer.allocate(length + SCHEMA_HEADER_LENGTH);
     result.putInt(schemaHeader).put(data, offset, length);
+    result.limit(result.position());
+    result.position(SCHEMA_HEADER_LENGTH);
     return result;
   }
 
