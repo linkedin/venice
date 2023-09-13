@@ -261,7 +261,10 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
         record.setValueManifest(chunkedValueManifest);
         record.setRmdManifest(chunkedRmdManifest);
       } else {
-        LOGGER.error("Transient record is missing when trying to update value/RMD manifest.");
+        String msg = "Transient record is missing when trying to update value/RMD manifest.";
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+          LOGGER.error(msg);
+        }
       }
     }
   }

@@ -1917,7 +1917,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionState == null) {
       String msg = "Topic : " + kafkaVersionTopic + " Partition : " + subPartition
           + " has been unsubscribed, skip this record that has offset: {}";
-      if (REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         LOGGER.info(msg, record.getOffset());
       }
       return false;
@@ -1926,7 +1926,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionState.isErrorReported()) {
       String msg = "Topic : " + kafkaVersionTopic + " Partition : " + subPartition
           + " is already errored, skip this record that has offset: {}";
-      if (REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         LOGGER.info(msg, record.getOffset());
       }
       return false;
