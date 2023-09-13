@@ -47,5 +47,4 @@ public class GzipCompressorTest {
       assertEquals("Hello World", new String(decompressed.array()));
     }
   }
-
 }

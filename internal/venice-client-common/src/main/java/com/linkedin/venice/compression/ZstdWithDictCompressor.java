@@ -124,6 +124,20 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   }
 
   @Override
+  public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int offset, int length, int schemaHeader)
+      throws IOException {
+    int expectedDecompressedDataSize = validateExpectedDecompressedSize(Zstd.decompressedSize(data, offset, length));
+
+    ByteBuffer result = ByteBuffer.allocate(expectedDecompressedDataSize + SCHEMA_HEADER_LENGTH);
+    result.putInt(schemaHeader);
+    int actualSize = decompressor.get()
+        .decompressByteArray(result.array(), result.position(), result.remaining(), data, offset, length);
+    validateActualDecompressedSize(actualSize, expectedDecompressedDataSize);
+    result.position(SCHEMA_HEADER_LENGTH);
+    return result;
+  }
+
+  @Override
   public InputStream decompress(InputStream inputStream) throws IOException {
     return new ZstdInputStream(inputStream).setDict(this.dictDecompress);
   }
