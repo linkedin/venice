@@ -1915,20 +1915,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
 
     if (partitionConsumptionState == null) {
-      LOGGER.info(
-          "Topic {} Partition {} has been unsubscribed, skip this record that has offset {}",
-          kafkaVersionTopic,
-          subPartition,
-          record.getOffset());
+      String msg = "Topic : " + kafkaVersionTopic + " Partition : " + subPartition
+          + " has been unsubscribed, skip this record that has offset: {}";
+      if (REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.info(msg, record.getOffset());
+      }
       return false;
     }
 
     if (partitionConsumptionState.isErrorReported()) {
-      LOGGER.info(
-          "Topic {} Partition {} is already errored, skip this record that has offset {}",
-          kafkaVersionTopic,
-          subPartition,
-          record.getOffset());
+      String msg = "Topic : " + kafkaVersionTopic + " Partition : " + subPartition
+          + " is already errored, skip this record that has offset: {}";
+      if (REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+        LOGGER.info(msg, record.getOffset());
+      }
       return false;
     }
 
