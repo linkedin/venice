@@ -22,7 +22,8 @@ public class AggServerQuotaUsageStats extends AbstractVeniceAggStats<ServerQuota
     getStoreStats(storeName).recordRejected(rcu);
   }
 
-  public void recordReadQuotaUsage(String storeName, double ratio) {
-    getStoreStats(storeName).recordReadQuotaUsage(ratio);
+  public void recordAllowedUnintentionally(String storeName, long rcu) {
+    totalStats.recordAllowedUnintentionally(rcu);
+    getStoreStats(storeName).recordAllowedUnintentionally(rcu);
   }
 }

@@ -54,8 +54,7 @@ public class TokenBucket {
     tokensConsumedSinceLastRefill = new AtomicLong(0);
     nextUpdateTime = clock.millis() + refillIntervalMs;
 
-    float refillIntervalSeconds = refillIntervalMs / (float) 1000;
-    refillPerSecond = refillAmount / refillIntervalSeconds;
+    refillPerSecond = refillAmount / (float) refillInterval;
   }
 
   /**
@@ -106,14 +105,6 @@ public class TokenBucket {
   public long getStaleTokenCount() {
     // TODO: maybe update the token after getting the stale token count
     return tokens.get();
-  }
-
-  /**
-   * This method does not call #update(), so it is only accurate as of the last time #tryConsume() and update() was called
-   * @return ratio between number of tokens consumed since last refill over the total token count after the last refill
-   */
-  public double getStaleUsageRatio() {
-    return (double) tokensConsumedSinceLastRefill.get() / (double) tokensCountAfterLastRefill.get();
   }
 
   public boolean tryConsume(long tokensToConsume) {

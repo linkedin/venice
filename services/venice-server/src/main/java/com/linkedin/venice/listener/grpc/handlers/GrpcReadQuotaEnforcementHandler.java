@@ -25,7 +25,7 @@ public class GrpcReadQuotaEnforcementHandler extends VeniceServerGrpcHandler {
       return;
     }
 
-    if (readQuota.checkInitAndQuotaEnabled(null, request, store, true)) {
+    if (readQuota.checkInitAndQuotaEnabledToSkipQuotaEnforcement(null, request, store, true)) {
       invokeNextHandler(ctx);
       return;
     }
@@ -33,14 +33,17 @@ public class GrpcReadQuotaEnforcementHandler extends VeniceServerGrpcHandler {
     int rcu = ReadQuotaEnforcementHandler.getRcu(request);
 
     TokenBucket tokenBucket = readQuota.getStoreVersionBuckets().get(request.getResourceName());
-    if (tokenBucket != null && !request.isRetryRequest() && !tokenBucket.tryConsume(rcu)
-        && readQuota.handleTooManyRequests(null, request, ctx, store, rcu, true)) {
-      invokeNextHandler(ctx);
-      return;
-    }
-
-    if (readQuota.isEnforcingAndNoBucketStoreContainsResource(request.getResourceName())) {
-      readQuota.handleEnforcingAndNoBucket(request);
+    if (tokenBucket != null) {
+      if (!request.isRetryRequest() && !tokenBucket.tryConsume(rcu)
+          && readQuota.handleTooManyRequests(null, request, ctx, store, rcu, true)) {
+        invokeNextHandler(ctx);
+        return;
+      }
+    } else {
+      readQuota.getStats().recordAllowedUnintentionally(storeName, rcu);
+      if (!readQuota.isNoBucketStoreContainsResource(request.getResourceName())) {
+        readQuota.handleEnforcingAndNoBucket(request.getResourceName());
+      }
     }
 
     if (readQuota.storageConsumeRcu(rcu) && readQuota.handleServerOverCapacity(null, ctx, storeName, rcu, true)) {
@@ -50,7 +53,6 @@ public class GrpcReadQuotaEnforcementHandler extends VeniceServerGrpcHandler {
 
     AggServerQuotaUsageStats stats = readQuota.getStats();
     stats.recordAllowed(storeName, rcu);
-    stats.recordReadQuotaUsage(storeName, readQuota.getStaleUsageRatio());
 
     invokeNextHandler(ctx);
   }

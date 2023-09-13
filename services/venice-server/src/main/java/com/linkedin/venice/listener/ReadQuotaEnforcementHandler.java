@@ -22,6 +22,7 @@ import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
+import com.linkedin.venice.stats.ServerQuotaTokenBucketStats;
 import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.utils.ExpiringSet;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -30,6 +31,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
+import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,8 +49,10 @@ import org.apache.logging.log4j.Logger;
 public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<RouterRequest>
     implements RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener {
   private static final Logger LOGGER = LogManager.getLogger(ReadQuotaEnforcementHandler.class);
+  private static final String SERVER_BUCKET_STATS_NAME = "venice-storage-node-token-bucket";
   private final ConcurrentMap<String, TokenBucket> storeVersionBuckets = new VeniceConcurrentHashMap<>();
   private final TokenBucket storageNodeBucket;
+  private final ServerQuotaTokenBucketStats storageNodeTokenBucketStats;
   private final ReadOnlyStoreRepository storeRepository;
   private final String thisNodeId;
   private final AggServerQuotaUsageStats stats;
@@ -67,8 +71,16 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       ReadOnlyStoreRepository storeRepository,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       String nodeId,
-      AggServerQuotaUsageStats stats) {
-    this(storageNodeRcuCapacity, storeRepository, customizedViewRepository, nodeId, stats, Clock.systemUTC());
+      AggServerQuotaUsageStats stats,
+      MetricsRepository metricsRepository) {
+    this(
+        storageNodeRcuCapacity,
+        storeRepository,
+        customizedViewRepository,
+        nodeId,
+        stats,
+        metricsRepository,
+        Clock.systemUTC());
   }
 
   public ReadQuotaEnforcementHandler(
@@ -77,9 +89,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       String nodeId,
       AggServerQuotaUsageStats stats,
+      MetricsRepository metricsRepository,
       Clock clock) {
     this.clock = clock;
     this.storageNodeBucket = tokenBucketfromRcuPerSecond(storageNodeRcuCapacity, 1);
+    this.storageNodeTokenBucketStats =
+        new ServerQuotaTokenBucketStats(metricsRepository, SERVER_BUCKET_STATS_NAME, () -> storageNodeBucket);
     this.storeRepository = storeRepository;
     this.thisNodeId = nodeId;
     this.stats = stats;
@@ -100,9 +115,10 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       case SINGLE_GET:
         return 1;
       case MULTI_GET:
-        return request.getKeyCount();
+      case MULTI_GET_STREAMING:
       case COMPUTE:
-        // Eventually, we'll want to add some extra cost beyond the look up cost for compute operations.
+      case COMPUTE_STREAMING:
+        // Eventually, we'll want to add some extra cost beyond the lookup cost for compute operations.
         return request.getKeyCount();
       default:
         LOGGER.error(
@@ -159,8 +175,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       LOGGER.error(
           "Null resource assignment from HelixCustomizedViewOfflinePushRepository in ReadQuotaEnforcementHandler");
     } else {
-      for (String resource: customizedViewRepository.getResourceAssignment().getAssignedResources()) {
-        this.onExternalViewChange(customizedViewRepository.getPartitionAssignments(resource));
+      for (String resource: resourceAssignment.getAssignedResources()) {
+        this.onExternalViewChange(resourceAssignment.getPartitionAssignment(resource));
       }
     }
     this.initializedVolatile = true;
@@ -188,30 +204,34 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     String storeName = request.getStoreName();
     Store store = storeRepository.getStore(storeName);
 
-    if (checkStoreNull(ctx, request, null, false, store)) {
+    if (!enforcing || checkStoreNull(ctx, request, null, false, store)) {
       return;
     }
 
-    if (checkInitAndQuotaEnabled(ctx, request, store, false)) {
+    if (checkInitAndQuotaEnabledToSkipQuotaEnforcement(ctx, request, store, false)) {
       return;
     }
 
     int rcu = getRcu(request); // read capacity units
 
     /**
-     * First check store bucket for capacity; don't throttle retried request at store version level
+     * First check store bucket for capacity don't throttle retried request at store version level
      */
     TokenBucket tokenBucket = storeVersionBuckets.get(request.getResourceName());
-    if (tokenBucket != null && !request.isRetryRequest()) {
-      if (!tokenBucket.tryConsume(rcu)) {
+    if (tokenBucket != null) {
+      if (!request.isRetryRequest() && !tokenBucket.tryConsume(rcu)
+          && handleTooManyRequests(ctx, request, null, store, rcu, false)) {
+        // Enforce store version quota for non-retry requests.
         // TODO: check if extra node capacity and can still process this request out of quota
-        if (handleTooManyRequests(ctx, request, null, store, rcu, false))
-          return;
+        return;
       }
-    } else if (enforcing && !noBucketStores.contains(request.getResourceName())) {
-      // If this happens it is probably due to a short-lived race condition
-      // of the resource being allocated before the bucket is allocated.
-      handleEnforcingAndNoBucket(request);
+    } else {
+      // If this happens it is probably due to a short-lived race condition where the resource is being accessed before
+      // the bucket is allocated. The request will be allowed based on node/server capacity so emit metrics accordingly.
+      stats.recordAllowedUnintentionally(storeName, rcu);
+      if (!noBucketStores.contains(request.getResourceName())) {
+        handleEnforcingAndNoBucket(request.getResourceName());
+      }
     }
 
     /**
@@ -249,7 +269,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     return true;
   }
 
-  public boolean checkInitAndQuotaEnabled(
+  public boolean checkInitAndQuotaEnabledToSkipQuotaEnforcement(
       ChannelHandlerContext ctx,
       RouterRequest request,
       Store store,
@@ -300,12 +320,13 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     return true;
   }
 
-  public void handleEnforcingAndNoBucket(RouterRequest request) {
-    LOGGER.warn(
-        "Request for resource: {} but no TokenBucket for that resource. Not yet enforcing quota",
-        request.getResourceName());
+  /**
+   * This method and the expiring set noBucketStores is only used to throttle the logging of such event
+   */
+  public void handleEnforcingAndNoBucket(String resourceName) {
+    LOGGER.warn("Request for resource: {} but no TokenBucket for that resource. Not yet enforcing quota", resourceName);
     // TODO: we could consider initializing a bucket. Would need to carefully consider this case.
-    noBucketStores.add(request.getResourceName()); // So that we only log this once every 30 seconds
+    noBucketStores.add(resourceName); // So that we only log this once every 30 seconds
   }
 
   public boolean handleServerOverCapacity(
@@ -342,7 +363,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       ctx.fireChannelRead(request);
     }
     stats.recordAllowed(storeName, rcu);
-    stats.recordReadQuotaUsage(storeName, storageNodeBucket.getStaleUsageRatio());
   }
 
   /**
@@ -366,7 +386,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private TokenBucket tokenBucketfromRcuPerSecond(long totalRcuPerSecond, double thisBucketProportionOfTotalRcu) {
     long totalRefillAmount = totalRcuPerSecond * enforcementIntervalSeconds;
     long totalCapacity = totalRefillAmount * enforcementCapacityMultiple;
-    long thisRefillAmount = (long) Math.ceil(totalRefillAmount * thisBucketProportionOfTotalRcu);
+    long thisRefillAmount = calculateRefillAmount(totalRcuPerSecond, thisBucketProportionOfTotalRcu);
     long thisCapacity = (long) Math.ceil(totalCapacity * thisBucketProportionOfTotalRcu);
     return new TokenBucket(thisCapacity, thisRefillAmount, enforcementIntervalSeconds, SECONDS, clock);
   }
@@ -407,8 +427,20 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
     long quotaInRcu = storeRepository.getStore(Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic()))
         .getReadQuotaInCU();
-    TokenBucket newStoreBucket = tokenBucketfromRcuPerSecond(quotaInRcu, thisNodeQuotaResponsibility);
-    storeVersionBuckets.put(topic, newStoreBucket); // put is atomic, so this method is thread-safe
+    storeVersionBuckets.compute(topic, (k, v) -> {
+      long newRefillAmount = calculateRefillAmount(quotaInRcu, thisNodeQuotaResponsibility);
+      if (v == null || v.getAmortizedRefillPerSecond() * enforcementIntervalSeconds != newRefillAmount) {
+        // only replace the existing bucket if the difference is greater than 1
+        return tokenBucketfromRcuPerSecond(quotaInRcu, thisNodeQuotaResponsibility);
+      } else {
+        return v;
+      }
+    }); // put is atomic, so this method is thread-safe
+  }
+
+  private long calculateRefillAmount(long totalRcuPerSecond, double thisBucketProportionOfTotalRcu) {
+    long totalRefillAmount = totalRcuPerSecond * enforcementIntervalSeconds;
+    return (long) Math.ceil(totalRefillAmount * thisBucketProportionOfTotalRcu);
   }
 
   @Override
@@ -432,18 +464,19 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     removeTopics(topics);
   }
 
+  /**
+   * This is where we add new {@link TokenBucket} for new store version and remove irrelevant ones. We should keep the
+   * same number of token buckets as the number of active versions. This is because readers like FC might be lagging
+   * behind or vice versa. This way quota will still be enforced properly during the version swap or transition period.
+   */
   @Override
   public void handleStoreChanged(Store store) {
-    Set<String> oldTopics = getStoreTopics(store.getName());
+    Set<String> toBeRemovedTopics = getStoreTopics(store.getName());
 
     List<String> topics =
         store.getVersions().stream().map((version) -> version.kafkaTopicName()).collect(Collectors.toList());
     for (String topic: topics) {
-      int topicVersion = Version.parseVersionFromKafkaTopicName(topic);
-      // No need to subscribe StorageQuotaHandler on versions other than current version.
-      if (store.getCurrentVersion() != topicVersion) {
-        continue;
-      }
+      toBeRemovedTopics.remove(topic);
       customizedViewRepository.subscribeRoutingDataChange(topic, this);
       try {
         /**
@@ -479,7 +512,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           /**
            * For future version, it's possible that store metadata update callback is invoked faster than
            * the external view change callback; but for any other versions between future version and the
-           * oldest version that should be retire, they should exist on external view if they are online.
+           * oldest version that should be retired, they should exist on external view if they are online.
            */
           if (!isLatestVersion(Version.parseVersionFromKafkaTopicName(topic), topics)) {
             throw new VeniceException(
@@ -489,10 +522,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           }
         }
       }
-      oldTopics.remove(topic);
     }
-
-    removeTopics(oldTopics);
+    removeTopics(toBeRemovedTopics);
   }
 
   private Set<String> getStoreTopics(String storeName) {
@@ -562,8 +593,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     return storeVersionBuckets;
   }
 
-  public boolean isEnforcingAndNoBucketStoreContainsResource(String resourceName) {
-    return enforcing && noBucketStores.contains(resourceName);
+  public boolean isNoBucketStoreContainsResource(String resourceName) {
+    return noBucketStores.contains(resourceName);
   }
 
   public boolean storageConsumeRcu(int rcu) {
@@ -572,9 +603,5 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
   public AggServerQuotaUsageStats getStats() {
     return stats;
-  }
-
-  public double getStaleUsageRatio() {
-    return storageNodeBucket.getStaleUsageRatio();
   }
 }
