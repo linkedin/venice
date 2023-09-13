@@ -8,13 +8,14 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -43,13 +44,47 @@ public class TestVeniceCompressor {
         { CompressionStrategy.ZSTD_WITH_DICT, SourceDataType.BYTE_ARRAY, ByteUtils.SIZE_OF_INT } };
   }
 
+  @DataProvider(name = "CompressionStrategy")
+  public static Object[] compressionStrategyProvider() {
+    return new Object[] { CompressionStrategy.NO_OP, CompressionStrategy.GZIP, CompressionStrategy.ZSTD_WITH_DICT };
+  }
+
   private VeniceCompressor getCompressor(CompressionStrategy strategy) {
-    switch (strategy) {
-      case ZSTD_WITH_DICT:
-        byte[] dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
-        return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
-      default:
-        return new CompressorFactory().getCompressor(strategy);
+    if (Objects.requireNonNull(strategy) == CompressionStrategy.ZSTD_WITH_DICT) {
+      byte[] dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
+      return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
+    }
+    return new CompressorFactory().getCompressor(strategy);
+  }
+
+  @Test(dataProvider = "CompressionStrategy", timeOut = TEST_TIMEOUT)
+  public void testCompressAndDecompress(CompressionStrategy strategy) throws IOException {
+    try (VeniceCompressor compressor = getCompressor(strategy)) {
+      byte[] inputBytes = "Hello World".getBytes();
+      ByteBuffer bbWithHeader;
+      int schemaId = 123;
+      if (strategy == CompressionStrategy.NO_OP) {
+        bbWithHeader = ByteBuffer.allocate(inputBytes.length + VeniceCompressor.SCHEMA_HEADER_LENGTH);
+        bbWithHeader.putInt(schemaId).put(inputBytes);
+        bbWithHeader.flip();
+        bbWithHeader.position(VeniceCompressor.SCHEMA_HEADER_LENGTH);
+      } else {
+        bbWithHeader = compressor.compress(ByteBuffer.wrap(inputBytes), VeniceCompressor.SCHEMA_HEADER_LENGTH);
+        bbWithHeader.position(0);
+        bbWithHeader.putInt(schemaId);
+      }
+
+      // Prepend schema header.
+      ByteBuffer decompressedWithPrependedSchemaHeader = compressor.decompressAndPrependSchemaHeader(
+          bbWithHeader.array(),
+          bbWithHeader.position(),
+          bbWithHeader.remaining(),
+          schemaId);
+      decompressedWithPrependedSchemaHeader.position(0);
+      Assert.assertEquals(decompressedWithPrependedSchemaHeader.getInt(), schemaId);
+      byte[] outputBytes = new byte[decompressedWithPrependedSchemaHeader.remaining()];
+      decompressedWithPrependedSchemaHeader.get(outputBytes, 0, decompressedWithPrependedSchemaHeader.remaining());
+      Assert.assertEquals(new String(outputBytes), "Hello World");
     }
   }
 

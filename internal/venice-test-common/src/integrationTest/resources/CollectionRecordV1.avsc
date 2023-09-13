@@ -8,10 +8,10 @@
       "default": "default_name"
     },
     {
-      "name": "intArray",
+      "name": "floatArray",
       "type": {
         "type": "array",
-        "items": "int"
+        "items": "float"
       },
       "default": []
     },
