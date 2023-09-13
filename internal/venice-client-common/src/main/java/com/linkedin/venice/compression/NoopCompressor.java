@@ -1,5 +1,6 @@
 package com.linkedin.venice.compression;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -41,11 +42,12 @@ public class NoopCompressor extends VeniceCompressor {
   @Override
   public ByteBuffer decompressAndPrependSchemaHeader(byte[] data, int offset, int length, int schemaHeader)
       throws IOException {
-    ByteBuffer result = ByteBuffer.allocate(length + SCHEMA_HEADER_LENGTH);
-    result.putInt(schemaHeader).put(data, offset, length);
-    result.limit(result.position());
-    result.position(SCHEMA_HEADER_LENGTH);
-    return result;
+    if (offset < SCHEMA_HEADER_LENGTH) {
+      throw new VeniceException("Start offset does not have enough room for schema header.");
+    }
+    ByteBuffer bb = ByteBuffer.wrap(data, offset - SCHEMA_HEADER_LENGTH, length + SCHEMA_HEADER_LENGTH);
+    bb.putInt(schemaHeader);
+    return bb;
   }
 
   @Override
