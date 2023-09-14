@@ -4,11 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
@@ -55,6 +51,10 @@ public class LeaderProducerCallbackTest {
     inMemoryLogAppender.start();
     LoggerContext ctx = ((LoggerContext) LogManager.getContext(false));
     Configuration config = ctx.getConfiguration();
+    doReturn(true).when(ingestionTaskMock).isTransientRecordBufferUsed();
+    doReturn(null).when(partitionConsumptionStateMock).getTransientRecord(any());
+    doReturn(true).when(partitionConsumptionStateMock).isEndOfPushReceived();
+    doReturn(mock(KafkaKey.class)).when(sourceConsumerRecordMock).getKey();
 
     try {
       config.addLoggerAppender(
@@ -75,6 +75,8 @@ public class LeaderProducerCallbackTest {
 
       for (int i = 0; i < cbInvocations; i++) {
         leaderProducerCallback.onCompletion(null, new VeniceException(exMessage));
+        byte[] serializedKey = ("key" + i).getBytes();
+        leaderProducerCallback.setChunkingInfo(serializedKey, null, null, null, null, null, null);
       }
 
       // Message should be logged only three time as there are just 3 unique Topic-Partition

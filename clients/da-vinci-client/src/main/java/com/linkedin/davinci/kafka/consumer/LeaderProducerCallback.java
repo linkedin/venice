@@ -262,7 +262,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
         record.setRmdManifest(chunkedRmdManifest);
       } else {
         String msg = "Transient record is missing when trying to update value/RMD manifest for topic "
-            + ingestionTask.getKafkaVersionTopic() + " partition:" + subPartition;
+            + ingestionTask.getKafkaVersionTopic() + " partition: " + subPartition;
         if (partitionConsumptionState.isEndOfPushReceived() && !REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
           LOGGER.error(msg);
         }
