@@ -302,7 +302,7 @@ public class HelixParticipationService extends AbstractVeniceService
         veniceServerConfig.getPubSubClientsFactory().getProducerAdapterFactory();
     VeniceWriterFactory writerFactory =
         new VeniceWriterFactory(veniceProperties.toProperties(), pubSubProducerAdapterFactory, null);
-    Map<String, VeniceWriterFactory> veniceWriterFactoryMap = new HashMap<>();
+    Map<String, VeniceWriterFactory> veniceWriterFactoryMap = new HashMap<>(1);
     veniceWriterFactoryMap.put(clusterName, writerFactory);
     statusStoreWriter = new PushStatusStoreWriter(
         veniceWriterFactoryMap,
