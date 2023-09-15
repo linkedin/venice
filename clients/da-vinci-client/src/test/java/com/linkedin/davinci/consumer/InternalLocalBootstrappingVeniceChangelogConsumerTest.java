@@ -205,17 +205,17 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     Assert.assertEquals(1, bootstrapResult.size());
     PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> record = bootstrapResult.stream().findFirst().get();
     String expectedKey = expectedPartitionToKey.get(record.getPartition());
+    ChangeEvent<String> value = TEST_RECORDS.get(expectedKey);
+    Assert.assertNotNull(value);
     Assert.assertEquals(expectedKey, record.getKey().toString());
     if (isBootstrap) {
       Assert.assertNull(record.getValue().getPreviousValue());
     } else {
-      Assert.assertEquals(
-          TEST_RECORDS.get(expectedKey).getPreviousValue(),
-          record.getValue().getPreviousValue().toString());
+
+      Assert.assertEquals(value.getPreviousValue(), record.getValue().getPreviousValue().toString());
     }
 
-    Assert
-        .assertEquals(TEST_RECORDS.get(expectedKey).getCurrentValue(), record.getValue().getCurrentValue().toString());
+    Assert.assertEquals(value.getCurrentValue(), record.getValue().getCurrentValue().toString());
   }
 
   private Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> prepareChangeCaptureRecordsToBePolled(
