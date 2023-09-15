@@ -29,6 +29,7 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -109,14 +110,26 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   }
 
   @Override
-  public void stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+  public CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+    final CompletableFuture<Void> future = new CompletableFuture<>();
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(
-        topicName,
-        partition,
-        STOP_CONSUMPTION,
-        () -> getMainIngestionRequestClient().stopConsumption(storeConfig.getStoreVersionName(), partition),
-        () -> super.stopConsumption(storeConfig, partition));
+    executeCommandWithRetry(topicName, partition, STOP_CONSUMPTION, () -> {
+      /**
+       * For stopping consumption in II process, it is not easy to acknowledge when the action is finished.
+       * So we will go ahead to mark the future as completed right away.
+       */
+      boolean res = getMainIngestionRequestClient().stopConsumption(storeConfig.getStoreVersionName(), partition);
+      future.complete(null);
+      return res;
+    }, () -> super.stopConsumption(storeConfig, partition).whenComplete((ignored, throwable) -> {
+      if (throwable != null) {
+        future.completeExceptionally(throwable);
+      } else {
+        future.complete(null);
+      }
+    }));
+
+    return future;
   }
 
   @Override

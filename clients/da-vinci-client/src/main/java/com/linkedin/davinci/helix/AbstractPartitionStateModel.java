@@ -144,7 +144,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
        * When state transition fails, we shouldn't remove the corresponding database here since the database could
        * be either recovered by bounce/Helix Reset or completely dropped after going through 'ERROR' to 'DROPPED' state transition.
        */
-      stopConsumption();
+      stopConsumption(false);
     }, true);
   }
 
@@ -168,7 +168,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   @Override
   public void reset() {
     try {
-      stopConsumption();
+      stopConsumption(false);
     } catch (Exception e) {
       logger.error(
           "Error when trying to stop any ongoing consumption during reset for: {}",
@@ -352,8 +352,22 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     }
   }
 
-  protected void stopConsumption() {
-    ingestionBackend.stopConsumption(storeAndServerConfigs, partition);
+  protected void stopConsumption(boolean dropCVState) {
+    CompletableFuture<Void> future = ingestionBackend.stopConsumption(storeAndServerConfigs, partition);
+    if (dropCVState) {
+      future.whenComplete((ignored, throwable) -> {
+        if (throwable != null) {
+          logger.warn(
+              "Failed to stop consumption for resource: {}, partition: {}",
+              storeAndServerConfigs.getStoreVersionName(),
+              partition);
+        }
+        /**
+         * Drop CV state anyway, and it may not work well in error condition, but it is fine since it is still a best effort.
+         */
+        removeCustomizedState();
+      });
+    }
   }
 
   protected VeniceIngestionBackend getIngestionBackend() {

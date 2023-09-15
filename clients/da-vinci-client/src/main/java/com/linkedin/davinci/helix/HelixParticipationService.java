@@ -41,6 +41,8 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -229,6 +231,11 @@ public class HelixParticipationService extends AbstractVeniceService
     LOGGER.info("Attempting to stop HelixParticipation service.");
     ingestionBackend.prepareForShutdown();
     if (helixManager != null) {
+      resetAllInstanceCVStates(partitionPushStatusAccessor, storageService, logger);
+    } else {
+      logger.error("Can't reset instance CV states since HelixManager is null");
+    }
+    if (helixManager != null) {
       try {
         helixManager.disconnect();
         LOGGER.info("Disconnected Helix Manager.");
@@ -320,6 +327,13 @@ public class HelixParticipationService extends AbstractVeniceService
         instance.getNodeId());
 
     ingestionBackend.addPushStatusNotifier(pushMonitorNotifier);
+    /**
+     * The accessor can only get created successfully after helix manager is created.
+     */
+    partitionPushStatusAccessor = new HelixPartitionStatusAccessor(
+        helixManager.getOriginalManager(),
+        instance.getNodeId(),
+        veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
 
     CompletableFuture.runAsync(() -> {
       try {
@@ -329,6 +343,8 @@ public class HelixParticipationService extends AbstractVeniceService
         // our
         // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
         checkBeforeJoinInCluster();
+        helixManager
+            .addPreConnectCallback(() -> resetAllInstanceCVStates(partitionPushStatusAccessor, storageService, logger));
         helixManager.connect();
         managerFuture.complete(helixManager);
       } catch (Exception e) {
@@ -337,13 +353,6 @@ public class HelixParticipationService extends AbstractVeniceService
         Utils.exit("Failed to start HelixParticipationService");
       }
 
-      /**
-       * The accessor can only get created successfully after helix manager is created.
-       */
-      partitionPushStatusAccessor = new HelixPartitionStatusAccessor(
-          helixManager.getOriginalManager(),
-          instance.getNodeId(),
-          veniceConfigLoader.getVeniceServerConfig().isHelixHybridStoreQuotaEnabled());
       PartitionPushStatusNotifier partitionPushStatusNotifier =
           new PartitionPushStatusNotifier(partitionPushStatusAccessor);
       ingestionBackend.addPushStatusNotifier(partitionPushStatusNotifier);
@@ -358,6 +367,27 @@ public class HelixParticipationService extends AbstractVeniceService
       serviceState.set(ServiceState.STARTED);
       LOGGER.info("Successfully started Helix Participation Service.");
     });
+  }
+
+  static void resetAllInstanceCVStates(
+      HelixPartitionStatusAccessor accessor,
+      StorageService storageService,
+      Logger currentLogger) {
+    // Get all hosted stores
+    currentLogger.info("Started resetting all instance CV states");
+    Map<String, Set<Integer>> storePartitionMapping = storageService.getStoreAndUserPartitionsMapping();
+    storePartitionMapping.forEach((storeName, partitionIds) -> {
+      partitionIds.forEach(partitionId -> {
+        try {
+          accessor.deleteReplicaStatus(storeName, partitionId);
+          currentLogger.info("Deleting CV state for resource: {} and partition id: {}", storeName, partitionId);
+        } catch (Exception e) {
+          currentLogger
+              .error("Failed to delete CV state for resource: {} and partition id: {}", storeName, partitionId, e);
+        }
+      });
+    });
+    currentLogger.info("Finished resetting all instance CV states");
   }
 
   // test only

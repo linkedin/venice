@@ -9,6 +9,7 @@ import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 
@@ -36,7 +37,7 @@ public interface StoreIngestionService extends MetadataRetriever {
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
    */
-  void stopConsumption(VeniceStoreVersionConfig veniceStore, int partitionId);
+  CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig veniceStore, int partitionId);
 
   /**
    * Stops consuming messages from Kafka Partition corresponding to Venice Partition and wait up to
