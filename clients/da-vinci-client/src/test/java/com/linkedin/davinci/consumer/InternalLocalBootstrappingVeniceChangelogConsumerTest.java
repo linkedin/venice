@@ -8,9 +8,11 @@ import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
@@ -35,8 +37,8 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -47,6 +49,7 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +61,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -65,13 +69,30 @@ import org.testng.annotations.Test;
 public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   private static final String TEST_CLUSTER_NAME = "test_cluster";
   private static final String TEST_ZOOKEEPER_ADDRESS = "test_zookeeper";
+  private static final String TEST_KEY_1 = "key_1";
+  private static final String TEST_KEY_2 = "key_2";
+  private static final String TEST_KEY_3 = "key_3";
+  private static final String TEST_OLD_VALUE_1 = "old_value_1";
+  private static final String TEST_NEW_VALUE_1 = "new_value_1";
+  private static final String TEST_OLD_VALUE_2 = "old_value_2";
+  private static final String TEST_NEW_VALUE_2 = "new_value_2";
+  private static final String TEST_OLD_VALUE_3 = "old_value_3";
+  private static final String TEST_NEW_VALUE_3 = "new_value_3";
   private static final String TEST_BOOTSTRAP_FILE_SYSTEM_PATH = "/export/content/data/change-capture";
+  private static final int TEST_SCHEMA_ID = 1;
   private String storeName;
   private RecordSerializer<String> keySerializer;
   private RecordSerializer<String> valueSerializer;
-  private Schema rmdSchema;
   private SchemaReader schemaReader;
+  private Schema valueSchema;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private static final Map<String, ChangeEvent<String>> TEST_RECORDS = ImmutableMap.of(
+      TEST_KEY_1,
+      new ChangeEvent<>(TEST_OLD_VALUE_1, TEST_NEW_VALUE_1),
+      TEST_KEY_2,
+      new ChangeEvent<>(TEST_OLD_VALUE_2, TEST_NEW_VALUE_2),
+      TEST_KEY_3,
+      new ChangeEvent<>(TEST_OLD_VALUE_3, TEST_NEW_VALUE_3));
 
   @BeforeMethod
   public void setUp() {
@@ -79,9 +100,8 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     schemaReader = mock(SchemaReader.class);
     Schema keySchema = AvroCompatibilityHelper.parse("\"string\"");
     doReturn(keySchema).when(schemaReader).getKeySchema();
-    Schema valueSchema = AvroCompatibilityHelper.parse("\"string\"");
+    valueSchema = AvroCompatibilityHelper.parse("\"string\"");
     doReturn(valueSchema).when(schemaReader).getValueSchema(1);
-    rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema, 1);
 
     keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
     valueSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueSchema);
@@ -127,7 +147,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
             .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
             .setConsumerProperties(consumerProperties)
             .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS);
-    InternalLocalBootstrappingVeniceChangelogConsumer<String, Utf8> bootstrappingVeniceChangelogConsumer =
+    InternalLocalBootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer =
         new InternalLocalBootstrappingVeniceChangelogConsumer<>(
             changelogClientConfig,
             mockPubSubConsumer,
@@ -136,45 +156,76 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
-    Mockito.when(store.getCurrentVersion()).thenReturn(1);
-    Mockito.when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
-    Mockito.when(mockRepository.getStore(anyString())).thenReturn(store);
-    Mockito.when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
+    when(store.getCurrentVersion()).thenReturn(1);
+    when(store.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    when(mockRepository.getStore(anyString())).thenReturn(store);
+    when(store.getVersion(Mockito.anyInt())).thenReturn(Optional.of(mockVersion));
+    when(mockRepository.getValueSchema(storeName, TEST_SCHEMA_ID))
+        .thenReturn(new SchemaEntry(TEST_SCHEMA_ID, valueSchema));
     bootstrappingVeniceChangelogConsumer.setStoreRepository(mockRepository);
 
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledResults_1 =
-        prepareChangeCaptureRecordsToBePolled(0L, 1L, mockPubSubConsumer, changeCaptureTopic, 0);
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledResults_2 =
-        prepareChangeCaptureRecordsToBePolled(0L, 1L, mockPubSubConsumer, changeCaptureTopic, 1);
-    when(mockPubSubConsumer.poll(anyLong())).thenReturn(polledResults_1).thenReturn(polledResults_2);
+    when(mockPubSubConsumer.poll(anyLong()))
+        .thenReturn(prepareChangeCaptureRecordsToBePolled(TEST_KEY_1, changeCaptureTopic, 0))
+        .thenReturn(prepareChangeCaptureRecordsToBePolled(TEST_KEY_2, changeCaptureTopic, 1));
+    Map<Integer, String> expectedPartitionToKey = new HashMap<>();
+    expectedPartitionToKey.put(0, TEST_KEY_1);
+    expectedPartitionToKey.put(1, TEST_KEY_2);
 
     bootstrappingVeniceChangelogConsumer.start().get();
 
-    verify(mockPubSubConsumer).subscribe(topicPartition_0, LOWEST_OFFSET);
-    verify(mockPubSubConsumer).subscribe(topicPartition_1, LOWEST_OFFSET);
+    // verify the consumer start
+    verify(mockRepository, times(1)).start();
+    verify(mockRepository, times(1)).subscribe(storeName);
+    verify(mockRepository, times(1)).refresh();
+    verify(mockPubSubConsumer, times(2)).subscribe(topicPartition_0, LOWEST_OFFSET);
+    verify(mockPubSubConsumer, times(2)).subscribe(topicPartition_1, LOWEST_OFFSET);
+    verify(mockPubSubConsumer, times(2)).poll(anyLong());
+
+    // Verify the bootstrap records can be returned
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledResults_1 =
+        bootstrappingVeniceChangelogConsumer.poll(10000L);
+    verifyPollResult(polledResults_1, expectedPartitionToKey, true);
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledResults_2 =
+        bootstrappingVeniceChangelogConsumer.poll(10000L);
+    verifyPollResult(polledResults_2, expectedPartitionToKey, true);
+
+    // Add new records after bootstrap and verify can receive new records
+    when(mockPubSubConsumer.poll(anyLong()))
+        .thenReturn(prepareChangeCaptureRecordsToBePolled(TEST_KEY_3, changeCaptureTopic, 0));
+    expectedPartitionToKey.put(0, TEST_KEY_3);
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledResults_3 =
+        bootstrappingVeniceChangelogConsumer.poll(10000L);
+    verifyPollResult(polledResults_3, expectedPartitionToKey, false);
+  }
+
+  private void verifyPollResult(
+      Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> bootstrapResult,
+      Map<Integer, String> expectedPartitionToKey,
+      boolean isBootstrap) {
+    Assert.assertEquals(1, bootstrapResult.size());
+    PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> record = bootstrapResult.stream().findFirst().get();
+    String expectedKey = expectedPartitionToKey.get(record.getPartition());
+    Assert.assertEquals(expectedKey, record.getKey().toString());
+    if (isBootstrap) {
+      Assert.assertNull(record.getValue().getPreviousValue());
+    } else {
+      Assert.assertEquals(
+          TEST_RECORDS.get(expectedKey).getPreviousValue(),
+          record.getValue().getPreviousValue().toString());
+    }
+
+    Assert
+        .assertEquals(TEST_RECORDS.get(expectedKey).getCurrentValue(), record.getValue().getCurrentValue().toString());
   }
 
   private Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> prepareChangeCaptureRecordsToBePolled(
-      long startIdx,
-      long endIdx,
-      PubSubConsumerAdapter pubSubConsumer,
+      String key,
       PubSubTopic changeCaptureTopic,
       int partition) {
     List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> pubSubMessageList = new ArrayList<>();
-
+    pubSubMessageList.add(constructChangeCaptureConsumerRecord(changeCaptureTopic, partition, key));
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> pubSubMessagesMap =
         new HashMap<>();
-    for (long i = startIdx; i < endIdx; i++) {
-      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = constructChangeCaptureConsumerRecord(
-          changeCaptureTopic,
-          partition,
-          "oldValue" + i,
-          "newValue" + i,
-          "key" + i,
-          Arrays.asList(i, i));
-      pubSubMessageList.add(pubSubMessage);
-    }
-
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(changeCaptureTopic, partition);
     pubSubMessagesMap.put(topicPartition, pubSubMessageList);
     return pubSubMessagesMap;
@@ -183,28 +234,34 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
   private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> constructChangeCaptureConsumerRecord(
       PubSubTopic changeCaptureVersionTopic,
       int partition,
-      String oldValue,
-      String newValue,
-      String key,
-      List<Long> replicationCheckpointVector) {
+      String key) {
+    ChangeEvent<String> value = TEST_RECORDS.get(key);
+    if (value == null) {
+      throw new IllegalArgumentException("No test value exists for key " + key);
+    }
+
     ValueBytes oldValueBytes = new ValueBytes();
-    oldValueBytes.schemaId = 1;
-    oldValueBytes.value = ByteBuffer.wrap(valueSerializer.serialize(oldValue));
+    oldValueBytes.schemaId = TEST_SCHEMA_ID;
+    oldValueBytes.value = ByteBuffer.wrap(valueSerializer.serialize(value.getPreviousValue()));
     ValueBytes newValueBytes = new ValueBytes();
-    newValueBytes.schemaId = 1;
-    newValueBytes.value = ByteBuffer.wrap(valueSerializer.serialize(newValue));
+    newValueBytes.schemaId = TEST_SCHEMA_ID;
+    newValueBytes.value = ByteBuffer.wrap(valueSerializer.serialize(value.getCurrentValue()));
     RecordChangeEvent recordChangeEvent = new RecordChangeEvent();
     recordChangeEvent.currentValue = newValueBytes;
     recordChangeEvent.previousValue = oldValueBytes;
     recordChangeEvent.key = ByteBuffer.wrap(key.getBytes());
-    recordChangeEvent.replicationCheckpointVector = replicationCheckpointVector;
+    recordChangeEvent.replicationCheckpointVector = Arrays.asList(1L, 1L);
     final RecordSerializer<RecordChangeEvent> recordChangeSerializer = FastSerializerDeserializerFactory
         .getFastAvroGenericSerializer(AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersionSchema());
     recordChangeSerializer.serialize(recordChangeEvent);
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope(
         MessageType.PUT.getValue(),
         new ProducerMetadata(),
-        new Put(ByteBuffer.wrap(recordChangeSerializer.serialize(recordChangeEvent)), 0, 0, ByteBuffer.allocate(0)),
+        new Put(
+            ByteBuffer.wrap(recordChangeSerializer.serialize(recordChangeEvent)),
+            TEST_SCHEMA_ID,
+            0,
+            ByteBuffer.allocate(0)),
         null);
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(key));
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(changeCaptureVersionTopic, partition);

@@ -128,7 +128,7 @@ public class VeniceChangelogConsumerClientFactory {
       viewClass = getViewClass(
           storeName,
           newStoreChangelogClientConfig.getViewName(),
-          d2ControllerClient,
+          newStoreChangelogClientConfig.getD2ControllerClient(),
           globalChangelogClientConfig.getControllerRequestRetryCount());
     }
 

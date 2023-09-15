@@ -13,7 +13,6 @@ import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -56,6 +55,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -125,7 +125,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
   private Function<String, Boolean> functionToCheckWhetherStorageEngineShouldBeKeptOrNot() {
     return storageEngineName -> {
-      // TODO: This function needs to determine if the local files need to be cleared out or not. The way it should do
+      // This function needs to determine if the local files need to be cleared out or not. The way it should do
       // that
       // is by reading the local storagemetadata bootstrap coordinate, and see if the internal client is able to
       // subscribe to that position. If it's not able to, that means that the local state is off Venice retention,
@@ -207,7 +207,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       throw new VeniceException("Client isn't started yet!!");
     }
     // If there are any partitions which are in BOOTSTRAPPING state, play messages from those partitions first
-    int[] bootstrapCompletedCount = new int[0];
+    int[] bootstrapCompletedCount = new int[1];
+    int[] testReceived = new int[1];
     for (Map.Entry<Integer, BootstrapState> state: bootstrapStateMap.entrySet()) {
       if (state.getValue().bootstrapState.equals(PollState.BOOTSTRAPPING)) {
         // read from storage engine
@@ -239,6 +240,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
                         value.length * 8,
                         false);
                 resultSet.add(record);
+                testReceived[0]++;
               }
 
               @Override
@@ -261,15 +263,10 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
                 // Notify that we've caught up
                 completed.set(true);
-                completed.notifyAll();
               }
             });
-        try {
-          while (!completed.get()) {
-            completed.wait();
-          }
-        } catch (InterruptedException e) {
-          throw new VeniceException("Interrupted while reading local bootstrap data! Exception:", e);
+        if (!completed.get()) {
+          throw new VeniceException("Interrupted while reading local bootstrap data!");
         }
         return resultSet;
       }
@@ -344,16 +341,18 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         try {
           offsetRecord = storageMetadataService.getLastOffset(LOCAL_STATE_TOPIC_NAME, partition);
           if (offsetRecord.getLocalVersionTopicOffset() == LOWEST_OFFSET) {
-            VeniceStoreVersionConfig storeConfig =
-                configLoader.getStoreConfig(LOCAL_STATE_TOPIC_NAME, PersistenceType.ROCKS_DB);
-            storageService.openStoreForNewPartition(storeConfig, partition, () -> null);
+            storageService.openStoreForNewPartition(
+                configLoader.getStoreConfig(LOCAL_STATE_TOPIC_NAME, PersistenceType.ROCKS_DB),
+                partition,
+                () -> null);
           }
         } catch (VeniceException e) {
           // storageMetadataService will throw exception if there is no local store, it could happen the first
           // time to run this code or local store has become invalid, we need to re-create the store in this case.
-          VeniceStoreVersionConfig storeConfig =
-              configLoader.getStoreConfig(LOCAL_STATE_TOPIC_NAME, PersistenceType.ROCKS_DB);
-          storageService.openStoreForNewPartition(storeConfig, partition, () -> null);
+          storageService.openStoreForNewPartition(
+              configLoader.getStoreConfig(LOCAL_STATE_TOPIC_NAME, PersistenceType.ROCKS_DB),
+              partition,
+              () -> null);
           offsetRecord = new OffsetRecord(partitionStateSerializer);
         }
 
@@ -384,6 +383,10 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         }
       }
 
+      // Seek to the current position so we can catch up from there to target
+      seekToCheckpoint(
+          bootstrapStateMap.values().stream().map(state -> state.currentPubSubPosition).collect(Collectors.toSet()));
+
       // Poll until we've caught up completely for all subscribed partitions.
       while (bootstrapStateMap.entrySet()
           .stream()
@@ -409,7 +412,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       throw new RuntimeException(e);
     }
 
-    storeRepository.refresh();
     checkpointTask.start();
 
     return seekWithBootStrap(partitions);
@@ -461,7 +463,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
                 VeniceChangeCoordinate
                     .convertVeniceChangeCoordinateToStringAndEncode(state.getValue().currentPubSubPosition));
           } catch (IOException e) {
-            // TODO:
             LOGGER.error(
                 "Failed to update change capture coordinate position: {}",
                 state.getValue().currentPubSubPosition);
