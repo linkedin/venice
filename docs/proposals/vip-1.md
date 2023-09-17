@@ -2,7 +2,7 @@
 layout: default
 title: Authentication Service API
 parent: Proposals
-permalink: /docs/proposals/vip-1.md
+permalink: /docs/proposals/vip-1
 ---
 
 # Venice Improvement Proposal Template
