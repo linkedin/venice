@@ -103,7 +103,7 @@ public class VeniceGrpcEndToEndTest {
     // 2. Write data to the store w/ writeSimpleAvroFileWithUserSchema
     File inputDir = TestWriteUtils.getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, false, recordCnt);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, recordCnt);
 
     // 3. Run a push job to push the data to Venice (VPJ)
     Properties vpjProps = TestWriteUtils.defaultVPJProps(cluster.getRandomRouterURL(), inputDirPath, storeName);

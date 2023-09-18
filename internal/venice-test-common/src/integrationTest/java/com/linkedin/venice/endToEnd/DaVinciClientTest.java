@@ -991,7 +991,7 @@ public class DaVinciClientTest {
     // Produce input data.
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    writeSimpleAvroFileWithIntToStringSchema(inputDir, true);
+    writeSimpleAvroFileWithIntToStringSchema(inputDir);
 
     // Setup VPJ job properties.
     Properties vpjProperties = defaultVPJProps(cluster, inputDirPath, storeName);

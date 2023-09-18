@@ -145,17 +145,17 @@ public class TestActiveActiveReplicationForIncPush {
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathInc2, storeName);
       propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
-      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDirBatch);
       String keySchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema().toString();
       String valueSchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
       propsInc1.setProperty(INCREMENTAL_PUSH, "true");
       propsInc1.put(SOURCE_GRID_FABRIC, dcNames[2]);
-      TestWriteUtils.writeSimpleAvroFileWithUserSchema2(inputDirInc1);
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(inputDirInc1);
 
       propsInc2.setProperty(INCREMENTAL_PUSH, "true");
       propsInc2.put(SOURCE_GRID_FABRIC, dcNames[1]);
-      TestWriteUtils.writeSimpleAvroFileWithUserSchema3(inputDirInc2);
+      TestWriteUtils.writeSimpleAvroFileWithString2StringSchema3(inputDirInc2);
 
       TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
 

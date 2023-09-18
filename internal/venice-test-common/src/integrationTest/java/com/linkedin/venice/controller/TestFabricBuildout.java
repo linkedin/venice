@@ -93,14 +93,15 @@ public class TestFabricBuildout {
       // Create a test store only in dc0 region
       NewStoreResponse newStoreResponse = dc0Client.retryableRequest(
           3,
-          c -> c.createNewStore(storeName, "", "\"string\"", TestWriteUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
+          c -> c.createNewStore(storeName, "", "\"string\"", TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString()));
       Assert.assertFalse(
           newStoreResponse.isError(),
           "The NewStoreResponse returned an error: " + newStoreResponse.getError());
       // Enable read compute to test superset schema registration.
       Assert.assertFalse(
           dc0Client.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)).isError());
-      Assert.assertFalse(dc0Client.addValueSchema(storeName, TestWriteUtils.USER_SCHEMA_STRING_WITH_DEFAULT).isError());
+      Assert.assertFalse(
+          dc0Client.addValueSchema(storeName, TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString()).isError());
       checkStoreConfig(dc0Client, storeName);
       // Mimic source fabric store-level execution id
       Assert.assertFalse(
@@ -167,12 +168,18 @@ public class TestFabricBuildout {
         ControllerClient childControllerClient1 =
             new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       String testStoreName = Utils.getUniqueString("test-store");
-      NewStoreResponse newStoreResponse = childControllerClient0
-          .createNewStore(testStoreName, "test", "\"string\"", TestWriteUtils.NESTED_SCHEMA_STRING);
+      NewStoreResponse newStoreResponse = childControllerClient0.createNewStore(
+          testStoreName,
+          "test",
+          TestWriteUtils.STRING_SCHEMA.toString(),
+          TestWriteUtils.NAME_RECORD_V1_SCHEMA.toString());
       Assert.assertFalse(newStoreResponse.isError());
       checkStoreConfig(childControllerClient0, testStoreName);
-      newStoreResponse = childControllerClient1
-          .createNewStore(testStoreName, "test", "\"string\"", TestWriteUtils.NESTED_SCHEMA_STRING);
+      newStoreResponse = childControllerClient1.createNewStore(
+          testStoreName,
+          "test",
+          TestWriteUtils.STRING_SCHEMA.toString(),
+          TestWriteUtils.NAME_RECORD_V1_SCHEMA.toString());
       Assert.assertFalse(newStoreResponse.isError());
       checkStoreConfig(childControllerClient1, testStoreName);
 
@@ -181,7 +188,7 @@ public class TestFabricBuildout {
           childControllerClient0.emptyPush(testStoreName, Utils.getUniqueString("empty-push-1"), 1L);
       Assert.assertFalse(versionCreationResponse.isError());
       SchemaResponse schemaResponse =
-          childControllerClient0.addValueSchema(testStoreName, TestWriteUtils.NESTED_SCHEMA_STRING_V2);
+          childControllerClient0.addValueSchema(testStoreName, TestWriteUtils.NAME_RECORD_V2_SCHEMA.toString());
       Assert.assertFalse(schemaResponse.isError());
 
       StoreComparisonResponse response = parentControllerClient.compareStore(testStoreName, dcNames[0], dcNames[1]);

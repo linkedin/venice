@@ -397,13 +397,13 @@ public class VeniceParentHelixAdminTest {
     final String CUSTOM_PROP = "custom_prop";
     // Contains f0, f1
     Schema valueSchemaV1 =
-        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV1.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV1.avsc"));
     // Contains f2, f3
     Schema valueSchemaV4 =
-        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV4.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV4.avsc"));
     // Contains f0
     Schema valueSchemaV6 =
-        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV6.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV6.avsc"));
     Properties properties = new Properties();
     // This cluster setup don't have server, we cannot perform push here.
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
@@ -768,15 +768,15 @@ public class VeniceParentHelixAdminTest {
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     Schema valueSchemaV1 =
-        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV1.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV1.avsc"));
     Schema valueSchemaV2 =
-        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV2.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV2.avsc"));
     Schema valueSchemaV3 =
-        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV3.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV3.avsc"));
     Schema valueSchemaV4 =
-        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV4.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV4.avsc"));
     Schema valueSchemaV5 =
-        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV5.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("valueSchema/supersetschemas/ValueV5.avsc"));
 
     NewStoreResponse newStoreResponse =
         parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaV1.toString());

@@ -1,0 +1,9 @@
+{
+  "type" : "record",
+  "name" : "key",
+  "namespace" : "com.linkedin.venice.testkey",
+  "fields" : [ {
+    "name" : "key",
+    "type" : "string"
+  } ]
+}

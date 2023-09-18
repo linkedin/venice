@@ -26,8 +26,8 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
@@ -159,7 +159,8 @@ public class TestChangeCaptureIngestion {
     // TODO: Something seems to be wrong in the test set up or code that makes it so that the push job
     // will error if we publish records which exceed the chunking threshold (something about getting a cluster
     // lock when making the system stores?)
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, LARGE_RECORD_SIZE);
+    Schema recordSchema = TestWriteUtils
+        .writeSimpleAvroFileWithStringToStringSchema(inputDir, DEFAULT_USER_DATA_RECORD_COUNT, LARGE_RECORD_SIZE);
     // Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
