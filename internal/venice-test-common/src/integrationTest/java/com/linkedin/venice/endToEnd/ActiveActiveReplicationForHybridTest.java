@@ -282,7 +282,9 @@ public class ActiveActiveReplicationForHybridTest {
     String storeName = Utils.getUniqueString("test-store");
     String anotherStoreName = Utils.getUniqueString("test-store");
     try {
-      assertCommand(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
 
       // Expect the request to fail since AA cannot be enabled without enabling NR
       try {
@@ -302,7 +304,9 @@ public class ActiveActiveReplicationForHybridTest {
       updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
 
       // Create a new store
-      assertCommand(parentControllerClient.createNewStore(anotherStoreName, "owner", STRING_SCHEMA, STRING_SCHEMA));
+      assertCommand(
+          parentControllerClient
+              .createNewStore(anotherStoreName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
 
       // Enable NR
       updateStoreToHybrid(
@@ -344,7 +348,9 @@ public class ActiveActiveReplicationForHybridTest {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     try {
-      assertCommand(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
       updateStoreToHybrid(
           storeName,
           parentControllerClient,
@@ -541,7 +547,9 @@ public class ActiveActiveReplicationForHybridTest {
   public void controllerClientCanGetStoreReplicationMetadataSchema() {
     String storeName = Utils.getUniqueString("test-store");
     try {
-      assertCommand(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
       updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
 
       // Empty push to create a version
@@ -563,7 +571,9 @@ public class ActiveActiveReplicationForHybridTest {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     try {
-      assertCommand(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
       updateStoreToHybrid(
           storeName,
           parentControllerClient,
@@ -755,7 +765,9 @@ public class ActiveActiveReplicationForHybridTest {
     String kafkaTopic;
 
     try {
-      assertCommand(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
       updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(true));
       // Empty push to create a version
       ControllerResponse response = assertCommand(

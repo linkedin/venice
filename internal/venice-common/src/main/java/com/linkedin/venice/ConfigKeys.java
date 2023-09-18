@@ -338,6 +338,32 @@ public class ConfigKeys {
       "controller.parent.external.superset.schema.generation.enabled";
 
   /**
+   * Whether to check system store health in parent controller. Default is false.
+   */
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED =
+      "controller.parent.system.store.repair.service.enabled";
+
+  /**
+   * Frequency to run system store health check in parent controller. Default is 30 minute (1800s).
+   */
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS =
+      "controller.parent.system.store.repair.check.interval.seconds";
+
+  /**
+   * The wait time before validating system store heartbeat during system store health check in parent controller.
+   * Default is 1min.
+   */
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS =
+      "controller.parent.system.store.heartbeat.check.wait.time.seconds";
+
+  /**
+   * The maximum retry count for parent controller to fix a bad system store.
+   * Default is 1.
+   */
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT =
+      "controller.parent.system.store.repair.retry.count";
+
+  /**
    * Whether to initialize system schemas when controller starts. Default is true.
    */
   public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
@@ -347,6 +373,7 @@ public class ConfigKeys {
   public static final String LISTENER_PORT = "listener.port";
   public static final String GRPC_READ_SERVER_PORT = "grpc.read.server.port";
   public static final String ENABLE_GRPC_READ_SERVER = "grpc.read.server.enabled";
+  public static final String GRPC_SERVER_WORKER_THREAD_COUNT = "grpc.server.worker.thread.count";
 
   public static final String LISTENER_HOSTNAME = "listener.hostname";
 
@@ -365,6 +392,8 @@ public class ConfigKeys {
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
   public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
       "store.writer.buffer.after.leader.logic.enabled";
+
+  public static final String SERVER_INGESTION_TASK_MAX_IDLE_COUNT = "server.ingestion.task.max.idle.count";
   public static final String STORE_WRITER_BUFFER_MEMORY_CAPACITY = "store.writer.buffer.memory.capacity";
   public static final String STORE_WRITER_BUFFER_NOTIFY_DELTA = "store.writer.buffer.notify.delta";
   public static final String SERVER_REST_SERVICE_STORAGE_THREAD_NUM = "server.rest.service.storage.thread.num";
@@ -1947,4 +1976,9 @@ public class ConfigKeys {
   public static final String PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS = "pub.sub.producer.adapter.factory.class";
 
   public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
+
+  /**
+   * Venice router's principal name used for ssl. Default should contain "venice-router".
+   */
+  public static final String ROUTER_PRINCIPAL_NAME = "router.principal.name";
 }

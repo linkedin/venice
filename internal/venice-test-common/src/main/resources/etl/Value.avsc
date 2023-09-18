@@ -1,0 +1,10 @@
+{
+  "type" : "record",
+  "name" : "value",
+  "namespace" : "com.linkedin.venice.testvalue",
+  "fields" : [ {
+    "name" : "value",
+    "type" : "string"
+  } ],
+  "version" : 10
+}

@@ -214,7 +214,7 @@ public class RocksDBServerConfig {
   private final int rocksDBEnvFlushPoolSize;
   private final int rocksDBEnvCompactionPoolSize;
 
-  private final CompressionType rocksDBOptionsCompressionType;
+  private CompressionType rocksDBOptionsCompressionType;
   private final CompactionStyle rocksDBOptionsCompactionStyle;
 
   private final long rocksDBBlockCacheSizeInBytes;
@@ -562,6 +562,10 @@ public class RocksDBServerConfig {
   // For test only
   public void setBlockBaseFormatVersion(int version) {
     this.blockBaseFormatVersion = version;
+  }
+
+  public void setRocksdbOptionsCompressionType(String compressionType) {
+    this.rocksDBOptionsCompressionType = CompressionType.valueOf(compressionType);
   }
 
   public int getMaxLogFileNum() {

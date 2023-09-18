@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.api;
 
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -178,8 +178,7 @@ public class TestVenicePathParser {
     String uri = "storage/store/key";
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    doReturn(3).when(partitionFinder)
-        .findPartitionNumber(Mockito.anyObject(), Mockito.anyInt(), Mockito.anyString(), Mockito.anyInt());
+    doReturn(3).when(partitionFinder).findPartitionNumber(any(), anyInt(), anyString(), anyInt());
     VenicePathParser parser = new VenicePathParser(
         getVersionFinder(),
         partitionFinder,

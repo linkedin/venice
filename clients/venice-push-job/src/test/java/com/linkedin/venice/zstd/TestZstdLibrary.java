@@ -5,6 +5,7 @@ import static com.linkedin.venice.hadoop.DefaultInputDataInfoProvider.COMPRESSIO
 import static com.linkedin.venice.hadoop.DefaultInputDataInfoProvider.PATH_FILTER;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.github.luben.zstd.ZstdException;
@@ -12,7 +13,6 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.hadoop.InputDataInfoProvider;
 import com.linkedin.venice.hadoop.PushJobZstdConfig;
 import com.linkedin.venice.hadoop.VeniceAvroRecordReader;
-import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -36,7 +36,9 @@ public class TestZstdLibrary {
     FileSystem fs = FileSystem.get(new Configuration());
     File inputDir = Utils.getTempDataDirectory();
     try {
-      TestWriteUtils.writeMultipleAvroFilesWithUserSchema(inputDir, numOfFiles, numOfRecordsPerFile);
+      for (int i = 0; i < numOfFiles; i++) {
+        writeSimpleAvroFileWithStringToStringSchema(inputDir, numOfRecordsPerFile, "testInput" + i + ".avro");
+      }
       Properties props = new Properties();
       props.setProperty(COMPRESSION_DICTIONARY_SIZE_LIMIT, String.valueOf(dictSizeLimitInKB * BYTES_PER_KB));
       props.setProperty(COMPRESSION_DICTIONARY_SAMPLE_SIZE, String.valueOf(dictSampleSizeLimitInMB * BYTES_PER_MB));

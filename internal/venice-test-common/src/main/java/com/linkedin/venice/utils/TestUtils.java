@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
-import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.anyInt;
@@ -264,7 +263,8 @@ public class TestUtils {
       String keySchema,
       String valueSchema,
       Stream<Map.Entry> batchData,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     return createVersionWithBatchData(
         controllerClient,
         storeName,
@@ -272,7 +272,8 @@ public class TestUtils {
         valueSchema,
         batchData,
         HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
-        pubSubProducerAdapterFactory);
+        pubSubProducerAdapterFactory,
+        additionalProperties);
   }
 
   public static VersionCreationResponse createVersionWithBatchData(
@@ -282,7 +283,8 @@ public class TestUtils {
       String valueSchema,
       Stream<Map.Entry> batchData,
       int valueSchemaId,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     VersionCreationResponse response = TestUtils.assertCommand(
         controllerClient.requestTopicForWrites(
             storeName,
@@ -297,7 +299,14 @@ public class TestUtils {
             Optional.empty(),
             false,
             -1));
-    writeBatchData(response, keySchema, valueSchema, batchData, valueSchemaId, pubSubProducerAdapterFactory);
+    writeBatchData(
+        response,
+        keySchema,
+        valueSchema,
+        batchData,
+        valueSchemaId,
+        pubSubProducerAdapterFactory,
+        additionalProperties);
     return response;
   }
 
@@ -307,7 +316,8 @@ public class TestUtils {
       String valueSchema,
       Stream<Map.Entry> batchData,
       int valueSchemaId,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     writeBatchData(
         response,
         keySchema,
@@ -316,7 +326,8 @@ public class TestUtils {
         valueSchemaId,
         CompressionStrategy.NO_OP,
         null,
-        pubSubProducerAdapterFactory);
+        pubSubProducerAdapterFactory,
+        additionalProperties);
   }
 
   public static void writeBatchData(
@@ -327,12 +338,14 @@ public class TestUtils {
       int valueSchemaId,
       CompressionStrategy compressionStrategy,
       Function<String, ByteBuffer> compressionDictionaryGenerator,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      Map<String, String> additionalProperties) {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
     props.putAll(response.getPartitionerParams());
     props.setProperty(AMPLIFICATION_FACTOR, String.valueOf(response.getAmplificationFactor()));
+    props.putAll(additionalProperties);
     VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props, pubSubProducerAdapterFactory);
 
     Properties partitionerProperties = new Properties();
@@ -557,14 +570,6 @@ public class TestUtils {
   }
 
   public static VeniceWriterFactory getVeniceWriterFactory(
-      String kafkaBootstrapServers,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
-    Properties properties = new Properties();
-    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    return getVeniceWriterFactory(properties, pubSubProducerAdapterFactory);
-  }
-
-  public static VeniceWriterFactory getVeniceWriterFactory(
       Properties properties,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
     Properties factoryProperties = new Properties();
@@ -652,8 +657,7 @@ public class TestUtils {
       String storeName,
       ControllerClient parentControllerClient,
       List<ControllerClient> controllerClientList) {
-    Assert
-        .assertFalse(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA).isError());
+    Assert.assertFalse(parentControllerClient.createNewStore(storeName, "owner", "\"string\"", "\"string\"").isError());
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
       for (ControllerClient client: controllerClientList) {
         Assert.assertFalse(client.getStore(storeName).isError());

@@ -1522,7 +1522,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testAddAndRemoveDerivedSchema() {
     String storeName = Utils.getUniqueString("write_compute_store");
-    String recordSchemaStr = TestWriteUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
+    String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
     Schema derivedSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchemaStr(recordSchemaStr);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
@@ -1790,7 +1790,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testAddMetadataSchema() {
     String storeName = Utils.getUniqueString("aa_store");
-    String recordSchemaStr = TestWriteUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
+    String recordSchemaStr = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
     int replicationMetadataVersionId = multiClusterConfig.getCommonConfig().getReplicationMetadataVersion();
     Schema metadataSchema = RmdSchemaGenerator.generateMetadataSchema(recordSchemaStr, replicationMetadataVersionId);
 

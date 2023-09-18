@@ -6,6 +6,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -83,6 +84,12 @@ public class ClientComputeRecordStreamDecoder<K, V> implements RecordStreamDecod
 
   @Override
   public void onCompletion(Optional<VeniceClientException> exception) {
+    if (decoder == null) {
+      /**
+       * In case an exception gets thrown before handling any header or data.
+       */
+      decoder = decoderProvider.apply(Collections.emptyMap());
+    }
     decoder.onCompletion(exception);
   }
 }

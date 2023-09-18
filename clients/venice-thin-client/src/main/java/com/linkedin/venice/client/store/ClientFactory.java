@@ -8,13 +8,39 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.service.ICProvider;
 import java.util.Optional;
+import java.util.function.Function;
 import org.apache.avro.specific.SpecificRecord;
 
 
 public class ClientFactory {
+  // Flag to denote if the test is in unit test mode and hence, will allow creating custom clients
+  private static boolean unitTestMode = false;
+  private static Function<ClientConfig, TransportClient> configToTransportClientProviderForTests = null;
+
+  // Visible for testing
+  static void setUnitTestMode() {
+    unitTestMode = true;
+  }
+
+  static void resetUnitTestMode() {
+    unitTestMode = false;
+    configToTransportClientProviderForTests = null;
+  }
+
+  // Allow for overriding with mock D2Client for unit tests. The caller must release the object to prevent side-effects
+  // VisibleForTesting
+  static void setTransportClientProvider(Function<ClientConfig, TransportClient> transportClientProvider) {
+    if (!unitTestMode) {
+      throw new VeniceUnsupportedOperationException("setTransportClientProvider in non-unit-test-mode");
+    }
+
+    configToTransportClientProviderForTests = transportClientProvider;
+  }
+
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericAvroClient(ClientConfig clientConfig) {
     AvroGenericStoreClient<K, V> client = getGenericAvroClient(clientConfig);
     client.start();
@@ -99,7 +125,7 @@ public class ClientFactory {
         new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
   }
 
-  private static D2TransportClient generateTransportClient(ClientConfig clientConfig) {
+  private static D2TransportClient generateD2TransportClient(ClientConfig clientConfig) {
     String d2ServiceName = clientConfig.getD2ServiceName();
 
     if (clientConfig.getD2Client() != null) {
@@ -110,13 +136,20 @@ public class ClientFactory {
   }
 
   public static TransportClient getTransportClient(ClientConfig clientConfig) {
+    if (unitTestMode && configToTransportClientProviderForTests != null) {
+      TransportClient client = configToTransportClientProviderForTests.apply(clientConfig);
+      if (client != null) {
+        return client;
+      }
+    }
+
     String bootstrapUrl = clientConfig.getVeniceURL();
 
     if (clientConfig.isD2Routing()) {
       if (clientConfig.getD2ServiceName() == null) {
         throw new VeniceClientException("D2 Server name can't be null");
       }
-      return generateTransportClient(clientConfig);
+      return generateD2TransportClient(clientConfig);
     } else if (clientConfig.isHttps()) {
       if (clientConfig.getSslFactory() == null) {
         throw new VeniceClientException("Must use SSL factory method for client to communicate with https");

@@ -89,7 +89,8 @@ public class TopicManager implements Closeable {
       Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
 
   public TopicManager(TopicManagerRepository.Builder builder, String pubSubBootstrapServers) {
-    this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + pubSubBootstrapServers + "]");
+    String pubSubServersForLogger = Utils.getSanitizedStringForLogger(pubSubBootstrapServers);
+    this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + pubSubServersForLogger + "]");
     this.kafkaOperationTimeoutMs = builder.getKafkaOperationTimeoutMs();
     this.topicMinLogCompactionLagMs = builder.getTopicMinLogCompactionLagMs();
     this.pubSubAdminAdapterFactory = builder.getPubSubAdminAdapterFactory();

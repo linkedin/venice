@@ -8,9 +8,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        jdk: [11]
-    runs-on: ${{ matrix.os }}
+        jdk: [8, 11, 17]
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -20,7 +19,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           java-version: ${{ matrix.jdk }}
-          distribution: 'microsoft'
+          distribution: 'temurin'
           cache: 'gradle'
       - shell: bash
         run: |

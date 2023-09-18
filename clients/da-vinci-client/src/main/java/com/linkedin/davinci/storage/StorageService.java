@@ -357,8 +357,9 @@ public class StorageService extends AbstractVeniceService {
 
   /**
    * Drops the partition of the specified store version in the storage service.
-   * @param storeConfig config of the store version.
-   * @param partition partition ID to be dropped.
+   *
+   * @param storeConfig              config of the store version.
+   * @param partition                partition ID to be dropped.
    * @param removeEmptyStorageEngine Whether to delete the storage engine when there is no remaining data partition.
    */
   public synchronized void dropStorePartition(
@@ -368,7 +369,8 @@ public class StorageService extends AbstractVeniceService {
     String kafkaTopic = storeConfig.getStoreVersionName();
     AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaTopic);
     if (storageEngine == null) {
-      LOGGER.warn("Storage engine {} does not exist, ignoring drop partition request.", kafkaTopic);
+      LOGGER.warn("Storage engine {} does not exist, directly deleting DB files.", kafkaTopic);
+      removeStoragePartition(kafkaTopic, partition);
       return;
     }
     for (int subPartition: getSubPartition(kafkaTopic, partition)) {
@@ -379,6 +381,12 @@ public class StorageService extends AbstractVeniceService {
 
     if (remainingPartitions.isEmpty() && removeEmptyStorageEngine) {
       removeStorageEngine(kafkaTopic);
+    }
+  }
+
+  void removeStoragePartition(String kafkaTopic, int partition) {
+    for (StorageEngineFactory factory: persistenceTypeToStorageEngineFactoryMap.values()) {
+      factory.removeStorageEnginePartition(kafkaTopic, partition);
     }
   }
 

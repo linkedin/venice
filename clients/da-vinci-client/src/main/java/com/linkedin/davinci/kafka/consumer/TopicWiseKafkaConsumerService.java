@@ -68,7 +68,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
         time,
         stats,
         isKafkaConsumerOffsetCollectionEnabled);
-    LOGGER = LogManager.getLogger(TopicWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");
+    LOGGER = LogManager.getLogger(TopicWiseKafkaConsumerService.class + " [" + kafkaUrlForLogger + "]");
   }
 
   /**

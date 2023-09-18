@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -124,13 +125,17 @@ public class OneTouchDataRecoveryTest {
           .getKafkaBrokerWrapper()
           .getPubSubClientsFactory()
           .getProducerAdapterFactory();
+      List<PubSubBrokerWrapper> pubSubBrokerWrappers =
+          childDatacenters.stream().map(VeniceMultiClusterWrapper::getKafkaBrokerWrapper).collect(Collectors.toList());
+      Map<String, String> additionalConfigs = PubSubBrokerWrapper.getBrokerDetailsForClients(pubSubBrokerWrappers);
       TestUtils.writeBatchData(
           versionCreationResponse,
-          STRING_SCHEMA,
-          STRING_SCHEMA,
+          STRING_SCHEMA.toString(),
+          STRING_SCHEMA.toString(),
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
           HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
-          pubSubProducerAdapterFactory);
+          pubSubProducerAdapterFactory,
+          additionalConfigs);
       JobStatusQueryResponse response = parentControllerCli
           .queryDetailedJobStatus(versionCreationResponse.getKafkaTopic(), childDatacenters.get(0).getRegionName());
       Assert.assertFalse(response.isError());

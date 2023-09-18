@@ -117,11 +117,11 @@ public class PushMonitorUtils {
           .append(" Da Vinci replicas.");
     }
     if (erroredReplica.isPresent()) {
-      statusDetailStringBuilder.append("Found a failed partition replica in Da Vinci: ")
+      statusDetailStringBuilder.append("Found a failed partition replica in Da Vinci. ")
           .append("Partition: ")
           .append(erroredPartitionId)
-          .append("Replica: ")
-          .append(erroredReplica)
+          .append(" Replica: ")
+          .append(erroredReplica.get())
           .append(". Live replica count: ")
           .append(liveReplicaCount)
           .append(", total replica count: ")

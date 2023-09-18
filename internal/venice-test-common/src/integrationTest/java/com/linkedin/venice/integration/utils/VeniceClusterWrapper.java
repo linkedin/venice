@@ -1014,7 +1014,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
         compressionStrategy,
         compressionDictionaryGenerator,
-        pubSubProducerAdapterFactory);
+        pubSubProducerAdapterFactory,
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
 
     int versionId = response.getVersion();
     waitVersion(storeName, versionId, controllerClient.get());

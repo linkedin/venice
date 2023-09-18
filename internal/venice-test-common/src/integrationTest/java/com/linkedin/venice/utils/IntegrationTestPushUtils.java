@@ -40,9 +40,11 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -192,6 +194,8 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, "invalid_parent_d2_service");
     samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
+    samzaConfig.putAll(
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
     return samzaConfig;
   }
 
@@ -368,6 +372,7 @@ public class IntegrationTestPushUtils {
       PubSubTopicRepository pubSubTopicRepository) {
     Properties properties = new Properties();
     String pubSubBootstrapServers = pubSubBrokerWrapper.getAddress();
+    properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     return TopicManagerRepository.builder()
         .setPubSubProperties(k -> new VeniceProperties(properties))
@@ -379,5 +384,15 @@ public class IntegrationTestPushUtils {
         .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollIntervalMs)
         .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
         .build();
+  }
+
+  public static VeniceWriterFactory getVeniceWriterFactory(
+      PubSubBrokerWrapper pubSubBrokerWrapper,
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+    Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+    veniceWriterProperties
+        .putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
+    return TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory);
   }
 }

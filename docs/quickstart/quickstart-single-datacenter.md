@@ -61,7 +61,7 @@ value schema:
 
 Let's create a venice store:
 ```
-bash create_store.sh
+./create_store.sh http://venice-controller:5555 venice-cluster0 test-store sample-data/schema/keySchema.avsc sample-data/schema/valueSchema.avsc
 ```
 
 #### Step 6: Push data to the store
@@ -69,31 +69,31 @@ Venice supports multiple ways to write data to the store. For more details, plea
 In this example, we will use batch push mode and push 100 records.
 ```
 key: 1 to 100
-value: test_name_1 to test_name_100
+value: val1 to val100
 ```
 
 Let's push the data:
 ```
-bash batch_push_data.sh
+./run-vpj.sh sample-data/single-dc-configs/batch-push-job.properties
 ```
 
 #### Step 7: Read data from the store
 Let's query some data from `venice-store`, using `venice-thin-client` which is included in venice container images. (key: `1 to 100`)
 ```
-bash query_data.sh <key>
+./fetch.sh <router> <store> <key>
 ```
 For example:
 ```bash
-$ bash query_data.sh 1
+$ ./fetch.sh http://venice-router:7777 test-store 1 
 key=1
-value=test_name_1
+value=val1
 
-$ bash query_data.sh 100
+$ ./fetch.sh http://venice-router:7777 test-store 100
 key=100
-value=test_name_100
+value=val100
 
 # Now if we do get on non-existing key, venice will return `null`
-$ bash query_data.sh 101
+$ ./fetch.sh http://venice-router:7777 test-store 101
 key=101
 value=null
 ```
@@ -102,11 +102,11 @@ value=null
 #### Step 8: Update and add some new records using Incremental Push
 Venice supports incremental push which allows us to update values of existing rows or to add new rows in an existing store.
 In this example, we will
-1. update values for keys from `51-100`. For example, the new value of `100` will be `test_name_100_v1`
+1. update values for keys from `51-100`. For example, the new value of `100` will be `val100_v1`
 2. add new rows (key: `101-150`)
 
-```
-bash inc_push_data.sh
+```bash
+./run-vpj.sh sample-data/single-dc-configs/inc-push-job.properties
 ```
 
 #### Step 9: Read data from the store after Incremental Push
@@ -115,19 +115,19 @@ Let's read the data once again.
 
 ```bash
 # Value of 1 changed remains unchanged
-$ bash query_data.sh 1
+$ ./fetch.sh http://venice-router:7777 test-store 1
 key=1
-value=test_name_1
+value=val1
 
 # Value of 100 changed from test_name_100 to test_name_100_v1
-$ bash query_data.sh 100
+$ ./fetch.sh http://venice-router:7777 test-store 100
 key=100
-value=test_name_100_v1
+value=val100_v1
 
 # Incremental Push added value for previously non-existing key 101
-$ bash query_data.sh 101
+$ ./fetch.sh http://venice-router:7777 test-store 101
 key=101
-value=test_name_101_v1
+value=val101
 ```
 
 

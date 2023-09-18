@@ -154,9 +154,9 @@ public enum AvroProtocolDefinition {
   PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE(1, ParticipantMessageValue.class),
 
   /**
-   * Response record for admin request v1.
+   * Response record for admin request.
    */
-  SERVER_ADMIN_RESPONSE_V1(1, AdminResponseRecord.class),
+  SERVER_ADMIN_RESPONSE(2, AdminResponseRecord.class),
 
   /**
    * Response record for metadata fetch request.
@@ -273,7 +273,10 @@ public enum AvroProtocolDefinition {
   }
 
   public <T extends SpecificRecord> InternalAvroSpecificSerializer<T> getSerializer() {
-    return new InternalAvroSpecificSerializer<>(this);
+    if (magicByte.isPresent() || protocolVersionStoredInHeader) {
+      return new InternalAvroSpecificSerializer<>(this);
+    }
+    return new InternalAvroSpecificSerializer<>(this, 0);
   }
 
   public int getCurrentProtocolVersion() {

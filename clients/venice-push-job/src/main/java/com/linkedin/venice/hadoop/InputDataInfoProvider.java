@@ -17,7 +17,7 @@ public interface InputDataInfoProvider extends Closeable {
   /**
    * A POJO that contains input data information (schema information and input data file size)
    */
-  Logger LOGGER = LogManager.getLogger(InputDataInfoProvider.class.getName());
+  Logger LOGGER = LogManager.getLogger(InputDataInfoProvider.class);
 
   class InputDataInfo {
     private final PushJobSchemaInfo pushJobSchemaInfo;

@@ -320,8 +320,8 @@ public class TestParentControllerWithMultiDataCenter {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
     String valueRecordSchemaStr1 = BASIC_USER_SCHEMA_STRING_WITH_DEFAULT;
-    String valueRecordSchemaStr2 = TestWriteUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
-    String valueRecordSchemaStr3 = TestWriteUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
+    String valueRecordSchemaStr2 = TestWriteUtils.SIMPLE_USER_WITH_DEFAULT_SCHEMA.toString();
+    String valueRecordSchemaStr3 = TestWriteUtils.USER_WITH_DEFAULT_SCHEMA.toString();
 
     Schema rmdSchema1 = RmdSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr1, 1);
     Schema rmdSchema2 = RmdSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr2, 1);
@@ -450,6 +450,18 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
           Assert.assertEquals(storeInfo.getCurrentVersion(), 1);
+        });
+      }
+
+      // Now lets go back to the future version for fun
+      response = parentControllerClient.rollForwardToFutureVersion(storeName);
+      Assert.assertFalse(response.isError());
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          Assert.assertEquals(storeInfo.getCurrentVersion(), 2);
         });
       }
     }
