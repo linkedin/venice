@@ -1307,18 +1307,11 @@ public class TestHybrid {
         String key2 = "duplicated_message_test_key_2";
         Properties veniceWriterProperties = new Properties();
         veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
-<<<<<<< HEAD
         veniceWriterProperties.putAll(
             PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
-        AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
+        AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
         AvroGenericDeserializer<String> stringDeserializer =
-            new AvroGenericDeserializer<>(Schema.parse(STRING_SCHEMA), Schema.parse(STRING_SCHEMA));
-=======
-        AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA.toString()));
-        AvroGenericDeserializer<String> stringDeserializer = new AvroGenericDeserializer<>(
-            Schema.parse(STRING_SCHEMA.toString()),
-            Schema.parse(STRING_SCHEMA.toString()));
->>>>>>> 3ccf6fc36 (first iteration to get schema to file)
+            new AvroGenericDeserializer<>(STRING_SCHEMA, STRING_SCHEMA);
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
                 .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
@@ -1603,13 +1596,9 @@ public class TestHybrid {
        * Set max segment elapsed time to 0 to enforce creating small segments aggressively
        */
       veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
-<<<<<<< HEAD
       veniceWriterProperties.putAll(
           PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
-      AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
-=======
-      AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA.toString()));
->>>>>>> 3ccf6fc36 (first iteration to get schema to file)
+      AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
       String prefix = "foo_object_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
@@ -1676,13 +1665,9 @@ public class TestHybrid {
        * Set max segment elapsed time to 0 to enforce creating small segments aggressively
        */
       veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
-<<<<<<< HEAD
       veniceWriterProperties.putAll(
           PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
-      AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
-=======
-      AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA.toString()));
->>>>>>> 3ccf6fc36 (first iteration to get schema to file)
+      AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
       String prefix = "hybrid_DIV_enhancement_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
