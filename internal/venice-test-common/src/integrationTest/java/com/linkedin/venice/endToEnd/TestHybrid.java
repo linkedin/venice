@@ -27,7 +27,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeS
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
@@ -101,6 +100,7 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -209,7 +209,7 @@ public class TestHybrid {
       final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
 
       // Create store at parent, make it a hybrid store
-      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
       controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -322,7 +322,7 @@ public class TestHybrid {
       String storeName = Utils.getUniqueString("hybrid-store");
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
       Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
       try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
@@ -843,7 +843,7 @@ public class TestHybrid {
       String storeName = Utils.getUniqueString("hybrid-store");
 
       // Create store , make it a hybrid store
-      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
       controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -878,7 +878,7 @@ public class TestHybrid {
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
       veniceWriterProperties.putAll(
           PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
-      AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
+      AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
 
@@ -971,7 +971,7 @@ public class TestHybrid {
     SystemProducer producer = null;
     try (ControllerClient controllerClient =
         new ControllerClient(clusterName, veniceClusterWrapper.getAllControllersURLs())) {
-      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+      controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
       controllerClient.updateStore(
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
@@ -1156,7 +1156,7 @@ public class TestHybrid {
       String storeName = Utils.getUniqueString("hybrid-store");
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
       Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
       try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
@@ -1277,7 +1277,7 @@ public class TestHybrid {
       String storeName = Utils.getUniqueString("hybrid-store");
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
       Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
       try (
@@ -1309,9 +1309,9 @@ public class TestHybrid {
         veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getPubSubBrokerWrapper().getAddress());
         veniceWriterProperties.putAll(
             PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
-        AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
+        AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
         AvroGenericDeserializer<String> stringDeserializer =
-            new AvroGenericDeserializer<>(Schema.parse(STRING_SCHEMA), Schema.parse(STRING_SCHEMA));
+            new AvroGenericDeserializer<>(STRING_SCHEMA, STRING_SCHEMA);
         try (VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter =
             TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory)
                 .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
@@ -1463,7 +1463,7 @@ public class TestHybrid {
       String storeName = Utils.getUniqueString("hybrid-store");
       File inputDir = getTempDataDirectory();
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
       Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
       try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
@@ -1571,7 +1571,7 @@ public class TestHybrid {
     String storeName = Utils.getUniqueString("hybrid-store");
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
     Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
@@ -1598,7 +1598,7 @@ public class TestHybrid {
       veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
       veniceWriterProperties.putAll(
           PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
-      AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
+      AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
       String prefix = "foo_object_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
@@ -1645,7 +1645,7 @@ public class TestHybrid {
     String storeName = Utils.getUniqueString("hybrid-store");
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
     Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
         AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
@@ -1667,7 +1667,7 @@ public class TestHybrid {
       veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, "0");
       veniceWriterProperties.putAll(
           PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(venice.getPubSubBrokerWrapper())));
-      AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
+      AvroSerializer<String> stringSerializer = new AvroSerializer(STRING_SCHEMA);
       String prefix = "hybrid_DIV_enhancement_";
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           venice.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
@@ -1717,7 +1717,8 @@ public class TestHybrid {
 
     try (ControllerClient controllerClient =
         new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
-      TestUtils.assertCommand(controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
+      TestUtils.assertCommand(
+          controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA.toString(), STRING_SCHEMA.toString()));
       TestUtils.assertCommand(controllerClient.updateStore(storeName, params));
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
@@ -1733,8 +1734,8 @@ public class TestHybrid {
 
       cluster.createVersion(
           storeName,
-          STRING_SCHEMA,
-          STRING_SCHEMA,
+          STRING_SCHEMA.toString(),
+          STRING_SCHEMA.toString(),
           IntStream.range(0, keyCount)
               .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
 
@@ -1757,8 +1758,8 @@ public class TestHybrid {
         // Create a new version with updated amplification factor
         cluster.createVersion(
             storeName,
-            STRING_SCHEMA,
-            STRING_SCHEMA,
+            STRING_SCHEMA.toString(),
+            STRING_SCHEMA.toString(),
             IntStream.range(0, keyCount)
                 .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
@@ -1785,8 +1786,8 @@ public class TestHybrid {
         // Create a new version with updated amplification factor
         cluster.createVersion(
             storeName,
-            STRING_SCHEMA,
-            STRING_SCHEMA,
+            STRING_SCHEMA.toString(),
+            STRING_SCHEMA.toString(),
             IntStream.range(0, keyCount)
                 .mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))));
         watermarkOfSuccessfullyVerifiedKeys.set(0);

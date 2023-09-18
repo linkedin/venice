@@ -21,8 +21,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema2;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleVsonFileWithUserSchema;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -167,7 +166,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Inconsistent file.* schema found.*")
   public void testRunJobWithInputHavingDifferentSchema() throws Exception {
     File inputDir = getTempDataDirectory();
-    writeSimpleAvroFileWithUserSchema(inputDir);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     writeSimpleAvroFileWithDifferentUserSchema(inputDir);
 
     // Setup job properties
@@ -187,7 +186,7 @@ public class TestVenicePushJob {
   @Test(expectedExceptions = VeniceSchemaFieldNotFoundException.class, expectedExceptionsMessageRegExp = ".*Could not find field: id1.*")
   public void testRunJobWithInvalidKeyField() throws Exception {
     File inputDir = getTempDataDirectory();
-    writeSimpleAvroFileWithUserSchema(inputDir);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     // Setup job properties
     String storeName = Utils.getUniqueString("store");
     veniceCluster.getNewStore(storeName);
@@ -208,7 +207,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceSchemaFieldNotFoundException.class, expectedExceptionsMessageRegExp = ".*Could not find field: name1.*")
   public void testRunJobWithInvalidValueField() throws Exception {
     File inputDir = getTempDataDirectory();
-    writeSimpleAvroFileWithUserSchema(inputDir);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -251,7 +250,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*should not have sub directory.*")
   public void testRunJobWithSubDirInInputDir() throws Exception {
     File inputDir = getTempDataDirectory();
-    writeSimpleAvroFileWithUserSchema(inputDir);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     // Create sub directory
     File subDir = new File(inputDir, "sub-dir");
     subDir.mkdir();
@@ -319,12 +318,11 @@ public class TestVenicePushJob {
   public void testRunJobWithDifferentKeySchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     String storeName = Utils.getUniqueString("store");
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringWithExtraSchema(inputDir);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
-    String jobName = "Test push job";
 
     // Run job with different key schema (from 'string' to 'int')
     props.setProperty(KEY_FIELD_PROP, "age");
@@ -339,12 +337,11 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to validate value schema.*")
   public void testRunJobMultipleTimesWithInCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringWithExtraSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
-    String jobName = "Test push job";
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(VALUE_FIELD_PROP, "age");
     props.setProperty(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "2");
@@ -358,7 +355,7 @@ public class TestVenicePushJob {
     String storeName = Utils.getUniqueString("store");
     String routerUrl = veniceCluster.getRandomRouterURL();
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
-    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir, false);
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(SUPPRESS_END_OF_PUSH_MESSAGE, "true");
@@ -384,7 +381,7 @@ public class TestVenicePushJob {
     String storeName = Utils.getUniqueString("store");
     String routerUrl = veniceCluster.getRandomRouterURL();
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
-    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir, false);
+    Schema recordSchema = writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(DEFER_VERSION_SWAP, "true");
@@ -489,7 +486,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during VenicePushJob.*")
   public void testRunJobWithBuggySprayingMapReduceShufflePartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
-    writeSimpleAvroFileWithUserSchema(inputDir);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -511,7 +508,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during VenicePushJob.*")
   public void testRunJobWithBuggyOffsettingMapReduceShufflePartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
-    writeSimpleAvroFileWithUserSchema(inputDir);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -533,7 +530,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during VenicePushJob.*")
   public void testRunJobWithNonDeterministicPartitioner() throws Exception {
     File inputDir = getTempDataDirectory();
-    writeSimpleAvroFileWithUserSchema(inputDir);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -556,7 +553,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, description = "KIF repush should copy all data including recent incPush2RT to new VT")
   public void testKIFRepushForIncrementalPushStores() throws Exception {
     File inputDir = getTempDataDirectory();
-    writeSimpleAvroFileWithUserSchema(inputDir);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
@@ -576,7 +573,7 @@ public class TestVenicePushJob {
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 1));
 
-    writeSimpleAvroFileWithUserSchema2(inputDir);
+    writeSimpleAvroFileWithStringToStringSchema2(inputDir);
     props.setProperty(INCREMENTAL_PUSH, "true");
     TestWriteUtils.runPushJob("Test push job", props);
     TestUtils.waitForNonDeterministicAssertion(
@@ -625,7 +622,7 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testKIFRepushFetch(boolean chunkingEnabled) throws Exception {
     File inputDir = getTempDataDirectory();
-    writeSimpleAvroFileWithUserSchema(inputDir);
+    TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");

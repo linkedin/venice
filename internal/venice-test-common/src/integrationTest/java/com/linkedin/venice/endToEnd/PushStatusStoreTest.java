@@ -320,7 +320,7 @@ public class PushStatusStoreTest {
     // Produce input data.
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    writeSimpleAvroFileWithIntToStringSchema(inputDir, true);
+    writeSimpleAvroFileWithIntToStringSchema(inputDir);
     return defaultVPJProps(cluster, inputDirPath, storeName);
   }
 

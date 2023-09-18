@@ -130,7 +130,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         storeProps[i] = props;
         props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
-        Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
+        Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, recordCount);
         String keySchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema().toString();
         String valueSchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema().toString();
 

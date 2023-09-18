@@ -61,7 +61,7 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
   public void testGetWithEmptyFile() throws Exception {
     File inputDir = Utils.getTempDataDirectory();
     String avroOutputFile = "empty_file.avro";
-    TestWriteUtils.writeEmptyAvroFileWithUserSchema(inputDir, avroOutputFile, fileSchema.toString());
+    TestWriteUtils.writeEmptyAvroFile(inputDir, avroOutputFile, fileSchema);
     ValidateSchemaAndBuildDictMapperOutputReader reader =
         new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
     reader.close();
@@ -94,7 +94,7 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
         avroOutputFile,
         0,
         ByteBuffer.wrap("TestDictionary".getBytes()),
-        fileSchema.toString());
+        fileSchema);
     ValidateSchemaAndBuildDictMapperOutputReader reader =
         new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
     reader.close();
@@ -109,7 +109,7 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
         avroOutputFile,
         1,
         ByteBuffer.wrap("TestDictionary".getBytes()),
-        fileSchema.toString());
+        fileSchema);
     ValidateSchemaAndBuildDictMapperOutputReader reader =
         new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
     ValidateSchemaAndBuildDictMapperOutput output = reader.getOutput();
@@ -128,12 +128,8 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
   public void testGetWithNoZstdDictionary() throws Exception {
     File inputDir = Utils.getTempDataDirectory();
     String avroOutputFile = "valid_file.avro";
-    TestWriteUtils.writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
-        inputDir,
-        avroOutputFile,
-        1,
-        null,
-        fileSchema.toString());
+    TestWriteUtils
+        .writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(inputDir, avroOutputFile, 1, null, fileSchema);
     ValidateSchemaAndBuildDictMapperOutputReader reader =
         new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
     ValidateSchemaAndBuildDictMapperOutput output = reader.getOutput();

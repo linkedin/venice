@@ -219,7 +219,7 @@ public class StoreClientPerfTest {
 
       int valueSchemaId = 1;
       int valueSizeInBytes = 800;
-      String valueSchemaStr = TestWriteUtils.USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING;
+      String valueSchemaStr = TestWriteUtils.USER_WITH_FLOAT_ARRAY_SCHEMA.toString();
       Schema valueSchema = new Schema.Parser().parse(valueSchemaStr);
       Set<String> keys = new HashSet<>();
       setupSchemaAndRequest(valueSchemaId, valueSchemaStr);

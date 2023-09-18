@@ -130,8 +130,8 @@ public class OneTouchDataRecoveryTest {
       Map<String, String> additionalConfigs = PubSubBrokerWrapper.getBrokerDetailsForClients(pubSubBrokerWrappers);
       TestUtils.writeBatchData(
           versionCreationResponse,
-          STRING_SCHEMA,
-          STRING_SCHEMA,
+          STRING_SCHEMA.toString(),
+          STRING_SCHEMA.toString(),
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
           HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
           pubSubProducerAdapterFactory,

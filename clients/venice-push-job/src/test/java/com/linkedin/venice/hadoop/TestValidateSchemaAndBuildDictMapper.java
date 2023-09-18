@@ -70,7 +70,7 @@ public class TestValidateSchemaAndBuildDictMapper extends AbstractTestVeniceMR {
     // Add extra configuration for this mapper
     File inputDir = Utils.getTempDataDirectory();
     try {
-      TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 100);
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }

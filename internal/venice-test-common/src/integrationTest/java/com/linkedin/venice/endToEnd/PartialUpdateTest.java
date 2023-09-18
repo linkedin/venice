@@ -19,8 +19,8 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProduce
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
-import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING;
-import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING_V2;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema;
@@ -283,7 +283,7 @@ public class PartialUpdateTest {
     final String storeName = Utils.getUniqueString("inc_push_update_classic_format");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(inputDir, true);
+    Schema recordSchema = writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(inputDir);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties vpjProperties =
@@ -292,7 +292,9 @@ public class PartialUpdateTest {
     vpjProperties.put(INCREMENTAL_PUSH, true);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
-      assertCommand(parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, NESTED_SCHEMA_STRING));
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", keySchemaStr, TestWriteUtils.NAME_RECORD_V1_SCHEMA.toString()));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
@@ -344,7 +346,7 @@ public class PartialUpdateTest {
     final String storeName = Utils.getUniqueString("inc_push_update_new_format");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
+    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties vpjProperties =
@@ -354,7 +356,8 @@ public class PartialUpdateTest {
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
-          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, NESTED_SCHEMA_STRING_V2));
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", keySchemaStr, NAME_RECORD_V2_SCHEMA.toString()));
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
@@ -412,7 +415,7 @@ public class PartialUpdateTest {
     final String storeName = Utils.getUniqueString("updateBatch");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
+    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -979,7 +982,7 @@ public class PartialUpdateTest {
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       String parentControllerURL = parentController.getControllerUrl();
       // Records 1-100, id string to name record
-      Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
+      Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir);
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       Properties vpjProperties =
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
@@ -1003,15 +1006,16 @@ public class PartialUpdateTest {
         assertFalse(response.isError());
 
         // Add a new value schema v2 to store
-        SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NESTED_SCHEMA_STRING_V2);
+        SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NAME_RECORD_V2_SCHEMA.toString());
         assertFalse(schemaResponse.isError());
 
-        // Add WC (Write Compute) schema associated to v2.
-        // Note that Write Compute schema needs to be registered manually here because the integration test harness
-        // does not create any parent controller. In production, when a value schema is added to a WC-enabled store via
-        // a parent controller, it will automatically generate and register its WC schema.
-        Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance()
-            .convertFromValueRecordSchema(AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING_V2));
+        // Add partial update schema associated to v2.
+        // Note that partial update schema needs to be registered manually here because the integration test harness
+        // does not create any parent controller. In production, when a value schema is added to a partial update
+        // enabled
+        // store via a parent controller, it will automatically generate and register its WC schema.
+        Schema writeComputeSchema =
+            WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(NAME_RECORD_V2_SCHEMA);
         schemaResponse =
             controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
         assertFalse(schemaResponse.isError());
@@ -1052,8 +1056,7 @@ public class PartialUpdateTest {
           // Do not send large record to RT; RT doesn't support chunking
           veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
           String key = String.valueOf(101);
-          Schema valueSchema = AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING);
-          GenericRecord value = new GenericData.Record(valueSchema);
+          GenericRecord value = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
           char[] chars = new char[100];
           Arrays.fill(chars, 'f');
           String firstName = new String(chars);
@@ -1196,7 +1199,7 @@ public class PartialUpdateTest {
     File inputDir = getTempDataDirectory();
     String parentControllerURL = parentController.getControllerUrl();
     // Records 1-100, id string to name record
-    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
+    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir);
     VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
     try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURL)) {
 
@@ -1217,13 +1220,13 @@ public class PartialUpdateTest {
       assertFalse(response.isError());
 
       // Add a new value schema v2 to store
-      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NESTED_SCHEMA_STRING_V2);
+      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NAME_RECORD_V2_SCHEMA.toString());
       assertFalse(schemaResponse.isError());
 
       // Add WC (Write Compute) schema associated to v2.
       // (this is a test environment only needed step since theres no parent)
-      Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance()
-          .convertFromValueRecordSchema(AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING_V2));
+      Schema writeComputeSchema =
+          WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(NAME_RECORD_V2_SCHEMA);
       schemaResponse =
           controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
       assertFalse(schemaResponse.isError());

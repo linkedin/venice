@@ -3,7 +3,6 @@ package com.linkedin.venice.kafka.ssl;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sslVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -108,7 +107,7 @@ public class TestProduceWithSSL {
     VeniceClusterWrapper cluster = this.cluster;
     File inputDir = getTempDataDirectory();
     String storeName = Utils.getUniqueString("store");
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = sslVPJProps(cluster, inputDirPath, storeName);
 

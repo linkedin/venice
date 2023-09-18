@@ -17,8 +17,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
-import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING;
-import static com.linkedin.venice.utils.TestWriteUtils.UPDATE_SCHEMA_OF_NESTED_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCHEMA;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -101,8 +101,8 @@ public class VenicePushJobTest {
   public void testVPJcheckInputUpdateSchema() {
     VenicePushJob vpj = mock(VenicePushJob.class);
     when(vpj.isUpdateSchema(anyString())).thenCallRealMethod();
-    Assert.assertTrue(vpj.isUpdateSchema(UPDATE_SCHEMA_OF_NESTED_SCHEMA_STRING));
-    Assert.assertFalse(vpj.isUpdateSchema(NESTED_SCHEMA_STRING));
+    Assert.assertTrue(vpj.isUpdateSchema(NAME_RECORD_V1_UPDATE_SCHEMA.toString()));
+    Assert.assertFalse(vpj.isUpdateSchema(NAME_RECORD_V1_SCHEMA.toString()));
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")
