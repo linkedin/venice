@@ -24,6 +24,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.updateStore;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_KEY_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITH_NULL_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_VALUE_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.TestRecordType;
 import static com.linkedin.venice.utils.TestWriteUtils.USER_SCHEMA;
@@ -692,7 +693,7 @@ public abstract class TestBatch {
   public void testBatchFromETLWithForUnionWithNullSchema() throws Exception {
     testBatchStore(inputDir -> {
       writeETLFileWithUnionWithNullSchema(inputDir);
-      return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_VALUE_SCHEMA);
+      return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITH_NULL_SCHEMA);
     }, properties -> properties.setProperty(SOURCE_ETL, "true"), (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 25; i++) {

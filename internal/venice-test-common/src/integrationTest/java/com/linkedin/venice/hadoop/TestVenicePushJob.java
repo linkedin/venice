@@ -318,12 +318,11 @@ public class TestVenicePushJob {
   public void testRunJobWithDifferentKeySchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     String storeName = Utils.getUniqueString("store");
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringWithExtraSchema(inputDir);
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
-    String jobName = "Test push job";
 
     // Run job with different key schema (from 'string' to 'int')
     props.setProperty(KEY_FIELD_PROP, "age");
@@ -338,12 +337,11 @@ public class TestVenicePushJob {
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to validate value schema.*")
   public void testRunJobMultipleTimesWithInCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringWithExtraSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
-    String jobName = "Test push job";
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(VALUE_FIELD_PROP, "age");
     props.setProperty(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "2");

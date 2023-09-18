@@ -113,6 +113,11 @@ public class TestWriteUtils {
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_SCHEMA).build();
   public static final Schema STRING_TO_NAME_RECORD_V1_UPDATE_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_UPDATE_SCHEMA).build();
+  public static final Schema STRING_TO_STRING_WITH_EXTRA_FIELD_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
+          .setValueSchema(STRING_SCHEMA)
+          .setFieldSchema("age", INT_SCHEMA)
+          .build();
 
   public static File getTempDataDirectory() {
     return Utils.getTempDataDirectory();
@@ -136,6 +141,22 @@ public class TestWriteUtils {
         writer.append(user);
       }
     });
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToStringWithExtraSchema(File parentDir) throws IOException {
+    return writeAvroFile(
+        parentDir,
+        "string2string_extra_field.avro",
+        STRING_TO_STRING_WITH_EXTRA_FIELD_SCHEMA,
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+            user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
+            user.put("age", i);
+            writer.append(user);
+          }
+        });
   }
 
   public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir, int recordCount, int recordSizeMin)

@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,9 +16,9 @@ import org.apache.avro.Schema;
  * is good for push job in integration test.
  */
 public class PushInputSchemaBuilder {
-  private final String namespace = "example.avro";
-  private final String name = "AvroFileRecord";
-  private final String doc = "File Schema For Test Push";
+  private static final String namespace = "example.avro";
+  private static final String name = "AvroFileRecord";
+  private static final String doc = "File Schema For Test Push";
   private final Schema fileSchema = Schema.createRecord(name, doc, namespace, false);
   private final Map<String, Schema.Field> nameToFieldMap = new HashMap<>();
 
@@ -37,7 +38,7 @@ public class PushInputSchemaBuilder {
       throw new IllegalStateException(
           "Field has been set: " + fieldName + " with schema: " + nameToFieldMap.get(fieldName).toString());
     }
-    nameToFieldMap.put(fieldName, new Schema.Field(fieldName, fieldSchema));
+    nameToFieldMap.put(fieldName, AvroCompatibilityHelper.createSchemaField(fieldName, fieldSchema, "", null));
     return this;
   }
 
