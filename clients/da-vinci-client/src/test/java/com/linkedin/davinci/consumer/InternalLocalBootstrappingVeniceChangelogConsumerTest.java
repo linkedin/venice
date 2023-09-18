@@ -203,9 +203,6 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     when(pubSubConsumer.poll(anyLong()))
         .thenReturn(prepareChangeCaptureRecordsToBePolled(TEST_KEY_1, changeCaptureTopic, 0))
         .thenReturn(prepareChangeCaptureRecordsToBePolled(TEST_KEY_2, changeCaptureTopic, 1));
-    Map<Integer, String> expectedPartitionToKey = new HashMap<>();
-    expectedPartitionToKey.put(0, TEST_KEY_1);
-    expectedPartitionToKey.put(1, TEST_KEY_2);
 
     bootstrappingVeniceChangelogConsumer.start().get();
 
@@ -226,7 +223,7 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
         prepareChangeCaptureRecordsToBePolled(TEST_KEY_1, changeCaptureTopic, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> testRecord =
         testRecords.values().stream().findFirst().get().get(0);
-    expectedPartitionToKey = new HashMap<>();
+    Map<Integer, String> expectedPartitionToKey = new HashMap<>();
     expectedPartitionToKey.put(0, TEST_KEY_1);
     ValueBytes valueBytes = new ValueBytes();
     valueBytes.schemaId = TEST_SCHEMA_ID;
