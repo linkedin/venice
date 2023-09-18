@@ -11,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl.DEFAULT_KAFKA_OFFSET_API_TIMEOUT;
 import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
@@ -64,8 +65,8 @@ import org.apache.logging.log4j.Logger;
 class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChangelogConsumerImpl<K, V>
     implements BootstrappingVeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(InternalLocalBootstrappingVeniceChangelogConsumer.class);
-  private final StorageService storageService;
-  private final StorageMetadataService storageMetadataService;
+  private StorageService storageService;
+  private StorageMetadataService storageMetadataService;
 
   private static final String CHANGE_CAPTURE_COORDINATE = "ChangeCaptureCoordinatePosition";
 
@@ -208,7 +209,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     }
     // If there are any partitions which are in BOOTSTRAPPING state, play messages from those partitions first
     int[] bootstrapCompletedCount = new int[1];
-    int[] testReceived = new int[1];
     for (Map.Entry<Integer, BootstrapState> state: bootstrapStateMap.entrySet()) {
       if (state.getValue().bootstrapState.equals(PollState.BOOTSTRAPPING)) {
         // read from storage engine
@@ -218,51 +218,12 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
             .getByKeyPrefix(state.getKey(), null, new BytesStreamingCallback() {
               @Override
               public void onRecordReceived(byte[] key, byte[] value) {
-                // Transform and populate into the collection that we return.
-                // TODO: this is a shortcoming of both this interface and the change capture client, we need to specify
-                // a user
-                // schema for deserialization
-                ValueRecord valueRecord = ValueRecord.parseAndCreate(value);
-
-                // Create a change event to wrap the record we pulled from disk and deserialize the record
-                ChangeEvent<V> changeEvent = new ChangeEvent<>(
-                    null,
-                    (V) storeDeserializerCache.getDeserializer(valueRecord.getSchemaId(), valueRecord.getSchemaId())
-                        .deserialize(valueRecord.getDataInBytes()));
-
-                PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> record =
-                    new ImmutableChangeCapturePubSubMessage<>(
-                        keyDeserializer.deserialize(key),
-                        changeEvent,
-                        getTopicPartition(state.getKey()),
-                        0,
-                        0,
-                        value.length * 8,
-                        false);
-                resultSet.add(record);
-                testReceived[0]++;
+                onRecordReceivedForStorage(key, value, state.getKey(), resultSet);
               }
 
               @Override
               public void onCompletion() {
-                // Update the map so that we're no longer in bootstrap mode
-                state.getValue().bootstrapState = PollState.CONSUMING;
-                bootstrapCompletedCount[0]++;
-                if (bootstrapCompletedCount[0] == bootstrapStateMap.size()) {
-                  // Add a dummy record to mark the end of the bootstrap.
-                  resultSet.add(
-                      new ImmutableChangeCapturePubSubMessage<>(
-                          null,
-                          null,
-                          getTopicPartition(state.getKey()),
-                          0,
-                          0,
-                          0,
-                          true));
-                }
-
-                // Notify that we've caught up
-                completed.set(true);
+                onCompletionForStorage(state.getKey(), state.getValue(), bootstrapCompletedCount, resultSet, completed);
               }
             });
         if (!completed.get()) {
@@ -272,6 +233,54 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       }
     }
     return super.internalPoll(timeoutInMs, topicSuffix);
+  }
+
+  @VisibleForTesting
+  void onRecordReceivedForStorage(
+      byte[] key,
+      byte[] value,
+      int partition,
+      Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> resultSet) {
+    // Transform and populate into the collection that we return.
+    // TODO: this is a shortcoming of both this interface and the change capture client, we need to specify
+    // a user
+    // schema for deserialization
+    ValueRecord valueRecord = ValueRecord.parseAndCreate(value);
+
+    // Create a change event to wrap the record we pulled from disk and deserialize the record
+    ChangeEvent<V> changeEvent = new ChangeEvent<>(
+        null,
+        (V) storeDeserializerCache.getDeserializer(valueRecord.getSchemaId(), valueRecord.getSchemaId())
+            .deserialize(valueRecord.getDataInBytes()));
+
+    PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> record = new ImmutableChangeCapturePubSubMessage<>(
+        keyDeserializer.deserialize(key),
+        changeEvent,
+        getTopicPartition(partition),
+        0,
+        0,
+        value.length * 8,
+        false);
+    resultSet.add(record);
+  }
+
+  @VisibleForTesting
+  void onCompletionForStorage(
+      int partition,
+      BootstrapState state,
+      int[] bootstrapCompletedCount,
+      Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> resultSet,
+      AtomicBoolean completed) {
+    // Update the map so that we're no longer in bootstrap mode
+    state.bootstrapState = PollState.CONSUMING;
+    bootstrapCompletedCount[0]++;
+    if (bootstrapCompletedCount[0] == bootstrapStateMap.size()) {
+      // Add a dummy record to mark the end of the bootstrap.
+      resultSet.add(new ImmutableChangeCapturePubSubMessage<>(null, null, getTopicPartition(partition), 0, 0, 0, true));
+    }
+
+    // Notify that we've caught up
+    completed.set(true);
   }
 
   /**
@@ -432,11 +441,17 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     checkpointTask.interrupt();
   }
 
-  private enum PollState {
+  @VisibleForTesting
+  void setStorageAndMetadataService(StorageService storageService, StorageMetadataService storageMetadataService) {
+    this.storageService = storageService;
+    this.storageMetadataService = storageMetadataService;
+  }
+
+  enum PollState {
     CATCHING_UP, BOOTSTRAPPING, CONSUMING
   }
 
-  private class BootstrapState {
+  static class BootstrapState {
     PollState bootstrapState;
     VeniceChangeCoordinate currentPubSubPosition;
     VeniceChangeCoordinate targetPubSubPosition;
