@@ -762,11 +762,10 @@ public abstract class AbstractPushMonitor
         Set<Integer> disabledPartitions = disabledReplicaMap.computeIfAbsent(instance, k -> {
           helixClientThrottler.maybeThrottle(1);
           Map<String, List<String>> helixMap = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
-          if (helixMap.containsKey(kafkaTopic)) {
-            return helixMap.get(kafkaTopic).stream().map(HelixUtils::getPartitionId).collect(Collectors.toSet());
-          } else {
-            return null;
-          }
+          List<String> disablePartitionList = helixMap.get(kafkaTopic);
+          return disablePartitionList != null
+              ? disablePartitionList.stream().map(HelixUtils::getPartitionId).collect(Collectors.toSet())
+              : null;
         });
         return disabledPartitions != null && disabledPartitions.contains(partitionId);
       }
