@@ -76,6 +76,7 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
@@ -166,6 +167,7 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -198,11 +200,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -1085,6 +1089,27 @@ public abstract class StoreIngestionTaskTest {
     return new PubSubTopicPartitionOffset(
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partition),
         offset);
+  }
+
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testMissingZstdDictionary() throws Exception {
+    doAnswer(invocation -> {
+      Function<StoreVersionState, StoreVersionState> mapFunction = invocation.getArgument(1);
+      StoreVersionState result = mapFunction.apply(null);
+      return result;
+    }).when(mockStorageMetadataService).computeStoreVersionState(anyString(), any());
+
+    localVeniceWriter.broadcastStartOfPush(false, false, CompressionStrategy.ZSTD_WITH_DICT, new HashMap<>());
+
+    runTest(Utils.setOf(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        Assert.assertNotNull(storeIngestionTaskUnderTest.getLastConsumerException());
+        Assert.assertTrue(
+            storeIngestionTaskUnderTest.getLastConsumerException()
+                .getMessage()
+                .contains("compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT"));
+      });
+    }, true);
   }
 
   /**
@@ -3459,6 +3484,29 @@ public abstract class StoreIngestionTaskTest {
     storeIngestionTaskUnderTest.startConsumingAsLeader(partitionConsumptionState);
     String dataRecoverySourceTopic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
     verify(offsetRecord, times(1)).setLeaderTopic(pubSubTopicRepository.getTopic(dataRecoverySourceTopic));
+  }
+
+  @Test
+  public void testCheckIngestionTaskActiveness() {
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    AtomicBoolean result = new AtomicBoolean(true);
+    when(storeIngestionTask.getIsRunning()).thenReturn(result);
+    doCallRealMethod().when(storeIngestionTask).close();
+    doCallRealMethod().when(storeIngestionTask).isRunning();
+
+    // Case 1: idle time pass, close(), then startConsumption(), SIT should be closed
+    when(storeIngestionTask.getMaxIdleCounter()).thenReturn(10);
+    when(storeIngestionTask.getIdleCounter()).thenReturn(11);
+    when(storeIngestionTask.maybeSetIngestionTaskActiveState(anyBoolean())).thenCallRealMethod();
+    storeIngestionTask.maybeSetIngestionTaskActiveState(false);
+    Assert.assertFalse(storeIngestionTask.maybeSetIngestionTaskActiveState(true));
+
+    // Case 2: idle time pass, startConsumption() then close(), SIT should keep active.
+    result.set(true);
+    when(storeIngestionTask.getIsRunning()).thenReturn(result);
+    storeIngestionTask.maybeSetIngestionTaskActiveState(true);
+    when(storeIngestionTask.getIdleCounter()).thenReturn(0);
+    Assert.assertTrue(storeIngestionTask.maybeSetIngestionTaskActiveState(false));
   }
 
   private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(

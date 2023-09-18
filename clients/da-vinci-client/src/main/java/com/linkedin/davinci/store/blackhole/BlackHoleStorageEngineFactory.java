@@ -37,6 +37,11 @@ public class BlackHoleStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
+  public void removeStorageEnginePartition(String storeName, int partition) {
+    // Right away!
+  }
+
+  @Override
   public void closeStorageEngine(AbstractStorageEngine engine) {
     // Right away!
   }

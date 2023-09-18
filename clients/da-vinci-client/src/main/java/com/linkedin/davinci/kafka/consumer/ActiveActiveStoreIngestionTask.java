@@ -52,6 +52,7 @@ import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.PutMetadata;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -605,11 +606,23 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         if (valueManifestContainer != null) {
           valueManifestContainer.setManifest(transientRecord.getValueManifest());
         }
-        originalValue = ByteBuffer
-            .wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
+        originalValue = getCurrentValueFromTransientRecord(transientRecord);
       }
     }
     return originalValue;
+  }
+
+  ByteBuffer getCurrentValueFromTransientRecord(PartitionConsumptionState.TransientRecord transientRecord) {
+    ByteBuffer compressedValue =
+        ByteBuffer.wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
+    try {
+      return getCompressionStrategy().isCompressionEnabled()
+          ? getCompressor().get()
+              .decompress(compressedValue.array(), compressedValue.position(), compressedValue.remaining())
+          : compressedValue;
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
   }
 
   /**
@@ -641,6 +654,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         consumerRecord.getTopicPartition().getPartitionNumber(),
         mergeConflictResult.getNewValue(),
         partitionConsumptionState);
+
     final int valueSchemaId = mergeConflictResult.getValueSchemaId();
 
     GenericRecord rmdRecord = mergeConflictResult.getRmdRecord();
@@ -927,7 +941,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       partitionConsumptionState.getOffsetRecord().setLeaderUpstreamOffset(upstreamKafkaURL, upstreamStartOffset);
     });
 
-    if (unreachableBrokerList.size() > 0) {
+    if (!unreachableBrokerList.isEmpty()) {
       LOGGER.warn(
           "Failed to reach broker urls {}, will schedule retry to compute upstream offset and resubscribe!",
           unreachableBrokerList.toString());

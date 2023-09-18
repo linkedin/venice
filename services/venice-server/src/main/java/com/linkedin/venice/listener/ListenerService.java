@@ -12,12 +12,14 @@ import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.grpc.VeniceReadServiceImpl;
+import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
+import io.grpc.ServerInterceptor;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -28,6 +30,7 @@ import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -53,7 +56,7 @@ public class ListenerService extends AbstractVeniceService {
   private final VeniceServerConfig serverConfig;
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
-
+  private final ThreadPoolExecutor grpcExecutor;
   private ThreadPoolExecutor sslHandshakeExecutor;
 
   // TODO: move netty config to a config file
@@ -157,10 +160,20 @@ public class ListenerService extends AbstractVeniceService {
         .childOption(ChannelOption.TCP_NODELAY, true);
 
     if (isGrpcEnabled && grpcServer == null) {
-      grpcServer = new VeniceGrpcServer(
-          new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
-              .setService(new VeniceReadServiceImpl(storageReadRequestHandler))
-              .build());
+      List<ServerInterceptor> interceptors = channelInitializer.initGrpcInterceptors();
+      VeniceServerGrpcRequestProcessor requestProcessor = channelInitializer.initGrpcRequestProcessor();
+      grpcExecutor = createThreadPool(serverConfig.getGrpcWorkerThreadCount(), "GrpcWorkerThread", nettyBacklogSize);
+
+      VeniceGrpcServerConfig.Builder grpcServerBuilder = new VeniceGrpcServerConfig.Builder().setPort(grpcPort)
+          .setService(new VeniceReadServiceImpl(requestProcessor))
+          .setExecutor(grpcExecutor)
+          .setInterceptors(interceptors);
+
+      sslFactory.ifPresent(grpcServerBuilder::setSslFactory);
+
+      grpcServer = new VeniceGrpcServer(grpcServerBuilder.build());
+    } else {
+      grpcExecutor = null;
     }
   }
 

@@ -127,7 +127,6 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       @Nonnull AsyncPromise<HttpResponseStatus> retryFuture,
       @Nonnull AsyncFuture<Void> timeoutFuture,
       @Nonnull Executor executor) throws RouterException {
-
     String storeName = path.getStoreName();
     RequestType requestType = path.getRequestType();
     path.recordOriginalRequestStartTimestamp();
@@ -171,7 +170,6 @@ public final class VeniceDispatcher implements PartitionDispatchHandler4<Instanc
       Instance storageNode,
       VenicePath path,
       AsyncPromise<HttpResponseStatus> retryFuture) throws RouterException {
-
     String storeName = path.getStoreName();
     String hostName = storageNode.getHost();
     RequestType requestType = path.getRequestType();

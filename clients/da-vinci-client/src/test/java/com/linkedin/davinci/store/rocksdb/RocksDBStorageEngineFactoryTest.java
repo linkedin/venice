@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.File;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -72,6 +73,28 @@ public class RocksDBStorageEngineFactoryTest {
     // Retrieve all the persisted stores from disk
     Set<String> storeNameSet = factory.getPersistedStoreNames();
     Assert.assertEquals(storeNameSet.size(), 0);
+  }
+
+  @Test
+  public void testRemoveStorageEnginePartition() {
+    // Create one databases
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+
+    final String testStore = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    VeniceStoreVersionConfig testStoreConfig =
+        new VeniceStoreVersionConfig(testStore, veniceServerProperties, PersistenceType.ROCKS_DB);
+    AbstractStorageEngine storageEngine = factory.getStorageEngine(testStoreConfig);
+    File file = new File(factory.getRocksDBPath(testStore, 1));
+    file.mkdirs();
+    Assert.assertTrue(file.exists());
+    // drop the database
+    factory.removeStorageEngine(storageEngine);
+    factory.removeStorageEnginePartition(testStore, 1);
+    factory.close();
+    Assert.assertFalse(file.exists());
   }
 
   @Test

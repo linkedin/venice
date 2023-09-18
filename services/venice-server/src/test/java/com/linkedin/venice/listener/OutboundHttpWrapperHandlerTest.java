@@ -2,11 +2,21 @@ package com.linkedin.venice.listener;
 
 import static io.netty.handler.codec.http.HttpHeaders.Names.*;
 import static io.netty.handler.codec.http.HttpVersion.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.google.protobuf.ByteString;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.listener.grpc.GrpcRequestContext;
+import com.linkedin.venice.listener.grpc.handlers.GrpcOutboundResponseHandler;
+import com.linkedin.venice.protocols.VeniceServerResponse;
+import io.grpc.stub.StreamObserver;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -123,5 +133,48 @@ public class OutboundHttpWrapperHandlerTest {
     });
 
     outboundHttpWrapperHandler.write(mockCtx, msg, null);
+  }
+
+  @Test
+  public void testGrpcWrite() {
+    ByteBuf mockBody = mock(ByteBuf.class);
+
+    ReadResponse readResponse = mock(ReadResponse.class);
+    when(readResponse.getResponseBody()).thenReturn(mockBody);
+    when(readResponse.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    when(readResponse.isStreamingResponse()).thenReturn(false);
+
+    GrpcRequestContext context = new GrpcRequestContext(null, VeniceServerResponse.newBuilder(), getStreamObserver());
+    context.setReadResponse(readResponse);
+
+    VeniceServerResponse.Builder responseBuilder = VeniceServerResponse.newBuilder();
+    ServerStatsContext statsContext = mock(ServerStatsContext.class);
+    context.setGrpcStatsContext(statsContext);
+    GrpcOutboundResponseHandler grpcHandler = spy(new GrpcOutboundResponseHandler());
+
+    grpcHandler.processRequest(context);
+
+    Assert.assertEquals(ByteString.empty(), responseBuilder.getData());
+
+    verify(grpcHandler).processRequest(context);
+  }
+
+  private StreamObserver<VeniceServerResponse> getStreamObserver() {
+    return new StreamObserver<VeniceServerResponse>() {
+      @Override
+      public void onNext(VeniceServerResponse value) {
+
+      }
+
+      @Override
+      public void onError(Throwable t) {
+
+      }
+
+      @Override
+      public void onCompleted() {
+
+      }
+    };
   }
 }

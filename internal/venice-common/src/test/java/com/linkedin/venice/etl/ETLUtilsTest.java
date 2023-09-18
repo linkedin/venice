@@ -1,8 +1,8 @@
 package com.linkedin.venice.etl;
 
-import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL;
-import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL;
-import static com.linkedin.venice.utils.TestWriteUtils.ETL_VALUE_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITH_NULL_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_VALUE_SCHEMA;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,7 +14,7 @@ import org.testng.annotations.Test;
 public class ETLUtilsTest {
   @Test
   public void testTransformValueSchemaForETLForRecordSchema() {
-    Schema schema = Schema.parse(ETL_VALUE_SCHEMA_STRING);
+    Schema schema = ETL_VALUE_SCHEMA;
     Schema etlValueSchema = ETLUtils.transformValueSchemaForETL(schema);
 
     Assert.assertEquals(Schema.Type.UNION, etlValueSchema.getType());
@@ -26,7 +26,7 @@ public class ETLUtilsTest {
 
   @Test
   public void testTransformValueSchemaForETLForUnionSchemaWithoutNullField() {
-    Schema schema = Schema.parse(ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL);
+    Schema schema = ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA;
     Schema etlValueSchema = ETLUtils.transformValueSchemaForETL(schema);
 
     Assert.assertEquals(Schema.Type.UNION, etlValueSchema.getType());
@@ -45,7 +45,7 @@ public class ETLUtilsTest {
 
   @Test
   public void testTransformValueSchemaForETLForUnionSchemaWithNullField() {
-    Schema schema = Schema.parse(ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL);
+    Schema schema = ETL_UNION_VALUE_WITH_NULL_SCHEMA;
     Schema etlValueSchema = ETLUtils.transformValueSchemaForETL(schema);
 
     Assert.assertEquals(Schema.Type.UNION, etlValueSchema.getType());
@@ -58,7 +58,7 @@ public class ETLUtilsTest {
 
   @Test
   public void testGetValueSchemaFromETLValueSchemaForRecordTypes() {
-    Schema valueSchema = Schema.parse(ETL_VALUE_SCHEMA_STRING);
+    Schema valueSchema = ETL_VALUE_SCHEMA;
     Schema etlValueSchema = ETLUtils.transformValueSchemaForETL(valueSchema);
 
     Schema inferredValueSchema =
@@ -69,7 +69,7 @@ public class ETLUtilsTest {
 
   @Test
   public void testGetValueSchemaFromETLValueSchemaForUnionTypesWithoutNull() {
-    Schema valueSchema = Schema.parse(ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL);
+    Schema valueSchema = ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA;
     Schema etlValueSchema = ETLUtils.transformValueSchemaForETL(valueSchema);
 
     Schema inferredValueSchema =
@@ -80,7 +80,7 @@ public class ETLUtilsTest {
 
   @Test
   public void testGetValueSchemaFromETLValueSchemaForUnionTypesWithNull() {
-    Schema valueSchema = Schema.parse(ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL);
+    Schema valueSchema = ETL_UNION_VALUE_WITH_NULL_SCHEMA;
     Schema etlValueSchema = ETLUtils.transformValueSchemaForETL(valueSchema);
 
     Schema inferredValueSchema =

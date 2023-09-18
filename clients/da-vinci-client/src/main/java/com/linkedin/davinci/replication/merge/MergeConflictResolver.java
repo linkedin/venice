@@ -598,6 +598,10 @@ public class MergeConflictResolver {
         // Value and RMD both never existed
         newValue = AvroSchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
       } else {
+        /**
+         * RMD does not exist. This means the value is written in Batch phase and does not have RMD associated. In this
+         * case, the value must be retrieved from storage engine, and is prepended with schema ID.
+         */
         int schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
         Schema writerSchema = getValueSchema(schemaId);
         newValue = deserializeValue(oldValueBytes, writerSchema, readerValueSchemaEntry.getSchema());

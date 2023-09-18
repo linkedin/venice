@@ -10,6 +10,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
@@ -119,8 +120,9 @@ public abstract class TestRestartServerDuringIngestion {
               -1));
     }
     String topic = versionCreationResponse.getKafkaTopic();
-    String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl, pubSubProducerAdapterFactory);
+    PubSubBrokerWrapper pubSubBrokerWrapper = cluster.getPubSubBrokerWrapper();
+    VeniceWriterFactory veniceWriterFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory);
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
@@ -266,8 +268,9 @@ public abstract class TestRestartServerDuringIngestion {
               -1));
     }
     String topic = versionCreationResponse.getKafkaTopic();
-    String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl, pubSubProducerAdapterFactory);
+    PubSubBrokerWrapper pubSubBrokerWrapper = cluster.getPubSubBrokerWrapper();
+    VeniceWriterFactory veniceWriterFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory);
 
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {

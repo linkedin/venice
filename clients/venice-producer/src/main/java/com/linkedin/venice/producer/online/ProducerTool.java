@@ -14,11 +14,15 @@ import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.commons.cli.CommandLine;
@@ -184,22 +188,34 @@ public class ProducerTool {
 
       producer.asyncPut(key, value).get();
       System.out.println("Data written to Venice!");
+    } catch (Exception e) {
+      System.err.println(ExceptionUtils.stackTraceToString(e));
+      System.exit(1);
     }
   }
 
   private static Object getValueObject(String valueString, RouterBasedStoreSchemaFetcher schemaFetcher) {
     Object value = null;
-    for (Schema valueSchema: schemaFetcher.getAllValueSchemas()) {
+    Map<Integer, Exception> exceptionMap = new HashMap<>();
+    for (Map.Entry<Integer, Schema> valueSchemaEntry: schemaFetcher.getAllValueSchemasWithId().entrySet()) {
       try {
-        value = adaptDataToSchema(valueString, valueSchema);
+        value = adaptDataToSchema(valueString, valueSchemaEntry.getValue());
         break;
       } catch (Exception e) {
-        // Nothing to do. Try the next schema
+        exceptionMap.put(valueSchemaEntry.getKey(), e);
+        // Try the next schema
       }
     }
     if (value == null) {
-      throw new VeniceException(
-          "Value schema not found. Is a schema that is compatible with the specified data already registered?");
+      String exceptionDelimiter = "\n\t";
+      String exceptionDetails = exceptionMap.entrySet().stream().sorted(Map.Entry.comparingByKey()).map(entry -> {
+        Exception e = entry.getValue();
+        return "Schema Id: " + entry.getKey() + ". Exception: " + e.getClass().getName() + ": " + e.getMessage();
+      }).collect(Collectors.joining(exceptionDelimiter));
+      System.out.println(
+          "[ERROR] Value schema not found. Is a schema that is compatible with the specified data already registered?\nException messages for each schema:"
+              + exceptionDelimiter + exceptionDetails);
+      System.exit(1);
     }
     return value;
   }

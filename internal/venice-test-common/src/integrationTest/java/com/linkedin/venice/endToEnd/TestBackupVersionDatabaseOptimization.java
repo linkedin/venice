@@ -8,7 +8,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -23,6 +22,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -81,7 +81,7 @@ public class TestBackupVersionDatabaseOptimization {
     String storeName = Utils.getUniqueString("backup-version-optimization-validation-store");
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir); // records 1-100
     Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
 
     try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
@@ -122,7 +122,7 @@ public class TestBackupVersionDatabaseOptimization {
       int recordCountOf2ndRun = DEFAULT_USER_DATA_RECORD_COUNT * 2;
       File inputDir2 = getTempDataDirectory();
       String inputDirPath2 = "file://" + inputDir2.getAbsolutePath();
-      writeSimpleAvroFileWithUserSchema(inputDir2, true, recordCountOf2ndRun);
+      TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir2, recordCountOf2ndRun);
       Properties vpjProperties2 = defaultVPJProps(venice, inputDirPath2, storeName);
       runVPJ(vpjProperties2, 2, controllerClient);
 

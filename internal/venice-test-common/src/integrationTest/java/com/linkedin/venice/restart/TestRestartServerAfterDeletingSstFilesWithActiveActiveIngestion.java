@@ -9,7 +9,6 @@ import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -29,6 +28,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -49,6 +49,7 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.view.TestView;
@@ -140,7 +141,7 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
             Optional.empty()));
     // create a active-active enabled store
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
@@ -265,10 +266,11 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     newVersion = versionToBePushed;
 
     String topic = versionCreationResponse.getKafkaTopic();
-    String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
+    PubSubBrokerWrapper pubSubBrokerWrapper = clusterWrapper.getPubSubBrokerWrapper();
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-        clusterWrapper.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
-    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl, pubSubProducerAdapterFactory);
+        pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory veniceWriterFactory =
+        IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory);
 
     startKey += numKeys; // to have different version having different set of keys
     int endKey = startKey + numKeys;

@@ -24,11 +24,15 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.etl.ETLUtils;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.schema.vson.VsonSchema;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -62,512 +66,201 @@ import org.testng.Assert;
 
 public class TestWriteUtils {
   public static final Logger LOGGER = LogManager.getLogger(TestWriteUtils.class);
-  public static final String USER_SCHEMA_STRING =
-      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
-          + "  \"fields\": [           " + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP
-          + "\", \"type\": \"string\"},  " + "       { \"name\": \"" + DEFAULT_VALUE_FIELD_PROP
-          + "\", \"type\": \"string\"},  " + "       { \"name\": \"age\", \"type\": \"int\" }" + "  ] " + " } ";
-
-  public static final String ETL_KEY_SCHEMA_STRING = "{\n" + "    \"type\":\"record\",\n" + "    \"name\":\"key\",\n"
-      + "    \"namespace\":\"com.linkedin.venice.testkey\",\n" + "    \"fields\":[\n" + "        {\n"
-      + "            \"name\":\"" + DEFAULT_KEY_FIELD_PROP + "\",\n" + "            \"type\":\"string\"\n"
-      + "        }\n" + "    ]\n" + "}";
-
-  public static final String ETL_VALUE_SCHEMA_STRING = "{\n" + "    \"type\":\"record\",\n"
-      + "    \"name\":\"value\",\n" + "    \"namespace\":\"com.linkedin.venice.testvalue\",\n" + "    \"fields\":[\n"
-      + "        {\n" + "            \"name\":\"" + DEFAULT_VALUE_FIELD_PROP + "\",\n"
-      + "            \"type\":\"string\"\n" + "        }\n" + "    ],\n" + "    \"version\":10\n" + "}";
-
-  public static final String ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL = "[\"int\", \"string\"]";
-
-  public static final String ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL = "[\"int\", \"string\", \"null\"]";
-
-  public static final String USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT =
-      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
-          + "  \"fields\": [           " + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP
-          + "\", \"type\": \"string\", \"default\": \"\"},  " + "       { \"name\": \"" + DEFAULT_VALUE_FIELD_PROP
-          + "\", \"type\": \"string\", \"default\": \"\"}" + "  ] " + " } ";
-
-  public static final String USER_SCHEMA_STRING_WITH_DEFAULT = "{" + "  \"namespace\" : \"example.avro\",  "
-      + "  \"type\": \"record\",   " + "  \"name\": \"User\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\", \"default\": \"\"},  "
-      + "       { \"name\": \"" + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": \"string\", \"default\": \"\"},  "
-      + "       { \"name\": \"age\", \"type\": \"int\", \"default\": 1 }" + "  ] " + " } ";
-
-  public static final String USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
-      + "  \"type\": \"record\",   " + "  \"name\": \"ManyFloats\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\" },  " + "       { \"name\": \""
-      + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": {\"type\": \"array\", \"items\": \"float\"} },  "
-      + "       { \"name\": \"age\", \"type\": \"int\" }" + "  ] " + " } ";
-
-  public static final String INT_STRING_SCHEMA_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
-      + "  \"type\": \"record\",   " + "  \"name\": \"IntToString\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"int\"},  " + "       { \"name\": \""
-      + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": \"string\"}  " + "  ] " + " } ";
-
-  public static final String STRING_STRING_SCHEMA_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
-      + "  \"type\": \"record\",   " + "  \"name\": \"StringToString\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\"},  " + "       { \"name\": \""
-      + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": \"string\"}  " + "  ] " + " } ";
-
-  public static final String NESTED_SCHEMA_STRING = "{" + "  \"namespace\" : \"example.avro\",  "
-      + "  \"type\": \"record\",   " + "  \"name\": \"nameRecord\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"firstName\", \"type\": \"string\", \"default\": \"\" },  "
-      + "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" }  " + "  ]" + " } ";
-  public static final String NESTED_SCHEMA_STRING_V2 = "{" + "  \"namespace\" : \"example.avro\",  "
-      + "  \"type\": \"record\",   " + "  \"name\": \"nameRecord\",     " + "  \"fields\": [           "
-      + "       { \"name\": \"firstName\", \"type\": \"string\", \"default\": \"\" },  "
-      + "       { \"name\": \"lastName\", \"type\": \"string\", \"default\": \"\" },  "
-      + "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }  " + "  ]" + " } ";
-
-  public static final String STRING_RECORD_SCHEMA_STRING =
-      "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
-          + "  \"name\": \"StringToRecord\",     " + "  \"fields\": [           " + "       { \"name\": \""
-          + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\", \"default\": \"\"}, " + "       { \"name\": \""
-          + DEFAULT_VALUE_FIELD_PROP + "\", \"type\": " + NESTED_SCHEMA_STRING + " }  " + "  ] " + " } ";
-
-  public static final String STRING_SCHEMA = "\"string\"";
-
-  public static final String INT_SCHEMA = "\"int\"";
-
   public static final int DEFAULT_USER_DATA_RECORD_COUNT = 100;
-
   public static final String DEFAULT_USER_DATA_VALUE_PREFIX = "test_name_";
+
+  // Key / Value Schema
+  public static final Schema STRING_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/primitive/String.avsc"));
+  public static final Schema INT_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/primitive/Int.avsc"));
+  public static final Schema USER_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/User.avsc"));
+  public static final Schema USER_WITH_DEFAULT_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UserWithDefault.avsc"));
+  public static final Schema SIMPLE_USER_WITH_DEFAULT_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/SimpleUserWithDefault.avsc"));
+  public static final Schema USER_WITH_FLOAT_ARRAY_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/UserWithFloatArray.avsc"));
+  public static final Schema NAME_RECORD_V1_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV1.avsc"));
+  public static final Schema NAME_RECORD_V2_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV2.avsc"));
+  public static final Schema NAME_RECORD_V3_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV3.avsc"));
+  public static final Schema NAME_RECORD_V4_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("valueSchema/NameV4.avsc"));
+
+  // ETL Schema
+  public static final Schema ETL_KEY_SCHEMA = AvroCompatibilityHelper.parse(loadSchemaFileFromResource("etl/Key.avsc"));
+  public static final Schema ETL_VALUE_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("etl/Value.avsc"));
+  public static final Schema ETL_UNION_VALUE_WITH_NULL_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("etl/UnionValueWithNull.avsc"));
+  public static final Schema ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA =
+      AvroCompatibilityHelper.parse(loadSchemaFileFromResource("etl/UnionValueWithoutNull.avsc"));
+
+  // Partial Update Schema
+  public static final Schema NAME_RECORD_V1_UPDATE_SCHEMA =
+      WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(NAME_RECORD_V1_SCHEMA);
+
+  // Push Input Folder Schema
+  public static final Schema INT_TO_STRING_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(INT_SCHEMA).setValueSchema(STRING_SCHEMA).build();
+  public static final Schema STRING_TO_STRING_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V1_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_SCHEMA).build();
+  public static final Schema STRING_TO_NAME_RECORD_V1_UPDATE_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_UPDATE_SCHEMA).build();
+  public static final Schema STRING_TO_STRING_WITH_EXTRA_FIELD_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
+          .setValueSchema(STRING_SCHEMA)
+          .setFieldSchema("age", INT_SCHEMA)
+          .build();
 
   public static File getTempDataDirectory() {
     return Utils.getTempDataDirectory();
   }
 
-  /**
-   * This function is used to generate a small avro file with 'user' schema.
-   *
-   * @param parentDir
-   * @return the Schema object for the avro file
-   * @throws IOException
-   */
-  public static Schema writeSimpleAvroFileWithUserSchema(File parentDir) throws IOException {
-    return writeSimpleAvroFileWithUserSchema(parentDir, true);
+  public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir) throws IOException {
+    return writeSimpleAvroFileWithStringToStringSchema(parentDir, DEFAULT_USER_DATA_RECORD_COUNT);
   }
 
-  public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, int recordLength) throws IOException {
-    return writeSimpleAvroFileWithUserSchema(parentDir, true, DEFAULT_USER_DATA_RECORD_COUNT, recordLength);
+  public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir, int recordCount) throws IOException {
+    return writeSimpleAvroFileWithStringToStringSchema(parentDir, recordCount, "string2string.avro");
   }
 
-  public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix)
+  public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir, int recordCount, String fileName)
       throws IOException {
-    return writeSimpleAvroFileWithUserSchema(parentDir, fileNameWithAvroSuffix, DEFAULT_USER_DATA_RECORD_COUNT);
-  }
-
-  public static Schema writeSimpleAvroFileWithUserSchema(
-      File parentDir,
-      boolean fileNameWithAvroSuffix,
-      int recordCount) throws IOException {
-    String fileName;
-    if (fileNameWithAvroSuffix) {
-      fileName = "simple_user.avro";
-    } else {
-      fileName = "simple_user";
-    }
-    return writeSimpleAvroFileWithUserSchema(parentDir, recordCount, fileName);
-  }
-
-  public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, int recordCount, String fileName)
-      throws IOException {
-    return writeAvroFile(parentDir, fileName, USER_SCHEMA_STRING, (recordSchema, writer) -> {
+    return writeAvroFile(parentDir, fileName, STRING_TO_STRING_SCHEMA, (recordSchema, writer) -> {
       for (int i = 1; i <= recordCount; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
-        user.put("age", i);
         writer.append(user);
       }
     });
   }
 
-  public static Schema writeSimpleAvroFileWithUserSchema(
-      File parentDir,
-      boolean fileNameWithAvroSuffix,
-      int recordCount,
-      int recordSizeMin) throws IOException {
-    String fileName;
-    if (fileNameWithAvroSuffix) {
-      fileName = "simple_user.avro";
-    } else {
-      fileName = "simple_user";
-    }
+  public static Schema writeSimpleAvroFileWithStringToStringWithExtraSchema(File parentDir) throws IOException {
+    return writeAvroFile(
+        parentDir,
+        "string2string_extra_field.avro",
+        STRING_TO_STRING_WITH_EXTRA_FIELD_SCHEMA,
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+            user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
+            user.put("age", i);
+            writer.append(user);
+          }
+        });
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir, int recordCount, int recordSizeMin)
+      throws IOException {
     char[] chars = new char[recordSizeMin];
-    return writeAvroFile(parentDir, fileName, USER_SCHEMA_STRING, (recordSchema, writer) -> {
+    return writeAvroFile(parentDir, "string2string.avro", STRING_TO_STRING_SCHEMA, (recordSchema, writer) -> {
       for (int i = 1; i <= recordCount; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         Arrays.fill(chars, String.valueOf(i).charAt(0));
         user.put(DEFAULT_VALUE_FIELD_PROP, String.copyValueOf(chars));
-        user.put("age", i);
         writer.append(user);
       }
     });
   }
 
-  public static void writeMultipleAvroFilesWithUserSchema(File parentDir, int fileCount, int recordCount)
-      throws IOException {
-    for (int i = 0; i < fileCount; i++) {
-      writeSimpleAvroFileWithUserSchema(parentDir, recordCount, "testInput" + i + ".avro");
-    }
-  }
-
-  public static Schema writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
-      File parentDir,
-      String file,
-      long inputFileDataSize,
-      ByteBuffer zstdDictionary,
-      String avroSchema) throws IOException {
-    return writeAvroFile(parentDir, file, avroSchema, (recordSchema, writer) -> {
-      GenericRecord user = new GenericData.Record(recordSchema);
-      user.put(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
-      if (zstdDictionary != null) {
-        user.put(KEY_ZSTD_COMPRESSION_DICTIONARY, zstdDictionary);
-      }
-      writer.append(user);
-    });
-  }
-
-  public static Schema writeETLFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix) throws IOException {
-    String fileName;
-    if (fileNameWithAvroSuffix) {
-      fileName = "simple_etl_user.avro";
-    } else {
-      fileName = "simple_etl_user";
-    }
-
-    return writeAvroFile(
-        parentDir,
-        fileName,
-        getETLStoreSchemaString(ETL_KEY_SCHEMA_STRING, ETL_VALUE_SCHEMA_STRING),
-        (recordSchema, writer) -> {
-          for (int i = 1; i <= 50; ++i) {
-            GenericRecord user = new GenericData.Record(recordSchema);
-
-            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-            GenericRecord value = new GenericData.Record(Schema.parse(ETL_VALUE_SCHEMA_STRING));
-
-            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-            value.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
-
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
-            user.put("metadata", new HashMap<>());
-
-            user.put("key", key);
-            user.put("value", value);
-            user.put("offset", (long) i);
-            user.put("DELETED_TS", null);
-
-            writer.append(user);
-          }
-
-          for (int i = 51; i <= 100; ++i) {
-            GenericRecord user = new GenericData.Record(recordSchema);
-
-            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
-            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
-            user.put("metadata", new HashMap<>());
-
-            user.put("key", key);
-            user.put("value", null);
-            user.put("offset", (long) i);
-            user.put("DELETED_TS", (long) i);
-
-            writer.append(user);
-          }
-        });
-  }
-
-  public static Schema writeETLFileWithUnionWithNullSchema(File parentDir, boolean fileNameWithAvroSuffix)
-      throws IOException {
-    String fileName;
-    if (fileNameWithAvroSuffix) {
-      fileName = "simple_etl_union_with_null.avro";
-    } else {
-      fileName = "simple_etl_union_with_null";
-    }
-
-    return writeAvroFile(
-        parentDir,
-        fileName,
-        getETLStoreSchemaString(ETL_KEY_SCHEMA_STRING, ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL),
-        (recordSchema, writer) -> {
-          for (int i = 1; i <= 25; ++i) {
-            GenericRecord user = new GenericData.Record(recordSchema);
-
-            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
-            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
-            user.put("metadata", new HashMap<>());
-
-            user.put("key", key);
-            user.put("value", "string_" + i);
-            user.put("offset", (long) i);
-            user.put("DELETED_TS", null);
-
-            writer.append(user);
-          }
-
-          for (int i = 26; i <= 50; ++i) {
-            GenericRecord user = new GenericData.Record(recordSchema);
-
-            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
-            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
-            user.put("metadata", new HashMap<>());
-
-            user.put("key", key);
-            user.put("value", i);
-            user.put("offset", (long) i);
-            user.put("DELETED_TS", null);
-
-            writer.append(user);
-          }
-
-          for (int i = 51; i <= 100; ++i) {
-            GenericRecord user = new GenericData.Record(recordSchema);
-
-            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
-            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
-            user.put("metadata", new HashMap<>());
-
-            user.put("key", key);
-            user.put("value", null);
-            user.put("offset", (long) i);
-            user.put("DELETED_TS", (long) i);
-
-            writer.append(user);
-          }
-        });
-  }
-
-  public static Schema writeETLFileWithUnionWithoutNullSchema(File parentDir, boolean fileNameWithAvroSuffix)
-      throws IOException {
-    String fileName;
-    if (fileNameWithAvroSuffix) {
-      fileName = "simple_etl_union_without_null.avro";
-    } else {
-      fileName = "simple_etl_union_without_null";
-    }
-
-    return writeAvroFile(
-        parentDir,
-        fileName,
-        getETLStoreSchemaString(ETL_KEY_SCHEMA_STRING, ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL),
-        (recordSchema, writer) -> {
-          for (int i = 1; i <= 25; ++i) {
-            GenericRecord user = new GenericData.Record(recordSchema);
-
-            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
-            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
-            user.put("metadata", new HashMap<>());
-
-            user.put("key", key);
-            user.put("value", "string_" + i);
-            user.put("offset", (long) i);
-            user.put("DELETED_TS", null);
-
-            writer.append(user);
-          }
-
-          for (int i = 26; i <= 50; ++i) {
-            GenericRecord user = new GenericData.Record(recordSchema);
-
-            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
-            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
-            user.put("metadata", new HashMap<>());
-
-            user.put("key", key);
-            user.put("value", i);
-            user.put("offset", (long) i);
-            user.put("DELETED_TS", null);
-
-            writer.append(user);
-          }
-
-          for (int i = 51; i <= 100; ++i) {
-            GenericRecord user = new GenericData.Record(recordSchema);
-
-            GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
-            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
-            user.put("opalSegmentIdPart", 0);
-            user.put("opalSegmentIdSeq", 0);
-            user.put("opalSegmentOffset", (long) 0);
-            user.put("metadata", new HashMap<>());
-
-            user.put("key", key);
-            user.put("value", null);
-            user.put("offset", (long) i);
-            user.put("DELETED_TS", (long) i);
-
-            writer.append(user);
-          }
-        });
-  }
-
-  public static Schema writeAlternateSimpleAvroFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix)
-      throws IOException {
-    String fileName;
-    if (fileNameWithAvroSuffix) {
-      fileName = "simple_user.avro";
-    } else {
-      fileName = "simple_user";
-    }
-    return writeAvroFile(parentDir, fileName, USER_SCHEMA_STRING, (recordSchema, writer) -> {
-      String name = "alternate_test_name_";
-      for (int i = 1; i <= 100; ++i) {
+  public static Schema writeAlternateSimpleAvroFileWithStringToStringSchema(File parentDir) throws IOException {
+    return writeAvroFile(parentDir, "string2string.avro", STRING_TO_STRING_SCHEMA, (recordSchema, writer) -> {
+      for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-        user.put(DEFAULT_VALUE_FIELD_PROP, name + i);
-        user.put("age", i);
+        user.put(DEFAULT_VALUE_FIELD_PROP, "alternate_test_name_" + i);
         writer.append(user);
-      }
-    });
-  }
-
-  public static Schema writeSimpleAvroFileWithIntToStringSchema(File parentDir, boolean fileNameWithAvroSuffix)
-      throws IOException {
-    return writeSimpleAvroFileWithIntToStringSchema(parentDir, fileNameWithAvroSuffix, 100);
-  }
-
-  public static Schema writeSimpleAvroFileWithIntToStringSchema(
-      File parentDir,
-      boolean fileNameWithAvroSuffix,
-      int recordCount) throws IOException {
-    String fileName;
-    if (fileNameWithAvroSuffix) {
-      fileName = "simple_int2string.avro";
-    } else {
-      fileName = "simple_int2string";
-    }
-    return writeAvroFile(parentDir, fileName, INT_STRING_SCHEMA_STRING, (recordSchema, writer) -> {
-      for (int i = 1; i <= recordCount; ++i) {
-        GenericRecord i2i = new GenericData.Record(recordSchema);
-        i2i.put(DEFAULT_KEY_FIELD_PROP, i);
-        i2i.put(DEFAULT_VALUE_FIELD_PROP, "name " + Integer.toString(i));
-        writer.append(i2i);
-      }
-    });
-  }
-
-  public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir, boolean fileNameWithAvroSuffix)
-      throws IOException {
-    String fileName;
-    if (fileNameWithAvroSuffix) {
-      fileName = "simple_string2string.avro";
-    } else {
-      fileName = "simple_string2string";
-    }
-    return writeAvroFile(parentDir, fileName, STRING_STRING_SCHEMA_STRING, (recordSchema, writer) -> {
-      for (int i = 1; i <= 100; ++i) {
-        GenericRecord s2s = new GenericData.Record(recordSchema);
-        s2s.put(DEFAULT_KEY_FIELD_PROP, "jobPosting:" + i);
-        s2s.put(DEFAULT_VALUE_FIELD_PROP, String.valueOf(i));
-        writer.append(s2s);
-      }
-    });
-  }
-
-  public static Schema writeSimpleAvroFileWithStringToRecordSchema(File parentDir, boolean fileNameWithAvroSuffix)
-      throws IOException {
-    String fileName;
-    if (fileNameWithAvroSuffix) {
-      fileName = "simple_string2record.avro";
-    } else {
-      fileName = "simple_string2record";
-    }
-    return writeAvroFile(parentDir, fileName, STRING_RECORD_SCHEMA_STRING, (recordSchema, writer) -> {
-      Schema valueSchema = AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING);
-      String firstName = "first_name_";
-      String lastName = "last_name_";
-      for (int i = 1; i <= 100; ++i) {
-        GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
-        keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
-        GenericRecord valueRecord = new GenericData.Record(valueSchema);
-        valueRecord.put("firstName", firstName + i);
-        valueRecord.put("lastName", lastName + i);
-        keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
-        writer.append(keyValueRecord);
       }
     });
   }
 
   /**
-   * This file overrides half of the value in {@link #writeSimpleAvroFileWithUserSchema(File)}
+   * This file overrides half of the value in {@link #writeSimpleAvroFileWithStringToStringSchema(File)}
    * and add some new values.
    * It's designed to test incremental push
    */
-  public static Schema writeSimpleAvroFileWithUserSchema2(File parentDir) throws IOException {
-    return writeAvroFile(parentDir, "simple_user.avro", USER_SCHEMA_STRING, (recordSchema, writer) -> {
+  public static Schema writeSimpleAvroFileWithStringToStringSchema2(File parentDir) throws IOException {
+    return writeAvroFile(parentDir, "string2string.avro", STRING_TO_STRING_SCHEMA, (recordSchema, writer) -> {
       for (int i = 51; i <= 150; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + (i * 2));
-        user.put("age", i * 2);
         writer.append(user);
       }
     });
   }
 
   /**
-   * This file add some new value in {@link #writeSimpleAvroFileWithUserSchema(File)}
+   * This file add some new value in {@link #writeSimpleAvroFileWithStringToStringSchema(File)}
    * It's designed to test incremental push
    */
-  public static Schema writeSimpleAvroFileWithUserSchema3(File parentDir) throws IOException {
-    return writeAvroFile(parentDir, "simple_user.avro", USER_SCHEMA_STRING, (recordSchema, writer) -> {
+  public static Schema writeSimpleAvroFileWithString2StringSchema3(File parentDir) throws IOException {
+    return writeAvroFile(parentDir, "string2string.avro", STRING_TO_STRING_SCHEMA, (recordSchema, writer) -> {
       for (int i = 51; i <= 200; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + (i * 3));
-        user.put("age", i * 3);
         writer.append(user);
       }
     });
   }
 
   public static Schema writeSimpleAvroFileWithDuplicateKey(File parentDir) throws IOException {
-    return writeAvroFile(parentDir, "duplicate_key_user.avro", USER_SCHEMA_STRING, (recordSchema, avroFileWriter) -> {
-      for (int i = 0; i < 100; i++) {
-        GenericRecord user = new GenericData.Record(recordSchema);
-        user.put(DEFAULT_KEY_FIELD_PROP, i % 10 == 0 ? "0" : Integer.toString(i)); // DEFAULT_KEY_FIELD_PROP is the key
-        user.put(DEFAULT_VALUE_FIELD_PROP, "test_name" + i);
-        user.put("age", i);
-        avroFileWriter.append(user);
+    return writeAvroFile(
+        parentDir,
+        "duplicate_key_user.avro",
+        STRING_TO_STRING_SCHEMA,
+        (recordSchema, avroFileWriter) -> {
+          for (int i = 0; i < 100; i++) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put(DEFAULT_KEY_FIELD_PROP, i % 10 == 0 ? "0" : Integer.toString(i));
+            user.put(DEFAULT_VALUE_FIELD_PROP, "test_name" + i);
+            avroFileWriter.append(user);
+          }
+        });
+  }
+
+  public static Schema writeSimpleAvroFileWithCustomSize(
+      File parentDir,
+      int numberOfRecords,
+      int minValueSize,
+      int maxValueSize) throws IOException {
+    return writeAvroFile(
+        parentDir,
+        "string2string_large.avro",
+        STRING_TO_STRING_SCHEMA,
+        (recordSchema, avroFileWriter) -> {
+          int sizeRange = maxValueSize - minValueSize;
+          for (int i = 0; i < numberOfRecords; i++) {
+            int sizeForThisRecord = minValueSize + sizeRange / numberOfRecords * (i + 1);
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+            char[] chars = new char[sizeForThisRecord];
+            Arrays.fill(chars, Integer.toString(i).charAt(0));
+            Utf8 utf8Value = new Utf8(new String(chars));
+            user.put(DEFAULT_VALUE_FIELD_PROP, utf8Value);
+            avroFileWriter.append(user);
+          }
+        });
+  }
+
+  public static Schema writeSimpleAvroFileWithIntToStringSchema(File parentDir) throws IOException {
+    return writeAvroFile(parentDir, "int2string.avro", INT_TO_STRING_SCHEMA, (recordSchema, writer) -> {
+      for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
+        GenericRecord i2s = new GenericData.Record(recordSchema);
+        i2s.put(DEFAULT_KEY_FIELD_PROP, i);
+        i2s.put(DEFAULT_VALUE_FIELD_PROP, "name " + i);
+        writer.append(i2s);
       }
     });
   }
@@ -578,36 +271,51 @@ public class TestWriteUtils {
     writer.close();
   }
 
-  public static Schema writeEmptyAvroFileWithUserSchema(File parentDir, String fileName, String schema)
-      throws IOException {
+  public static Schema writeEmptyAvroFile(File parentDir, Schema schema) throws IOException {
+    return writeEmptyAvroFile(parentDir, "empty_file.avro", schema);
+  }
+
+  public static Schema writeEmptyAvroFile(File parentDir, String fileName, Schema schema) throws IOException {
     return writeAvroFile(parentDir, fileName, schema, (recordSchema, avroFileWriter) -> {
       // No-op so that the file is empty
     });
   }
 
-  public static Schema writeEmptyAvroFileWithUserSchema(File parentDir) throws IOException {
-    return writeEmptyAvroFileWithUserSchema(parentDir, "empty_file.avro", USER_SCHEMA_STRING);
-  }
-
-  public static Schema writeSimpleAvroFileWithCustomSize(
-      File parentDir,
-      int numberOfRecords,
-      int minValueSize,
-      int maxValueSize) throws IOException {
-    return writeAvroFile(parentDir, "large_values.avro", USER_SCHEMA_STRING, (recordSchema, avroFileWriter) -> {
-      int sizeRange = maxValueSize - minValueSize;
-      for (int i = 0; i < numberOfRecords; i++) {
-        int sizeForThisRecord = minValueSize + sizeRange / numberOfRecords * (i + 1);
-        GenericRecord user = new GenericData.Record(recordSchema);
-        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i)); // DEFAULT_KEY_FIELD_PROP is the key
-        char[] chars = new char[sizeForThisRecord];
-        Arrays.fill(chars, Integer.toString(i).charAt(0));
-        Utf8 utf8Value = new Utf8(new String(chars));
-        user.put(DEFAULT_VALUE_FIELD_PROP, utf8Value);
-        user.put("age", i);
-        avroFileWriter.append(user);
+  public static Schema writeSimpleAvroFileWithStringToRecordSchema(File parentDir) throws IOException {
+    return writeAvroFile(parentDir, "string2record.avro", STRING_TO_NAME_RECORD_V1_SCHEMA, (recordSchema, writer) -> {
+      String firstName = "first_name_";
+      String lastName = "last_name_";
+      for (int i = 1; i <= DEFAULT_USER_DATA_RECORD_COUNT; ++i) {
+        GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
+        keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
+        GenericRecord valueRecord = new GenericData.Record(NAME_RECORD_V1_SCHEMA);
+        valueRecord.put("firstName", firstName + i);
+        valueRecord.put("lastName", lastName + i);
+        keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+        writer.append(keyValueRecord);
       }
     });
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToPartialUpdateOpRecordSchema(File parentDir) throws IOException {
+    return writeAvroFile(
+        parentDir,
+        "string2record.avro",
+        STRING_TO_NAME_RECORD_V1_UPDATE_SCHEMA,
+        (recordSchema, writer) -> {
+          String firstName = "first_name_";
+          String lastName = "last_name_";
+          for (int i = 1; i <= 100; ++i) {
+            GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
+            keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
+            GenericRecord valueRecord =
+                new UpdateBuilderImpl(NAME_RECORD_V1_UPDATE_SCHEMA).setNewFieldValue("firstName", firstName + i)
+                    .setNewFieldValue("lastName", lastName + i)
+                    .build();
+            keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+            writer.append(keyValueRecord);
+          }
+        });
   }
 
   public static Schema writeSimpleAvroFileWithASchemaWithAWrongDefaultValue(File parentDir, int numberOfRecords)
@@ -619,21 +327,18 @@ public class TestWriteUtils {
         + "        \"fields\": [\n" + "         {\"name\": \"" + DEFAULT_KEY_FIELD_PROP + "\", \"type\": \"string\"},\n"
         + "         {\"name\": \"score\", \"type\": \"float\", \"default\": 0}\n" + "       ]}\n" + "     }\n"
         + "   ]\n" + "}";
-    return writeAvroFile(
-        parentDir,
-        "record_with_wrong_default.avro",
-        schemaWithWrongDefaultValue,
-        (recordSchema, avroFileWriter) -> {
-          for (int i = 0; i < numberOfRecords; i++) {
-            GenericRecord simpleRecord = new GenericData.Record(recordSchema);
-            simpleRecord.put("key", Integer.toString(i));
-            GenericRecord value = new GenericData.Record(recordSchema.getField("value").schema());
-            value.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-            value.put("score", 100.0f);
-            simpleRecord.put("value", value);
-            avroFileWriter.append(simpleRecord);
-          }
-        });
+    Schema schema = AvroSchemaParseUtils.parseSchemaFromJSON(schemaWithWrongDefaultValue, false);
+    return writeAvroFile(parentDir, "record_with_wrong_default.avro", schema, (recordSchema, avroFileWriter) -> {
+      for (int i = 0; i < numberOfRecords; i++) {
+        GenericRecord simpleRecord = new GenericData.Record(recordSchema);
+        simpleRecord.put("key", Integer.toString(i));
+        GenericRecord value = new GenericData.Record(recordSchema.getField("value").schema());
+        value.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        value.put("score", 100.0f);
+        simpleRecord.put("value", value);
+        avroFileWriter.append(simpleRecord);
+      }
+    });
   }
 
   public static Schema writeAvroFileWithManyFloatsAndCustomTotalSize(
@@ -644,7 +349,7 @@ public class TestWriteUtils {
     return writeAvroFile(
         parentDir,
         "many_floats.avro",
-        USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING,
+        USER_WITH_FLOAT_ARRAY_SCHEMA,
         (recordSchema, avroFileWriter) -> {
           int sizeRange = maxValueSize - minValueSize;
           for (int i = 0; i < numberOfRecords; i++) {
@@ -667,12 +372,8 @@ public class TestWriteUtils {
     return user;
   }
 
-  private static Schema writeAvroFile(
-      File parentDir,
-      String fileName,
-      String recordSchemaStr,
-      AvroFileWriter fileWriter) throws IOException {
-    Schema recordSchema = AvroCompatibilityHelper.parse(recordSchemaStr);
+  private static Schema writeAvroFile(File parentDir, String fileName, Schema recordSchema, AvroFileWriter fileWriter)
+      throws IOException {
     File file = new File(parentDir, fileName);
 
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(recordSchema);
@@ -680,7 +381,6 @@ public class TestWriteUtils {
       dataFileWriter.create(recordSchema, file);
       fileWriter.write(recordSchema, dataFileWriter);
     }
-
     return recordSchema;
   }
 
@@ -957,10 +657,24 @@ public class TestWriteUtils {
     return props;
   }
 
-  public static String loadFileAsString(String fileName) throws IOException {
-    return IOUtils.toString(
-        Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
-        StandardCharsets.UTF_8);
+  public static String loadFileAsString(String fileName) {
+    try {
+      return IOUtils.toString(
+          Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
+          StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+  }
+
+  public static String loadSchemaFileFromResource(String fileName) {
+    try {
+      return IOUtils.toString(
+          Objects.requireNonNull(TestWriteUtils.class.getClassLoader().getResourceAsStream(fileName)),
+          StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
   }
 
   public static String loadFileAsStringQuietlyWithErrorLogged(String fileName) {
@@ -981,10 +695,214 @@ public class TestWriteUtils {
         "The UpdateStore response returned an error: " + controllerResponse.getError());
   }
 
-  public static String getETLStoreSchemaString(String keySchema, String valueSchema) {
+  public static Schema writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
+      File parentDir,
+      String file,
+      long inputFileDataSize,
+      ByteBuffer zstdDictionary,
+      Schema avroSchema) throws IOException {
+    return writeAvroFile(parentDir, file, avroSchema, (recordSchema, writer) -> {
+      GenericRecord user = new GenericData.Record(recordSchema);
+      user.put(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
+      if (zstdDictionary != null) {
+        user.put(KEY_ZSTD_COMPRESSION_DICTIONARY, zstdDictionary);
+      }
+      writer.append(user);
+    });
+  }
+
+  public static Schema writeETLFileWithUserSchema(File parentDir) throws IOException {
+    String fileName = "simple_etl_user.avro";
+    return writeAvroFile(
+        parentDir,
+        fileName,
+        getETLStoreSchemaString(ETL_KEY_SCHEMA.toString(), ETL_VALUE_SCHEMA.toString()),
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= 50; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+            GenericRecord value = new GenericData.Record(ETL_VALUE_SCHEMA);
+
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+            value.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long) 0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", value);
+            user.put("offset", (long) i);
+            user.put("DELETED_TS", null);
+
+            writer.append(user);
+          }
+
+          for (int i = 51; i <= 100; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long) 0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", null);
+            user.put("offset", (long) i);
+            user.put("DELETED_TS", (long) i);
+
+            writer.append(user);
+          }
+        });
+  }
+
+  public static Schema writeETLFileWithUnionWithNullSchema(File parentDir) throws IOException {
+    return writeAvroFile(
+        parentDir,
+        "simple_etl_union_with_null.avro",
+        getETLStoreSchemaString(ETL_KEY_SCHEMA.toString(), ETL_UNION_VALUE_WITH_NULL_SCHEMA.toString()),
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= 25; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long) 0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", "string_" + i);
+            user.put("offset", (long) i);
+            user.put("DELETED_TS", null);
+
+            writer.append(user);
+          }
+
+          for (int i = 26; i <= 50; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long) 0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", i);
+            user.put("offset", (long) i);
+            user.put("DELETED_TS", null);
+
+            writer.append(user);
+          }
+
+          for (int i = 51; i <= 100; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long) 0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", null);
+            user.put("offset", (long) i);
+            user.put("DELETED_TS", (long) i);
+
+            writer.append(user);
+          }
+        });
+  }
+
+  public static Schema writeETLFileWithUnionWithoutNullSchema(File parentDir) throws IOException {
+
+    return writeAvroFile(
+        parentDir,
+        "simple_etl_union_without_null.avro",
+        getETLStoreSchemaString(ETL_KEY_SCHEMA.toString(), ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA.toString()),
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= 25; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long) 0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", "string_" + i);
+            user.put("offset", (long) i);
+            user.put("DELETED_TS", null);
+
+            writer.append(user);
+          }
+
+          for (int i = 26; i <= 50; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long) 0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", i);
+            user.put("offset", (long) i);
+            user.put("DELETED_TS", null);
+
+            writer.append(user);
+          }
+
+          for (int i = 51; i <= 100; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+
+            GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+
+            key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+
+            user.put("opalSegmentIdPart", 0);
+            user.put("opalSegmentIdSeq", 0);
+            user.put("opalSegmentOffset", (long) 0);
+            user.put("metadata", new HashMap<>());
+
+            user.put("key", key);
+            user.put("value", null);
+            user.put("offset", (long) i);
+            user.put("DELETED_TS", (long) i);
+
+            writer.append(user);
+          }
+        });
+  }
+
+  public static Schema getETLStoreSchemaString(String keySchema, String valueSchema) {
     String finalValueSchema =
         ETLUtils.transformValueSchemaForETL(AvroCompatibilityHelper.parse(valueSchema)).toString();
-    return "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"storeName_v1\",\n"
+    String fileSchema = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"storeName_v1\",\n"
         + "  \"namespace\": \"com.linkedin.gobblin.venice.model\",\n" + "  \"fields\": [\n" + "    {\n"
         + "      \"name\": \"opalSegmentIdPart\",\n" + "      \"type\": \"int\",\n"
         + "      \"doc\": \"Opal segment id partition\"\n" + "    },\n" + "    {\n"
@@ -1005,6 +923,7 @@ public class TestWriteUtils {
         + "        \"avro.java.string\": \"String\"\n" + "      },\n"
         + "      \"doc\": \"Metadata of the record; currently it contains the schemaId of the record\",\n"
         + "      \"default\": {}\n" + "    }\n" + "  ]\n" + "}";
+    return AvroCompatibilityHelper.parse(fileSchema);
   }
 
   public static void runPushJob(String jobId, Properties props) {

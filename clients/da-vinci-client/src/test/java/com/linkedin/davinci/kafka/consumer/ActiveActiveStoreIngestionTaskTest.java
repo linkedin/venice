@@ -16,6 +16,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
@@ -28,8 +29,10 @@ import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -73,8 +76,10 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -84,6 +89,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.mockito.ArgumentCaptor;
 import org.mockito.stubbing.Answer;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -92,6 +98,40 @@ public class ActiveActiveStoreIngestionTaskTest {
   String PUSH_JOB_ID = "yule";
   String BOOTSTRAP_SERVER = "Stekkjastaur";
   String TEST_CLUSTER_NAME = "venice-GRYLA";
+
+  @DataProvider(name = "CompressionStrategy")
+  public static Object[] compressionStrategyProvider() {
+    return new Object[] { CompressionStrategy.NO_OP, CompressionStrategy.GZIP, CompressionStrategy.ZSTD_WITH_DICT };
+  }
+
+  @Test(dataProvider = "CompressionStrategy")
+  public void testGetValueBytesFromTransientRecords(CompressionStrategy strategy) throws IOException {
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    PartitionConsumptionState.TransientRecord transientRecord = mock(PartitionConsumptionState.TransientRecord.class);
+    VeniceCompressor compressor = getCompressor(strategy);
+    when(ingestionTask.getCompressor()).thenReturn(Lazy.of(() -> compressor));
+    when(ingestionTask.getCompressionStrategy()).thenReturn(strategy);
+    when(ingestionTask.getCurrentValueFromTransientRecord(any())).thenCallRealMethod();
+
+    byte[] dataBytes = "Hello World".getBytes();
+    byte[] transientRecordValueBytes = dataBytes;
+    int startPosition = 0;
+    int dataLength = dataBytes.length;
+    if (strategy != CompressionStrategy.NO_OP) {
+      ByteBuffer compressedByteBuffer = compressor.compress(ByteBuffer.wrap(dataBytes), 4);
+      transientRecordValueBytes = compressedByteBuffer.array();
+      startPosition = compressedByteBuffer.position();
+      dataLength = compressedByteBuffer.remaining();
+    }
+    when(transientRecord.getValue()).thenReturn(transientRecordValueBytes);
+    when(transientRecord.getValueOffset()).thenReturn(startPosition);
+    when(transientRecord.getValueLen()).thenReturn(dataLength);
+    ByteBuffer result = ingestionTask.getCurrentValueFromTransientRecord(transientRecord);
+    Assert.assertEquals(result.remaining(), dataBytes.length);
+    byte[] resultByteArray = new byte[result.remaining()];
+    result.get(resultByteArray);
+    Assert.assertEquals("Hello World", new String(resultByteArray));
+  }
 
   @Test
   public void testisReadyToServeAnnouncedWithRTLag() {
@@ -484,5 +524,13 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertNotNull(container.getManifest());
     Assert.assertEquals(container.getManifest().getKeysWithChunkIdSuffix().size(), 2);
     Assert.assertEquals(result3, expectedChunkedValue2);
+  }
+
+  private VeniceCompressor getCompressor(CompressionStrategy strategy) {
+    if (Objects.requireNonNull(strategy) == CompressionStrategy.ZSTD_WITH_DICT) {
+      byte[] dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
+      return new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
+    }
+    return new CompressorFactory().getCompressor(strategy);
   }
 }

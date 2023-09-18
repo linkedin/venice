@@ -73,7 +73,8 @@ public class TestStoreUpdateStoragePersona {
   private Store setUpTestStoreAndAddToRepo(long quota) {
     Store testStore = TestUtils.createTestStore(Utils.getUniqueString("testStore"), "testStoreOwner", 100);
     testStore.setStorageQuotaInByte(quota);
-    controllerClient.createNewStore(testStore.getName(), testStore.getOwner(), STRING_SCHEMA, STRING_SCHEMA);
+    controllerClient
+        .createNewStore(testStore.getName(), testStore.getOwner(), STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
     controllerClient.updateStore(testStore.getName(), new UpdateStoreQueryParams().setStorageQuotaInByte(quota));
     return testStore;
   }
@@ -136,8 +137,8 @@ public class TestStoreUpdateStoragePersona {
     controllerClient.createNewStoreWithParameters(
         testStore.getName(),
         testStore.getOwner(),
-        STRING_SCHEMA,
-        STRING_SCHEMA,
+        STRING_SCHEMA.toString(),
+        STRING_SCHEMA.toString(),
         new UpdateStoreQueryParams().setStoragePersona(persona.getName()).setStorageQuotaInByte(quota));
     ControllerResponse response = controllerClient
         .updateStore(testStore.getName(), new UpdateStoreQueryParams().setStoragePersona(persona2.getName()));

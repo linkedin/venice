@@ -1,6 +1,12 @@
 package com.linkedin.venice.schema;
 
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V2_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V4_SCHEMA;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.AvroSchemaUtils;
@@ -403,5 +409,64 @@ public class TestAvroSupersetSchemaUtils {
     Assert.assertTrue(AvroSupersetSchemaUtils.isSupersetSchema(schema2, schema2));
     Assert.assertTrue(AvroSupersetSchemaUtils.isSupersetSchema(schema2, schema1));
     Assert.assertFalse(AvroSupersetSchemaUtils.isSupersetSchema(schema1, schema2));
+  }
+
+  @Test
+  public void testGetSupersetSchemaFromSchemaResponse() {
+    MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[3];
+    schemas[0] = new MultiSchemaResponse.Schema();
+    schemas[0].setId(1);
+    schemas[0].setSchemaStr("dummySchemaStr");
+    schemas[1] = new MultiSchemaResponse.Schema();
+    schemas[1].setId(1);
+    schemas[1].setDerivedSchemaId(1);
+    schemas[1].setSchemaStr("dummySchemaStr");
+    schemas[2] = new MultiSchemaResponse.Schema();
+    schemas[2].setId(2);
+    schemas[2].setSchemaStr("dummySchemaStr2");
+    MultiSchemaResponse schemaResponse = new MultiSchemaResponse();
+    schemaResponse.setSchemas(schemas);
+
+    MultiSchemaResponse.Schema retrievedSchema =
+        AvroSupersetSchemaUtils.getSupersetSchemaFromSchemaResponse(schemaResponse, 2);
+
+    Assert.assertNotNull(retrievedSchema);
+    Assert.assertEquals(retrievedSchema.getSchemaStr(), "dummySchemaStr2");
+  }
+
+  @Test
+  public void testGetLatestUpdateSchemaFromSchemaResponse() {
+    MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[3];
+    schemas[0] = new MultiSchemaResponse.Schema();
+    schemas[0].setId(1);
+    schemas[0].setSchemaStr("dummySchemaStr");
+    schemas[1] = new MultiSchemaResponse.Schema();
+    schemas[1].setId(1);
+    schemas[1].setDerivedSchemaId(1);
+    schemas[1].setSchemaStr("dummySchemaStr1");
+    schemas[2] = new MultiSchemaResponse.Schema();
+    schemas[2].setId(1);
+    schemas[2].setDerivedSchemaId(2);
+    schemas[2].setSchemaStr("dummySchemaStr2");
+    MultiSchemaResponse schemaResponse = new MultiSchemaResponse();
+    schemaResponse.setSchemas(schemas);
+
+    MultiSchemaResponse.Schema retrievedSchema =
+        AvroSupersetSchemaUtils.getLatestUpdateSchemaFromSchemaResponse(schemaResponse, 1);
+    Assert.assertNotNull(retrievedSchema);
+    Assert.assertEquals(retrievedSchema.getSchemaStr(), "dummySchemaStr2");
+  }
+
+  @Test
+  public void testValidateSubsetSchema() {
+    Assert.assertTrue(
+        AvroSupersetSchemaUtils
+            .validateSubsetValueSchema(NAME_RECORD_V1_SCHEMA.toString(), NAME_RECORD_V2_SCHEMA.toString()));
+    Assert.assertFalse(
+        AvroSupersetSchemaUtils
+            .validateSubsetValueSchema(NAME_RECORD_V2_SCHEMA.toString(), NAME_RECORD_V3_SCHEMA.toString()));
+    Assert.assertFalse(
+        AvroSupersetSchemaUtils
+            .validateSubsetValueSchema(NAME_RECORD_V3_SCHEMA.toString(), NAME_RECORD_V4_SCHEMA.toString()));
   }
 }

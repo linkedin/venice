@@ -45,7 +45,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRe
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertFalse;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -492,7 +491,7 @@ public class TestPushJobWithNativeReplication {
           props.put(INPUT_PATH_PROP, inputDirInc);
           props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
-          TestWriteUtils.writeSimpleAvroFileWithUserSchema2(inputDirInc);
+          TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2(inputDirInc);
           try (VenicePushJob job = new VenicePushJob("Incremental Push", props)) {
             job.run();
           }
@@ -582,8 +581,8 @@ public class TestPushJobWithNativeReplication {
         (parentControllerClient, clusterName, batchOnlyStoreName, props, inputDir) -> {
           // Create a hybrid store
           String hybridStoreName = Utils.getUniqueString("hybrid-store");
-          NewStoreResponse newStoreResponse =
-              parentControllerClient.createNewStore(hybridStoreName, "", STRING_SCHEMA, STRING_SCHEMA);
+          NewStoreResponse newStoreResponse = parentControllerClient
+              .createNewStore(hybridStoreName, "", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
           Assert.assertFalse(newStoreResponse.isError());
           UpdateStoreQueryParams updateStoreParams =
               new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(2);
@@ -593,8 +592,8 @@ public class TestPushJobWithNativeReplication {
            * Create an incremental push enabled store
            */
           String incrementPushStoreName = Utils.getUniqueString("incremental-push-store");
-          newStoreResponse =
-              parentControllerClient.createNewStore(incrementPushStoreName, "", STRING_SCHEMA, STRING_SCHEMA);
+          newStoreResponse = parentControllerClient
+              .createNewStore(incrementPushStoreName, "", STRING_SCHEMA.toString(), STRING_SCHEMA.toString());
           Assert.assertFalse(newStoreResponse.isError());
           updateStoreParams = new UpdateStoreQueryParams().setIncrementalPushEnabled(true);
           assertCommand(parentControllerClient.updateStore(incrementPushStoreName, updateStoreParams));
@@ -856,7 +855,7 @@ public class TestPushJobWithNativeReplication {
     // In multi-region setup, the batch push to child controller should be disabled.
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("testPushDirectlyToChildColo");
     Properties props = IntegrationTestPushUtils.defaultVPJProps(childDatacenters.get(0), inputDirPath, storeName);
@@ -1020,7 +1019,7 @@ public class TestPushJobWithNativeReplication {
           }
           props.put(TARGETED_REGION_PUSH_ENABLED, true);
           props.put(POST_VALIDATION_CONSUMPTION_ENABLED, true);
-          TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, 20);
+          TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 20);
           try (VenicePushJob job = new VenicePushJob("Test push job 2", props)) {
             job.run(); // the job should succeed
 
@@ -1095,7 +1094,7 @@ public class TestPushJobWithNativeReplication {
     UpdateStoreQueryParams updateStoreParams = updateStoreParamsTransformer
         .apply(new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
 
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, recordCount);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
@@ -1238,8 +1237,8 @@ public class TestPushJobWithNativeReplication {
     Assert.assertNotNull(response.getKafkaTopic());
     VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder(response.getKafkaTopic())
-            .setKeySerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA))
-            .setValueSerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA))
+            .setKeySerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA.toString()))
+            .setValueSerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA.toString()))
             .build());
     veniceWriter.broadcastStartOfIncrementalPush(incrementalPushVersion, new HashMap<>());
     return veniceWriter;

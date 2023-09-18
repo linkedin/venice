@@ -270,8 +270,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
                           HttpResponseStatus.BAD_REQUEST));
                 } else {
                   LOGGER.error("Exception thrown in parallel batch get for {}", request.getResourceName(), e);
-                  context.writeAndFlush(
-                      new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+                  HttpShortcutResponse shortcutResponse =
+                      new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+                  shortcutResponse.setMisroutedStoreVersion(checkMisroutedStoreVersionRequest(request));
+                  context.writeAndFlush(shortcutResponse);
                 }
               } else {
                 context.writeAndFlush(v);
@@ -316,7 +318,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.REQUEST_TIMEOUT));
         } catch (Exception e) {
           LOGGER.error("Exception thrown for {}", request.getResourceName(), e);
-          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+          HttpShortcutResponse shortcutResponse =
+              new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+          shortcutResponse.setMisroutedStoreVersion(checkMisroutedStoreVersionRequest(request));
+          context.writeAndFlush(shortcutResponse);
         }
       });
 
@@ -347,6 +352,21 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
               "Unrecognized object in StorageExecutionHandler",
               HttpResponseStatus.INTERNAL_SERVER_ERROR));
     }
+  }
+
+  /**
+   * Best effort check for the purpose of reporting misrouted store version metric when the request errors.
+   */
+  private boolean checkMisroutedStoreVersionRequest(RouterRequest request) {
+    boolean misrouted = false;
+    Store store = metadataRepository.getStore(request.getStoreName());
+    if (store != null) {
+      Optional<Version> version = store.getVersion(Version.parseVersionFromVersionTopicName(request.getResourceName()));
+      if (!version.isPresent()) {
+        misrouted = true;
+      }
+    }
+    return misrouted;
   }
 
   private ThreadPoolExecutor getExecutor(RequestType requestType) {
@@ -431,7 +451,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return new PerStoreVersionState(partitionerConfig, partitioner, storageEngine, storeDeserializerCache);
   }
 
-  private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
+  public ReadResponse handleSingleGetRequest(GetRouterRequest request) {
     String topic = request.getResourceName();
     PerStoreVersionState perStoreVersionState = getPerStoreVersionState(topic);
     int subPartition = getSubPartitionId(request.getPartition(), request.getKeyBytes(), perStoreVersionState);
@@ -545,7 +565,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     });
   }
 
-  private ReadResponse handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
+  public ReadResponse handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     PerStoreVersionState perStoreVersionState = getPerStoreVersionState(request.getResourceName());
     AbstractStorageEngine storageEngine = perStoreVersionState.storageEngine;
@@ -586,8 +606,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private ReadResponse handleComputeRequest(ComputeRouterRequestWrapper request) {
     SchemaEntry superSetOrLatestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(request.getStoreName());
-    Schema valueSchema = getComputeValueSchema(request, superSetOrLatestValueSchema);
-    Schema resultSchema = getComputeResultSchema(request.getComputeRequest(), valueSchema);
+    SchemaEntry valueSchemaEntry = getComputeValueSchema(request, superSetOrLatestValueSchema);
+    Schema resultSchema = getComputeResultSchema(request.getComputeRequest(), valueSchemaEntry.getSchema());
     RecordSerializer<GenericRecord> resultSerializer = genericSerializerGetter.apply(resultSchema);
     PerStoreVersionState storeVersion = getPerStoreVersionState(request.getResourceName());
     VeniceCompressor compressor =
@@ -596,7 +616,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     // Reuse the same value record and result record instances for all values
     ReusableObjects reusableObjects = threadLocalReusableObjects.get();
     GenericRecord reusableValueRecord =
-        reusableObjects.valueRecordMap.computeIfAbsent(valueSchema, GenericData.Record::new);
+        reusableObjects.valueRecordMap.computeIfAbsent(valueSchemaEntry.getSchema(), GenericData.Record::new);
     GenericRecord reusableResultRecord =
         reusableObjects.resultRecordMap.computeIfAbsent(resultSchema, GenericData.Record::new);
     reusableObjects.computeContext.clear();
@@ -613,7 +633,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           storeVersion,
           key,
           reusableValueRecord,
-          superSetOrLatestValueSchema.getId(),
+          valueSchemaEntry.getId(),
           compressor,
           response,
           reusableObjects,
@@ -647,10 +667,12 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     return resultSchema;
   }
 
-  private Schema getComputeValueSchema(ComputeRouterRequestWrapper request, SchemaEntry superSetOrLatestValueSchema) {
+  private SchemaEntry getComputeValueSchema(
+      ComputeRouterRequestWrapper request,
+      SchemaEntry superSetOrLatestValueSchema) {
     return request.getValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID
-        ? schemaRepository.getValueSchema(request.getStoreName(), request.getValueSchemaId()).getSchema()
-        : superSetOrLatestValueSchema.getSchema();
+        ? schemaRepository.getValueSchema(request.getStoreName(), request.getValueSchemaId())
+        : superSetOrLatestValueSchema;
   }
 
   /**

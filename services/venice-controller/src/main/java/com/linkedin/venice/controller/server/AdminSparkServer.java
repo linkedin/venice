@@ -40,6 +40,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_AN
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KAFKA_TOPIC_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
@@ -79,6 +80,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FRO
 import static com.linkedin.venice.controllerapi.ControllerRoute.REPLICATE_META_DATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_PUSH_JOB_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_MIGRATION_PUSH_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
@@ -339,7 +342,11 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(DELETE_OLD_VERSION.getPath(), storesRoutes.deleteOldVersions(admin));
     httpService.post(SET_VERSION.getPath(), storesRoutes.setCurrentVersion(admin));
     httpService.post(ROLLBACK_TO_BACKUP_VERSION.getPath(), storesRoutes.rollbackToBackupVersion(admin));
-
+    httpService.post(ROLL_FORWARD_TO_FUTURE_VERSION.getPath(), storesRoutes.rollForwardToFutureVersion(admin));
+    httpService
+        .post(SEND_HEARTBEAT_TIMESTAMP_TO_SYSTEM_STORE.getPath(), storesRoutes.sendHeartbeatToSystemStore(admin));
+    httpService
+        .get(GET_HEARTBEAT_TIMESTAMP_FROM_SYSTEM_STORE.getPath(), storesRoutes.getHeartbeatFromSystemStore(admin));
     httpService.get(ClUSTER_HEALTH_INSTANCES.getPath(), nodesAndReplicas.listAllNodesStatus(admin));
     httpService.get(LIST_NODES.getPath(), nodesAndReplicas.listAllNodes(admin));
     httpService.get(LIST_REPLICAS.getPath(), nodesAndReplicas.listReplicasForStore(admin));

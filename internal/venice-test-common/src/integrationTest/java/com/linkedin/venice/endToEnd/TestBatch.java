@@ -22,25 +22,25 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSIO
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.updateStore;
-import static com.linkedin.venice.utils.TestWriteUtils.ETL_KEY_SCHEMA_STRING;
-import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL;
-import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL;
-import static com.linkedin.venice.utils.TestWriteUtils.ETL_VALUE_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_KEY_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITH_NULL_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_VALUE_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.TestRecordType;
+import static com.linkedin.venice.utils.TestWriteUtils.USER_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
-import static com.linkedin.venice.utils.TestWriteUtils.writeAlternateSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeAlternateSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeAvroFileWithManyFloatsAndCustomTotalSize;
 import static com.linkedin.venice.utils.TestWriteUtils.writeETLFileWithUnionWithNullSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeETLFileWithUnionWithoutNullSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeETLFileWithUserSchema;
-import static com.linkedin.venice.utils.TestWriteUtils.writeEmptyAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeEmptyAvroFile;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSchemaWithUnknownFieldIntoAvroFile;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithASchemaWithAWrongDefaultValue;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithCustomSize;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithDuplicateKey;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
-import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema2;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema2;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -196,7 +196,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testEmptyPush() throws Exception {
     testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeEmptyAvroFileWithUserSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeEmptyAvroFile(inputDir, USER_SCHEMA)),
         properties -> {},
         (avroClient, vsonClient, metricsRepository) -> {});
   }
@@ -257,7 +257,7 @@ public abstract class TestBatch {
       }
     };
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
@@ -273,7 +273,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testZstdCompressingAvroRecordCanFailWhenNoFallbackAvailable() throws Exception {
     testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         (avroClient, vsonClient, metricsRepository) -> {
           // test single get. Can throw exception since no fallback available
@@ -330,7 +330,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testZstdCompressingAvroRecordWhenNoFallbackAvailableWithSleep() throws Exception {
     testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> properties.setProperty(ZSTD_COMPRESSION_LEVEL, String.valueOf(17)),
         getSimpleFileWithUserSchemaValidatorForZstd(),
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
@@ -342,7 +342,7 @@ public abstract class TestBatch {
       boolean useMapperToBuildDict) throws Exception {
     // Running a batch push first.
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
@@ -378,7 +378,7 @@ public abstract class TestBatch {
       }
     };
     testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeAlternateSimpleAvroFileWithUserSchema(inputDir, false)),
+        inputDir -> new KeyAndValueSchemas(writeAlternateSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
@@ -411,7 +411,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testEarlyDeleteBackupStore() throws Exception {
     String storeName = testBatchStoreMultiVersionPush(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         (avroClient, vsonClient, metricsRepository) -> {
           // test single get
@@ -440,7 +440,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPush() throws Exception {
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         (avroClient, vsonClient, metricsRepository) -> {
           for (int i = 1; i <= 100; i++) {
@@ -450,7 +450,7 @@ public abstract class TestBatch {
         new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
 
     testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema2(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema2(inputDir)),
         properties -> properties.setProperty(INCREMENTAL_PUSH, "true"),
         (avroClient, vsonClient, metricsRepository) -> {
           // Original data from the full push
@@ -471,7 +471,7 @@ public abstract class TestBatch {
       boolean compressionMetricCollectionEnabled,
       boolean useMapperToBuildDict) throws Exception {
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
@@ -483,20 +483,26 @@ public abstract class TestBatch {
             .setHybridOffsetLagThreshold(10)
             .setHybridRewindSeconds(0));
 
-    testBatchStore(inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema2(inputDir)), properties -> {
-      properties.setProperty(INCREMENTAL_PUSH, "true");
-      properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
-      properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
-    }, (avroClient, vsonClient, metricsRepository) -> {
-      // Original data from the full push
-      for (int i = 1; i <= 50; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-      }
-      // Modified data from the inc push
-      for (int i = 51; i <= 150; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
-      }
-    }, storeName, null);
+    testBatchStore(
+        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema2(inputDir)),
+        properties -> {
+          properties.setProperty(INCREMENTAL_PUSH, "true");
+          properties
+              .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
+        },
+        (avroClient, vsonClient, metricsRepository) -> {
+          // Original data from the full push
+          for (int i = 1; i <= 50; i++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+          }
+          // Modified data from the inc push
+          for (int i = 51; i <= 150; i++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
+          }
+        },
+        storeName,
+        null);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -507,7 +513,7 @@ public abstract class TestBatch {
     LOGGER.info("Start of {}", uniqueTestId);
     try {
       String storeName = testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir)),
+          inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
           properties -> {},
           (avroClient, vsonClient, metricsRepository) -> {
             for (int i = 1; i <= 100; i++) {
@@ -521,7 +527,7 @@ public abstract class TestBatch {
               .setHybridRewindSeconds(0));
 
       testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema2(inputDir)),
+          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema2(inputDir)),
           properties -> properties.setProperty(INCREMENTAL_PUSH, "true"),
           (avroClient, vsonClient, metricsRepository) -> {
             for (int i = 51; i <= 150; i++) {
@@ -532,7 +538,7 @@ public abstract class TestBatch {
           null);
 
       testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir)),
+          inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
           properties -> {},
           (avroClient, vsonClient, metricsRepository) -> {
             TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -556,7 +562,7 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testMetaStoreSchemaValidation() throws Exception {
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         (avroClient, vsonClient, metricsRepository) -> {
           // test single get
@@ -601,7 +607,7 @@ public abstract class TestBatch {
       }
     };
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         validator);
     // Re-push with Kafka Input
@@ -617,7 +623,7 @@ public abstract class TestBatch {
       }
     };
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir)),
         properties -> {},
         validator,
         new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
@@ -637,7 +643,7 @@ public abstract class TestBatch {
       }
     };
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false, 1)),
+        inputDir -> new KeyAndValueSchemas(TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 1)),
         properties -> {},
         validator,
         new UpdateStoreQueryParams().setPartitionCount(3));
@@ -663,25 +669,21 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchFromETL() throws Exception {
     testBatchStore(inputDir -> {
-      writeETLFileWithUserSchema(inputDir, false);
-      return new KeyAndValueSchemas(Schema.parse(ETL_KEY_SCHEMA_STRING), Schema.parse(ETL_VALUE_SCHEMA_STRING));
+      writeETLFileWithUserSchema(inputDir);
+      return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_VALUE_SCHEMA);
     }, properties -> properties.setProperty(SOURCE_ETL, "true"), (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 50; i++) {
-        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-        GenericRecord value = new GenericData.Record(Schema.parse(ETL_VALUE_SCHEMA_STRING));
-
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
+        GenericRecord value = new GenericData.Record(ETL_VALUE_SCHEMA);
         key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         value.put(DEFAULT_VALUE_FIELD_PROP, "test_name_" + i);
-
         Assert.assertEquals(avroClient.get(key).get().toString(), value.toString());
       }
 
       for (int i = 51; i <= 100; i++) {
-        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
         key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
         Assert.assertNull(avroClient.get(key).get());
       }
     });
@@ -690,33 +692,25 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchFromETLWithForUnionWithNullSchema() throws Exception {
     testBatchStore(inputDir -> {
-      writeETLFileWithUnionWithNullSchema(inputDir, false);
-      return new KeyAndValueSchemas(
-          Schema.parse(ETL_KEY_SCHEMA_STRING),
-          Schema.parse(ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL));
+      writeETLFileWithUnionWithNullSchema(inputDir);
+      return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITH_NULL_SCHEMA);
     }, properties -> properties.setProperty(SOURCE_ETL, "true"), (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 25; i++) {
-        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
         key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
         Assert.assertEquals(avroClient.get(key).get().toString(), "string_" + i);
       }
 
       for (int i = 26; i <= 50; i++) {
-        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
         key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
         Assert.assertEquals(avroClient.get(key).get(), i);
       }
 
       for (int i = 51; i <= 100; i++) {
-        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
         key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
         Assert.assertNull(avroClient.get(key).get());
       }
     });
@@ -725,33 +719,25 @@ public abstract class TestBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchFromETLWithForUnionWithoutNullSchema() throws Exception {
     testBatchStore(inputDir -> {
-      writeETLFileWithUnionWithoutNullSchema(inputDir, false);
-      return new KeyAndValueSchemas(
-          Schema.parse(ETL_KEY_SCHEMA_STRING),
-          Schema.parse(ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL));
+      writeETLFileWithUnionWithoutNullSchema(inputDir);
+      return new KeyAndValueSchemas(ETL_KEY_SCHEMA, ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA);
     }, properties -> properties.setProperty(SOURCE_ETL, "true"), (avroClient, vsonClient, metricsRepository) -> {
       // test single get
       for (int i = 1; i <= 25; i++) {
-        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
         key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
         Assert.assertEquals(avroClient.get(key).get().toString(), "string_" + i);
       }
 
       for (int i = 26; i <= 50; i++) {
-        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
         key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
         Assert.assertEquals(avroClient.get(key).get(), i);
       }
 
       for (int i = 51; i <= 100; i++) {
-        GenericRecord key = new GenericData.Record(Schema.parse(ETL_KEY_SCHEMA_STRING));
-
+        GenericRecord key = new GenericData.Record(ETL_KEY_SCHEMA);
         key.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
-
         Assert.assertNull(avroClient.get(key).get());
       }
     });
@@ -1286,7 +1272,7 @@ public abstract class TestBatch {
 
     // Run an Empty Push
     String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeEmptyAvroFileWithUserSchema(inputDir)),
+        inputDir -> new KeyAndValueSchemas(writeEmptyAvroFile(inputDir, USER_SCHEMA)),
         properties -> {},
         emptyValidator);
 

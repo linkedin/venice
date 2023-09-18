@@ -142,7 +142,7 @@ public class TestActiveActiveReplicationWithDownRegion {
     String storeName = Utils.getUniqueString("test-store");
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
-      parentControllerClient.createNewStore(storeName, "owner", INT_SCHEMA, STRING_SCHEMA);
+      parentControllerClient.createNewStore(storeName, "owner", INT_SCHEMA.toString(), STRING_SCHEMA.toString());
       TestUtils.updateStoreToHybrid(
           storeName,
           parentControllerClient,

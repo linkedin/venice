@@ -1,0 +1,14 @@
+{
+  "type" : "record",
+  "name" : "User",
+  "namespace" : "example.avro",
+  "fields" : [ {
+    "name" : "key",
+    "type" : "string",
+    "default" : ""
+  }, {
+    "name" : "value",
+    "type" : "string",
+    "default" : ""
+  } ]
+}

@@ -13,6 +13,7 @@ import com.linkedin.venice.etl.VeniceKafkaDecodedRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -28,7 +29,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
-import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -354,7 +354,7 @@ public class KafkaTopicDumper implements AutoCloseable {
           schemaId = ((Put) kafkaMessageEnvelope.payloadUnion).schemaId;
           break;
         case DELETE:
-          schemaId = -1;
+          schemaId = ((Delete) kafkaMessageEnvelope.payloadUnion).schemaId;
           break;
         default:
           throw new IOException(
@@ -363,55 +363,45 @@ public class KafkaTopicDumper implements AutoCloseable {
       }
 
       final ChunkKeyValueTransformer.KeyType keyType = ChunkKeyValueTransformer.getKeyType(messageType, schemaId);
-      ChunkId firstChunkId = getFirstChunkId(keyType, kafkaKey, kafkaMessageEnvelope);
+      switch (keyType) {
+        case WITH_FULL_VALUE:
+          return String.format(" ChunkMd=(type:%s)", keyType);
+        case WITH_VALUE_CHUNK:
+          final RawKeyBytesAndChunkedKeySuffix rawKeyBytesAndChunkedKeySuffix =
+              chunkKeyValueTransformer.splitChunkedKey(kafkaKey.getKey(), keyType);
+          final ByteBuffer chunkedKeySuffixBytes = rawKeyBytesAndChunkedKeySuffix.getChunkedKeySuffixBytes();
+          final ChunkedKeySuffix chunkedKeySuffix = chunkedKeySuffixDeserializer.deserialize(chunkedKeySuffixBytes);
+          return String.format(
+              " ChunkMd=(type:%s, ChunkIndex: %d, FirstChunkMd=(guid:%s,seg:%d,seq:%d))",
+              keyType,
+              chunkedKeySuffix.chunkId.chunkIndex,
+              GuidUtils.getHexFromGuid(chunkedKeySuffix.chunkId.producerGUID),
+              chunkedKeySuffix.chunkId.segmentNumber,
+              chunkedKeySuffix.chunkId.messageSequenceNumber);
+        case WITH_CHUNK_MANIFEST:
+          Put putMessage = (Put) kafkaMessageEnvelope.payloadUnion;
+          ChunkedValueManifest chunkedValueManifest =
+              manifestSerializer.deserialize(ByteUtils.extractByteArray(putMessage.putValue), putMessage.schemaId);
 
-      if (firstChunkId == null) {
-        String chunkMetadataFormatWithoutFirstChunkMd = " ChunkMd=(type:%s)";
-        return String.format(chunkMetadataFormatWithoutFirstChunkMd, keyType);
-      } else {
-        String chunkMetadataFormatWithFirstChunkMd = " ChunkMd=(type:%s, FirstChunkMd=(guid:%s,seg:%d,seq:%d))";
-        return String.format(
-            chunkMetadataFormatWithFirstChunkMd,
-            keyType,
-            GuidUtils.getHexFromGuid(firstChunkId.producerGUID),
-            firstChunkId.segmentNumber,
-            firstChunkId.messageSequenceNumber);
+          ByteBuffer firstChunkKeyWithChunkIdSuffix = chunkedValueManifest.keysWithChunkIdSuffix.get(0);
+          final RawKeyBytesAndChunkedKeySuffix firstChunkRawKeyBytesAndChunkedKeySuffix = chunkKeyValueTransformer
+              .splitChunkedKey(ByteUtils.extractByteArray(firstChunkKeyWithChunkIdSuffix), WITH_VALUE_CHUNK);
+          final ByteBuffer firstChunkKeySuffixBytes =
+              firstChunkRawKeyBytesAndChunkedKeySuffix.getChunkedKeySuffixBytes();
+          final ChunkedKeySuffix firstChunkedKeySuffix =
+              chunkedKeySuffixDeserializer.deserialize(firstChunkKeySuffixBytes);
+
+          return String.format(
+              " ChunkMd=(type:%s, FirstChunkMd=(guid:%s,seg:%d,seq:%d))",
+              keyType,
+              GuidUtils.getHexFromGuid(firstChunkedKeySuffix.chunkId.producerGUID),
+              firstChunkedKeySuffix.chunkId.segmentNumber,
+              firstChunkedKeySuffix.chunkId.messageSequenceNumber);
+        default:
+          throw new VeniceException("Unexpected key type: " + keyType);
       }
     } else {
       return "";
-    }
-  }
-
-  private ChunkId getFirstChunkId(
-      ChunkKeyValueTransformer.KeyType keyType,
-      KafkaKey kafkaKey,
-      KafkaMessageEnvelope kafkaMessageEnvelope) {
-    final RawKeyBytesAndChunkedKeySuffix rawKeyBytesAndChunkedKeySuffix =
-        chunkKeyValueTransformer.splitChunkedKey(kafkaKey.getKey(), keyType);
-
-    final ByteBuffer chunkedKeySuffixBytes = rawKeyBytesAndChunkedKeySuffix.getChunkedKeySuffixBytes();
-    final ChunkedKeySuffix chunkedKeySuffix = chunkedKeySuffixDeserializer.deserialize(chunkedKeySuffixBytes);
-
-    switch (keyType) {
-      case WITH_VALUE_CHUNK:
-        return chunkedKeySuffix.chunkId;
-      case WITH_CHUNK_MANIFEST:
-        Put putMessage = (Put) kafkaMessageEnvelope.payloadUnion;
-        ChunkedValueManifest chunkedValueManifest =
-            manifestSerializer.deserialize(ByteUtils.extractByteArray(putMessage.putValue), putMessage.schemaId);
-
-        ByteBuffer firstChunkKeyWithChunkIdSuffix = chunkedValueManifest.keysWithChunkIdSuffix.get(0);
-        final RawKeyBytesAndChunkedKeySuffix firstChunkRawKeyBytesAndChunkedKeySuffix = chunkKeyValueTransformer
-            .splitChunkedKey(ByteUtils.extractByteArray(firstChunkKeyWithChunkIdSuffix), WITH_VALUE_CHUNK);
-        final ByteBuffer firstChunkKeySuffixBytes = firstChunkRawKeyBytesAndChunkedKeySuffix.getChunkedKeySuffixBytes();
-        final ChunkedKeySuffix firstChunkedKeySuffix =
-            chunkedKeySuffixDeserializer.deserialize(firstChunkKeySuffixBytes);
-
-        return firstChunkedKeySuffix.chunkId;
-      case WITH_FULL_VALUE:
-        return null;
-      default:
-        throw new VeniceException("Unexpected key type: " + keyType);
     }
   }
 

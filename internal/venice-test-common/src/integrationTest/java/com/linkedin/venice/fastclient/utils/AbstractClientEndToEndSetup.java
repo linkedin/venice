@@ -33,11 +33,13 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.fastclient.GrpcClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -51,6 +53,7 @@ import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -130,12 +133,12 @@ public abstract class AbstractClientEndToEndSetup {
    */
   protected static final ImmutableList<Object> BATCH_GET_KEY_SIZE = ImmutableList.of(2, recordCnt);
 
-  @DataProvider(name = "FastClient-Four-Boolean-A-Number-Store-Metadata-Fetch-Mode")
-  public Object[][] fourBooleanANumberStoreMetadataFetchMode() {
+  @DataProvider(name = "FastClient-Five-Boolean-A-Number-Store-Metadata-Fetch-Mode")
+  public Object[][] fiveBooleanANumberStoreMetadataFetchMode() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
       boolean batchGet = (boolean) permutation[2];
       boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
-      int batchGetKeySize = (int) permutation[4];
+      int batchGetKeySize = (int) permutation[5];
       if (!batchGet) {
         if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
@@ -149,6 +152,7 @@ public abstract class AbstractClientEndToEndSetup {
         DataProviderUtils.BOOLEAN, // speculativeQueryEnabled
         DataProviderUtils.BOOLEAN, // batchGet
         DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
+        DataProviderUtils.BOOLEAN, // enableGrpc
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
@@ -220,6 +224,7 @@ public abstract class AbstractClientEndToEndSetup {
     props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
     VeniceClusterCreateOptions createOptions = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
+        .enableGrpc(true)
         .numberOfRouters(1)
         .replicationFactor(2)
         .partitionSize(100)
@@ -253,10 +258,10 @@ public abstract class AbstractClientEndToEndSetup {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
+    PubSubBrokerWrapper pubSubBrokerWrapper = veniceCluster.getPubSubBrokerWrapper();
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
-    veniceWriter = TestUtils
-        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper().getAddress(), pubSubProducerAdapterFactory)
+        pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
+    veniceWriter = IntegrationTestPushUtils.getVeniceWriterFactory(pubSubBrokerWrapper, pubSubProducerAdapterFactory)
         .createVeniceWriter(
             new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
                 .setValueSerializer(valueSerializer)
@@ -401,6 +406,15 @@ public abstract class AbstractClientEndToEndSetup {
     return ClientFactory.getAndStartSpecificStoreClient(clientConfig);
   }
 
+  protected void setUpGrpcFastClient(ClientConfig.ClientConfigBuilder clientConfigBuilder) {
+    GrpcClientConfig grpcClientConfig = new GrpcClientConfig.Builder().setR2Client(r2Client)
+        .setSSLFactory(SslUtils.getVeniceLocalSslFactory())
+        .setNettyServerToGrpcAddressMap(veniceCluster.getNettyToGrpcServerMap())
+        .build();
+
+    clientConfigBuilder.setGrpcClientConfig(grpcClientConfig).setUseGrpc(true);
+  }
+
   protected void setupStoreMetadata(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       StoreMetadataFetchMode storeMetadataFetchMode) throws IOException {
@@ -523,16 +537,14 @@ public abstract class AbstractClientEndToEndSetup {
       assertTrue(
           metrics.get(metricPrefix + "request_key_count.Rate").value() > 0,
           "Respective request_key_count should have been incremented");
-      assertEquals(
-          metrics.get(metricPrefix + "request_key_count.Max").value(),
-          keyCount,
+      assertTrue(
+          metrics.get(metricPrefix + "request_key_count.Max").value() >= keyCount,
           "Respective request_key_count should have been incremented");
       assertTrue(
           metrics.get(metricPrefix + "success_request_key_count.Rate").value() > 0,
           "Respective success_request_key_count should have been incremented");
-      assertEquals(
-          metrics.get(metricPrefix + "success_request_key_count.Max").value(),
-          successKeyCount,
+      assertTrue(
+          metrics.get(metricPrefix + "success_request_key_count.Max").value() >= successKeyCount,
           "Respective success_request_key_count should have been incremented");
     });
     // incorrect metric should not be incremented

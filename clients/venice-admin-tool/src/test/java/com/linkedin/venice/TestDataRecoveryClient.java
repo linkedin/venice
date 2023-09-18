@@ -24,6 +24,7 @@ import com.linkedin.venice.datarecovery.DataRecoveryTask;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.MonitorCommand;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
+import com.linkedin.venice.datarecovery.meta.RepushViabilityInfo;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.StoreInfo;
@@ -489,4 +490,35 @@ public class TestDataRecoveryClient {
       storeNames.add(monitor.getTasks().get(i).getTaskParams().getStore());
     }
   }
+
+  @Test
+  public void testRepushViabilityInfo() {
+    RepushViabilityInfo info = new RepushViabilityInfo();
+    info.viableWithResult(RepushViabilityInfo.Result.SUCCESS);
+    Assert.assertFalse(info.isError());
+
+    info.inViableWithResult(RepushViabilityInfo.Result.CURRENT_VERSION_IS_NEWER);
+    Assert.assertFalse(info.isError());
+
+    info.inViableWithError(RepushViabilityInfo.Result.DISCOVERY_ERROR);
+    Assert.assertTrue(info.isError());
+  }
+
+  @Test
+  public void testRepushCommandExecute() {
+    StoreRepushCommand repushCommand = spy(StoreRepushCommand.class);
+    RepushViabilityInfo info = new RepushViabilityInfo();
+    info.inViableWithResult(RepushViabilityInfo.Result.CURRENT_VERSION_IS_NEWER);
+    StoreRepushCommand.Params repushParams = new StoreRepushCommand.Params();
+    doReturn(info).when(repushCommand).getRepushViability();
+    doReturn(repushParams).when(repushCommand).getParams();
+
+    repushCommand.execute();
+    Assert.assertFalse(repushCommand.getResult().isError());
+
+    info.inViableWithError(RepushViabilityInfo.Result.DISCOVERY_ERROR);
+    repushCommand.execute();
+    Assert.assertTrue(repushCommand.getResult().isError());
+  }
+
 }

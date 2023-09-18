@@ -16,6 +16,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -332,23 +333,37 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
    */
   @Override
   public synchronized void removeStorageEngine(String storeName) {
+    removeStorageEnginePartition(storeName, -1);
+  }
+
+  public String getRocksDBPath(String storeName, int partitionId) {
+    return RocksDBUtils.composePartitionDbDir(rocksDBPath, storeName, partitionId);
+  }
+
+  @Override
+  public synchronized void removeStorageEnginePartition(String storeName, int partitionId) {
     if (storageEngineMap.containsKey(storeName)) {
       throw new VeniceException(
           "Storage engine has already been opened previously, and please use #removeStorageEngine(AbstractStorageEngine) for deletion");
     }
-    File storeDir = new File(rocksDBPath, storeName);
-    if (storeDir.exists()) {
-      LOGGER.info("Started removing RocksDB database folder for store: {}", storeName);
+    File dbDir;
 
+    // partitionId -1 means removes all partitions in the DB path.
+    if (partitionId == -1) {
+      dbDir = new File(rocksDBPath, storeName);
+    } else {
+      dbDir = new File(getRocksDBPath(storeName, partitionId));
+    }
+    if (dbDir.exists()) {
+      LOGGER.info("Started removing RocksDB database folder for store: {}", dbDir.getName());
       try {
-        FileUtils.deleteDirectory(storeDir);
+        FileUtils.deleteDirectory(dbDir);
       } catch (IOException e) {
         throw new VeniceException("Failed to delete RocksDB database folder for store: " + storeName);
       }
-
-      LOGGER.info("Finished removing RocksDB database folder for store: {}", storeName);
+      LOGGER.info("Finished removing RocksDB database folder for store: {}", dbDir.getName());
     } else {
-      LOGGER.warn("RocksDB store: {} doesn't exist", storeName);
+      LOGGER.warn("Trying to delete RocksDB dir: {} which doesn't exist", dbDir.getName());
     }
   }
 

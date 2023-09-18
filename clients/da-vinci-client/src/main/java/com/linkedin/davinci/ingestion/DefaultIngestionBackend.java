@@ -100,7 +100,6 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
     getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
     // Drops corresponding data partition from storage.
     getStorageService().dropStorePartition(storeConfig, partition, removeEmptyStorageEngine);
-
   }
 
   @Override

@@ -12,6 +12,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.controller.systemstore.SystemStoreRepairService;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -26,7 +27,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
@@ -46,6 +47,7 @@ public class VeniceController {
   private TopicCleanupService topicCleanupService;
   private Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
   private Optional<StoreGraveyardCleanupService> storeGraveyardCleanupService;
+  private Optional<SystemStoreRepairService> systemStoreRepairService;
 
   private final boolean sslEnabled;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -173,6 +175,7 @@ public class VeniceController {
     }
     storeBackupVersionCleanupService = Optional.empty();
     storeGraveyardCleanupService = Optional.empty();
+    systemStoreRepairService = Optional.empty();
     Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
       topicCleanupService =
@@ -184,6 +187,11 @@ public class VeniceController {
       storeGraveyardCleanupService =
           Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreGraveyardCleanupService is enabled");
+      if (multiClusterConfigs.getCommonConfig().isParentSystemStoreRepairServiceEnabled()) {
+        systemStoreRepairService = Optional
+            .of(new SystemStoreRepairService((VeniceParentHelixAdmin) admin, multiClusterConfigs, metricsRepository));
+        LOGGER.info("SystemStoreRepairServiceEnabled is enabled");
+      }
     } else {
       topicCleanupService = new TopicCleanupService(admin, multiClusterConfigs, pubSubTopicRepository);
       if (!(admin instanceof VeniceHelixAdmin)) {
@@ -215,6 +223,7 @@ public class VeniceController {
     topicCleanupService.start();
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
+    systemStoreRepairService.ifPresent(AbstractVeniceService::start);
     // register with service discovery at the end
     serviceDiscoveryAnnouncers.forEach(serviceDiscoveryAnnouncer -> {
       serviceDiscoveryAnnouncer.register();
@@ -255,11 +264,12 @@ public class VeniceController {
       LOGGER.info("Unregistered from service discovery: {}", serviceDiscoveryAnnouncer);
     });
     // TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
-    Utils.closeQuietlyWithErrorLogged(topicCleanupService);
-    storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    systemStoreRepairService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     storeGraveyardCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
-    Utils.closeQuietlyWithErrorLogged(adminServer);
+    storeBackupVersionCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    Utils.closeQuietlyWithErrorLogged(topicCleanupService);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);
+    Utils.closeQuietlyWithErrorLogged(adminServer);
     Utils.closeQuietlyWithErrorLogged(controllerService);
   }
 
@@ -270,7 +280,7 @@ public class VeniceController {
     return controllerService;
   }
 
-  public static void main(String args[]) {
+  public static void main(String[] args) {
     if (args.length != 2) {
       Utils.exit("USAGE: java -jar venice-controller-all.jar <cluster_config_file_path> <controller_config_file_path>");
     }
@@ -280,23 +290,23 @@ public class VeniceController {
   public static void run(String clusterConfigFilePath, String controllerConfigFilePath, boolean joinThread) {
 
     VeniceProperties controllerProps = null;
+    String zkAddress = null;
     try {
       VeniceProperties clusterProps = Utils.parseProperties(clusterConfigFilePath);
       VeniceProperties controllerBaseProps = Utils.parseProperties(controllerConfigFilePath);
 
       controllerProps =
           new PropertyBuilder().put(clusterProps.toProperties()).put(controllerBaseProps.toProperties()).build();
+      zkAddress = controllerProps.getString(ZOOKEEPER_ADDRESS);
     } catch (Exception e) {
       String errorMessage = "Can not load configuration from file.";
       LOGGER.error(errorMessage, e);
       Utils.exit(errorMessage + e.getMessage());
     }
 
-    String zkAddress = controllerProps.getString(ZOOKEEPER_ADDRESS);
     D2Client d2Client = D2ClientFactory.getD2Client(zkAddress, Optional.empty());
     VeniceController controller = new VeniceController(
-        new VeniceControllerContext.Builder()
-            .setPropertiesList(Arrays.asList(new VeniceProperties[] { controllerProps }))
+        new VeniceControllerContext.Builder().setPropertiesList(Collections.singletonList(controllerProps))
             .setServiceDiscoveryAnnouncers(new ArrayList<>())
             .setD2Client(d2Client)
             .build());
@@ -312,12 +322,9 @@ public class VeniceController {
   }
 
   private static void addShutdownHook(VeniceController controller, String zkAddress) {
-    Runtime.getRuntime().addShutdownHook(new Thread() {
-      @Override
-      public void run() {
-        controller.stop();
-        D2ClientFactory.release(zkAddress);
-      }
-    });
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      controller.stop();
+      D2ClientFactory.release(zkAddress);
+    }));
   }
 }

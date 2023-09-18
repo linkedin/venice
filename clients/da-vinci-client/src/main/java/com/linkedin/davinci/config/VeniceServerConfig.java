@@ -10,6 +10,7 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.FAST_AVRO_FIELD_LIMIT_PER_METHOD;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
@@ -34,6 +35,7 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DEL
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PRINCIPAL_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
@@ -65,6 +67,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_POLL_RETRY_BACKOFF_MS;
@@ -266,6 +269,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * number of worker threads for the netty listener.  If not specified, netty uses twice cpu count.
    */
   private final int nettyWorkerThreadCount;
+  private final int grpcWorkerThreadCount;
 
   private final long databaseSyncBytesIntervalForTransactionalMode;
 
@@ -427,6 +431,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long divProducerStateMaxAgeMs;
   private final PubSubClientsFactory pubSubClientsFactory;
+  private final String routerPrincipalName;
+
+  private final int ingestionTaskMaxIdleCount;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -479,6 +486,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30);
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
+    grpcWorkerThreadCount =
+        serverProperties.getInt(GRPC_SERVER_WORKER_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
     remoteIngestionRepairSleepInterval = serverProperties.getInt(
         SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS,
@@ -704,6 +713,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       LOGGER.error("Failed to create an instance of pub sub clients factory", e);
       throw new VeniceException(e);
     }
+    routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "CN=venice-router");
+    ingestionTaskMaxIdleCount = serverProperties.getInt(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 10000);
   }
 
   long extractIngestionMemoryLimit(
@@ -868,6 +879,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getNettyWorkerThreadCount() {
     return nettyWorkerThreadCount;
+  }
+
+  public int getGrpcWorkerThreadCount() {
+    return grpcWorkerThreadCount;
   }
 
   public long getDatabaseSyncBytesIntervalForTransactionalMode() {
@@ -1228,5 +1243,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public PubSubClientsFactory getPubSubClientsFactory() {
     return pubSubClientsFactory;
+  }
+
+  public String getRouterPrincipalName() {
+    return routerPrincipalName;
+  }
+
+  public int getIngestionTaskMaxIdleCount() {
+    return ingestionTaskMaxIdleCount;
   }
 }
