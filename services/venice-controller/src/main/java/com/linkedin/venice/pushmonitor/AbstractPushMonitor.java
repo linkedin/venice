@@ -765,11 +765,10 @@ public abstract class AbstractPushMonitor
           if (helixMap.containsKey(kafkaTopic)) {
             return helixMap.get(kafkaTopic).stream().map(HelixUtils::getPartitionId).collect(Collectors.toSet());
           } else {
-            return Collections.emptySet();
+            return null;
           }
         });
-
-        return disabledPartitions.contains(partitionId);
+        return disabledPartitions != null && disabledPartitions.contains(partitionId);
       }
     };
   }
