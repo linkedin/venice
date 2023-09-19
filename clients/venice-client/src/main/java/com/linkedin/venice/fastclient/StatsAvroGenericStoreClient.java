@@ -10,6 +10,7 @@ import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Time;
 import java.util.Collections;
 import java.util.HashMap;
@@ -17,6 +18,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -34,6 +36,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
   private final int maxAllowedKeyCntInBatchGetReq;
   private final boolean useStreamingBatchGetAsDefault;
+  private final RedundantExceptionFilter redundantExceptionFilter =
+      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.SECONDS.toMillis(1));
 
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     super(delegate);
@@ -163,6 +167,12 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
          * considered an unhealthy request: so only incrementing a subset of metrics.
          */
         exceptionReceived = true;
+        if (!redundantExceptionFilter.isRedundantException(throwable.getMessage())) {
+          LOGGER.error(
+              "Exception received in fast client's {}: ",
+              requestContext instanceof GetRequestContext ? "single get" : "batch get",
+              throwable);
+        }
       }
 
       if (exceptionReceived || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
@@ -319,5 +329,11 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       }
       inner.onCompletion(exception);
     }
+  }
+
+  @Override
+  public void close() {
+    redundantExceptionFilter.shutdown();
+    super.close();
   }
 }
