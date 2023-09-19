@@ -129,7 +129,7 @@ public class TestDictionaryRetrievalService {
 
       DictionaryRetrievalService finalDictionaryRetrievalService = dictionaryRetrievalService;
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        assertNotNull(finalDictionaryRetrievalService.getFetchDelayTimeinMsMap().get("test_store_v1"));
+        assertNotNull(finalDictionaryRetrievalService.getFetchDelayTimeMsMap().get("test_store_v1"));
       });
 
       // start at a higher retry time as it will be easy to miss the first couple of retries
@@ -138,7 +138,7 @@ public class TestDictionaryRetrievalService {
         long finalExpectedValue = expectedValue;
         TestUtils.waitForNonDeterministicAssertion(MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS, TimeUnit.SECONDS, () -> {
           assertEquals(
-              (long) finalDictionaryRetrievalService.getFetchDelayTimeinMsMap().get("test_store_v1"),
+              (long) finalDictionaryRetrievalService.getFetchDelayTimeMsMap().get("test_store_v1"),
               finalExpectedValue);
         });
         if (expectedValue == MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS) {
