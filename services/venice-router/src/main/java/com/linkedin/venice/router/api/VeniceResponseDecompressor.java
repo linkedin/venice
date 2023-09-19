@@ -185,14 +185,14 @@ public class VeniceResponseDecompressor {
           if (dictionary != null) {
             compressor = compressorFactory
                 .createVersionSpecificCompressorIfNotExist(compressionStrategy, kafkaTopic, dictionary);
-            if (compressor == null) {
-              throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-                  Optional.of(storeName),
-                  Optional.of(requestType),
-                  SERVICE_UNAVAILABLE,
-                  "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
-            }
           }
+        }
+        if (compressor == null) {
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+              Optional.of(storeName),
+              Optional.of(requestType),
+              SERVICE_UNAVAILABLE,
+              "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
         }
       } else {
         compressor = compressorFactory.getCompressor(compressionStrategy);
