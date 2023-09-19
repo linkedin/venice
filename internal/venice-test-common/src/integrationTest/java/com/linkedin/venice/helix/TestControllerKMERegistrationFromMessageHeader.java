@@ -115,10 +115,11 @@ public class TestControllerKMERegistrationFromMessageHeader {
 
     // Verify that schema is registered in the child colo's schema repo.
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      Assert.assertTrue(
+      Assert.assertEquals(
           repo.getValueSchema(
               AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
-              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion()) != null);
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion()).getId(),
+          AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
     });
 
     // Verify that store is created successfully in the child colo from the child controller's view.
