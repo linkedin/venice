@@ -12,7 +12,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -49,6 +48,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.producer.DurableWrite;
 import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
@@ -56,6 +56,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -708,6 +709,36 @@ public class OnlineVeniceProducerTest {
   }
 
   @Test
+  public void testConcurrentEnsureSchemaRefreshed() throws IOException, ExecutionException, InterruptedException {
+    boolean updateEnabled = true;
+    ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, updateEnabled);
+    TransportClient mockTransportClient = ClientFactory.getTransportClient(storeClientConfig);
+    configureMockTransportClient(mockTransportClient, updateEnabled, null, 500);
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    Properties backendConfigs = new Properties();
+
+    // Should be high enough to not get triggered during the test as it might end up fetching the schemas instead
+    backendConfigs.put(CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS, 2 * Time.MS_PER_MINUTE);
+    try (VeniceProducer producer =
+        new TestOnlineVeniceProducer(storeClientConfig, new VeniceProperties(backendConfigs), metricsRepository)) {
+      CompletableFuture<DurableWrite> future1 = producer.asyncUpdate(1000, "KEY1", updateBuilderObj -> {
+        UpdateBuilder updateBuilder = ((UpdateBuilder) updateBuilderObj);
+        updateBuilder.setNewFieldValue(FIELD_COLOR, "green");
+        Assert.assertEquals(updateBuilder.build().getSchema().toString(), UPDATE_SCHEMA_2.toString());
+      });
+
+      CompletableFuture<DurableWrite> future2 = producer.asyncUpdate(1000, "KEY2", updateBuilderObj -> {
+        UpdateBuilder updateBuilder = ((UpdateBuilder) updateBuilderObj);
+        updateBuilder.setNewFieldValue(FIELD_COLOR, "red");
+      });
+
+      future1.get();
+      future2.get();
+    }
+  }
+
+  @Test
   public void testFetchLatestValueAndUpdateSchemas() throws IOException, ExecutionException, InterruptedException {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
 
@@ -728,8 +759,9 @@ public class OnlineVeniceProducerTest {
           Arrays.asList(VALUE_SCHEMA_1, VALUE_SCHEMA_2, VALUE_SCHEMA_3, VALUE_SCHEMA_4),
           3,
           Arrays.asList(UPDATE_SCHEMA_1, UPDATE_SCHEMA_2, UPDATE_SCHEMA_3, UPDATE_SCHEMA_4),
-          true);
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.MINUTES, () -> {
+          true,
+          0);
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
         try {
           producer.asyncUpdate(1000, "KEY1", updateBuilderObj -> {
             UpdateBuilder updateBuilder = ((UpdateBuilder) updateBuilderObj);
@@ -763,9 +795,8 @@ public class OnlineVeniceProducerTest {
     multiSchemaResponse.setSchemas(valueSchemaArr);
     multiSchemaResponse.setCluster(clusterName);
 
-    CompletableFuture<TransportClientResponse> requestTopicFuture =
-        getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaResponse));
-    doReturn(requestTopicFuture).when(transportClient)
+    doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaResponse), 0))
+        .when(transportClient)
         .get(eq("value_schema/" + KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()), anyMap());
   }
 
@@ -802,6 +833,14 @@ public class OnlineVeniceProducerTest {
       TransportClient transportClient,
       boolean updateEnabled,
       byte[] requestTopicResponse) throws IOException {
+    configureMockTransportClient(transportClient, updateEnabled, requestTopicResponse, 0);
+  }
+
+  private void configureMockTransportClient(
+      TransportClient transportClient,
+      boolean updateEnabled,
+      byte[] requestTopicResponse,
+      int delayInResponseMs) throws IOException {
     doCallRealMethod().when(transportClient).getCopyIfNotUsableInCallback();
     doCallRealMethod().when(transportClient).get(anyString());
     doCallRealMethod().when(transportClient).post(anyString(), any());
@@ -836,33 +875,34 @@ public class OnlineVeniceProducerTest {
     store.setVersions(Collections.singletonList(version));
     store.setWriteComputationEnabled(updateEnabled);
 
-    CompletableFuture<TransportClientResponse> requestTopicFuture;
-    if (requestTopicResponse == null) {
-      VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
-      versionCreationResponse.setPartitions(partitionCount);
-      versionCreationResponse.setPartitionerClass(partitionerConfig.getPartitionerClass());
-      versionCreationResponse.setPartitionerParams(partitionerConfig.getPartitionerParams());
-      versionCreationResponse.setKafkaBootstrapServers("localhost:9092");
-      versionCreationResponse.setKafkaTopic(Version.composeRealTimeTopic(storeName));
-      versionCreationResponse.setAmplificationFactor(1);
-      versionCreationResponse.setEnableSSL(false);
+    doAnswer(invocation -> {
+      if (requestTopicResponse == null) {
+        VersionCreationResponse versionCreationResponse = new VersionCreationResponse();
+        versionCreationResponse.setPartitions(partitionCount);
+        versionCreationResponse.setPartitionerClass(partitionerConfig.getPartitionerClass());
+        versionCreationResponse.setPartitionerParams(partitionerConfig.getPartitionerParams());
+        versionCreationResponse.setKafkaBootstrapServers("localhost:9092");
+        versionCreationResponse.setKafkaTopic(Version.composeRealTimeTopic(storeName));
+        versionCreationResponse.setAmplificationFactor(1);
+        versionCreationResponse.setEnableSSL(false);
 
-      requestTopicFuture = getTransportClientFuture(MAPPER.writeValueAsBytes(versionCreationResponse));
-    } else {
-      requestTopicFuture = getTransportClientFuture(requestTopicResponse);
-    }
-    doReturn(requestTopicFuture).when(transportClient).get(eq("request_topic/" + storeName), anyMap());
+        return getTransportClientFuture(MAPPER.writeValueAsBytes(versionCreationResponse), delayInResponseMs);
+      } else {
+        return getTransportClientFuture(requestTopicResponse, delayInResponseMs);
+      }
+    }).when(transportClient).get(eq("request_topic/" + storeName), anyMap());
 
-    CompletableFuture<TransportClientResponse> storeStateFuture =
-        getTransportClientFuture(STORE_SERIALIZER.serialize(store, null));
-    doReturn(storeStateFuture).when(transportClient).get(eq("store_state/" + storeName), anyMap());
+    doAnswer(invocation -> getTransportClientFuture(STORE_SERIALIZER.serialize(store, null), delayInResponseMs))
+        .when(transportClient)
+        .get(eq("store_state/" + storeName), anyMap());
 
     configureSchemaResponseMocks(
         transportClient,
         Arrays.asList(VALUE_SCHEMA_1, VALUE_SCHEMA_2),
         2,
         Arrays.asList(UPDATE_SCHEMA_1, UPDATE_SCHEMA_2),
-        updateEnabled);
+        updateEnabled,
+        delayInResponseMs);
   }
 
   private void configureSchemaResponseMocks(
@@ -870,15 +910,16 @@ public class OnlineVeniceProducerTest {
       List<Schema> valueSchemas,
       int supersetSchemaId,
       List<Schema> updateSchemas,
-      boolean updateEnabled) throws JsonProcessingException {
+      boolean updateEnabled,
+      int delayInResponseMs) {
     String keySchemaStr = KEY_SCHEMA.toString();
     SchemaResponse keySchemaResponse = new SchemaResponse();
     keySchemaResponse.setId(1);
     keySchemaResponse.setSchemaStr(keySchemaStr);
 
-    CompletableFuture<TransportClientResponse> keySchemaFuture =
-        getTransportClientFuture(MAPPER.writeValueAsBytes(keySchemaResponse));
-    doReturn(keySchemaFuture).when(transportClient).get(eq("key_schema/" + storeName), anyMap());
+    doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(keySchemaResponse), delayInResponseMs))
+        .when(transportClient)
+        .get(eq("key_schema/" + storeName), anyMap());
 
     MultiSchemaResponse.Schema[] valueSchemaArr = new MultiSchemaResponse.Schema[valueSchemas.size()];
     for (int i = 0; i < valueSchemas.size(); i++) {
@@ -896,9 +937,9 @@ public class OnlineVeniceProducerTest {
       multiSchemaResponse.setSuperSetSchemaId(supersetSchemaId);
     }
 
-    CompletableFuture<TransportClientResponse> valueSchemasFuture =
-        getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaResponse));
-    doReturn(valueSchemasFuture).when(transportClient).get(eq("value_schema/" + storeName), anyMap());
+    doAnswer(invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(multiSchemaResponse), delayInResponseMs))
+        .when(transportClient)
+        .get(eq("value_schema/" + storeName), anyMap());
 
     if (updateEnabled) {
       MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
@@ -914,10 +955,10 @@ public class OnlineVeniceProducerTest {
         updateSchemaResponse.setDerivedSchemaId(1);
         updateSchemaResponse.setSchemaStr(updateSchemas.get(i).toString());
 
-        CompletableFuture<TransportClientResponse> updateSchemaFuture =
-            getTransportClientFuture(MAPPER.writeValueAsBytes(updateSchemaResponse));
-        doReturn(updateSchemaFuture).when(transportClient)
-            .get(eq("update_schema/" + storeName + "/" + (i + 1)), anyMap());
+        doAnswer(
+            invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(updateSchemaResponse), delayInResponseMs))
+                .when(transportClient)
+                .get(eq("update_schema/" + storeName + "/" + (i + 1)), anyMap());
 
         MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
         schema.setId(i + 1);
@@ -927,19 +968,20 @@ public class OnlineVeniceProducerTest {
       }
       allUpdateSchemaResponse.setSchemas(multiSchemas);
 
-      CompletableFuture<TransportClientResponse> allUpdateSchemaFuture =
-          getTransportClientFuture(MAPPER.writeValueAsBytes(allUpdateSchemaResponse));
-      doReturn(allUpdateSchemaFuture).when(transportClient).get(eq("update_schema/" + storeName), anyMap());
+      doAnswer(
+          invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(allUpdateSchemaResponse), delayInResponseMs))
+              .when(transportClient)
+              .get(eq("update_schema/" + storeName), anyMap());
     } else {
       for (int i = 0; i < updateSchemas.size(); i++) {
         SchemaResponse noUpdateSchemaResponse = new SchemaResponse();
         noUpdateSchemaResponse
             .setError("Update schema doesn't exist for value schema id: " + (i + 1) + " of store: " + storeName);
 
-        CompletableFuture<TransportClientResponse> updateSchemaFuture =
-            getTransportClientFuture(MAPPER.writeValueAsBytes(noUpdateSchemaResponse));
-        doReturn(updateSchemaFuture).when(transportClient)
-            .get(eq("update_schema/" + storeName + "/" + (i + 1)), anyMap());
+        doAnswer(
+            invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(noUpdateSchemaResponse), delayInResponseMs))
+                .when(transportClient)
+                .get(eq("update_schema/" + storeName + "/" + (i + 1)), anyMap());
       }
 
       MultiSchemaResponse allUpdateSchemaResponse = new MultiSchemaResponse();
@@ -949,9 +991,10 @@ public class OnlineVeniceProducerTest {
       MultiSchemaResponse.Schema[] multiSchemas = new MultiSchemaResponse.Schema[0];
       allUpdateSchemaResponse.setSchemas(multiSchemas);
 
-      CompletableFuture<TransportClientResponse> allUpdateSchemaFuture =
-          getTransportClientFuture(MAPPER.writeValueAsBytes(allUpdateSchemaResponse));
-      doReturn(allUpdateSchemaFuture).when(transportClient).get(eq("update_schema/" + storeName), anyMap());
+      doAnswer(
+          invocation -> getTransportClientFuture(MAPPER.writeValueAsBytes(allUpdateSchemaResponse), delayInResponseMs))
+              .when(transportClient)
+              .get(eq("update_schema/" + storeName), anyMap());
     }
   }
 
@@ -1058,9 +1101,12 @@ public class OnlineVeniceProducerTest {
     throw new AssertionError(thrown.getMessage(), thrown);
   }
 
-  private CompletableFuture<TransportClientResponse> getTransportClientFuture(byte[] body) {
+  private CompletableFuture<TransportClientResponse> getTransportClientFuture(byte[] body, long delayInResponseMs) {
     return CompletableFuture.supplyAsync(() -> {
       try {
+        if (delayInResponseMs > 0) {
+          Utils.sleep(delayInResponseMs);
+        }
         return new TransportClientResponse(1, CompressionStrategy.NO_OP, body);
       } catch (Throwable t) {
         return null;

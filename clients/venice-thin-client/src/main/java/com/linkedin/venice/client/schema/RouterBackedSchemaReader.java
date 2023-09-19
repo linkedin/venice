@@ -137,8 +137,12 @@ public class RouterBackedSchemaReader implements SchemaReader {
     if (valueSchemaRefreshPeriod.toMillis() > 0) {
       this.refreshSchemaExecutor =
           Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("schema-refresh"));
+      Runnable schemaRefresher = () -> this.ensureSchemasAreRefreshed(loadUpdateSchemas.get(), true);
+      // Fetch schemas once on start up
+      schemaRefresher.run();
+      // Schedule periodic schema refresh
       this.schemaRefreshFuture = refreshSchemaExecutor.scheduleAtFixedRate(
-          () -> this.ensureSchemasAreRefreshed(loadUpdateSchemas.get(), true),
+          schemaRefresher,
           valueSchemaRefreshPeriod.getSeconds(),
           valueSchemaRefreshPeriod.getSeconds(),
           TimeUnit.SECONDS);
@@ -268,8 +272,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
    */
   private void ensureSchemasAreRefreshed(boolean needsDerivedSchemas, boolean forceSchemaRefresh) {
     ConcurrencyUtils.executeUnderConditionalLock(() -> {
-      loadUpdateSchemas.compareAndSet(false, needsDerivedSchemas);
-      this.refreshAllSchemas();
+      boolean shouldFetchUpdateSchemas = loadUpdateSchemas.get() || needsDerivedSchemas;
+      this.refreshAllSchemas(shouldFetchUpdateSchemas);
+
+      // Only update this at the end to prevent the conditional check to incorrectly pass for other concurrent threads
+      loadUpdateSchemas.compareAndSet(false, shouldFetchUpdateSchemas);
     },
         () -> forceSchemaRefresh || latestValueSchemaEntry.get() == null
             || (needsDerivedSchemas && !loadUpdateSchemas.get()),
@@ -374,9 +381,9 @@ public class RouterBackedSchemaReader implements SchemaReader {
     return fetchSingleSchema(requestPath, false);
   }
 
-  private void refreshAllSchemas() throws VeniceClientException {
+  private void refreshAllSchemas(boolean fetchUpdateSchemas) throws VeniceClientException {
     refreshAllValueSchemas();
-    if (loadUpdateSchemas.get()) {
+    if (fetchUpdateSchemas) {
       refreshAllUpdateSchemas();
     }
   }
