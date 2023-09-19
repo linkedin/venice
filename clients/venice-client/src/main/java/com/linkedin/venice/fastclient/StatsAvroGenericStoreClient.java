@@ -18,7 +18,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -36,8 +35,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
   private final int maxAllowedKeyCntInBatchGetReq;
   private final boolean useStreamingBatchGetAsDefault;
-  private final RedundantExceptionFilter redundantExceptionFilter =
-      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.SECONDS.toMillis(1));
+  private final RedundantExceptionFilter redundantExceptionFilter = new RedundantExceptionFilter();
 
   public StatsAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig clientConfig) {
     super(delegate);
