@@ -8,3 +8,4 @@ nav_external_links:
 exclude:
   # javadoc/legal has some markdowns that get picked up by jekyll/just-the-docs
   - javadoc/legal
+  - vendor/
