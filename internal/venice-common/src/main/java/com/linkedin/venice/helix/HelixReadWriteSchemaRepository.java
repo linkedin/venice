@@ -560,7 +560,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   // For testing purpose only.
-  public void removeValueSchema(String storeName, int schemaId) {
+  void removeValueSchema(String storeName, int schemaId) {
     preCheckStoreCondition(storeName);
     accessor.removeValueSchema(storeName, String.valueOf(schemaId));
   }

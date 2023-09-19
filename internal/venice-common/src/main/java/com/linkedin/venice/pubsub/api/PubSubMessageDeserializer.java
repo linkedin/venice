@@ -1,7 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
@@ -64,18 +63,12 @@ public class PubSubMessageDeserializer {
             Schema providedProtocolSchema = AvroCompatibilityHelper.parse(new String(header.value()));
             value =
                 valueSerializer.deserialize(valueBytes, providedProtocolSchema, getEnvelope(key.getKeyHeaderByte()));
-          } catch (VeniceException e) {
-            /*
-             * If a Venice exception is caught when registering a new discovered schema, we don't need any special
-             * management here, delegate it to the follower deserialize to handle such case.
-             */
-            LOGGER.warn(
-                "Venice exception in registering new encountered schema in protocol header: ",
-                VENICE_TRANSPORT_PROTOCOL_HEADER,
-                e);
           } catch (Exception e) {
             // Improper header... will ignore.
-            LOGGER.warn("Received unparsable schema in protocol header: " + VENICE_TRANSPORT_PROTOCOL_HEADER, e);
+            LOGGER.warn(
+                "Received unparsable schema or encountered schema registration issue in protocol header: "
+                    + VENICE_TRANSPORT_PROTOCOL_HEADER,
+                e);
           }
           break; // We don't look at other headers
         }

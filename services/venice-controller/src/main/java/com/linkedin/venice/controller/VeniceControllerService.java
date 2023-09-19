@@ -50,6 +50,8 @@ public class VeniceControllerService extends AbstractVeniceService {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Map<String, AdminConsumerService> consumerServicesByClusters;
 
+  private final BiConsumer<Integer, Schema> newSchemaEncountered;
+
   public VeniceControllerService(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
@@ -130,7 +132,7 @@ public class VeniceControllerService extends AbstractVeniceService {
      * Register a callback function to handle the case when a new KME value schema is encountered when the child controller
      * consumes the admin topics.
      */
-    BiConsumer<Integer, Schema> newSchemaEncountered = (schemaId, schema) -> {
+    newSchemaEncountered = (schemaId, schema) -> {
       LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
       String systemClusterName = multiClusterConfigs.getSystemSchemaClusterName();
       VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemClusterName);
