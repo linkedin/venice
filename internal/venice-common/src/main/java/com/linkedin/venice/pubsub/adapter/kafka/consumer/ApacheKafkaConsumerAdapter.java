@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -50,22 +51,16 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
   public static final String CONSUMER_POLL_RETRY_TIMES_CONFIG = "consumer.poll.retry.times";
   public static final String CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG = "consumer.poll.retry.backoff.ms";
-  private static final boolean DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE = false;
   private static final int CONSUMER_POLL_RETRY_TIMES_DEFAULT = 3;
   private static final int CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT = 0;
 
-  private final Consumer<byte[], byte[]> kafkaConsumer;
   private final int consumerPollRetryTimes;
   private final int consumerPollRetryBackoffMs;
+
+  private final Consumer<byte[], byte[]> kafkaConsumer;
   private final TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker;
-
-  private final Map<TopicPartition, PubSubTopicPartition> assignments;
-
+  private final Map<TopicPartition, PubSubTopicPartition> assignments = new HashMap<>();
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
-
-  public ApacheKafkaConsumerAdapter(Properties props, PubSubMessageDeserializer pubSubMessageDeserializer) {
-    this(props, DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE, pubSubMessageDeserializer);
-  }
 
   public ApacheKafkaConsumerAdapter(
       Properties props,
@@ -83,17 +78,27 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       VeniceProperties props,
       boolean isKafkaConsumerOffsetCollectionEnabled,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
+    this(
+        consumer,
+        props,
+        pubSubMessageDeserializer,
+        isKafkaConsumerOffsetCollectionEnabled ? new TopicPartitionsOffsetsTracker() : null);
+  }
+
+  protected ApacheKafkaConsumerAdapter(
+      Consumer<byte[], byte[]> consumer,
+      VeniceProperties props,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker) {
     this.kafkaConsumer = consumer;
     this.consumerPollRetryTimes = props.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
     this.consumerPollRetryBackoffMs =
         props.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
-    this.topicPartitionsOffsetsTracker =
-        isKafkaConsumerOffsetCollectionEnabled ? new TopicPartitionsOffsetsTracker() : null;
-    this.assignments = new HashMap<>();
+    this.topicPartitionsOffsetsTracker = topicPartitionsOffsetsTracker;
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     LOGGER.info("Consumer poll retry times: {}", this.consumerPollRetryTimes);
     LOGGER.info("Consumer poll retry back off in ms: {}", this.consumerPollRetryBackoffMs);
-    LOGGER.info("Consumer offset collection enabled: {}", isKafkaConsumerOffsetCollectionEnabled);
+    LOGGER.info("Consumer offset collection enabled: {}", topicPartitionsOffsetsTracker != null);
   }
 
   private void seekNextOffset(TopicPartition topicPartition, long lastReadOffset) {
@@ -152,14 +157,24 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public void batchUnsubscribe(Set<PubSubTopicPartition> pubSubTopicPartitionSet) {
-    pubSubTopicPartitionSet.forEach(
-        pubSubTopicPartition -> assignments.remove(
-            new TopicPartition(
-                pubSubTopicPartition.getPubSubTopic().getName(),
-                pubSubTopicPartition.getPartitionNumber())));
-    Collection<TopicPartition> kafkaTopicPartitions = assignments.keySet();
-    kafkaConsumer.assign(kafkaTopicPartitions);
+  public void batchUnsubscribe(Set<PubSubTopicPartition> pubSubTopicPartitionsToUnsubscribe) {
+    // convert pubSubTopicPartitionsToUnsubscribe to a set of TopicPartition
+    // additionally remove them from assignments and topicPartitionsOffsetsTracker
+    Set<TopicPartition> topicPartitionsToUnsubscribe =
+        pubSubTopicPartitionsToUnsubscribe.stream().map(pubSubTopicPartition -> {
+          TopicPartition topicPartition = new TopicPartition(
+              pubSubTopicPartition.getPubSubTopic().getName(),
+              pubSubTopicPartition.getPartitionNumber());
+          assignments.remove(topicPartition);
+          if (topicPartitionsOffsetsTracker != null) {
+            topicPartitionsOffsetsTracker.removeTrackedOffsets(topicPartition);
+          }
+          return topicPartition;
+        }).collect(Collectors.toSet());
+
+    Collection<TopicPartition> currentAssignments = new HashSet<>(kafkaConsumer.assignment());
+    currentAssignments.removeAll(topicPartitionsToUnsubscribe);
+    kafkaConsumer.assign(currentAssignments);
   }
 
   @Override
