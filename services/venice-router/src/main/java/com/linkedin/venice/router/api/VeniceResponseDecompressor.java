@@ -48,19 +48,23 @@ public class VeniceResponseDecompressor {
   private final String kafkaTopic;
   private final CompressorFactory compressorFactory;
 
+  private final DictionaryRetrievalService dictionaryRetrievalService;
+
   public VeniceResponseDecompressor(
       boolean decompressOnClient,
       RouterStats<AggRouterHttpRequestStats> routerStats,
       BasicFullHttpRequest request,
       String storeName,
       int version,
-      CompressorFactory compressorFactory) {
+      CompressorFactory compressorFactory,
+      DictionaryRetrievalService dictionaryRetrievalService) {
     this.routerStats = routerStats;
     this.clientCompression = decompressOnClient ? getClientSupportedCompression(request) : CompressionStrategy.NO_OP;
     this.storeName = storeName;
     this.version = version;
     this.kafkaTopic = Version.composeKafkaTopic(storeName, version);
     this.compressorFactory = compressorFactory;
+    this.dictionaryRetrievalService = dictionaryRetrievalService;
   }
 
   private static CompressionStrategy getClientSupportedCompression(HttpRequest request) {
@@ -177,11 +181,18 @@ public class VeniceResponseDecompressor {
       if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
         compressor = compressorFactory.getVersionSpecificCompressor(kafkaTopic);
         if (compressor == null) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
-              Optional.of(storeName),
-              Optional.of(requestType),
-              SERVICE_UNAVAILABLE,
-              "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
+          byte[] dictionary = dictionaryRetrievalService.getDictionaryForKafkaTopic(kafkaTopic);
+          if (dictionary != null) {
+            compressor = compressorFactory
+                .createVersionSpecificCompressorIfNotExist(compressionStrategy, kafkaTopic, dictionary);
+            if (compressor == null) {
+              throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+                  Optional.of(storeName),
+                  Optional.of(requestType),
+                  SERVICE_UNAVAILABLE,
+                  "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
+            }
+          }
         }
       } else {
         compressor = compressorFactory.getCompressor(compressionStrategy);

@@ -125,7 +125,8 @@ public class TestVenicePathParser {
         getMockedStats(),
         storeRepository,
         mock(VeniceRouterConfig.class),
-        mock(CompressorFactory.class));
+        mock(CompressorFactory.class),
+        null);
 
     String storeName = "test-store";
     String uri = "storage/" + storeName;
@@ -185,7 +186,8 @@ public class TestVenicePathParser {
         getMockedStats(),
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
-        compressorFactory);
+        compressorFactory,
+        null);
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri, 0, 0);
     VenicePath path = parser.parseResourceUri(uri, request);
     String keyB64 = Base64.getEncoder().encodeToString("key".getBytes());
@@ -214,7 +216,8 @@ public class TestVenicePathParser {
         getMockedStats(),
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
-        compressorFactory).parseResourceUri(myUri, request);
+        compressorFactory,
+        null).parseResourceUri(myUri, request);
     ByteBuffer partitionKey = path.getPartitionKey().getKeyBuffer();
     Assert.assertEquals(
         path.getPartitionKey().getKeyBuffer(),
@@ -233,7 +236,8 @@ public class TestVenicePathParser {
         getMockedStats(),
         mock(ReadOnlyStoreRepository.class),
         MOCK_ROUTER_CONFIG,
-        compressorFactory).parseResourceUri("/badAction/storeName/key");
+        compressorFactory,
+        null).parseResourceUri("/badAction/storeName/key");
   }
 
   @Test
@@ -278,7 +282,8 @@ public class TestVenicePathParser {
         mockRouterStats,
         storeRepository,
         MOCK_ROUTER_CONFIG,
-        compressorFactory);
+        compressorFactory,
+        null);
     try {
       pathParser.parseResourceUri(myUri, request);
       fail("A RouterException should be thrown here");

@@ -66,7 +66,8 @@ public class TestVeniceResponseAggregator {
     doReturn(requestType).when(path).getRequestType();
     doReturn(storeName).when(path).getStoreName();
     doReturn(null).when(path).getChunkedResponse();
-    doReturn(new VeniceResponseDecompressor(false, routerStats, request, storeName, 1, compressorFactory)).when(path)
+    doReturn(new VeniceResponseDecompressor(false, routerStats, request, storeName, 1, compressorFactory, null))
+        .when(path)
         .getResponseDecompressor();
     return path;
   }

@@ -35,7 +35,7 @@ public class TestVeniceResponseDecompressor {
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
     VeniceResponseDecompressor responseDecompressor =
-        new VeniceResponseDecompressor(true, null, request, "test-store", 1, compressorFactory);
+        new VeniceResponseDecompressor(true, null, request, "test-store", 1, compressorFactory, null);
 
     CompositeByteBuf content = Unpooled.compositeBuffer();
 
@@ -73,7 +73,7 @@ public class TestVeniceResponseDecompressor {
           new byte[] {});
 
       VeniceResponseDecompressor responseDecompressor =
-          new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
+          new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory, null);
 
       CompositeByteBuf content = Unpooled.compositeBuffer();
 
@@ -113,7 +113,7 @@ public class TestVeniceResponseDecompressor {
           new byte[] {});
 
       VeniceResponseDecompressor responseDecompressor =
-          new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
+          new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory, null);
       CompositeByteBuf content1 = Unpooled.compositeBuffer();
       ContentDecompressResult result =
           responseDecompressor.decompressMultiGetContent(CompressionStrategy.ZSTD_WITH_DICT, content1);

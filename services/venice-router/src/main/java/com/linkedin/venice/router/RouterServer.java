@@ -511,7 +511,8 @@ public class RouterServer extends AbstractVeniceService {
         routerStats,
         metadataRepository,
         config,
-        compressorFactory);
+        compressorFactory,
+        dictionaryRetrievalService);
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);

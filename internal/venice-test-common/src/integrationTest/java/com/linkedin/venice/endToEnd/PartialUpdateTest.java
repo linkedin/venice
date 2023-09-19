@@ -612,7 +612,7 @@ public class PartialUpdateTest {
    */
   @Test(timeOut = TEST_TIMEOUT_MS
       * 3, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
-  public void testActiveAcitvePartialUpdateWithCompression(CompressionStrategy compressionStrategy) throws IOException {
+  public void testActiveActivePartialUpdateWithCompression(CompressionStrategy compressionStrategy) throws IOException {
     final String storeName = Utils.getUniqueString("rmdChunking");
     String parentControllerUrl = parentController.getControllerUrl();
     String keySchemaStr = "{\"type\" : \"string\"}";

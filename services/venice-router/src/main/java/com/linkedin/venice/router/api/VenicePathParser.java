@@ -95,19 +95,23 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   private final VeniceRouterConfig routerConfig;
   private final CompressorFactory compressorFactory;
 
+  private final DictionaryRetrievalService dictionaryRetrievalService;
+
   public VenicePathParser(
       VeniceVersionFinder versionFinder,
       VenicePartitionFinder partitionFinder,
       RouterStats<AggRouterHttpRequestStats> routerStats,
       ReadOnlyStoreRepository storeRepository,
       VeniceRouterConfig routerConfig,
-      CompressorFactory compressorFactory) {
+      CompressorFactory compressorFactory,
+      DictionaryRetrievalService dictionaryRetrievalService) {
     this.versionFinder = versionFinder;
     this.partitionFinder = partitionFinder;
     this.routerStats = routerStats;
     this.storeRepository = storeRepository;
     this.routerConfig = routerConfig;
     this.compressorFactory = compressorFactory;
+    this.dictionaryRetrievalService = dictionaryRetrievalService;
   };
 
   @Override
@@ -260,7 +264,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           fullHttpRequest,
           storeName,
           version,
-          compressorFactory);
+          compressorFactory,
+          dictionaryRetrievalService);
       path.setResponseDecompressor(responseDecompressor);
 
       AggRouterHttpRequestStats aggRouterHttpRequestStats = routerStats.getStatsByType(requestType);

@@ -420,7 +420,7 @@ public class TestVeniceDispatcher {
       return modifyingCompressor;
     })).when(compressorFactory).getCompressor(any());
 
-    doReturn(new VeniceResponseDecompressor(true, routerStats, mockRequest, "test_store", 1, compressorFactory))
+    doReturn(new VeniceResponseDecompressor(true, routerStats, mockRequest, "test_store", 1, compressorFactory, null))
         .when(mockPath)
         .getResponseDecompressor();
 

@@ -216,6 +216,16 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     this.dictionaryRetrieverThread = new Thread(runnable);
   }
 
+  public byte[] getDictionaryForKafkaTopic(String kafkaTopic) {
+    String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int version = Version.parseVersionFromVersionTopicName(kafkaTopic);
+    try {
+      return getDictionary(store, version).get();
+    } catch (ExecutionException | InterruptedException e) {
+      return null;
+    }
+  }
+
   private CompletableFuture<byte[]> getDictionary(String store, int version) {
     String kafkaTopic = Version.composeKafkaTopic(store, version);
     Instance instance = getOnlineInstance(kafkaTopic);
@@ -240,7 +250,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     storageNodeClient.sendRequest(request, responseFuture);
 
     return CompletableFuture.supplyAsync(() -> {
-      VeniceException exception = null;
+      VeniceException exception;
       try {
         byte[] dictionary = getDictionaryFromResponse(
             responseFuture.get(dictionaryRetrievalTimeMs, TimeUnit.MILLISECONDS),
