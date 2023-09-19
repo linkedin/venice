@@ -129,21 +129,28 @@ Java server, which spins up the gRPC Handler on the Rust side, along with any po
 Doing JNI properly requires packaging a jar with code compiled for multiple architectures (at least Mac and Linux for
 the time being). There is some complexity there, but it can be done.
 
+Although there are many tutorials on how use JNI with Rust, we can consider using a higher-level framework to facilitate
+the work, such as [duchess](https://github.com/duchess-rs/duchess).
+
 ### Quota
 
-The read quota will need to be re-implemented in Rust. There are essentially two main approaches we can consider:
+The read quota will need to be re-implemented in Rust. There are essentially three approaches we can consider:
 
 1. Let the Rust server and Java server share a quota amount between them, so that no matter if the traffic comes in via
    the Java port or the Rust port, it will be accounted for and the configured limit will be respected. This requires
    having some kind of synchronization between the two sides (either at the granularity of each request, which is likely
    too expensive, or by reserving some allotment periodically, which is complicated).
-2. Let the Rust server and Java server each have the full quota amount and not need any interaction between each other 
+2. Let the Rust server and Java server each have the full quota amount and not need any interaction between each other
    for sharing it. This is much simpler to implement, but the downside is that if clients were to perfectly balance
    their traffic across the two ports, they could get up to twice their configured quota.
+3. If the Rust server is enabled, then completely disable the ability of the Java side to answer requests. This would
+   uphold the quota limit strongly, without the complexity of quota sharing described in approach 1. The downside is
+   that if the Rust server supports only a subset of operations (e.g. lack of Read Compute support), then unsupported
+   operations would become completely unavailable on the cluster(s) where the Rust read path is enabled.
 
 Since the migration is expected to be controlled by the operator, and should only be activated for users of the Fast
-Client (i.e. not for users that run a mix of Thin Clients and Fast Clients), the edge case solved by the more 
-complicated solution 1 does not seem likely to come up. Therefore, the proposal is to pick the simpler solution 2.
+Client (i.e. not for users that run a mix of Thin Clients and Fast Clients), the edge case solved by the more
+complicated solution 1 does not seem likely to come up. Therefore, the proposal is to pick either solution 2 or 3.
 
 Also, it can be considered whether quota should be part of the MVP at all. If the Rust server mode will be tried in 
 dedicated clusters at first, then quota may not even be a must-have (though of course it will be needed eventually).
