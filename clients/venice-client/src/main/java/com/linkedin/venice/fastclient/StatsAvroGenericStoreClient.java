@@ -169,8 +169,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         exceptionReceived = true;
         if (!redundantExceptionFilter.isRedundantException(throwable.getMessage())) {
           LOGGER.error(
-              "Exception received in fast client's {}: ",
+              "Exception received in fast client's {}: {}",
               requestContext instanceof GetRequestContext ? "single get" : "batch get",
+              throwable.getMessage(),
               throwable);
         }
       }
