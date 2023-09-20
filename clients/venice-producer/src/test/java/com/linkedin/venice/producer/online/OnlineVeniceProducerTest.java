@@ -733,6 +733,11 @@ public class OnlineVeniceProducerTest {
         updateBuilder.setNewFieldValue(FIELD_COLOR, "red");
       });
 
+      /**
+       * Before this fix, one of these {@code asyncUpdate} call would think that update schemas had already been fetched
+       * and because it wouldn't find the update schemas themselves, the future would return exceptionally with:
+       * {@literal Update schema not found. Check if partial update is enabled for the store...}
+       */
       future1.get();
       future2.get();
     }
