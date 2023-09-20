@@ -1,8 +1,12 @@
 package com.linkedin.venice.message;
 
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.writer.VeniceWriter;
+import java.nio.ByteBuffer;
 import javax.annotation.Nonnull;
+import org.apache.avro.specific.FixedSize;
 
 
 /**
@@ -10,6 +14,13 @@ import javax.annotation.Nonnull;
  * {@link com.linkedin.venice.serialization.KafkaKeySerializer}.
  */
 public class KafkaKey {
+  public static final KafkaKey HEART_BEAT = new KafkaKey(
+      MessageType.CONTROL_MESSAGE,
+      ByteBuffer.allocate(GUID.class.getAnnotation(FixedSize.class).value() + Integer.BYTES * 2)
+          .put(VeniceWriter.HEART_BEAT_GUID.bytes())
+          .putInt(0)
+          .putInt(0)
+          .array());
   private final byte keyHeaderByte;
   private final byte[] key; // TODO: Consider whether we may want to use a ByteBuffer here
 

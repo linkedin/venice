@@ -247,6 +247,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(
               PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
               pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory().getClass().getName())
+          .put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 1000)
           .put(configProperties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);

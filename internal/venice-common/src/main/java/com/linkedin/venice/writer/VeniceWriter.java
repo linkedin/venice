@@ -37,6 +37,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
@@ -205,6 +206,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER =
       new LeaderMetadataWrapper(DEFAULT_UPSTREAM_OFFSET, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID);
 
+  public static final GUID HEART_BEAT_GUID =
+      new GUID(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 });
+
   private static final PubSubMessageHeaders EMPTY_MSG_HEADERS = new PubSubMessageHeaders();
 
   // Immutable state
@@ -261,6 +265,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private volatile boolean isChunkingFlagInvoked;
 
   private final boolean isRmdChunkingEnabled;
+
+  private final ControlMessage heartBeatMessage;
 
   public VeniceWriter(VeniceWriterOptions params, VeniceProperties props, PubSubProducerAdapter producerAdapter) {
     this(params, props, producerAdapter, KafkaMessageEnvelope.SCHEMA$);
@@ -366,6 +372,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
       this.segments = new Segment[this.numberOfPartitions];
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
+
+      heartBeatMessage = new ControlMessage();
+      heartBeatMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
+      StartOfSegment sos = new StartOfSegment();
+      sos.checksumType = checkSumType.getValue();
+      sos.upcomingAggregates = new ArrayList<>();
+      heartBeatMessage.controlMessageUnion = sos;
     } catch (Exception e) {
       logger.error("VeniceWriter cannot be constructed with the props: {}", props);
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
@@ -1681,6 +1694,34 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           leaderMetadataWrapper,
           VENICE_DEFAULT_LOGICAL_TS);
     }
+  }
+
+  public void sendHeartbeat(
+      PubSubTopicPartition topicPartition,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper) {
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.CONTROL_MESSAGE.getValue();
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = HEART_BEAT_GUID;
+    producerMetadata.segmentNumber = 0;
+    producerMetadata.messageSequenceNumber = 0;
+    producerMetadata.messageTimestamp = time.getMilliseconds();
+    producerMetadata.logicalTimestamp = VENICE_DEFAULT_LOGICAL_TS;
+    kafkaMessageEnvelope.producerMetadata = producerMetadata;
+    kafkaMessageEnvelope.leaderMetadataFooter = new LeaderMetadata();
+    kafkaMessageEnvelope.leaderMetadataFooter.hostName = writerId;
+    kafkaMessageEnvelope.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
+    kafkaMessageEnvelope.leaderMetadataFooter.upstreamKafkaClusterId =
+        leaderMetadataWrapper.getUpstreamKafkaClusterId();
+    kafkaMessageEnvelope.payloadUnion = heartBeatMessage;
+    producerAdapter.sendMessage(
+        topicPartition.getPubSubTopic().getName(),
+        topicPartition.getPartitionNumber(),
+        KafkaKey.HEART_BEAT,
+        kafkaMessageEnvelope,
+        protocolSchemaHeaders,
+        callback);
   }
 
   /**
