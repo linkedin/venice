@@ -8,7 +8,7 @@ import com.linkedin.venice.serializer.RecordSerializer;
 
 public class MultiGetResponseWrapper extends MultiKeyResponseWrapper<MultiGetResponseRecordV1> {
   private static final RecordSerializer<MultiGetResponseRecordV1> SERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
 
   public MultiGetResponseWrapper(int maxKeyCount) {
     super(maxKeyCount);

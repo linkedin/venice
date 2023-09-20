@@ -32,7 +32,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   public UpdateBuilderImpl(Schema updateSchema) {
     validateUpdateSchema(updateSchema);
     this.updateRecord = new GenericData.Record(updateSchema);
-    this.serializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(updateSchema);
+    this.serializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(updateSchema);
     this.updateFieldNameSet = new HashSet<>();
     this.collectionMergeFieldNameSet = new HashSet<>();
   }
