@@ -231,9 +231,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     Instance instance = getOnlineInstance(kafkaTopic);
 
     if (instance == null) {
-      CompletableFuture<byte[]> future = new CompletableFuture<>();
-      future.completeExceptionally(new VeniceException("No online storage instance for resource: " + kafkaTopic));
-      return future;
+      return CompletableFuture.supplyAsync(() -> {
+        throw new VeniceException("No online storage instance for resource: " + kafkaTopic);
+      }, executor);
     }
 
     String instanceUrl = instance.getUrl(sslFactory.isPresent());
