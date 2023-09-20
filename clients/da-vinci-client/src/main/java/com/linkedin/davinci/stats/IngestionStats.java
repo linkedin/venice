@@ -488,19 +488,19 @@ public class IngestionStats {
   }
 
   public double getNearlineProducerToLocalBrokerLatencyAvg() {
-    return nearlineProducerToLocalBrokerLatencySensor.getAvg();
+    return unAvailableToZero(nearlineProducerToLocalBrokerLatencySensor.getAvg());
   }
 
   public double getNearlineProducerToLocalBrokerLatencyMax() {
-    return nearlineProducerToLocalBrokerLatencySensor.getMax();
+    return unAvailableToZero(nearlineProducerToLocalBrokerLatencySensor.getMax());
   }
 
   public double getNearlineLocalBrokerToReadyToServeLatencyAvg() {
-    return nearlineLocalBrokerToReadyToServeLatencySensor.getAvg();
+    return unAvailableToZero(nearlineLocalBrokerToReadyToServeLatencySensor.getAvg());
   }
 
   public double getNearlineLocalBrokerToReadyToServeLatencyMax() {
-    return nearlineLocalBrokerToReadyToServeLatencySensor.getMax();
+    return unAvailableToZero(nearlineLocalBrokerToReadyToServeLatencySensor.getMax());
   }
 
   public void recordNearlineProducerToLocalBrokerLatency(double value, long currentTimeMs) {
@@ -511,4 +511,10 @@ public class IngestionStats {
     nearlineLocalBrokerToReadyToServeLatencySensor.record(value, currentTimeMs);
   }
 
+  public static double unAvailableToZero(double value) {
+    /* When data is unavailable, return 0 instead of NaN or Infinity. Some metrics are initialized to -INF.
+     This can cause problems when metrics are aggregated. Use only when zero makes semantic sense.
+    */
+    return Double.isFinite(value) ? value : 0;
+  }
 }
