@@ -107,8 +107,6 @@ public class TestActiveActiveIngestion {
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
 
-  private static final String TEST_BOOTSTRAP_FILE_SYSTEM_PATH = "/export/content/data/change-capture";
-
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
@@ -1042,7 +1040,7 @@ public class TestActiveActiveIngestion {
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setLocalD2ZkHosts(localZkServer.getAddress())
         .setControllerRequestRetryCount(3)
-        .setBootstrapFileSystemPath(Utils.getUniqueString(TEST_BOOTSTRAP_FILE_SYSTEM_PATH));
+        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 
@@ -1102,9 +1100,7 @@ public class TestActiveActiveIngestion {
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
-    // Verify total updates match up (first 20 + next 20 should make 40, And then double it again as rewind updates
-    // are
-    // applied to a version)
+    // Verify total updates match up
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
@@ -1178,7 +1174,7 @@ public class TestActiveActiveIngestion {
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setLocalD2ZkHosts(localZkServer.getAddress())
         .setControllerRequestRetryCount(3)
-        .setBootstrapFileSystemPath(Utils.getUniqueString(TEST_BOOTSTRAP_FILE_SYSTEM_PATH));
+        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 
@@ -1205,7 +1201,7 @@ public class TestActiveActiveIngestion {
     bootstrappingVeniceChangelogConsumer.start().get();
     Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
 
-    // 10 changes in nearline. 10 puts, and 1 end of bootstrap
+    // 21 changes in nearline. 10 puts, 10 deletes and 1 delete with timestamp will be ignored and 1 end of bootstrap
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 11);
@@ -1230,9 +1226,7 @@ public class TestActiveActiveIngestion {
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
-    // Verify total updates match up (first 20 + next 20 should make 40, And then double it again as rewind updates
-    // are
-    // applied to a version)
+    // Verify total updates match up
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
