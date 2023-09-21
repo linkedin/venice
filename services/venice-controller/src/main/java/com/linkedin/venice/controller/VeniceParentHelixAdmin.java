@@ -232,7 +232,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -2159,7 +2158,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
 
       boolean replicateAllConfigs = replicateAll.isPresent() && replicateAll.get();
-      List<CharSequence> updatedConfigsList = new LinkedList<>();
+      Set<CharSequence> updatedConfigSet = new HashSet<>();
       String errorMessagePrefix = "Store update error for " + storeName + " in cluster: " + clusterName + ": ";
 
       Store currStore = getVeniceHelixAdmin().getStore(clusterName, storeName);
@@ -2170,7 +2169,7 @@ public class VeniceParentHelixAdmin implements Admin {
       UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
       setStore.clusterName = clusterName;
       setStore.storeName = storeName;
-      setStore.owner = owner.map(addToUpdatedConfigList(updatedConfigsList, OWNER)).orElseGet(currStore::getOwner);
+      setStore.owner = owner.map(addToUpdatedConfigList(updatedConfigSet, OWNER)).orElseGet(currStore::getOwner);
 
       // Invalid config update on hybrid will not be populated to admin channel so subsequent updates on the store won't
       // be blocked by retry mechanism.
@@ -2183,7 +2182,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (partitionCount.isPresent()) {
         getVeniceHelixAdmin().preCheckStorePartitionCountUpdate(clusterName, currStore, partitionCount.get());
         setStore.partitionNum = partitionCount.get();
-        updatedConfigsList.add(PARTITION_COUNT);
+        updatedConfigSet.add(PARTITION_COUNT);
       } else {
         setStore.partitionNum = currStore.getPartitionCount();
       }
@@ -2195,10 +2194,10 @@ public class VeniceParentHelixAdmin implements Admin {
       validateActiveActiveReplicationEnableConfigs(activeActiveReplicationEnabled, nativeReplicationEnabled, currStore);
 
       setStore.nativeReplicationEnabled =
-          nativeReplicationEnabled.map(addToUpdatedConfigList(updatedConfigsList, NATIVE_REPLICATION_ENABLED))
+          nativeReplicationEnabled.map(addToUpdatedConfigList(updatedConfigSet, NATIVE_REPLICATION_ENABLED))
               .orElseGet(currStore::isNativeReplicationEnabled);
       setStore.pushStreamSourceAddress =
-          pushStreamSourceAddress.map(addToUpdatedConfigList(updatedConfigsList, PUSH_STREAM_SOURCE_ADDRESS))
+          pushStreamSourceAddress.map(addToUpdatedConfigList(updatedConfigSet, PUSH_STREAM_SOURCE_ADDRESS))
               .orElseGet(currStore::getPushStreamSourceAddress);
 
       if (storeViewConfig.isPresent()) {
@@ -2207,7 +2206,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Map<String, StoreViewConfigRecord> mergedViewSettings =
             VeniceHelixAdmin.mergeNewViewConfigsIntoOldConfigs(currStore, storeViewConfig.get());
         setStore.views = mergedViewSettings;
-        updatedConfigsList.add(STORE_VIEW);
+        updatedConfigSet.add(STORE_VIEW);
       }
 
       // Only update fields that are set, other fields will be read from the original store's partitioner config.
@@ -2217,10 +2216,10 @@ public class VeniceParentHelixAdmin implements Admin {
           partitionerParams,
           amplificationFactor);
       if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
-        // Update updatedConfigsList.
-        partitionerClass.ifPresent(p -> updatedConfigsList.add(PARTITIONER_CLASS));
-        partitionerParams.ifPresent(p -> updatedConfigsList.add(PARTITIONER_PARAMS));
-        amplificationFactor.ifPresent(p -> updatedConfigsList.add(AMPLIFICATION_FACTOR));
+        // Update updatedConfigSet.
+        partitionerClass.ifPresent(p -> updatedConfigSet.add(PARTITIONER_CLASS));
+        partitionerParams.ifPresent(p -> updatedConfigSet.add(PARTITIONER_PARAMS));
+        amplificationFactor.ifPresent(p -> updatedConfigSet.add(AMPLIFICATION_FACTOR));
         // Create PartitionConfigRecord for admin channel transmission.
         PartitionerConfigRecord partitionerConfigRecord = new PartitionerConfigRecord();
         partitionerConfigRecord.partitionerClass = updatedPartitionerConfig.getPartitionerClass();
@@ -2248,24 +2247,24 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       setStore.enableReads =
-          readability.map(addToUpdatedConfigList(updatedConfigsList, ENABLE_READS)).orElseGet(currStore::isEnableReads);
-      setStore.enableWrites = writeability.map(addToUpdatedConfigList(updatedConfigsList, ENABLE_WRITES))
+          readability.map(addToUpdatedConfigList(updatedConfigSet, ENABLE_READS)).orElseGet(currStore::isEnableReads);
+      setStore.enableWrites = writeability.map(addToUpdatedConfigList(updatedConfigSet, ENABLE_WRITES))
           .orElseGet(currStore::isEnableWrites);
 
-      setStore.readQuotaInCU = readQuotaInCU.map(addToUpdatedConfigList(updatedConfigsList, READ_QUOTA_IN_CU))
+      setStore.readQuotaInCU = readQuotaInCU.map(addToUpdatedConfigList(updatedConfigSet, READ_QUOTA_IN_CU))
           .orElseGet(currStore::getReadQuotaInCU);
 
       // We need to be careful when handling currentVersion.
       // Since it is not synced between parent and local controller,
       // It is very likely to override local values unintentionally.
-      setStore.currentVersion = currentVersion.map(addToUpdatedConfigList(updatedConfigsList, VERSION))
+      setStore.currentVersion = currentVersion.map(addToUpdatedConfigList(updatedConfigSet, VERSION))
           .orElse(AdminConsumptionTask.IGNORED_CURRENT_VERSION);
 
-      hybridRewindSeconds.map(addToUpdatedConfigList(updatedConfigsList, REWIND_TIME_IN_SECONDS));
-      hybridOffsetLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, OFFSET_LAG_TO_GO_ONLINE));
-      hybridTimeLagThreshold.map(addToUpdatedConfigList(updatedConfigsList, TIME_LAG_TO_GO_ONLINE));
-      hybridDataReplicationPolicy.map(addToUpdatedConfigList(updatedConfigsList, DATA_REPLICATION_POLICY));
-      hybridBufferReplayPolicy.map(addToUpdatedConfigList(updatedConfigsList, BUFFER_REPLAY_POLICY));
+      hybridRewindSeconds.map(addToUpdatedConfigList(updatedConfigSet, REWIND_TIME_IN_SECONDS));
+      hybridOffsetLagThreshold.map(addToUpdatedConfigList(updatedConfigSet, OFFSET_LAG_TO_GO_ONLINE));
+      hybridTimeLagThreshold.map(addToUpdatedConfigList(updatedConfigSet, TIME_LAG_TO_GO_ONLINE));
+      hybridDataReplicationPolicy.map(addToUpdatedConfigList(updatedConfigSet, DATA_REPLICATION_POLICY));
+      hybridBufferReplayPolicy.map(addToUpdatedConfigList(updatedConfigSet, BUFFER_REPLAY_POLICY));
       HybridStoreConfig updatedHybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
           currStore,
           hybridRewindSeconds,
@@ -2281,20 +2280,20 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean storeBeingConvertedToHybrid = !currStore.isHybrid() && updatedHybridStoreConfig != null
           && veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
 
-      // Update active-active replication and incremental push settings
+      // Update active-active replication config.
       setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
-          .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
+          .map(addToUpdatedConfigList(updatedConfigSet, ACTIVE_ACTIVE_REPLICATION_ENABLED))
           .orElseGet(currStore::isActiveActiveReplicationEnabled);
       // Enable active-active replication automatically when batch user store being converted to hybrid store and
       // active-active replication is enabled for all hybrid store via the cluster config
       if (storeBeingConvertedToHybrid && !setStore.activeActiveReplicationEnabled && !currStore.isSystemStore()
           && clusterConfig.isActiveActiveReplicationEnabledAsDefaultForHybrid()) {
         setStore.activeActiveReplicationEnabled = true;
-        updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
+        updatedConfigSet.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
       }
-
+      // Update incremental push config.
       setStore.incrementalPushEnabled =
-          incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
+          incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigSet, INCREMENTAL_PUSH_ENABLED))
               .orElseGet(currStore::isIncrementalPushEnabled);
       // Enable incremental push automatically when batch user store being converted to hybrid store and active-active
       // replication is enabled or being and the cluster config allows it.
@@ -2302,7 +2301,7 @@ public class VeniceParentHelixAdmin implements Admin {
           && setStore.activeActiveReplicationEnabled
           && clusterConfig.enabledIncrementalPushForHybridActiveActiveUserStores()) {
         setStore.incrementalPushEnabled = true;
-        updatedConfigsList.add(INCREMENTAL_PUSH_ENABLED);
+        updatedConfigSet.add(INCREMENTAL_PUSH_ENABLED);
       }
 
       // If store is already hybrid then check to make sure the end state is valid. We do this because we allow enabling
@@ -2338,15 +2337,15 @@ public class VeniceParentHelixAdmin implements Admin {
             storeName);
         HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
         hybridStoreConfigRecord.rewindTimeInSeconds = DEFAULT_REWIND_TIME_IN_SECONDS;
-        updatedConfigsList.add(REWIND_TIME_IN_SECONDS);
+        updatedConfigSet.add(REWIND_TIME_IN_SECONDS);
         hybridStoreConfigRecord.offsetLagThresholdToGoOnline = DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
-        updatedConfigsList.add(OFFSET_LAG_TO_GO_ONLINE);
+        updatedConfigSet.add(OFFSET_LAG_TO_GO_ONLINE);
         hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds = DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
-        updatedConfigsList.add(TIME_LAG_TO_GO_ONLINE);
+        updatedConfigSet.add(TIME_LAG_TO_GO_ONLINE);
         hybridStoreConfigRecord.dataReplicationPolicy = DataReplicationPolicy.NONE.getValue();
-        updatedConfigsList.add(DATA_REPLICATION_POLICY);
+        updatedConfigSet.add(DATA_REPLICATION_POLICY);
         hybridStoreConfigRecord.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
-        updatedConfigsList.add(BUFFER_REPLAY_POLICY);
+        updatedConfigSet.add(BUFFER_REPLAY_POLICY);
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
       }
 
@@ -2356,57 +2355,57 @@ public class VeniceParentHelixAdmin implements Admin {
        * We expose actual disk usage to users, instead of multiplying/dividing the overhead ratio by situations.
        */
       setStore.storageQuotaInByte =
-          storageQuotaInByte.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_QUOTA_IN_BYTE))
+          storageQuotaInByte.map(addToUpdatedConfigList(updatedConfigSet, STORAGE_QUOTA_IN_BYTE))
               .orElseGet(currStore::getStorageQuotaInByte);
 
-      setStore.accessControlled = accessControlled.map(addToUpdatedConfigList(updatedConfigsList, ACCESS_CONTROLLED))
+      setStore.accessControlled = accessControlled.map(addToUpdatedConfigList(updatedConfigSet, ACCESS_CONTROLLED))
           .orElseGet(currStore::isAccessControlled);
       setStore.compressionStrategy =
-          compressionStrategy.map(addToUpdatedConfigList(updatedConfigsList, COMPRESSION_STRATEGY))
+          compressionStrategy.map(addToUpdatedConfigList(updatedConfigSet, COMPRESSION_STRATEGY))
               .map(CompressionStrategy::getValue)
               .orElse(currStore.getCompressionStrategy().getValue());
       setStore.clientDecompressionEnabled =
-          clientDecompressionEnabled.map(addToUpdatedConfigList(updatedConfigsList, CLIENT_DECOMPRESSION_ENABLED))
+          clientDecompressionEnabled.map(addToUpdatedConfigList(updatedConfigSet, CLIENT_DECOMPRESSION_ENABLED))
               .orElseGet(currStore::getClientDecompressionEnabled);
-      setStore.chunkingEnabled = chunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, CHUNKING_ENABLED))
+      setStore.chunkingEnabled = chunkingEnabled.map(addToUpdatedConfigList(updatedConfigSet, CHUNKING_ENABLED))
           .orElseGet(currStore::isChunkingEnabled);
       setStore.rmdChunkingEnabled =
-          rmdChunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, RMD_CHUNKING_ENABLED))
+          rmdChunkingEnabled.map(addToUpdatedConfigList(updatedConfigSet, RMD_CHUNKING_ENABLED))
               .orElseGet(currStore::isRmdChunkingEnabled);
-      setStore.batchGetLimit = batchGetLimit.map(addToUpdatedConfigList(updatedConfigsList, BATCH_GET_LIMIT))
+      setStore.batchGetLimit = batchGetLimit.map(addToUpdatedConfigList(updatedConfigSet, BATCH_GET_LIMIT))
           .orElseGet(currStore::getBatchGetLimit);
       setStore.numVersionsToPreserve =
-          numVersionsToPreserve.map(addToUpdatedConfigList(updatedConfigsList, NUM_VERSIONS_TO_PRESERVE))
+          numVersionsToPreserve.map(addToUpdatedConfigList(updatedConfigSet, NUM_VERSIONS_TO_PRESERVE))
               .orElseGet(currStore::getNumVersionsToPreserve);
-      setStore.isMigrating = storeMigration.map(addToUpdatedConfigList(updatedConfigsList, STORE_MIGRATION))
+      setStore.isMigrating = storeMigration.map(addToUpdatedConfigList(updatedConfigSet, STORE_MIGRATION))
           .orElseGet(currStore::isMigrating);
       setStore.writeComputationEnabled =
-          writeComputationEnabled.map(addToUpdatedConfigList(updatedConfigsList, WRITE_COMPUTATION_ENABLED))
+          writeComputationEnabled.map(addToUpdatedConfigList(updatedConfigSet, WRITE_COMPUTATION_ENABLED))
               .orElseGet(currStore::isWriteComputationEnabled);
       setStore.replicationMetadataVersionID = replicationMetadataVersionID
-          .map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
+          .map(addToUpdatedConfigList(updatedConfigSet, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
           .orElse(currStore.getRmdVersion());
       setStore.readComputationEnabled =
-          readComputationEnabled.map(addToUpdatedConfigList(updatedConfigsList, READ_COMPUTATION_ENABLED))
+          readComputationEnabled.map(addToUpdatedConfigList(updatedConfigSet, READ_COMPUTATION_ENABLED))
               .orElseGet(currStore::isReadComputationEnabled);
       setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours
-          .map(addToUpdatedConfigList(updatedConfigsList, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS))
+          .map(addToUpdatedConfigList(updatedConfigSet, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS))
           .orElseGet(currStore::getBootstrapToOnlineTimeoutInHours);
       setStore.leaderFollowerModelEnabled = true; // do not mess up during upgrades
-      setStore.backupStrategy = (backupStrategy.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_STRATEGY))
+      setStore.backupStrategy = (backupStrategy.map(addToUpdatedConfigList(updatedConfigSet, BACKUP_STRATEGY))
           .orElse(currStore.getBackupStrategy())).ordinal();
 
       setStore.schemaAutoRegisterFromPushJobEnabled = autoSchemaRegisterPushJobEnabled
-          .map(addToUpdatedConfigList(updatedConfigsList, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED))
+          .map(addToUpdatedConfigList(updatedConfigSet, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED))
           .orElse(currStore.isSchemaAutoRegisterFromPushJobEnabled());
 
       setStore.hybridStoreDiskQuotaEnabled =
-          hybridStoreDiskQuotaEnabled.map(addToUpdatedConfigList(updatedConfigsList, HYBRID_STORE_DISK_QUOTA_ENABLED))
+          hybridStoreDiskQuotaEnabled.map(addToUpdatedConfigList(updatedConfigSet, HYBRID_STORE_DISK_QUOTA_ENABLED))
               .orElse(currStore.isHybridStoreDiskQuotaEnabled());
 
-      regularVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, REGULAR_VERSION_ETL_ENABLED));
-      futureVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, FUTURE_VERSION_ETL_ENABLED));
-      etledUserProxyAccount.map(addToUpdatedConfigList(updatedConfigsList, ETLED_PROXY_USER_ACCOUNT));
+      regularVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigSet, REGULAR_VERSION_ETL_ENABLED));
+      futureVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigSet, FUTURE_VERSION_ETL_ENABLED));
+      etledUserProxyAccount.map(addToUpdatedConfigList(updatedConfigSet, ETLED_PROXY_USER_ACCOUNT));
       setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(
           currStore,
           regularVersionETLEnabled,
@@ -2414,29 +2413,29 @@ public class VeniceParentHelixAdmin implements Admin {
           etledUserProxyAccount);
 
       setStore.largestUsedVersionNumber =
-          largestUsedVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_VERSION_NUMBER))
+          largestUsedVersionNumber.map(addToUpdatedConfigList(updatedConfigSet, LARGEST_USED_VERSION_NUMBER))
               .orElseGet(currStore::getLargestUsedVersionNumber);
 
       setStore.backupVersionRetentionMs =
-          backupVersionRetentionMs.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_VERSION_RETENTION_MS))
+          backupVersionRetentionMs.map(addToUpdatedConfigList(updatedConfigSet, BACKUP_VERSION_RETENTION_MS))
               .orElseGet(currStore::getBackupVersionRetentionMs);
-      setStore.replicationFactor = replicationFactor.map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_FACTOR))
+      setStore.replicationFactor = replicationFactor.map(addToUpdatedConfigList(updatedConfigSet, REPLICATION_FACTOR))
           .orElseGet(currStore::getReplicationFactor);
       setStore.migrationDuplicateStore =
-          migrationDuplicateStore.map(addToUpdatedConfigList(updatedConfigsList, MIGRATION_DUPLICATE_STORE))
+          migrationDuplicateStore.map(addToUpdatedConfigList(updatedConfigSet, MIGRATION_DUPLICATE_STORE))
               .orElseGet(currStore::isMigrationDuplicateStore);
-      setStore.nativeReplicationSourceFabric = nativeReplicationSourceFabric
-          .map(addToUpdatedConfigList(updatedConfigsList, NATIVE_REPLICATION_SOURCE_FABRIC))
-          .orElseGet((currStore::getNativeReplicationSourceFabric));
+      setStore.nativeReplicationSourceFabric =
+          nativeReplicationSourceFabric.map(addToUpdatedConfigList(updatedConfigSet, NATIVE_REPLICATION_SOURCE_FABRIC))
+              .orElseGet((currStore::getNativeReplicationSourceFabric));
 
       setStore.disableMetaStore =
-          params.disableMetaStore().map(addToUpdatedConfigList(updatedConfigsList, DISABLE_META_STORE)).orElse(false);
+          params.disableMetaStore().map(addToUpdatedConfigList(updatedConfigSet, DISABLE_META_STORE)).orElse(false);
 
       setStore.disableDavinciPushStatusStore = params.disableDavinciPushStatusStore()
-          .map(addToUpdatedConfigList(updatedConfigsList, DISABLE_DAVINCI_PUSH_STATUS_STORE))
+          .map(addToUpdatedConfigList(updatedConfigSet, DISABLE_DAVINCI_PUSH_STATUS_STORE))
           .orElse(false);
 
-      setStore.storagePersona = personaName.map(addToUpdatedConfigList(updatedConfigsList, PERSONA_NAME)).orElse(null);
+      setStore.storagePersona = personaName.map(addToUpdatedConfigList(updatedConfigSet, PERSONA_NAME)).orElse(null);
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {
@@ -2448,13 +2447,13 @@ public class VeniceParentHelixAdmin implements Admin {
         }
       }
       setStore.latestSuperSetValueSchemaId =
-          latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigsList, LATEST_SUPERSET_SCHEMA_ID))
+          latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigSet, LATEST_SUPERSET_SCHEMA_ID))
               .orElseGet(currStore::getLatestSuperSetValueSchemaId);
       setStore.storageNodeReadQuotaEnabled =
-          storageNodeReadQuotaEnabled.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_NODE_READ_QUOTA_ENABLED))
+          storageNodeReadQuotaEnabled.map(addToUpdatedConfigList(updatedConfigSet, STORAGE_NODE_READ_QUOTA_ENABLED))
               .orElseGet(currStore::isStorageNodeReadQuotaEnabled);
       setStore.minCompactionLagSeconds =
-          minCompactionLagSeconds.map(addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
+          minCompactionLagSeconds.map(addToUpdatedConfigList(updatedConfigSet, MIN_COMPACTION_LAG_SECONDS))
               .orElseGet(currStore::getMinCompactionLagSeconds);
 
       StoragePersonaRepository repository =
@@ -2484,18 +2483,18 @@ public class VeniceParentHelixAdmin implements Admin {
 
       /**
        * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
-       * an updatedConfigsList will be used to represent which configs are updated by users.
+       * an updatedConfigSet will be used to represent which configs are updated by users.
        */
       setStore.replicateAllConfigs = replicateAllConfigs;
       if (!replicateAllConfigs) {
-        if (updatedConfigsList.size() == 0) {
+        if (updatedConfigSet.isEmpty()) {
           String errMsg =
               "UpdateStore command failed for store " + storeName + ". The command didn't change any specific"
                   + " store config and didn't specify \"--replicate-all-configs\" flag.";
           LOGGER.error(errMsg);
           throw new VeniceException(errMsg);
         }
-        setStore.updatedConfigsList = updatedConfigsList;
+        setStore.updatedConfigsList = new ArrayList<>(updatedConfigSet);
       } else {
         setStore.updatedConfigsList = Collections.emptyList();
       }
@@ -2513,12 +2512,49 @@ public class VeniceParentHelixAdmin implements Admin {
             ErrorType.BAD_REQUEST);
       }
 
-      final boolean writeComputeJustEnabled =
+      // When this config is true, it means partial update is enabled by request.
+      boolean partialUpdateJustEnabled =
           writeComputationEnabled.orElse(false) && !currStore.isWriteComputationEnabled();
-      if (writeComputeJustEnabled) {
+      if (partialUpdateJustEnabled) {
         // Dry-run generating Write Compute schemas before sending admin messages to enable Write Compute because Write
         // Compute schema generation may fail due to some reasons. If that happens, abort the store update process.
         addWriteComputeSchemaForStore(clusterName, storeName, true);
+      } else {
+        /**
+         * If a store: (1) Is being converted to hybrid (2) Is not partial update enabled for now. (3) Does not change
+         * partial update config in this request.
+         * It means partial update is not enabled, and there is't explict intention to change it. In this case, we will
+         * look up cluster config and based on the replication policy to enable partial update implicitly.
+         */
+        final boolean shouldEnablePartialUpdateBasedOnClusterConfig =
+            storeBeingConvertedToHybrid && (setStore.activeActiveReplicationEnabled
+                ? clusterConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()
+                : clusterConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores());
+
+        if (!writeComputationEnabled.isPresent() && !currStore.isWriteComputationEnabled()
+            && shouldEnablePartialUpdateBasedOnClusterConfig) {
+          try {
+            addWriteComputeSchemaForStore(clusterName, storeName, true);
+            partialUpdateJustEnabled = true;
+            setStore.writeComputationEnabled = true;
+            updatedConfigSet.add(WRITE_COMPUTATION_ENABLED);
+            LOGGER.info("Controller will enable partial update based on cluster config for store: " + storeName);
+          } catch (Exception e) {
+            LOGGER.warn(
+                "Caught exception when trying to enable partial update base on cluster config, will not enable partial update for store: "
+                    + storeName,
+                e);
+          }
+        }
+      }
+      // Make sure chunking config is also included when turning on partial update.
+      if (partialUpdateJustEnabled) {
+        setStore.chunkingEnabled = true;
+        updatedConfigSet.add(CHUNKING_ENABLED);
+        if (setStore.activeActiveReplicationEnabled) {
+          setStore.rmdChunkingEnabled = true;
+          updatedConfigSet.add(RMD_CHUNKING_ENABLED);
+        }
       }
 
       if (!veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
@@ -2540,7 +2576,7 @@ public class VeniceParentHelixAdmin implements Admin {
             "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
             setStore.getPartitionNum(),
             storeName);
-        updatedConfigsList.add(PARTITION_COUNT);
+        updatedConfigSet.add(PARTITION_COUNT);
       }
 
       AdminOperation message = new AdminOperation();
@@ -2550,10 +2586,10 @@ public class VeniceParentHelixAdmin implements Admin {
 
       final boolean readComputeJustEnabled =
           readComputationEnabled.orElse(false) && !currStore.isReadComputationEnabled();
-      if ((!currStore.isSystemStore()) && (readComputeJustEnabled || writeComputeJustEnabled)) {
+      if ((!currStore.isSystemStore()) && (readComputeJustEnabled || partialUpdateJustEnabled)) {
         addSupersetSchemaForStore(clusterName, storeName, currStore.isActiveActiveReplicationEnabled());
       }
-      if (writeComputeJustEnabled) {
+      if (partialUpdateJustEnabled) {
         LOGGER.info("Enabling write compute for the first time on store {} in cluster {}", storeName, clusterName);
         addWriteComputeSchemaForStore(clusterName, storeName, false);
       }
@@ -4774,7 +4810,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return veniceHelixAdmin;
   }
 
-  private <T> Function<T, T> addToUpdatedConfigList(List<CharSequence> updatedConfigList, String config) {
+  private <T> Function<T, T> addToUpdatedConfigList(Set<CharSequence> updatedConfigList, String config) {
     return (configValue) -> {
       updatedConfigList.add(config);
       return configValue;

@@ -169,6 +169,9 @@ public class VeniceControllerClusterConfig {
    */
   private boolean enabledIncrementalPushForHybridActiveActiveUserStores;
 
+  private boolean enablePartialUpdateForHybridActiveActiveUserStores;
+  private boolean enablePartialUpdateForHybridNonActiveActiveUserStores;
+
   /**
    * When this option is enabled, all new batch-only stores will have active-active replication enabled in store config so long
    * as the store has leader follower also enabled.
@@ -636,5 +639,13 @@ public class VeniceControllerClusterConfig {
 
   public boolean enabledIncrementalPushForHybridActiveActiveUserStores() {
     return enabledIncrementalPushForHybridActiveActiveUserStores;
+  }
+
+  public boolean isEnablePartialUpdateForHybridActiveActiveUserStores() {
+    return enablePartialUpdateForHybridActiveActiveUserStores;
+  }
+
+  public boolean isEnablePartialUpdateForHybridNonActiveActiveUserStores() {
+    return enablePartialUpdateForHybridNonActiveActiveUserStores;
   }
 }

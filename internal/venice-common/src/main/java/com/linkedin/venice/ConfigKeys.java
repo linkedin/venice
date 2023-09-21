@@ -1150,6 +1150,12 @@ public class ConfigKeys {
   public static final String ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
       "enable.incremental.push.for.hybrid.active.active.user.stores";
 
+  public static final String ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES =
+      "enable.partial.update.for.hybrid.active.active.user.stores";
+
+  public static final String ENABLE_PARTIAL_UPDATE_FOR_HYBRID_NON_ACTIVE_ACTIVE_USER_STORES =
+      "enable.partial.update.for.hybrid.non.active.active.user.stores";
+
   /**
    * The highest priority source fabric selection config, specified in parent controller.
    */
