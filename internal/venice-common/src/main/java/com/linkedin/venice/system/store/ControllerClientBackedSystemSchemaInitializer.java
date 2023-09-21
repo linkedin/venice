@@ -157,13 +157,25 @@ public class ControllerClientBackedSystemSchemaInitializer {
             version,
             schemasInZk.get(version),
             schemaInLocalResources,
-            inputSchemas != null);
+            determineSchemaCompatabilityType());
 
         if (autoRegisterPartialUpdateSchema) {
           checkAndMayRegisterPartialUpdateSchema(storeName, version, schemaInLocalResources);
         }
       }
     }
+  }
+
+  private DirectionalSchemaCompatibilityType determineSchemaCompatabilityType() {
+    if (protocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
+      return DirectionalSchemaCompatibilityType.FULL;
+    }
+
+    if (protocolDefinition == AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE) {
+      return DirectionalSchemaCompatibilityType.BACKWARD;
+    }
+
+    return DirectionalSchemaCompatibilityType.FULL;
   }
 
   public void execute() {
@@ -252,18 +264,11 @@ public class ControllerClientBackedSystemSchemaInitializer {
       int valueSchemaId,
       Schema schemaInZk,
       Schema schemaInLocalResources,
-      boolean skipCompatibilityCheck) {
+      DirectionalSchemaCompatibilityType compatType) {
     if (schemaInZk == null) {
-      SchemaResponse addValueSchemaResponse = controllerClient.retryableRequest(DEFAULT_RETRY_TIMES, c -> {
-        if (skipCompatibilityCheck) {
-          return c.addValueSchema(
-              storeName,
-              schemaInLocalResources.toString(),
-              valueSchemaId,
-              DirectionalSchemaCompatibilityType.NONE);
-        }
-        return c.addValueSchema(storeName, schemaInLocalResources.toString(), valueSchemaId);
-      });
+      SchemaResponse addValueSchemaResponse = controllerClient.retryableRequest(
+          DEFAULT_RETRY_TIMES,
+          c -> c.addValueSchema(storeName, schemaInLocalResources.toString(), valueSchemaId, compatType));
 
       if (addValueSchemaResponse.isError()) {
         throw new VeniceException(
