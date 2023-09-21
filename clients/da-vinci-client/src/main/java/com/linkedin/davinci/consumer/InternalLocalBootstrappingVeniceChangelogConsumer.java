@@ -84,12 +84,13 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
   boolean isStarted = false;
 
+  private int bootstrapCompletedCount = 0;
+
   public InternalLocalBootstrappingVeniceChangelogConsumer(
       ChangelogClientConfig changelogClientConfig,
-      PubSubConsumerAdapter pubSubConsumer,
-      String fileSystemPath) {
+      PubSubConsumerAdapter pubSubConsumer) {
     super(changelogClientConfig, pubSubConsumer);
-    configLoader = buildVeniceConfig(fileSystemPath);
+    configLoader = buildVeniceConfig();
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(
         changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
         this.storeRepository,
@@ -184,7 +185,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     return super.handleControlMessage(controlMessage, pubSubTopicPartition, topicSuffix);
   }
 
-  private VeniceConfigLoader buildVeniceConfig(String baseDataPath) {
+  private VeniceConfigLoader buildVeniceConfig() {
     VeniceProperties config = new PropertyBuilder().put(ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER, 4) // RocksDB
                                                                                                        // default config
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER, 20) // RocksDB default config
@@ -193,7 +194,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         .put(ROCKSDB_LEVEL0_SLOWDOWN_WRITES_TRIGGER_WRITE_ONLY_VERSION, 60)
         .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 80)
         .put(changelogClientConfig.getConsumerProperties())
-        .put(DATA_BASE_PATH, baseDataPath)
+        .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false)
         .build();
     return new VeniceConfigLoader(config, config);
@@ -208,7 +209,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
       throw new VeniceException("Client isn't started yet!!");
     }
     // If there are any partitions which are in BOOTSTRAPPING state, play messages from those partitions first
-    int[] bootstrapCompletedCount = new int[1];
     for (Map.Entry<Integer, BootstrapState> state: bootstrapStateMap.entrySet()) {
       if (state.getValue().bootstrapState.equals(PollState.BOOTSTRAPPING)) {
         // read from storage engine
@@ -223,7 +223,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
               @Override
               public void onCompletion() {
-                onCompletionForStorage(state.getKey(), state.getValue(), bootstrapCompletedCount, resultSet, completed);
+                onCompletionForStorage(state.getKey(), state.getValue(), resultSet, completed);
               }
             });
         if (!completed.get()) {
@@ -268,19 +268,23 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
   void onCompletionForStorage(
       int partition,
       BootstrapState state,
-      int[] bootstrapCompletedCount,
       Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> resultSet,
       AtomicBoolean completed) {
     // Update the map so that we're no longer in bootstrap mode
     state.bootstrapState = PollState.CONSUMING;
-    bootstrapCompletedCount[0]++;
-    if (bootstrapCompletedCount[0] == bootstrapStateMap.size()) {
+    bootstrapCompletedCount++;
+    if (bootstrapCompletedCount == bootstrapStateMap.size()) {
       // Add a dummy record to mark the end of the bootstrap.
       resultSet.add(new ImmutableChangeCapturePubSubMessage<>(null, null, getTopicPartition(partition), 0, 0, 0, true));
     }
 
     // Notify that we've caught up
     completed.set(true);
+  }
+
+  @VisibleForTesting
+  int getBootstrapCompletedCount() {
+    return bootstrapCompletedCount;
   }
 
   /**
@@ -321,12 +325,17 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
     T deserializedValue = deserializer.deserialize(decompressedBytes);
     if (deserializedValue instanceof RecordChangeEvent) {
       RecordChangeEvent recordChangeEvent = (RecordChangeEvent) deserializedValue;
-      storageService.getStorageEngine(LOCAL_STATE_TOPIC_NAME)
-          .put(
-              partition.getPartitionNumber(),
-              key,
-              ValueRecord.create(recordChangeEvent.currentValue.schemaId, recordChangeEvent.currentValue.value.array())
-                  .serialize());
+      if (recordChangeEvent.currentValue == null) {
+        storageService.getStorageEngine(LOCAL_STATE_TOPIC_NAME).delete(partition.getPartitionNumber(), key);
+      } else {
+        storageService.getStorageEngine(LOCAL_STATE_TOPIC_NAME)
+            .put(
+                partition.getPartitionNumber(),
+                key,
+                ValueRecord
+                    .create(recordChangeEvent.currentValue.schemaId, recordChangeEvent.currentValue.value.array())
+                    .serialize());
+      }
     } else {
       storageService.getStorageEngine(LOCAL_STATE_TOPIC_NAME)
           .put(
@@ -385,9 +394,9 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
 
         synchronized (bootstrapStateMap) {
           BootstrapState newState = new BootstrapState();
-          newState.bootstrapState = PollState.CATCHING_UP;
           newState.currentPubSubPosition = localCheckpoint;
           newState.targetPubSubPosition = targetCheckpoint;
+          newState.bootstrapState = newState.isCaughtUp() ? PollState.BOOTSTRAPPING : PollState.CATCHING_UP;
           bootstrapStateMap.put(partition, newState);
         }
       }

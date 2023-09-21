@@ -82,8 +82,7 @@ public class VeniceChangelogConsumerClientFactory {
           newStoreChangelogClientConfig,
           consumer != null
               ? consumer
-              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
-          newStoreChangelogClientConfig.getBootstrapFileSystemPath());
+              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
     });
   }
 

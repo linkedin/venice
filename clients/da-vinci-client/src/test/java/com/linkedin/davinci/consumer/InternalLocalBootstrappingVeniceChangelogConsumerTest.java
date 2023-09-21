@@ -140,8 +140,8 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     doReturn(assignments).when(pubSubConsumer).getAssignment();
     doReturn(LOWEST_OFFSET).when(pubSubConsumer).getLatestOffset(topicPartition_0);
     doReturn(LOWEST_OFFSET).when(pubSubConsumer).getLatestOffset(topicPartition_1);
-    doReturn(LOWEST_OFFSET).when(pubSubConsumer).endOffset(topicPartition_0);
-    doReturn(LOWEST_OFFSET).when(pubSubConsumer).endOffset(topicPartition_1);
+    doReturn(0L).when(pubSubConsumer).endOffset(topicPartition_0);
+    doReturn(0L).when(pubSubConsumer).endOffset(topicPartition_1);
     when(pubSubConsumer.poll(anyLong())).thenReturn(new HashMap<>());
 
     Properties consumerProperties = new Properties();
@@ -160,10 +160,8 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
             .setBootstrapFileSystemPath(TEST_BOOTSTRAP_FILE_SYSTEM_PATH)
             .setConsumerProperties(consumerProperties)
             .setLocalD2ZkHosts(TEST_ZOOKEEPER_ADDRESS);
-    bootstrappingVeniceChangelogConsumer = new InternalLocalBootstrappingVeniceChangelogConsumer<>(
-        changelogClientConfig,
-        pubSubConsumer,
-        TEST_BOOTSTRAP_FILE_SYSTEM_PATH);
+    bootstrappingVeniceChangelogConsumer =
+        new InternalLocalBootstrappingVeniceChangelogConsumer<>(changelogClientConfig, pubSubConsumer);
 
     metadataRepository = mock(ThinClientMetaStoreBasedRepository.class);
     Store store = mock(Store.class);
@@ -186,10 +184,10 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     PubSubTopicPartition topicPartition_1 = new PubSubTopicPartitionImpl(changeCaptureTopic, 1);
     Set<PubSubTopicPartition> assignments = ImmutableSet.of(topicPartition_0, topicPartition_1);
     doReturn(assignments).when(pubSubConsumer).getAssignment();
-    doReturn(LOWEST_OFFSET).when(pubSubConsumer).getLatestOffset(topicPartition_0);
-    doReturn(LOWEST_OFFSET).when(pubSubConsumer).getLatestOffset(topicPartition_1);
-    doReturn(LOWEST_OFFSET).when(pubSubConsumer).endOffset(topicPartition_0);
-    doReturn(LOWEST_OFFSET).when(pubSubConsumer).endOffset(topicPartition_1);
+    doReturn(0L).when(pubSubConsumer).getLatestOffset(topicPartition_0);
+    doReturn(0L).when(pubSubConsumer).getLatestOffset(topicPartition_1);
+    doReturn(1L).when(pubSubConsumer).endOffset(topicPartition_0);
+    doReturn(1L).when(pubSubConsumer).endOffset(topicPartition_1);
     when(pubSubConsumer.poll(anyLong())).thenReturn(new HashMap<>());
 
     StorageService mockStorageService = mock(StorageService.class);
@@ -213,8 +211,10 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     verify(metadataRepository, times(1)).start();
     verify(metadataRepository, times(1)).subscribe(storeName);
     verify(metadataRepository, times(1)).refresh();
-    verify(pubSubConsumer, times(2)).subscribe(topicPartition_0, LOWEST_OFFSET);
-    verify(pubSubConsumer, times(2)).subscribe(topicPartition_1, LOWEST_OFFSET);
+    verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, LOWEST_OFFSET);
+    verify(pubSubConsumer, times(1)).subscribe(topicPartition_1, LOWEST_OFFSET);
+    verify(pubSubConsumer, times(1)).subscribe(topicPartition_0, 0L);
+    verify(pubSubConsumer, times(1)).subscribe(topicPartition_1, 0L);
     verify(pubSubConsumer, times(2)).poll(anyLong());
 
     // Verify onRecordReceivedForStorage for partition 0
@@ -238,18 +238,16 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
 
     // Verify onCompletionForStorage for partition 0
     resultSet = new ArrayList<>();
-    int[] bootstrapCompletedCount = new int[1];
     InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState state =
         new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
     AtomicBoolean completed = new AtomicBoolean(false);
 
-    bootstrappingVeniceChangelogConsumer
-        .onCompletionForStorage(0, state, bootstrapCompletedCount, resultSet, completed);
+    bootstrappingVeniceChangelogConsumer.onCompletionForStorage(0, state, resultSet, completed);
 
     Assert.assertEquals(resultSet.size(), 0);
     Assert.assertTrue(completed.get());
     Assert.assertEquals(state.bootstrapState, InternalLocalBootstrappingVeniceChangelogConsumer.PollState.CONSUMING);
-    Assert.assertEquals(bootstrapCompletedCount[0], 1);
+    Assert.assertEquals(bootstrappingVeniceChangelogConsumer.getBootstrapCompletedCount(), 1);
 
     // Verify onRecordReceivedForStorage for partition 1
     resultSet = new ArrayList<>();
@@ -274,13 +272,12 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
     state = new InternalLocalBootstrappingVeniceChangelogConsumer.BootstrapState();
     completed = new AtomicBoolean(false);
 
-    bootstrappingVeniceChangelogConsumer
-        .onCompletionForStorage(1, state, bootstrapCompletedCount, resultSet, completed);
+    bootstrappingVeniceChangelogConsumer.onCompletionForStorage(1, state, resultSet, completed);
 
     Assert.assertEquals(resultSet.size(), 1);
     Assert.assertTrue(completed.get());
     Assert.assertEquals(state.bootstrapState, InternalLocalBootstrappingVeniceChangelogConsumer.PollState.CONSUMING);
-    Assert.assertEquals(bootstrapCompletedCount[0], 2);
+    Assert.assertEquals(bootstrappingVeniceChangelogConsumer.getBootstrapCompletedCount(), 2);
   }
 
   private void verifyPollResult(

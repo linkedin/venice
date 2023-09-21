@@ -904,7 +904,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       throw new VeniceException(
           "Cannot get latest coordinate position for partition " + partition + "! Consumer isn't subscribed!");
     }
-    long offset = pubSubConsumer.getLatestOffset(topicPartition.get());
+    long offset = pubSubConsumer.endOffset(topicPartition.get()) - 1;
     return new VeniceChangeCoordinate(
         topicPartition.get().getPubSubTopic().getName(),
         new ApacheKafkaOffsetPosition(offset),
