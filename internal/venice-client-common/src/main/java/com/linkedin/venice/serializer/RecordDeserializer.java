@@ -2,6 +2,7 @@ package com.linkedin.venice.serializer;
 
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.List;
 import org.apache.avro.io.BinaryDecoder;
 
 
@@ -20,7 +21,7 @@ public interface RecordDeserializer<T> {
 
   T deserialize(T reuse, InputStream in, BinaryDecoder reusedDecoder) throws VeniceSerializationException;
 
-  Iterable<T> deserializeObjects(byte[] bytes) throws VeniceSerializationException;
+  List<T> deserializeObjects(byte[] bytes) throws VeniceSerializationException;
 
-  Iterable<T> deserializeObjects(BinaryDecoder binaryDecoder) throws VeniceSerializationException;
+  List<T> deserializeObjects(BinaryDecoder binaryDecoder) throws VeniceSerializationException;
 }
