@@ -1,7 +1,10 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
 import com.linkedin.venice.annotation.Threadsafe;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
@@ -32,6 +35,15 @@ public interface PartitionOffsetFetcher extends Closeable {
   List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic);
 
   long getOffsetByTimeIfOutOfRange(PubSubTopicPartition pubSubTopicPartition, long timestamp);
+
+  PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getLastRealTimeRecordInVersionTopic(
+      PubSubTopicPartition pubSubTopicPartition,
+      int retries);
+
+  PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getRecordByOffset(
+      PubSubTopicPartition pubSubTopicPartition,
+      long offset,
+      int retries);
 
   @Override
   void close();

@@ -1,6 +1,9 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
@@ -94,6 +97,33 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
     long res = partitionOffsetFetcher.getOffsetByTimeIfOutOfRange(topicPartition, timestamp);
     stats.recordLatency(
         PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_PARTITION_OFFSET_BY_TIME_IF_OUT_OF_RANGE,
+        Utils.calculateDurationMs(time, startTimeMs));
+    return res;
+  }
+
+  @Override
+  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getLastRealTimeRecordInVersionTopic(
+      PubSubTopicPartition pubSubTopicPartition,
+      int retries) {
+    final long startTimeMs = time.getMilliseconds();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> res =
+        partitionOffsetFetcher.getLastRealTimeRecordInVersionTopic(pubSubTopicPartition, retries);
+    stats.recordLatency(
+        PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_LAST_REAL_TIME_RECORD_IN_VERSION_TOPIC_WITH_RETRY,
+        Utils.calculateDurationMs(time, startTimeMs));
+    return res;
+  }
+
+  @Override
+  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getRecordByOffset(
+      PubSubTopicPartition pubSubTopicPartition,
+      long offset,
+      int retries) {
+    final long startTimeMs = time.getMilliseconds();
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> res =
+        partitionOffsetFetcher.getRecordByOffset(pubSubTopicPartition, offset, retries);
+    stats.recordLatency(
+        PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_RECORD_BY_OFFSET_WITH_RETRY,
         Utils.calculateDurationMs(time, startTimeMs));
     return res;
   }

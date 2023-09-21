@@ -58,6 +58,9 @@ import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.hadoop.validation.NoOpValidator;
 import com.linkedin.venice.hadoop.validation.Validator;
+import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -66,7 +69,15 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
@@ -245,6 +256,8 @@ public class VenicePushJob implements AutoCloseable {
   public static final String KAFKA_INPUT_TOPIC = "kafka.input.topic";
   public static final String KAFKA_INPUT_FABRIC = "kafka.input.fabric";
   public static final String KAFKA_INPUT_BROKER_URL = "kafka.input.broker.url";
+  // Format example: 0:kafkaUrl0,1:kafkaUrl1,2:kafkaUrl2
+  public static final String KAFKA_INPUT_CLUSTER_ID_TO_URL = "kafka.input.cluster.id.to.url";
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
   public static final String KAFKA_INPUT_COMBINER_ENABLED = "kafka.input.combiner.enabled";
@@ -1047,7 +1060,7 @@ public class VenicePushJob implements AutoCloseable {
           pushId = Version.generateRePushId(pushId);
           if (storeSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
               && pushJobSetting.rewindTimeInSecondsOverride == NOT_SET) {
-            pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+            pushJobSetting.rewindTimeInSecondsOverride = getRePushRewindInSecondsOverride(pushJobSetting.storeName);
             LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
           }
           if (pushJobSetting.repushTTLEnabled) {
@@ -1231,6 +1244,72 @@ public class VenicePushJob implements AutoCloseable {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
     }
+  }
+
+  private long getRePushRewindInSecondsOverride(String storeName) {
+    if (getStoreResponse(storeName).getStore().isActiveActiveReplicationEnabled()) {
+      Map<Integer, String> kafkaClusterIdToUrlMap = getKafkaIdToUrlMap();
+      if (kafkaClusterIdToUrlMap.isEmpty()) {
+        return DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+      }
+      PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+      try (TopicManagerRepository topicManagerRepository = TopicManagerRepository.builder()
+          .setLocalKafkaBootstrapServers(pushJobSetting.kafkaInputBrokerUrl)
+          .setPubSubTopicRepository(pubSubTopicRepository)
+          .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
+          .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
+          .build()) {
+        TopicManager sourceKafkaTopicManager = topicManagerRepository.getTopicManager();
+        PubSubTopic versionTopic = pubSubTopicRepository.getTopic(pushJobSetting.kafkaInputTopic);
+        List<PubSubTopicPartitionInfo> partitions = sourceKafkaTopicManager.partitionsFor(versionTopic);
+        // Find the low watermark of the latest consumed RT message timestamp across all the partitions
+        long earliestMessageTimeStamp = Long.MAX_VALUE;
+        for (PubSubTopicPartitionInfo partition: partitions) {
+          PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition.partition());
+          // First, find the last record replicated from real-time topic to version topic
+          PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> lastRTRecordInVT =
+              sourceKafkaTopicManager.getLastRealTimeRecordInVersionTopic(pubSubTopicPartition, 10);
+          if (lastRTRecordInVT == null) {
+            continue;
+          }
+          // Second, use kafka cluster id and offset to find the original real-time record
+          int kafkaClusterId = lastRTRecordInVT.getValue().getLeaderMetadataFooter().getUpstreamKafkaClusterId();
+          long realtimeRecordOffset = lastRTRecordInVT.getValue().getLeaderMetadataFooter().getUpstreamOffset();
+          String realtimeKafkaUrl = kafkaClusterIdToUrlMap.get(kafkaClusterId);
+          TopicManager realtimeKafkaTopicManager = topicManagerRepository.getTopicManager(realtimeKafkaUrl);
+          PubSubTopic realtimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
+          pubSubTopicPartition = new PubSubTopicPartitionImpl(realtimeTopic, partition.partition());
+          PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> lastConsumedRTRecord =
+              realtimeKafkaTopicManager.getRecordByOffset(pubSubTopicPartition, realtimeRecordOffset, 10);
+          if (lastConsumedRTRecord == null) {
+            continue;
+          }
+          // Third, get the timestamp of original real-time record and update the low watermark
+          long lastConsumedRTRecordTimestamp =
+              lastConsumedRTRecord.getValue().getProducerMetadata().getMessageTimestamp();
+          if (lastConsumedRTRecordTimestamp < earliestMessageTimeStamp) {
+            earliestMessageTimeStamp = lastConsumedRTRecordTimestamp;
+          }
+        }
+        if (earliestMessageTimeStamp < Long.MAX_VALUE) {
+          return (System.currentTimeMillis() - earliestMessageTimeStamp + Time.MS_PER_SECOND - 1) / Time.MS_PER_SECOND;
+        }
+      }
+    }
+    return DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+  }
+
+  private Map<Integer, String> getKafkaIdToUrlMap() {
+    String kafkaClusterIdToUrlString = props.getString(KAFKA_INPUT_CLUSTER_ID_TO_URL, "");
+    if (kafkaClusterIdToUrlString.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    Map<Integer, String> kafkaClusterIdToUrlMap = new HashMap<>();
+    for (String entry: kafkaClusterIdToUrlString.split(",")) {
+      String[] pieces = entry.split(":");
+      kafkaClusterIdToUrlMap.put(Integer.parseInt(pieces[0]), pieces[1]);
+    }
+    return kafkaClusterIdToUrlMap;
   }
 
   /**

@@ -1,9 +1,12 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
 import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -511,6 +514,107 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       }
       return offset;
     }
+  }
+
+  @Override
+  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getLastRealTimeRecordInVersionTopic(
+      PubSubTopicPartition pubSubTopicPartition,
+      int retries) {
+    if (retries < 1) {
+      throw new IllegalArgumentException("Invalid retries. Got: " + retries);
+    }
+    int attempt = 0;
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record;
+    PubSubOpTimeoutException lastException = new PubSubOpTimeoutException("This exception should not be thrown");
+    while (attempt < retries) {
+      try {
+        record = getLastRealTimeRecordInVersionTopic(pubSubTopicPartition);
+        return record;
+      } catch (PubSubOpTimeoutException e) {// topic and partition is listed in the exception object
+        logger
+            .warn("Failed to get last real-time record in version topic. Retries remaining: {}", retries - attempt, e);
+        lastException = e;
+        attempt++;
+      }
+    }
+    throw lastException;
+  }
+
+  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getLastRealTimeRecordInVersionTopic(
+      PubSubTopicPartition pubSubTopicPartition) {
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> lastConsumedRecords =
+        consumeLatestRecords(pubSubTopicPartition, 1);
+    if (lastConsumedRecords.isEmpty()) {
+      return null;
+    }
+
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> lastRecord = lastConsumedRecords.iterator().next();
+    if (!lastRecord.getKey().isControlMessage()) {
+      return lastRecord;
+    }
+
+    lastConsumedRecords = consumeLatestRecords(pubSubTopicPartition, 60);
+    if (lastConsumedRecords.isEmpty()) {
+      return null;
+    }
+    Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumerRecordsIterator =
+        lastConsumedRecords.iterator();
+    lastRecord = null;
+    while (consumerRecordsIterator.hasNext()) {
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = consumerRecordsIterator.next();
+      if (record.getKey().isControlMessage()) {
+        ControlMessageType controlMessageType =
+            ControlMessageType.valueOf((ControlMessage) record.getValue().payloadUnion);
+        if (controlMessageType == END_OF_PUSH) {
+          lastRecord = null;
+        }
+        continue;
+      }
+      lastRecord = record;
+    }
+    return lastRecord;
+  }
+
+  @Override
+  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getRecordByOffset(
+      PubSubTopicPartition pubSubTopicPartition,
+      long offset,
+      int retries) {
+    if (retries < 1) {
+      throw new IllegalArgumentException("Invalid retries. Got: " + retries);
+    }
+    int attempt = 0;
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record;
+    PubSubOpTimeoutException lastException = new PubSubOpTimeoutException("This exception should not be thrown");
+    while (attempt < retries) {
+      try {
+        record = getRecordByOffset(pubSubTopicPartition, offset);
+        return record;
+      } catch (PubSubOpTimeoutException e) {// topic and partition is listed in the exception object
+        logger.warn("Failed to get record by offset. Retries remaining: {}", retries - attempt, e);
+        lastException = e;
+        attempt++;
+      }
+    }
+    throw lastException;
+  }
+
+  private PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getRecordByOffset(
+      PubSubTopicPartition pubSubTopicPartition,
+      long offset) {
+    pubSubConsumer.get().subscribe(pubSubTopicPartition, offset - 1);
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records = Collections.emptyList();
+    int attempts = 0;
+    while (attempts++ < KAFKA_POLLING_RETRY_MAX_ATTEMPT && records.isEmpty()) {
+      logger.info(
+          "Trying to get record from topic: {} at offset: {}. Attempt#{}/{}",
+          pubSubTopicPartition,
+          offset - 1,
+          attempts,
+          KAFKA_POLLING_RETRY_MAX_ATTEMPT);
+      records = pubSubConsumer.get().poll(kafkaOperationTimeout.toMillis()).get(pubSubTopicPartition);
+    }
+    return records.isEmpty() ? null : records.get(0);
   }
 
   @Override

@@ -4,6 +4,8 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
@@ -14,6 +16,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubInstrumentedAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -638,6 +641,19 @@ public class TopicManager implements Closeable {
 
   public long getProducerTimestampOfLastDataRecord(PubSubTopicPartition pubSubTopicPartition, int retries) {
     return partitionOffsetFetcher.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, retries);
+  }
+
+  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getLastRealTimeRecordInVersionTopic(
+      PubSubTopicPartition pubSubTopicPartition,
+      int retries) {
+    return partitionOffsetFetcher.getLastRealTimeRecordInVersionTopic(pubSubTopicPartition, retries);
+  }
+
+  public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getRecordByOffset(
+      PubSubTopicPartition pubSubTopicPartition,
+      long offset,
+      int retries) {
+    return partitionOffsetFetcher.getRecordByOffset(pubSubTopicPartition, offset, retries);
   }
 
   public long getPartitionEarliestOffsetAndRetry(PubSubTopicPartition pubSubTopicPartition, int retries) {
