@@ -17,8 +17,10 @@ import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -416,6 +418,16 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       BiConsumer<TransportClientResponseForRoute, Throwable> transportClientResponseCompletionHandler) {
+
+    int keyCnt = keys.size();
+    if (keyCnt > this.config.getMaxAllowedKeyCntInBatchGetReq()) {
+      throw new VeniceKeyCountLimitException(
+          getStoreName(),
+          RequestType.MULTI_GET,
+          keyCnt,
+          this.config.getMaxAllowedKeyCntInBatchGetReq());
+    }
+
     /* Prepare each of the routes needed to query the keys */
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
     String uriForBatchGetRequest = composeURIForBatchGetRequest(requestContext);

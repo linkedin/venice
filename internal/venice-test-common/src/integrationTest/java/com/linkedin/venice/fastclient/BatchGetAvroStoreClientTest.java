@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.utils.Time.US_PER_SECOND;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -118,9 +119,10 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   /**
    * Creates a batchget request which uses scatter gather to fetch all keys from different replicas.
    */
-  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
   public void testBatchGetGenericClient(
       boolean useStreamingBatchGetAsDefault,
+      boolean retryEnabled,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -131,6 +133,13 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1)
             .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+
+    if (retryEnabled) {
+      // enable retry to test the code path: mimic retry in integration tests
+      // be non-deterministic, so setting big retry threshold to not actually retry
+      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(10 * US_PER_SECOND);
+    }
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
