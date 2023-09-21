@@ -184,10 +184,14 @@ public class ProducerTool {
       RouterBasedStoreSchemaFetcher schemaFetcher = new RouterBasedStoreSchemaFetcher(castClient);
       Schema keySchema = schemaFetcher.getKeySchema();
       Object key = adaptDataToSchema(producerContext.key, keySchema);
-      Object value = getValueObject(producerContext.value, schemaFetcher);
-
-      producer.asyncPut(key, value).get();
-      System.out.println("Data written to Venice!");
+      if (producerContext.value.equals("null")) { // Only allow `null`. Not "null", or 'null', or whatever.
+        producer.asyncDelete(key).get();
+        System.out.println("Record deleted from Venice!");
+      } else {
+        Object value = getValueObject(producerContext.value, schemaFetcher);
+        producer.asyncPut(key, value).get();
+        System.out.println("Data written to Venice!");
+      }
     } catch (Exception e) {
       System.err.println(ExceptionUtils.stackTraceToString(e));
       System.exit(1);
