@@ -32,6 +32,7 @@ public class ApacheKafkaConsumerConfig {
       KAFKA_CONFIG_PREFIX + ApacheKafkaConsumerAdapter.CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
   public static final String KAFKA_CLIENT_ID_CONFIG = KAFKA_CONFIG_PREFIX + ConsumerConfig.CLIENT_ID_CONFIG;
   public static final String KAFKA_GROUP_ID_CONFIG = KAFKA_CONFIG_PREFIX + ConsumerConfig.GROUP_ID_CONFIG;
+  public static final int DEFAULT_RECEIVE_BUFFER_SIZE = 1024 * 1024;
 
   private final Properties consumerProperties;
 
@@ -48,8 +49,10 @@ public class ApacheKafkaConsumerConfig {
       LOGGER.info("Will initialize a non-SSL Kafka consumer client");
     }
 
-    // Copied from KafkaClientFactory
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+    if (!consumerProperties.containsKey(ConsumerConfig.RECEIVE_BUFFER_CONFIG)) {
+      consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, DEFAULT_RECEIVE_BUFFER_SIZE);
+    }
+
     consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
   }
