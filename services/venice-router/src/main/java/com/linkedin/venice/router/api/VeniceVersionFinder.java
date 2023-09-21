@@ -88,9 +88,13 @@ public class VeniceVersionFinder {
 
     int metadataCurrentVersion = store.getCurrentVersion();
     if (!lastCurrentVersionMap.containsKey(storeName)) {
-      lastCurrentVersionMap.put(storeName, metadataCurrentVersion);
+      if (metadataCurrentVersion != Store.NON_EXISTING_VERSION && !isDecompressorReady(store, metadataCurrentVersion)) {
+        return Store.NON_EXISTING_VERSION;
+      } else {
+        lastCurrentVersionMap.put(storeName, metadataCurrentVersion);
+      }
       if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
-        /** This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersionMap} */
+        // This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersionMap}
         store = metadataRepository.refreshOneStore(storeName);
         metadataCurrentVersion = store.getCurrentVersion();
       }
