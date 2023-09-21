@@ -1,6 +1,6 @@
 package com.linkedin.venice.compute;
 
-import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.*;
+import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer;
 
 import com.linkedin.avro.api.PrimitiveFloatList;
 import com.linkedin.venice.VeniceConstants;

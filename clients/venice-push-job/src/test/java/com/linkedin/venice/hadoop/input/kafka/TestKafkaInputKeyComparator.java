@@ -14,7 +14,7 @@ import org.testng.annotations.Test;
 
 public class TestKafkaInputKeyComparator {
   private static RecordSerializer<KafkaInputMapperKey> KAFKA_INPUT_MAPPER_KEY_SERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericSerializer(KafkaInputMapperKey.SCHEMA$);
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperKey.SCHEMA$);
   private static KafkaInputKeyComparator KAFKA_INPUT_KEY_COMPARATOR = new KafkaInputKeyComparator();
 
   private static final ByteBuffer SERIALIZED_EMPTY_BYTES_WRITABLE;

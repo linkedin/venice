@@ -66,10 +66,11 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   private static final RecordDeserializer<GenericRecord> COMPUTE_REQUEST_NO_OP_DESERIALIZER =
       FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(ComputeRequestV3.SCHEMA$, EMPTY_RECORD_SCHEMA);
   private static final RecordDeserializer<ByteBuffer> COMPUTE_REQUEST_CLIENT_KEY_V1_DESERIALIZER =
-      FastSerializerDeserializerFactory
-          .getAvroGenericDeserializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(
+          ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema(),
+          ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
   private static final RecordSerializer<ComputeRouterRequestKeyV1> COMPUTE_ROUTER_REQUEST_KEY_V1_SERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericSerializer(ComputeRouterRequestKeyV1.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(ComputeRouterRequestKeyV1.getClassSchema());
 
   public static void skipOverComputeRequest(BinaryDecoder decoder) {
     COMPUTE_REQUEST_NO_OP_DESERIALIZER.deserialize(EMPTY_COMPUTE_REQUEST_RECORD.get(), decoder);

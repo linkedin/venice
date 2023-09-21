@@ -4,8 +4,11 @@ import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProdu
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -49,5 +52,25 @@ public class ApacheKafkaConsumerConfigTest {
     assertEquals(validProps.size(), 2);
     assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
     assertEquals(validProps.get(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG), "2000");
+  }
+
+  @Test
+  public void testDefaultsValuesAreUsedIfConfigIsNotProvided() {
+    Properties props = new Properties();
+    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
+        new ApacheKafkaConsumerConfig(new VeniceProperties(props), "test");
+    Properties consumerProps = apacheKafkaConsumerConfig.getConsumerProperties();
+    assertNotNull(consumerProps);
+    assertTrue(consumerProps.containsKey(ConsumerConfig.RECEIVE_BUFFER_CONFIG));
+    assertEquals(
+        consumerProps.get(ConsumerConfig.RECEIVE_BUFFER_CONFIG),
+        ApacheKafkaConsumerConfig.DEFAULT_RECEIVE_BUFFER_SIZE);
+
+    props.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ConsumerConfig.RECEIVE_BUFFER_CONFIG, "98765");
+    apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(new VeniceProperties(props), "test");
+    consumerProps = apacheKafkaConsumerConfig.getConsumerProperties();
+    assertNotNull(consumerProps);
+    assertTrue(consumerProps.containsKey(ConsumerConfig.RECEIVE_BUFFER_CONFIG));
+    assertEquals(consumerProps.get(ConsumerConfig.RECEIVE_BUFFER_CONFIG), "98765");
   }
 }

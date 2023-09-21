@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Collections;
+import java.util.List;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoder;
 import org.apache.commons.io.IOUtils;
@@ -74,12 +75,12 @@ public class IdentityRecordDeserializer implements RecordDeserializer<ByteBuffer
   }
 
   @Override
-  public Iterable<ByteBuffer> deserializeObjects(byte[] bytes) throws VeniceSerializationException {
-    return Collections.singleton(deserialize(bytes));
+  public List<ByteBuffer> deserializeObjects(byte[] bytes) throws VeniceSerializationException {
+    return Collections.singletonList(deserialize(bytes));
   }
 
   @Override
-  public Iterable<ByteBuffer> deserializeObjects(BinaryDecoder binaryDecoder) throws VeniceSerializationException {
-    return Collections.singleton(deserialize(binaryDecoder));
+  public List<ByteBuffer> deserializeObjects(BinaryDecoder binaryDecoder) throws VeniceSerializationException {
+    return Collections.singletonList(deserialize(binaryDecoder));
   }
 }

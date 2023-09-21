@@ -656,11 +656,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     metadata.start();
 
     this.multiGetSerializer =
-        FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
   }
 
   protected RecordSerializer getKeySerializer(Schema keySchema) {
-    return FastSerializerDeserializerFactory.getAvroGenericSerializer(keySchema);
+    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
   }
 
   @Override
@@ -690,10 +690,5 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   // Visible for testing
   public RecordSerializer<K> getKeySerializer() {
     return keySerializer;
-  }
-
-  // Visible for testing
-  public RecordSerializer<MultiGetRouterRequestKeyV1> getMultiGetSerializer() {
-    return multiGetSerializer;
   }
 }

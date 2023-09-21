@@ -31,13 +31,13 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
       Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion());
 
   private static final RecordSerializer<MultiGetRouterRequestKeyV1> MULTI_GET_ROUTER_REQUEST_KEY_V1_SERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetRouterRequestKeyV1.getClassSchema());
 
   protected static final ReadAvroProtocolDefinition EXPECTED_PROTOCOL =
       ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1;
 
-  private static final RecordDeserializer<ByteBuffer> EXPECTED_PROTOCOL_DESERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericDeserializer(EXPECTED_PROTOCOL.getSchema());
+  private static final RecordDeserializer<ByteBuffer> EXPECTED_PROTOCOL_DESERIALIZER = FastSerializerDeserializerFactory
+      .getFastAvroGenericDeserializer(EXPECTED_PROTOCOL.getSchema(), EXPECTED_PROTOCOL.getSchema());
 
   public VeniceMultiGetPath(
       String storeName,
