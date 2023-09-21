@@ -33,9 +33,9 @@ class RecordSchemaAdapter implements SchemaAdapter {
     }
 
     RecordDeserializer<IndexedRecord> deserializer =
-        FastSerializerDeserializerFactory.getAvroGenericDeserializer(datumSchema, expectedSchema);
+        FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(datumSchema, expectedSchema);
     RecordSerializer<IndexedRecord> serializer =
-        FastSerializerDeserializerFactory.getAvroGenericSerializer(datumSchema);
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(datumSchema);
 
     try {
       return deserializer.deserialize(serializer.serialize(datumRecord));

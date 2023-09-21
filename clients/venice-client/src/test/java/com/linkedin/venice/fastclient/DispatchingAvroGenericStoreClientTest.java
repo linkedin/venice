@@ -24,6 +24,8 @@ import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -56,6 +58,9 @@ public class DispatchingAvroGenericStoreClientTest {
   private static final Set<String> BATCH_GET_PARTIAL_KEYS_1 = new HashSet<>();
   private static final Set<String> BATCH_GET_PARTIAL_KEYS_2 = new HashSet<>();
   private static final Map<String, String> BATCH_GET_VALUE_RESPONSE = new HashMap<>();
+  private static final RecordSerializer MULTI_GET_RESPONSE_SERIALIZER =
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+
   private ClientConfig.ClientConfigBuilder clientConfigBuilder;
   private GetRequestContext getRequestContext;
   private BatchGetRequestContext batchGetRequestContext;
@@ -387,7 +392,7 @@ public class DispatchingAvroGenericStoreClientTest {
       routerRequestValue.keyIndex = count.getAndIncrement();
       routerRequestValues.add(routerRequestValue);
     });
-    return dispatchingAvroGenericStoreClient.getMultiGetSerializer().serializeObjects(routerRequestValues);
+    return MULTI_GET_RESPONSE_SERIALIZER.serializeObjects(routerRequestValues);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

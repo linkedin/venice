@@ -1082,7 +1082,7 @@ public class OnlineVeniceProducerTest {
   }
 
   private static RecordSerializer<Object> getSerializer(Schema schema) {
-    return FastSerializerDeserializerFactory.getAvroGenericSerializer(schema);
+    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema);
   }
 
   private void assertThrowsExceptionFromFuture(Class throwableClass, Assert.ThrowingRunnable runnable) {

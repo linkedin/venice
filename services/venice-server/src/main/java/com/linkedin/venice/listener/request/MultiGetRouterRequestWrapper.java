@@ -11,6 +11,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
 import java.net.URI;
+import java.util.List;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
@@ -18,19 +19,19 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
  * {@code MultiGetRouterRequestWrapper} encapsulates a POST request to storage/resourcename on the storage node for a multi-get operation.
  */
 public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<MultiGetRouterRequestKeyV1> {
-  private static final RecordDeserializer<MultiGetRouterRequestKeyV1> DESERIALIZER =
-      FastSerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.class);
+  private static final RecordDeserializer<MultiGetRouterRequestKeyV1> DESERIALIZER = FastSerializerDeserializerFactory
+      .getFastAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.SCHEMA$, MultiGetRouterRequestKeyV1.class);
 
   private MultiGetRouterRequestWrapper(
       String resourceName,
-      Iterable<MultiGetRouterRequestKeyV1> keys,
+      List<MultiGetRouterRequestKeyV1> keys,
       HttpRequest request) {
     super(resourceName, keys, request);
   }
 
   private MultiGetRouterRequestWrapper(
       String resourceName,
-      Iterable<MultiGetRouterRequestKeyV1> keys,
+      List<MultiGetRouterRequestKeyV1> keys,
       boolean isRetryRequest,
       boolean isStreamingRequest) {
     super(resourceName, keys, isRetryRequest, isStreamingRequest);
@@ -56,7 +57,7 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
       throw new VeniceException("Expected API version: " + expectedApiVersion + ", but received: " + apiVersion);
     }
 
-    Iterable<MultiGetRouterRequestKeyV1> keys;
+    List<MultiGetRouterRequestKeyV1> keys;
     byte[] content = new byte[httpRequest.content().readableBytes()];
     httpRequest.content().readBytes(content);
     keys = parseKeys(content);
@@ -66,19 +67,19 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
 
   public static MultiGetRouterRequestWrapper parseMultiGetGrpcRequest(VeniceClientRequest grpcRequest) {
     String resourceName = grpcRequest.getResourceName();
-    Iterable<MultiGetRouterRequestKeyV1> keys = parseKeys(grpcRequest.getKeyBytes().toByteArray());
+    List<MultiGetRouterRequestKeyV1> keys = parseKeys(grpcRequest.getKeyBytes().toByteArray());
 
     // isRetryRequest set to false for now, retry functionality is a later milestone
     return new MultiGetRouterRequestWrapper(resourceName, keys, false, grpcRequest.getIsStreamingRequest());
   }
 
-  private static Iterable<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {
+  private static List<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {
     return DESERIALIZER.deserializeObjects(
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
   }
 
   public String toString() {
-    return "MultiGetRouterRequestWrapper(storeName: " + getStoreName() + ", key count: " + keyCount + ")";
+    return "MultiGetRouterRequestWrapper(storeName: " + getStoreName() + ", key count: " + getKeyCount() + ")";
   }
 
   @Override

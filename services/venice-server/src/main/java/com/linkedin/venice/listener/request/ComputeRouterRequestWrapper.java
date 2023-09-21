@@ -13,6 +13,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
 import java.net.URI;
+import java.util.List;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
@@ -21,8 +22,8 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
  * {@code ComputeRouterRequestWrapper} encapsulates a POST request for read-compute from routers.
  */
 public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<ComputeRouterRequestKeyV1> {
-  private static final RecordDeserializer<ComputeRouterRequestKeyV1> DESERIALIZER =
-      FastSerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeRouterRequestKeyV1.class);
+  private static final RecordDeserializer<ComputeRouterRequestKeyV1> DESERIALIZER = FastSerializerDeserializerFactory
+      .getFastAvroSpecificDeserializer(ComputeRouterRequestKeyV1.SCHEMA$, ComputeRouterRequestKeyV1.class);
 
   private final ComputeRequest computeRequest;
   private int valueSchemaId = -1;
@@ -30,7 +31,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
   private ComputeRouterRequestWrapper(
       String resourceName,
       ComputeRequest computeRequest,
-      Iterable<ComputeRouterRequestKeyV1> keys,
+      List<ComputeRouterRequestKeyV1> keys,
       HttpRequest request,
       String schemaId) {
     super(resourceName, keys, request);
@@ -70,7 +71,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
         .createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
     ComputeRequest computeRequest = ComputeUtils.deserializeComputeRequest(decoder, null);
 
-    Iterable<ComputeRouterRequestKeyV1> keys = DESERIALIZER.deserializeObjects(decoder);
+    List<ComputeRouterRequestKeyV1> keys = DESERIALIZER.deserializeObjects(decoder);
     String schemaId = httpRequest.headers().get(HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID);
     return new ComputeRouterRequestWrapper(resourceName, computeRequest, keys, httpRequest, schemaId);
   }
@@ -84,7 +85,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
   }
 
   public String toString() {
-    return "ComputeRouterRequestWrapper(storeName: " + getStoreName() + ", key count: " + keyCount + ")";
+    return "ComputeRouterRequestWrapper(storeName: " + getStoreName() + ", key count: " + getKeyCount() + ")";
   }
 
   @Override
