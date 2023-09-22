@@ -166,7 +166,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
     }
   }
 
-  private DirectionalSchemaCompatibilityType determineSchemaCompatabilityType() {
+  DirectionalSchemaCompatibilityType determineSchemaCompatabilityType() {
     if (protocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
       return DirectionalSchemaCompatibilityType.FULL;
     }
