@@ -65,7 +65,10 @@ public class PubSubMessageDeserializer {
                 valueSerializer.deserialize(valueBytes, providedProtocolSchema, getEnvelope(key.getKeyHeaderByte()));
           } catch (Exception e) {
             // Improper header... will ignore.
-            LOGGER.warn("Received unparsable schema in protocol header: " + VENICE_TRANSPORT_PROTOCOL_HEADER, e);
+            LOGGER.warn(
+                "Received unparsable schema or encountered schema registration issue in protocol header: "
+                    + VENICE_TRANSPORT_PROTOCOL_HEADER,
+                e);
           }
           break; // We don't look at other headers
         }
@@ -96,5 +99,10 @@ public class PubSubMessageDeserializer {
       default:
         throw new IllegalStateException("Illegal key header byte: " + keyHeaderByte);
     }
+  }
+
+  // For testing only.
+  public KafkaValueSerializer getValueSerializer() {
+    return valueSerializer;
   }
 }

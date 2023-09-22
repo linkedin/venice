@@ -369,6 +369,9 @@ public class ConfigKeys {
   public static final String SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED =
       "system.schema.initialization.at.start.time.enabled";
 
+  public static final String KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED =
+      "kme.registration.from.message.header.enabled";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String GRPC_READ_SERVER_PORT = "grpc.read.server.port";
