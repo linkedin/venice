@@ -88,7 +88,8 @@ public class VeniceVersionFinder {
 
     int metadataCurrentVersion = store.getCurrentVersion();
     if (!lastCurrentVersionMap.containsKey(storeName)) {
-      if (metadataCurrentVersion != Store.NON_EXISTING_VERSION && !isDecompressorReady(store, metadataCurrentVersion)) {
+      if (metadataCurrentVersion != Store.NON_EXISTING_VERSION && store.getVersion(metadataCurrentVersion).isPresent()
+          && !isDecompressorReady(store, metadataCurrentVersion)) {
         return Store.NON_EXISTING_VERSION;
       } else {
         lastCurrentVersionMap.put(storeName, metadataCurrentVersion);

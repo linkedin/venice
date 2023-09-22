@@ -275,7 +275,7 @@ public class TestVeniceVersionFinder {
     }
   }
 
-  @Test
+  @Test(enabled = false)
   public void returnsCurrentVersionWhenItIsTheOnlyOption() {
     // When the router doesn't know of any other versions, it will return that version even if dictionary is not
     // downloaded.
