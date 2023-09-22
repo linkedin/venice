@@ -75,22 +75,26 @@ public class TestControllerKMERegistrationFromMessageHeader {
 
     VeniceMultiClusterWrapper child = childDatacenters.get(0);
 
-    // Remove the latest schema from child controller's local value serializer and remove it from child colo's schema
-    // repository (ZK).
     VeniceControllerWrapper leaderController = child.getLeaderController(clusterName);
     KafkaValueSerializer valueSerializer =
         leaderController.getController().getVeniceControllerService().getKafkaValueSerializer();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      Assert.assertTrue(
-          valueSerializer.getProtocolVersionSize() >= AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE
-              .getCurrentProtocolVersion());
-    });
     HelixReadWriteSchemaRepositoryAdapter adapter =
         (HelixReadWriteSchemaRepositoryAdapter) (leaderController.getVeniceHelixAdmin()
             .getHelixVeniceClusterResources(clusterName)
             .getSchemaRepository());
     HelixReadWriteSchemaRepository repo =
         (HelixReadWriteSchemaRepository) adapter.getReadWriteRegularStoreSchemaRepository();
+
+    // Wait until the latest schema appears in child colo's schema repository.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+      Assert.assertTrue(
+          repo.getValueSchema(
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion()) != null);
+    });
+
+    // Remove the latest schema from child controller's local value serializer and remove it from child colo's schema
+    // repository (ZK).
     repo.removeValueSchema(
         AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
         AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
