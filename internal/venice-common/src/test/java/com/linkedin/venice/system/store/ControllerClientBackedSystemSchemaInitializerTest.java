@@ -73,14 +73,14 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
     doReturn(new MultiSchemaResponse.Schema[0]).when(multiSchemaResponse).getSchemas();
     doReturn(multiSchemaResponse).when(controllerClient).getAllValueSchema(any());
     SchemaResponse schemaResponse = mock(SchemaResponse.class);
-    doReturn(schemaResponse).when(controllerClient).addValueSchema(any(), any(), anyInt());
+    doReturn(schemaResponse).when(controllerClient).addValueSchema(any(), any(), anyInt(), any());
     doCallRealMethod().when(controllerClient).retryableRequest(anyInt(), any(), any());
     doCallRealMethod().when(controllerClient).retryableRequest(anyInt(), any());
     initializer.setControllerClient(controllerClient);
     initializer.execute();
     verify(controllerClient, times(1)).createNewSystemStore(any(), any(), any(), any());
     verify(controllerClient, times(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion()))
-        .addValueSchema(any(), any(), anyInt());
+        .addValueSchema(any(), any(), anyInt(), any());
   }
 
   @Test
