@@ -124,7 +124,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private static class PerStoreVersionState {
     final PartitionerConfig partitionerConfig;
     final VenicePartitioner partitioner;
-    final AbstractStorageEngine storageEngine;
+    AbstractStorageEngine storageEngine;
     final StoreDeserializerCache<GenericRecord> storeDeserializerCache;
 
     public PerStoreVersionState(
@@ -383,7 +383,18 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private PerStoreVersionState getPerStoreVersionState(String storeVersion) {
-    return perStoreVersionStateMap.computeIfAbsent(storeVersion, this::generatePerStoreVersionState);
+    return perStoreVersionStateMap.compute(storeVersion, (ignored, versionState) -> {
+      if (versionState == null) {
+        return this.generatePerStoreVersionState(storeVersion);
+      } else {
+        /**
+         * Try to refresh the storage engine reference for every request in case {@link com.linkedin.davinci.store.StorageEngineFactory}
+         * recreates a new instance during re-balance, which may drop the storage engine and recreate a new one.
+         */
+        versionState.storageEngine = storageEngineRepository.getLocalStorageEngine(storeVersion);
+        return versionState;
+      }
+    });
   }
 
   private PerStoreVersionState generatePerStoreVersionState(String storeVersion) {
