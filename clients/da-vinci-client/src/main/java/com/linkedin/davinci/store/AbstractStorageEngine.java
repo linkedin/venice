@@ -79,6 +79,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    */
   private final List<ReadWriteLock> rwLockForStoragePartitionAdjustmentList = new SparseConcurrentList<>();
 
+  private volatile boolean closed = false;
+
   public AbstractStorageEngine(
       String storeName,
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
@@ -340,6 +342,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   @Override
   public synchronized void close() throws VeniceException {
+    this.closed = true;
     long startTime = System.currentTimeMillis();
     List<Partition> tmpList = new ArrayList<>();
     // SparseConcurrentList does not support parallelStream, copy to a tmp list.
@@ -352,6 +355,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
         LatencyUtils.getElapsedTimeInMs(startTime));
     partitionList.clear();
     closeMetadataPartition();
+  }
+
+  public boolean isClosed() {
+    return this.closed;
   }
 
   /**

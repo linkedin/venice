@@ -10,9 +10,11 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -37,6 +39,7 @@ import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.compute.protocol.request.ComputeRequest;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.grpc.GrpcErrorCodes;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
@@ -112,7 +115,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -167,7 +169,7 @@ public class StorageReadRequestHandlerTest {
 
   @AfterMethod
   public void cleanUp() {
-    Mockito.reset(
+    reset(
         storageEngine,
         storageEngineRepository,
         storeRepository,
@@ -518,6 +520,62 @@ public class StorageReadRequestHandlerTest {
       }
     }
     assertEquals(computeResponse.getReadComputeOutputSize(), expectedReadComputeOutputSize);
+  }
+
+  /**
+   * There was a regression where the "perStoreVersionStateMap" inside {@link StorageReadRequestHandler} could be stale
+   * during rebalance. In the following rebalance scenario, the storage engine reference in the map would be stale:
+   *
+   * 1. There is only one assigned partition for this resource, and let us say the storage engine instance is 'se1'.
+   * 2. When Helix rebalance decides to move this partition to another node, there is no partition left, so this storage
+   *    engine: 'se1' will be closed and removed from the storage engine factory.
+   * 3. Later, Helix decides to move back another partition to this node, Storage engine factory will create a new
+   *    instance of storage engine: 'se2'.
+   * 4. This particular node will bootstrap the rebalanced partition in 'se2'.
+   * 5. When the bootstrapping is done, Router will start sending request to the rebalanced partition, but
+   *    'StorageReadRequestHandler' is referring to a stale storage engine instance: 'se1', which is empty.
+   * 6. The read request to this rebalanced partition will be rejected even this particular node has the partition on
+   *    disk and Helix EV/CV.
+   */
+  @Test
+  public void testMissingStorageEngine() throws Exception {
+    String keyString = "test-key";
+    String valueString = "test-value";
+    int schemaVersion = 1;
+    ValueRecord valueRecord = ValueRecord.create(schemaVersion, valueString.getBytes());
+
+    when(storageEngine.get(anyInt(), any(ByteBuffer.class))).thenReturn(valueRecord.serialize());
+
+    GetRouterRequest request = mock(GetRouterRequest.class);
+    doReturn(SINGLE_GET).when(request).getRequestType();
+    doReturn(version.kafkaTopicName()).when(request).getResourceName();
+    doReturn(keyString.getBytes()).when(request).getKeyBytes();
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+
+    /** This first request will prime the "perStoreVersionStateMap" inside {@link StorageReadRequestHandler} */
+    requestHandler.channelRead(context, request);
+    verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class));
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    StorageResponseObject responseObject = (StorageResponseObject) argumentCaptor.getValue();
+    assertTrue(responseObject.isFound());
+    assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
+
+    // After that first request, the original storage engine gets closed, and a second storage engine takes its place.
+    when(storageEngine.get(anyInt(), any(ByteBuffer.class))).thenThrow(new PersistenceFailureException());
+    when(storageEngine.isClosed()).thenReturn(true);
+    AbstractStorageEngine storageEngine2 = mock(AbstractStorageEngine.class);
+    when(storageEngine2.get(anyInt(), any(ByteBuffer.class))).thenReturn(valueRecord.serialize());
+    doReturn(storageEngine2).when(storageEngineRepository).getLocalStorageEngine(any());
+
+    // Second request should not use the stale storage engine
+    requestHandler.channelRead(context, request);
+    verify(storageEngine, times(1)).get(anyInt(), any(ByteBuffer.class)); // No extra invocation
+    verify(storageEngine2, times(1)).get(anyInt(), any(ByteBuffer.class)); // Good one
+    verify(context, times(2)).writeAndFlush(argumentCaptor.capture());
+    responseObject = (StorageResponseObject) argumentCaptor.getValue();
+    assertTrue(responseObject.isFound());
+    assertEquals(responseObject.getValueRecord().getDataInBytes(), valueString.getBytes());
   }
 
   @Test
