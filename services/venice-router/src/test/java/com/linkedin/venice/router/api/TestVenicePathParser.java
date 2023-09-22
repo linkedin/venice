@@ -20,6 +20,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
@@ -50,6 +51,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -70,6 +72,8 @@ public class TestVenicePathParser {
     // Mock objects
     Store mockStore = mock(Store.class);
     doReturn(1).when(mockStore).getCurrentVersion();
+    Version version = mock(Version.class);
+    doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
     doReturn(true).when(mockStore).isEnableReads();
     doReturn(CompressionStrategy.NO_OP).when(mockStore).getCompressionStrategy();
     ReadOnlyStoreRepository mockMetadataRepository = mock(ReadOnlyStoreRepository.class);

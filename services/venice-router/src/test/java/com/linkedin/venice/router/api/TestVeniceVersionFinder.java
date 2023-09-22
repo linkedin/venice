@@ -96,6 +96,7 @@ public class TestVeniceVersionFinder {
     store.setMigrating(true);
     int currentVersion = 10;
     store.setCurrentVersion(currentVersion);
+    store.addVersion(new VersionImpl(store.getName(), currentVersion, "id1"));
     doReturn(store).when(mockRepo).getStore(anyString());
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
@@ -131,6 +132,7 @@ public class TestVeniceVersionFinder {
     int currentVersion = 10;
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setCurrentVersion(currentVersion);
+    store.addVersion(new VersionImpl(storeName, currentVersion, "id1"));
     // disable store, should return the number indicates that none of version is avaiable to read.
     store.setEnableReads(false);
     doReturn(store).when(mockRepo).getStore(storeName);
