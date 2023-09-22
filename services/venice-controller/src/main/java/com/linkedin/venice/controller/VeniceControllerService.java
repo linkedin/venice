@@ -132,10 +132,10 @@ public class VeniceControllerService extends AbstractVeniceService {
      * Register a callback function to handle the case when a new KME value schema is encountered when the child controller
      * consumes the admin topics.
      */
+    String systemClusterName = multiClusterConfigs.getSystemSchemaClusterName();
+    VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemClusterName);
     newSchemaEncountered = (schemaId, schema) -> {
       LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
-      String systemClusterName = multiClusterConfigs.getSystemSchemaClusterName();
-      VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemClusterName);
       try {
         ControllerClientBackedSystemSchemaInitializer schemaInitializer =
             new ControllerClientBackedSystemSchemaInitializer(
@@ -162,7 +162,7 @@ public class VeniceControllerService extends AbstractVeniceService {
     };
 
     KafkaValueSerializer kafkaValueSerializer =
-        (!multiClusterConfigs.isParent() && multiClusterConfigs.isKMERegistrationFromMessageHeaderEnabled())
+        (!multiClusterConfigs.isParent() && systemStoreClusterConfig.isKMERegistrationFromMessageHeaderEnabled())
             ? new OptimizedKafkaValueSerializer(newSchemaEncountered)
             : new OptimizedKafkaValueSerializer();
 

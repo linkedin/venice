@@ -114,7 +114,7 @@ public class TestControllerKMERegistrationFromMessageHeader {
     pController.getVeniceAdmin().createStore(clusterName, storeName, "", "\"string\"", "\"string\"", false);
 
     // Verify that schema is registered in the child colo's schema repo.
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
       Assert.assertEquals(
           repo.getValueSchema(
               AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
