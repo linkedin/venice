@@ -54,7 +54,7 @@ public class TokenBucket {
     tokensConsumedSinceLastRefill = new AtomicLong(0);
     nextUpdateTime = clock.millis() + refillIntervalMs;
 
-    refillPerSecond = refillAmount / (float) refillInterval;
+    refillPerSecond = refillAmount / (float) refillUnit.toSeconds(refillInterval);
   }
 
   /**

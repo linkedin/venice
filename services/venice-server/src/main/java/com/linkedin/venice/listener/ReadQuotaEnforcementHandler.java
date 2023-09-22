@@ -62,7 +62,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private final int enforcementIntervalSeconds = 10; // TokenBucket refill interval
   private final int enforcementCapacityMultiple = 5; // Token bucket capacity is refill amount times this multiplier
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
-  private boolean enforcing = true;
   private volatile boolean initializedVolatile = false;
   private boolean initialized = false;
 
@@ -204,7 +203,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     String storeName = request.getStoreName();
     Store store = storeRepository.getStore(storeName);
 
-    if (!enforcing || checkStoreNull(ctx, request, null, false, store)) {
+    if (checkStoreNull(ctx, request, null, false, store)) {
       return;
     }
 
@@ -229,8 +228,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       // If this happens it is probably due to a short-lived race condition where the resource is being accessed before
       // the bucket is allocated. The request will be allowed based on node/server capacity so emit metrics accordingly.
       stats.recordAllowedUnintentionally(storeName, rcu);
-      if (!noBucketStores.contains(request.getResourceName())) {
-        handleEnforcingAndNoBucket(request.getResourceName());
+      if (isNewNoBucketResource(request.getResourceName())) {
+        handleResourceNoBucket(request.getResourceName());
       }
     }
 
@@ -298,10 +297,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       boolean isGrpc) {
     stats.recordRejected(request.getStoreName(), rcu);
 
-    if (!enforcing) {
-      return false;
-    }
-
     long storeQuota = store.getReadQuotaInCU();
     float thisNodeRcuPerSecond = storeVersionBuckets.get(request.getResourceName()).getAmortizedRefillPerSecond();
     String errorMessage =
@@ -323,7 +318,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   /**
    * This method and the expiring set noBucketStores is only used to throttle the logging of such event
    */
-  public void handleEnforcingAndNoBucket(String resourceName) {
+  public void handleResourceNoBucket(String resourceName) {
     LOGGER.warn("Request for resource: {} but no TokenBucket for that resource. Not yet enforcing quota", resourceName);
     // TODO: we could consider initializing a bucket. Would need to carefully consider this case.
     noBucketStores.add(resourceName); // So that we only log this once every 30 seconds
@@ -337,8 +332,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       boolean isGrpc) {
     stats.recordRejected(storeName, rcu);
 
-    if (!enforcing)
-      return false;
     if (!isGrpc) {
       ctx.writeAndFlush(new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
     } else {
@@ -435,7 +428,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       } else {
         return v;
       }
-    }); // put is atomic, so this method is thread-safe
+    });
   }
 
   private long calculateRefillAmount(long totalRcuPerSecond, double thisBucketProportionOfTotalRcu) {
@@ -578,13 +571,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     }
   }
 
-  /**
-   * The quota enforcer normally enforces quota, disable enforcement to have a "Dry-run" mode
-   */
-  public void disableEnforcement() {
-    this.enforcing = false;
-  }
-
   public ReadOnlyStoreRepository getStoreRepository() {
     return storeRepository;
   }
@@ -593,8 +579,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     return storeVersionBuckets;
   }
 
-  public boolean isNoBucketStoreContainsResource(String resourceName) {
-    return noBucketStores.contains(resourceName);
+  public boolean isNewNoBucketResource(String resourceName) {
+    return !noBucketStores.contains(resourceName);
   }
 
   public boolean storageConsumeRcu(int rcu) {

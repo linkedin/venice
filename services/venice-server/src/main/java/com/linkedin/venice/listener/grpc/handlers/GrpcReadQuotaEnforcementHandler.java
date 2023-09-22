@@ -41,8 +41,8 @@ public class GrpcReadQuotaEnforcementHandler extends VeniceServerGrpcHandler {
       }
     } else {
       readQuota.getStats().recordAllowedUnintentionally(storeName, rcu);
-      if (!readQuota.isNoBucketStoreContainsResource(request.getResourceName())) {
-        readQuota.handleEnforcingAndNoBucket(request.getResourceName());
+      if (readQuota.isNewNoBucketResource(request.getResourceName())) {
+        readQuota.handleResourceNoBucket(request.getResourceName());
       }
     }
 
