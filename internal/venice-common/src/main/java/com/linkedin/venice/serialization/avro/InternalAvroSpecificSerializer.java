@@ -374,9 +374,11 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader =
         protocolVersionToReader.computeIfAbsent(protocolVersion, index -> {
           newSchemaEncountered.accept(protocolVersion, providedProtocolSchema);
+
+          // Add a new datum reader for the protocol version. Notice that in that case that newSchemaEncountered is
+          // an empty lambda, the reader will still be added locally.
           return cacheDatumReader(protocolVersion, providedProtocolSchema);
         });
-
     return deserialize(bytes, specificDatumReader, reuse);
   }
 
