@@ -36,6 +36,7 @@ import java.util.function.UnaryOperator;
  */
 public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
   private static final long serialVersionUID = 1L;
+  private transient int nonNullSize = 0;
 
   /**
    * A function which behaves like {@link Map#put(Object, Object)}, rather than {@link List#set(int, Object)}.
@@ -44,6 +45,7 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
    * @param item
    * @return
    */
+  @Override
   public synchronized E set(int index, E item) {
     if (size() <= index) {
       /**
@@ -60,13 +62,13 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
       }
       temporaryList.add(item);
       super.addAll(temporaryList);
-      return null;
+      return handleSizeDuringMutation(null, item);
     } else {
       /**
        * No risk of {@link ArrayIndexOutOfBoundsException}, so we directly go ahead and call
        * {@link List#set(int, Object)}
        */
-      return super.set(index, item);
+      return handleSizeDuringMutation(super.set(index, item), item);
     }
   }
 
@@ -75,6 +77,7 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
    * @return the item at this index, or null
    * @throws IllegalArgumentException if the index is < 0, but NOT if the index is > the capacity of the list
    */
+  @Override
   public E get(int index) {
     if (size() <= index) {
       return null;
@@ -92,14 +95,19 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
    * @param index of the item to nullify
    * @return the previous item at that {@param index}
    */
+  @Override
   public E remove(int index) {
     /**
      * It's important to use {@link #set(int, Object)} rather than {@link #remove(int)} in order to avoid
      * altering the subsequent items in the list.
+     *
+     * It's important NOT to call {@link #handleSizeDuringMutation(Object, Object)} since {@link #set(int, Object)}
+     * already calls it.
      */
     return set(index, null);
   }
 
+  @Override
   public void forEach(Consumer<? super E> itemConsumer) {
     for (int partitionId = 0; partitionId < size(); partitionId++) {
       E item = get(partitionId);
@@ -110,55 +118,117 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
     }
   }
 
+  /**
+   * N.B.: The intent of having a separate function for this, and to not override the behavior of {@link #size()} is
+   * that if the code does a for loop using the size, we want them to be able to get every element, e.g.:
+   *
+   * <code>
+   *   for (int i = 0; i < list.size(); i++) {
+   *     doSomething(list.get(i));
+   *   }
+   * </code>
+   *
+   * An alternative is to call {@link #values()} which filters out nulls, e.g.:
+   *
+   * <code>
+   *   for (E element: list.values()) {
+   *     doSomething(element);
+   *   }
+   * </code>
+   *
+   * @return the number of non-null elements in this list, from a cached counter (updated at mutation time).
+   */
+  public int nonNullSize() {
+    return this.nonNullSize;
+  }
+
+  /**
+   * N.B.: If the list is only populated with null entries, this function will return true.
+   *
+   * @return a boolean indicating whether the list is empty
+   */
+  @Override
+  public boolean isEmpty() {
+    return nonNullSize() == 0;
+  }
+
   // Boilerplate code just to add synchronization to mutation operations:
 
+  @Override
   public synchronized boolean add(E e) {
+    handleSizeDuringMutation(null, e);
     return super.add(e);
   }
 
+  @Override
   public synchronized void add(int index, E element) {
+    handleSizeDuringMutation(null, element);
     super.add(index, element);
   }
 
+  @Override
   public synchronized boolean removeAll(Collection<?> c) {
-    return super.removeAll(c);
+    boolean modified = super.removeAll(c);
+    this.nonNullSize = values().size();
+    return modified;
   }
 
+  @Override
   public synchronized boolean retainAll(Collection<?> c) {
-    return super.retainAll(c);
+    boolean modified = super.retainAll(c);
+    this.nonNullSize = values().size();
+    return modified;
   }
 
+  @Override
   public synchronized int addAllAbsent(Collection<? extends E> c) {
     if (c == null) {
       return 0;
     }
-    return super.addAllAbsent(c);
+    int numberAdded = super.addAllAbsent(c);
+    this.nonNullSize = values().size();
+    return numberAdded;
   }
 
+  @Override
   public synchronized void clear() {
+    this.nonNullSize = 0;
     super.clear();
   }
 
+  @Override
   public synchronized boolean addAll(Collection<? extends E> c) {
-    return super.addAll(c);
+    boolean modified = super.addAll(c);
+    this.nonNullSize = values().size();
+    return modified;
   }
 
+  @Override
   public synchronized boolean addAll(int index, Collection<? extends E> c) {
-    return super.addAll(index, c);
+    boolean modified = super.addAll(index, c);
+    this.nonNullSize = values().size();
+    return modified;
   }
 
+  @Override
   public synchronized boolean removeIf(Predicate<? super E> filter) {
-    return super.removeIf(filter);
+    boolean modified = super.removeIf(filter);
+    this.nonNullSize = values().size();
+    return modified;
   }
 
+  @Override
   public synchronized void replaceAll(UnaryOperator<E> operator) {
     super.replaceAll(operator);
+    this.nonNullSize = values().size();
   }
 
+  @Override
   public synchronized void sort(Comparator<? super E> c) {
     super.sort(c);
   }
 
+  @Override
   public synchronized List<E> subList(int fromIndex, int toIndex) {
     return super.subList(fromIndex, toIndex);
   }
@@ -170,6 +240,10 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
         element = get(index);
         if (element == null) {
           element = mappingFunction.apply(index);
+          /**
+           * It's important NOT to call {@link #handleSizeDuringMutation(Object, Object)} since {@link #set(int, Object)}
+           * already calls it.
+           */
           set(index, element);
         }
       }
@@ -203,5 +277,20 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
       }
       return populatedSize;
     }
+  }
+
+  /**
+   * Function to use when adding or removing an element.
+   * @param oldElement which was previously at the mutated index
+   * @param newElement which is now at the mutated index
+   * @return the oldElement
+   */
+  private synchronized E handleSizeDuringMutation(E oldElement, E newElement) {
+    if (oldElement == null && newElement != null) {
+      this.nonNullSize++;
+    } else if (oldElement != null && newElement == null) {
+      this.nonNullSize--;
+    }
+    return oldElement;
   }
 }
