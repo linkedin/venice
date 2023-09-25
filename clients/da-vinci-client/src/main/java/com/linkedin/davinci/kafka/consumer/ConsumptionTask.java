@@ -119,11 +119,11 @@ class ConsumptionTask implements Runnable {
         polledPubSubMessages = pollFunction.get();
         lastSuccessfulPollTimestamp = System.currentTimeMillis();
         stats.recordPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
+        stats.recordPollResultNum(polledPubSubMessagesCount);
         payloadBytesConsumedInOnePoll = 0;
         polledPubSubMessagesCount = 0;
         if (!polledPubSubMessages.isEmpty()) {
           beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-          stats.recordPollResultNum(polledPubSubMessagesCount);
           for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledPubSubMessages
               .entrySet()) {
             PubSubTopicPartition pubSubTopicPartition = entry.getKey();
@@ -145,6 +145,7 @@ class ConsumptionTask implements Runnable {
           }
           stats.recordConsumerRecordsProducingToWriterBufferLatency(
               LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
+          stats.recordNonZeroPollResultNum(polledPubSubMessagesCount);
           bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
           recordsThrottler.accept(polledPubSubMessagesCount);
           cleaner.unsubscribe(topicPartitionsToUnsub);
