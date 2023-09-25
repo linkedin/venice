@@ -277,7 +277,7 @@ public class TestVeniceVersionFinder {
     }
   }
 
-  @Test(enabled = false)
+  @Test
   public void returnsCurrentVersionWhenItIsTheOnlyOption() {
     // When the router doesn't know of any other versions, it will return that version even if dictionary is not
     // downloaded.
@@ -320,8 +320,11 @@ public class TestVeniceVersionFinder {
 
     String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
 
-    Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
+    Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
     Assert.assertNull(compressorFactory.getVersionSpecificCompressor(firstVersionKafkaTopic));
+
+    doReturn(true).when(compressorFactory).versionSpecificCompressorExists(firstVersionKafkaTopic);
+    Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
   }
 
   @Test
