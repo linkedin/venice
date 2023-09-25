@@ -199,7 +199,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         if (exception.isPresent()) {
           streamingResponseFuture.completeExceptionally(exception.get());
         } else {
-          boolean isFullResponse = ((valueMap.size() + nonExistingKeys.size()) == keys.size());
+          boolean isFullResponse = (valueMap.size() + nonExistingKeys.size()) == keys.size();
           streamingResponseFuture.complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, isFullResponse));
         }
       }
