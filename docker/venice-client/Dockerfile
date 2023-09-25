@@ -5,7 +5,7 @@ ENV VENICE_DIR=/opt/venice
 RUN apt-get update
 RUN apt-get install netcat tree wget python3 -y
 RUN mkdir -p "${VENICE_DIR}/bin"
-RUN wget -O ${VENICE_DIR}/bin/avro-tools.jar https://downloads.apache.org/avro/stable/java/avro-tools-1.11.2.jar
+RUN wget -O ${VENICE_DIR}/bin/avro-tools.jar https://repo1.maven.org/maven2/org/apache/avro/avro-tools/1.11.2/avro-tools-1.11.2.jar
 RUN wget -O ${VENICE_DIR}/bin/hadoop-mapreduce-client-core.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-mapreduce-client-core/2.3.0/hadoop-mapreduce-client-core-2.3.0.jar
 RUN wget -O ${VENICE_DIR}/bin/hadoop-mapreduce-client-common.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-mapreduce-client-common/2.3.0/hadoop-mapreduce-client-common-2.3.0.jar
 RUN wget -O ${VENICE_DIR}/bin/hadoop-common.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-common/2.3.0/hadoop-common-2.3.0.jar
