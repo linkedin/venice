@@ -7416,6 +7416,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throwStoreDoesNotExist(clusterName, regularStoreName);
     }
 
+    // Make sure RT topic exists before producing. There's no write to parent region meta store RT, but we still create
+    // the RT topic to be consistent in case it was not auto-materialized
+    getRealTimeTopic(clusterName, VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName));
+
     // Update the store flag to enable meta system store.
     if (!store.isStoreMetaSystemStoreEnabled()) {
       storeMetadataUpdate(clusterName, regularStoreName, (s) -> {
@@ -7423,10 +7427,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return s;
       });
     }
-
-    // Make sure RT topic exists before producing. There's no write to parent region meta store RT, but we still create
-    // the RT topic to be consistent in case it was not auto-materialized
-    getRealTimeTopic(clusterName, VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName));
 
     Optional<MetaStoreWriter> metaStoreWriter = getHelixVeniceClusterResources(clusterName).getMetaStoreWriter();
     if (!metaStoreWriter.isPresent()) {
