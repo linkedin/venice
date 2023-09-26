@@ -2482,24 +2482,6 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       /**
-       * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
-       * an updatedConfigSet will be used to represent which configs are updated by users.
-       */
-      setStore.replicateAllConfigs = replicateAllConfigs;
-      if (!replicateAllConfigs) {
-        if (updatedConfigSet.isEmpty()) {
-          String errMsg =
-              "UpdateStore command failed for store " + storeName + ". The command didn't change any specific"
-                  + " store config and didn't specify \"--replicate-all-configs\" flag.";
-          LOGGER.error(errMsg);
-          throw new VeniceException(errMsg);
-        }
-        setStore.updatedConfigsList = new ArrayList<>(updatedConfigSet);
-      } else {
-        setStore.updatedConfigsList = Collections.emptyList();
-      }
-
-      /**
        * Fabrics filter is not a store config, so we don't need to add it into {@link UpdateStore#updatedConfigsList}
        */
       setStore.regionsFilter = regionsFilter.orElse(null);
@@ -2523,14 +2505,13 @@ public class VeniceParentHelixAdmin implements Admin {
         /**
          * If a store: (1) Is being converted to hybrid (2) Is not partial update enabled for now. (3) Does not change
          * partial update config in this request.
-         * It means partial update is not enabled, and there is't explict intention to change it. In this case, we will
+         * It means partial update is not enabled, and there is no explict intention to change it. In this case, we will
          * look up cluster config and based on the replication policy to enable partial update implicitly.
          */
         final boolean shouldEnablePartialUpdateBasedOnClusterConfig =
             storeBeingConvertedToHybrid && (setStore.activeActiveReplicationEnabled
                 ? clusterConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()
                 : clusterConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores());
-
         if (!writeComputationEnabled.isPresent() && !currStore.isWriteComputationEnabled()
             && shouldEnablePartialUpdateBasedOnClusterConfig) {
           try {
@@ -2577,6 +2558,24 @@ public class VeniceParentHelixAdmin implements Admin {
             setStore.getPartitionNum(),
             storeName);
         updatedConfigSet.add(PARTITION_COUNT);
+      }
+
+      /**
+       * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
+       * an updatedConfigSet will be used to represent which configs are updated by users.
+       */
+      setStore.replicateAllConfigs = replicateAllConfigs;
+      if (!replicateAllConfigs) {
+        if (updatedConfigSet.isEmpty()) {
+          String errMsg =
+              "UpdateStore command failed for store " + storeName + ". The command didn't change any specific"
+                  + " store config and didn't specify \"--replicate-all-configs\" flag.";
+          LOGGER.error(errMsg);
+          throw new VeniceException(errMsg);
+        }
+        setStore.updatedConfigsList = new ArrayList<>(updatedConfigSet);
+      } else {
+        setStore.updatedConfigsList = Collections.emptyList();
       }
 
       AdminOperation message = new AdminOperation();
