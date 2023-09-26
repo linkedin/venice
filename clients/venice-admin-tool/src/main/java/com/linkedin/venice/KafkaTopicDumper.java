@@ -2,11 +2,13 @@ package com.linkedin.venice;
 
 import static com.linkedin.venice.chunking.ChunkKeyValueTransformer.KeyType.WITH_VALUE_CHUNK;
 import static com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl.DEFAULT_KAFKA_OFFSET_API_TIMEOUT;
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformer;
 import com.linkedin.venice.chunking.ChunkKeyValueTransformerImpl;
 import com.linkedin.venice.chunking.RawKeyBytesAndChunkedKeySuffix;
+import com.linkedin.venice.consistency.ValidatorUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.etl.VeniceKafkaDecodedRecord;
@@ -27,8 +29,11 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -92,6 +97,8 @@ public class KafkaTopicDumper implements AutoCloseable {
   private GenericDatumReader<Object>[] valueReaders;
   private DecoderFactory decoderFactory;
   private Schema outputSchema;
+  private MultiSchemaResponse.Schema replicationSchema;
+  private List<Long> prevOffsetVector;
 
   public KafkaTopicDumper(
       ControllerClient controllerClient,
@@ -162,9 +169,14 @@ public class KafkaTopicDumper implements AutoCloseable {
       this.messageCount = messageCount;
     }
 
+    this.prevOffsetVector = new ArrayList<>();
     if (!logMetadataOnly) {
       setupDumpFile();
     }
+  }
+
+  public void setReplicationSchema(MultiSchemaResponse.Schema schema) {
+    this.replicationSchema = schema;
   }
 
   /**
@@ -200,6 +212,75 @@ public class KafkaTopicDumper implements AutoCloseable {
     } while ((lastProcessRecord != null && lastProcessRecord.getOffset() < (this.endOffset - 2))
         && currentMessageCount < messageCount && countdownBeforeStop > 0);
     return currentMessageCount;
+  }
+
+  public Map<String, List<ValidatorUtils.RecordInfo>> fetchAllTopicData(String region, int regionNum) {
+    int countdownBeforeStop = maxConsumeAttempts;
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> lastProcessRecord = null;
+    Map<String, List<ValidatorUtils.RecordInfo>> allRecords = new HashMap<>();
+
+    do {
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
+          consumer.poll(5000); // up to 5 seconds
+      Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator =
+          Utils.iterateOnMapOfLists(records);
+      int polledRecordsNum = 0;
+      while (recordsIterator.hasNext()) {
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordsIterator.next();
+
+        if (MessageType.valueOf(record.getValue().messageType).equals(MessageType.PUT)) {
+          Put put = (Put) record.getValue().payloadUnion;
+          List<Long> offsetVector =
+              extractOffsetVectorFromMessage(replicationSchema, put.replicationMetadataPayload, regionNum);
+          Long timestamp = extractTimestampFromMessage(replicationSchema, put.replicationMetadataPayload);
+          int valueChecksum = Arrays.hashCode(put.putValue.array());
+          String key = new String(record.getKey().getKey());
+          LOGGER.info("Record put key: {}, value: {}, offsetVector: {}", key, valueChecksum, offsetVector);
+          ValidatorUtils.RecordInfo recordInfo = new ValidatorUtils.RecordInfo(
+              String.valueOf(valueChecksum),
+              region,
+              prevOffsetVector,
+              offsetVector,
+              record.getOffset(),
+              timestamp,
+              partition);
+          allRecords.computeIfAbsent(key, k -> new ArrayList<>()).add(recordInfo);
+          prevOffsetVector = offsetVector;
+        } else if (MessageType.valueOf(record.getValue().messageType).equals(MessageType.DELETE)) {
+          Delete delete = (Delete) record.getValue().payloadUnion;
+          List<Long> offsetVector =
+              extractOffsetVectorFromMessage(replicationSchema, delete.replicationMetadataPayload, regionNum);
+          String key = new String(record.getKey().getKey());
+          Long timestamp = extractTimestampFromMessage(replicationSchema, delete.replicationMetadataPayload);
+          LOGGER.info(
+              "Record delete key: {}, value: {}, offsetVector {}",
+              new String(record.getKey().getKey()),
+              "NULL",
+              offsetVector);
+          ValidatorUtils.RecordInfo recordInfo = new ValidatorUtils.RecordInfo(
+              "NULL",
+              region,
+              prevOffsetVector,
+              offsetVector,
+              record.getOffset(),
+              timestamp,
+              partition);
+          allRecords.computeIfAbsent(key, k -> new ArrayList<>()).add(recordInfo);
+          prevOffsetVector = offsetVector;
+        }
+
+        lastProcessRecord = record;
+        processRecord(record);
+      }
+      LOGGER.info("Consumed {} messages for this poll", polledRecordsNum);
+      countdownBeforeStop = records.isEmpty() ? countdownBeforeStop - 1 : maxConsumeAttempts;
+    } while ((lastProcessRecord != null && lastProcessRecord.getOffset() < (this.endOffset - 2))
+        && countdownBeforeStop > 0);
+    return allRecords;
+  }
+
+  public List<Long> getPartitionHighWatermarks() {
+    return prevOffsetVector;
   }
 
   private void setupDumpFile() {
@@ -340,6 +421,35 @@ public class KafkaTopicDumper implements AutoCloseable {
     } catch (Exception e) {
       LOGGER.error("Failed when building record for offset {}", record.getOffset(), e);
     }
+  }
+
+  protected List<Long> extractOffsetVectorFromMessage(
+      MultiSchemaResponse.Schema replicationMetadataSchema,
+      ByteBuffer replicationMetadataPayload,
+      int regionNum) {
+    RecordDeserializer<GenericRecord> deserializer = SerializerDeserializerFactory
+        .getAvroGenericDeserializer(Schema.parse(replicationMetadataSchema.getSchemaStr()));
+    GenericRecord replicationMetadataRecord = deserializer.deserialize(replicationMetadataPayload);
+    GenericData.Array replicationCheckpointVector =
+        (GenericData.Array) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD_POS);
+
+    List<Long> offsetVector = new ArrayList<>();
+    for (Object o: replicationCheckpointVector) {
+      offsetVector.add((Long) o);
+    }
+    while (offsetVector.size() < regionNum) {
+      offsetVector.add(0L);
+    }
+    return offsetVector;
+  }
+
+  protected Long extractTimestampFromMessage(
+      MultiSchemaResponse.Schema replicationMetadataSchema,
+      ByteBuffer replicationMetadataPayload) {
+    RecordDeserializer<GenericRecord> deserializer = SerializerDeserializerFactory
+        .getAvroGenericDeserializer(Schema.parse(replicationMetadataSchema.getSchemaStr()));
+    GenericRecord replicationMetadataRecord = deserializer.deserialize(replicationMetadataPayload);
+    return RmdUtils.extractTimestampFromRmd(replicationMetadataRecord).get(0);
   }
 
   // Visible for testing
