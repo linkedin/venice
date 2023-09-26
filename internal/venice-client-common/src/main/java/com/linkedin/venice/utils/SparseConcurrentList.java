@@ -18,7 +18,7 @@ import java.util.function.UnaryOperator;
 
 /**
  * A {@link java.util.List} implementation with some usability improvements around resizing. In particular,
- * the list provides {@link Map} semantics in some cases where the regular {@link List} behavior would be
+ * the list provides {@link Map} semantics in some cases where the regular {@link List} behavior would be to
  * throw {@link ArrayIndexOutOfBoundsException}.
  *
  * Note on concurrency and performance characteristics:
@@ -26,7 +26,7 @@ import java.util.function.UnaryOperator;
  * This class extends {@link CopyOnWriteArrayList} and thus mimics its general characteristics: it is
  * threadsafe, very efficient for read operations, but it incurs a locking overhead on mutation operations.
  *
- * Unfortunately, the locking overhead may be up t double that of the parent class, because we cannot get
+ * Unfortunately, the locking overhead may be up to double that of the parent class, because we cannot get
  * access to {@link CopyOnWriteArrayList#lock} since it is package private and Java doesn't allow us to
  * define new classes in the java.* package. So instead we are making every mutation operation synchronized.
  * The end result should be that the inner lock inside the parent class never has any contention, since the
@@ -152,7 +152,7 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
     return nonNullSize() == 0;
   }
 
-  // Boilerplate code just to add synchronization to mutation operations:
+  // N.B.: All mutation operations add synchronization and maintenance of the nonNullSize.
 
   @Override
   public synchronized boolean add(E e) {
@@ -164,6 +164,15 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
   public synchronized void add(int index, E element) {
     handleSizeDuringMutation(null, element);
     super.add(index, element);
+  }
+
+  @Override
+  public synchronized boolean remove(Object o) {
+    boolean modified = super.remove(o);
+    if (modified) {
+      this.nonNullSize--;
+    }
+    return modified;
   }
 
   @Override
