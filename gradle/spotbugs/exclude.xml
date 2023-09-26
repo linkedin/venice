@@ -157,6 +157,9 @@
       <Class name="com.linkedin.davinci.kafka.consumer.SharedKafkaConsumer">
         <Field name="currentAssignment"/>
       </Class>
+      <Class name="com.linkedin.venice.utils.SparseConcurrentList">
+        <Field name="nonNullSize"/>
+      </Class>
     </Or>
   </Match>
   <Match>

@@ -16,6 +16,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import java.util.Optional;
 import org.testng.Assert;
@@ -23,9 +24,11 @@ import org.testng.annotations.Test;
 
 
 public class ControllerClientBackedSystemSchemaInitializerTest {
+  ControllerClientBackedSystemSchemaInitializer initializer;
+
   @Test
   public void testCreateSystemStoreAndRegisterSchema() {
-    ControllerClientBackedSystemSchemaInitializer initializer;
+
     try {
       initializer = new ControllerClientBackedSystemSchemaInitializer(
           AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
@@ -70,13 +73,36 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
     doReturn(new MultiSchemaResponse.Schema[0]).when(multiSchemaResponse).getSchemas();
     doReturn(multiSchemaResponse).when(controllerClient).getAllValueSchema(any());
     SchemaResponse schemaResponse = mock(SchemaResponse.class);
-    doReturn(schemaResponse).when(controllerClient).addValueSchema(any(), any(), anyInt());
+    doReturn(schemaResponse).when(controllerClient).addValueSchema(any(), any(), anyInt(), any());
     doCallRealMethod().when(controllerClient).retryableRequest(anyInt(), any(), any());
     doCallRealMethod().when(controllerClient).retryableRequest(anyInt(), any());
     initializer.setControllerClient(controllerClient);
     initializer.execute();
     verify(controllerClient, times(1)).createNewSystemStore(any(), any(), any(), any());
     verify(controllerClient, times(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion()))
-        .addValueSchema(any(), any(), anyInt());
+        .addValueSchema(any(), any(), anyInt(), any());
+  }
+
+  @Test
+  public void testSchemaCompatabilityType() {
+    for (AvroProtocolDefinition protocol: AvroProtocolDefinition.values()) {
+      initializer = new ControllerClientBackedSystemSchemaInitializer(
+          protocol,
+          "testCluster",
+          null,
+          null,
+          false,
+          Optional.empty(),
+          "",
+          "",
+          "",
+          false);
+      if (protocol == AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE) {
+        Assert
+            .assertEquals(initializer.determineSchemaCompatabilityType(), DirectionalSchemaCompatibilityType.BACKWARD);
+      } else {
+        Assert.assertEquals(initializer.determineSchemaCompatabilityType(), DirectionalSchemaCompatibilityType.FULL);
+      }
+    }
   }
 }

@@ -66,6 +66,7 @@ import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_WRITE_ONLY_ADMIN_CLASS;
+import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
@@ -293,6 +294,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean systemSchemaInitializationAtStartTimeEnabled;
 
+  private final boolean isKMERegistrationFromMessageHeaderEnabled;
+
   private final PubSubClientsFactory pubSubClientsFactory;
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -508,6 +511,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
     this.systemSchemaInitializationAtStartTimeEnabled =
         props.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
+    this.isKMERegistrationFromMessageHeaderEnabled =
+        props.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, false);
 
     try {
       String producerFactoryClassName =
@@ -954,6 +959,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isSystemSchemaInitializationAtStartTimeEnabled() {
     return systemSchemaInitializationAtStartTimeEnabled;
+  }
+
+  public boolean isKMERegistrationFromMessageHeaderEnabled() {
+    return isKMERegistrationFromMessageHeaderEnabled;
   }
 
   public PubSubClientsFactory getPubSubClientsFactory() {

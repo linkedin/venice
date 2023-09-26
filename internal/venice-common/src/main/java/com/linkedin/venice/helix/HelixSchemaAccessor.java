@@ -278,4 +278,10 @@ public class HelixSchemaAccessor {
         .append(replicationMetadataVersionIdPair)
         .toString();
   }
+
+  // For testing purpose only.
+  public void removeValueSchema(String storeName, String schemaId) {
+    HelixUtils.remove(schemaAccessor, getValueSchemaPath(storeName, schemaId));
+    logger.info("Removed value schema: {} for store: {}.", schemaId, storeName);
+  }
 }

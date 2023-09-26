@@ -2,12 +2,15 @@ package com.linkedin.venice.listener;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -34,13 +37,16 @@ import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.mockito.ArgumentCaptor;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -60,6 +66,8 @@ public class ReadQuotaEnforcementHandlerTest {
   GrpcReadQuotaEnforcementHandler grpcQuotaEnforcer;
   AggServerQuotaUsageStats stats;
 
+  MetricsRepository metricsRepository;
+
   @BeforeMethod
   public void setUp() {
     nodeCapacity = 10; // rcu per second that a single node can support
@@ -70,12 +78,14 @@ public class ReadQuotaEnforcementHandlerTest {
     storeRepository = mock(ReadOnlyStoreRepository.class);
     customizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     stats = mock(AggServerQuotaUsageStats.class);
+    metricsRepository = new MetricsRepository();
     quotaEnforcer = new ReadQuotaEnforcementHandler(
         nodeCapacity,
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
         thisNodeId,
         stats,
+        metricsRepository,
         clock);
     grpcQuotaEnforcer = new GrpcReadQuotaEnforcementHandler(quotaEnforcer);
     VeniceServerGrpcHandler mockNextHandler = mock(VeniceServerGrpcHandler.class);
@@ -86,6 +96,23 @@ public class ReadQuotaEnforcementHandlerTest {
   @DataProvider(name = "Test-Quota-EnforcementHandler-Enable-Grpc")
   public Object[][] testQuotaEnforcementHandlerEnableGrpc() {
     return new Object[][] { { true }, { false } };
+  }
+
+  @Test
+  public void testGetRCU() {
+    for (RequestType requestType: RequestType.values()) {
+      RouterRequest request = mock(RouterRequest.class);
+      int keyCount = 10;
+      doReturn(keyCount).when(request).getKeyCount();
+      doReturn(requestType).when(request).getRequestType();
+
+      int rcu = ReadQuotaEnforcementHandler.getRcu(request);
+      if (requestType == RequestType.SINGLE_GET) {
+        assertEquals(rcu, 1, "Single get rcu count should be 1");
+      } else {
+        assertEquals(rcu, keyCount, "Non-single get rcu count should be: " + keyCount);
+      }
+    }
   }
 
   /**
@@ -115,19 +142,10 @@ public class ReadQuotaEnforcementHandlerTest {
     Instance thisInstance = mock(Instance.class);
     doReturn(thisNodeId).when(thisInstance).getNodeId();
 
-    Partition partition = mock(Partition.class);
+    Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
     doReturn(0).when(partition).getId();
 
-    List<ReplicaState> replicaStates = new ArrayList<>();
-    ReplicaState thisReplicaState = mock(ReplicaState.class);
-    doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
-    doReturn(true).when(thisReplicaState).isReadyToServe();
-    replicaStates.add(thisReplicaState);
-    when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
-
-    PartitionAssignment pa = mock(PartitionAssignment.class);
-    doReturn(topic).when(pa).getTopic();
-    doReturn(Collections.singletonList(partition)).when(pa).getAllPartitions();
+    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
 
     long storeReadQuota = 5; // rcu per second
     Store store = mock(Store.class);
@@ -135,7 +153,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
-    quotaEnforcer.onExternalViewChange(pa);
+    quotaEnforcer.onCustomizedViewChange(pa);
 
     runTest(topic, storeReadQuota * 5 * 10, storeReadQuota * 10, 10000);
   }
@@ -217,6 +235,89 @@ public class ReadQuotaEnforcementHandlerTest {
     assertNotNull(builder.getErrorMessage());
   }
 
+  @Test
+  public void testReadQuotaOnVersionChange() {
+    String storeName = Utils.getUniqueString("test-store");
+    int currentVersion = 1;
+    String topic = Version.composeKafkaTopic(storeName, currentVersion);
+    String nextTopic = Version.composeKafkaTopic(storeName, currentVersion + 1);
+    Version version = mock(Version.class);
+    doReturn(topic).when(version).kafkaTopicName();
+    Version nextVersion = mock(Version.class);
+    doReturn(nextTopic).when(nextVersion).kafkaTopicName();
+    Instance thisInstance = mock(Instance.class);
+    doReturn(thisNodeId).when(thisInstance).getNodeId();
+
+    Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
+    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    doReturn(pa).when(customizedViewRepository).getPartitionAssignments(topic);
+    Partition nextPartition = setUpPartitionMock(nextTopic, thisInstance, true, 0);
+    PartitionAssignment nextPa = setUpPartitionAssignmentMock(nextTopic, Collections.singletonList(nextPartition));
+    doReturn(nextPa).when(customizedViewRepository).getPartitionAssignments(nextTopic);
+
+    long storeReadQuota = 1;
+    long newStoreReadQuota = storeReadQuota * 2;
+    Store store = setUpStoreMock(storeName, currentVersion, Arrays.asList(version, nextVersion), storeReadQuota, true);
+    Store storeAfterVersionBump =
+        setUpStoreMock(storeName, currentVersion + 1, Collections.singletonList(nextVersion), storeReadQuota, true);
+    Store storeAfterQuotaBump =
+        setUpStoreMock(storeName, currentVersion + 1, Collections.singletonList(nextVersion), newStoreReadQuota, true);
+    // The store repository is called to initialize/update the token buckets, we need to make sure it doesn't return the
+    // store state with higher quota prior to the test to verify quota change.
+    when(storeRepository.getStore(eq(storeName))).thenReturn(store, store, storeAfterVersionBump, storeAfterQuotaBump);
+
+    quotaEnforcer.handleStoreChanged(store);
+    Assert.assertTrue(quotaEnforcer.listTopics().contains(topic));
+    Assert.assertTrue(quotaEnforcer.listTopics().contains(nextTopic));
+
+    quotaEnforcer.handleStoreChanged(storeAfterVersionBump);
+    Assert.assertFalse(quotaEnforcer.listTopics().contains(topic));
+    Assert.assertTrue(quotaEnforcer.listTopics().contains(nextTopic));
+
+    AtomicInteger allowed = new AtomicInteger(0);
+    AtomicInteger blocked = new AtomicInteger(0);
+    RouterRequest request = mock(RouterRequest.class);
+    RouterRequest oldVersionRequest = mock(RouterRequest.class);
+    ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    setUpRequestMocks(ctx, request, allowed, blocked, nextTopic);
+    setUpRequestMocks(ctx, oldVersionRequest, allowed, blocked, topic);
+    long capacity = storeReadQuota * 5 * 10;
+    for (int i = 0; i < capacity; i++) {
+      quotaEnforcer.channelRead0(ctx, request);
+    }
+    assertEquals(allowed.get(), capacity);
+    assertEquals(blocked.get(), 0);
+    verify(stats, times((int) capacity)).recordAllowed(eq(storeName), anyLong());
+    verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(stats, never()).recordRejected(eq(storeName), anyLong());
+
+    quotaEnforcer.channelRead0(ctx, request);
+    assertEquals(allowed.get(), capacity);
+    assertEquals(blocked.get(), 1);
+    verify(stats, times((int) capacity)).recordAllowed(eq(storeName), anyLong());
+    verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(stats, times(1)).recordRejected(eq(storeName), anyLong());
+
+    quotaEnforcer.channelRead0(ctx, oldVersionRequest);
+    assertEquals(allowed.get(), capacity + 1);
+    assertEquals(blocked.get(), 1);
+    verify(stats, times((int) capacity + 1)).recordAllowed(eq(storeName), anyLong());
+    verify(stats, times(1)).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(stats, times(1)).recordRejected(eq(storeName), anyLong());
+
+    quotaEnforcer.handleStoreChanged(storeAfterQuotaBump);
+    long newCapacity = newStoreReadQuota * 5 * 10;
+    for (int i = 0; i < newCapacity; i++) {
+      quotaEnforcer.channelRead0(ctx, request);
+    }
+    int expectedAllowedCount = (int) capacity + 1 + (int) newCapacity;
+    assertEquals(allowed.get(), expectedAllowedCount);
+    assertEquals(blocked.get(), 1);
+    verify(stats, times(expectedAllowedCount)).recordAllowed(eq(storeName), anyLong());
+    verify(stats, times(1)).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(stats, times(1)).recordRejected(eq(storeName), anyLong());
+  }
+
   @DataProvider(name = "Enable-Grpc-Test-Boolean")
   public Object[][] enableGrpcTestBoolean() {
     return new Object[][] { { false }, { true } };
@@ -237,30 +338,17 @@ public class ReadQuotaEnforcementHandlerTest {
     Instance thisInstance = mock(Instance.class);
     doReturn(thisNodeId).when(thisInstance).getNodeId();
 
-    Partition partition = mock(Partition.class);
-    doReturn(0).when(partition).getId();
-
-    List<ReplicaState> replicaStates = new ArrayList<>();
-    ReplicaState thisReplicaState = mock(ReplicaState.class);
-    doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
-    doReturn(true).when(thisReplicaState).isReadyToServe();
-    replicaStates.add(thisReplicaState);
-    when(customizedViewRepository.getReplicaStates(quotaEnabledTopic, partition.getId())).thenReturn(replicaStates);
-
-    PartitionAssignment pa = mock(PartitionAssignment.class);
-    doReturn(quotaEnabledTopic).when(pa).getTopic();
-    doReturn(Collections.singletonList(partition)).when(pa).getAllPartitions();
+    Partition partition = setUpPartitionMock(quotaEnabledTopic, thisInstance, true, 0);
+    PartitionAssignment pa = setUpPartitionAssignmentMock(quotaEnabledTopic, Collections.singletonList(partition));
 
     long storeReadQuota = 1;
-    Store store = mock(Store.class);
-    Store quotaDisabledStore = mock(Store.class);
-    doReturn(true).when(store).isStorageNodeReadQuotaEnabled();
-    doReturn(storeReadQuota).when(store).getReadQuotaInCU();
+    Store store = setUpStoreMock(quotaEnabledStoreName, 1, Collections.emptyList(), storeReadQuota, true);
+    Store quotaDisabledStore =
+        setUpStoreMock(quotaDisabledStoreName, 1, Collections.emptyList(), storeReadQuota, false);
     doReturn(store).when(storeRepository).getStore(eq(quotaEnabledStoreName));
-    doReturn(storeReadQuota).when(quotaDisabledStore).getReadQuotaInCU();
     doReturn(quotaDisabledStore).when(storeRepository).getStore(eq(quotaDisabledStoreName));
 
-    quotaEnforcer.onExternalViewChange(pa);
+    quotaEnforcer.onCustomizedViewChange(pa);
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
@@ -306,30 +394,18 @@ public class ReadQuotaEnforcementHandlerTest {
     Instance thisInstance = mock(Instance.class);
     doReturn(thisNodeId).when(thisInstance).getNodeId();
 
-    Partition partition = mock(Partition.class);
-    doReturn(0).when(partition).getId();
+    Partition partition = setUpPartitionMock(quotaEnabledTopic, thisInstance, true, 0);
 
-    List<ReplicaState> replicaStates = new ArrayList<>();
-    ReplicaState thisReplicaState = mock(ReplicaState.class);
-    doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
-    doReturn(true).when(thisReplicaState).isReadyToServe();
-    replicaStates.add(thisReplicaState);
-    when(customizedViewRepository.getReplicaStates(quotaEnabledTopic, partition.getId())).thenReturn(replicaStates);
-
-    PartitionAssignment pa = mock(PartitionAssignment.class);
-    doReturn(quotaEnabledTopic).when(pa).getTopic();
-    doReturn(Collections.singletonList(partition)).when(pa).getAllPartitions();
+    PartitionAssignment pa = setUpPartitionAssignmentMock(quotaEnabledTopic, Collections.singletonList(partition));
 
     long storeReadQuota = 1;
-    Store store = mock(Store.class);
-    Store quotaDisabledStore = mock(Store.class);
-    doReturn(true).when(store).isStorageNodeReadQuotaEnabled();
-    doReturn(storeReadQuota).when(store).getReadQuotaInCU();
+    Store store = setUpStoreMock(quotaEnabledStoreName, 1, Collections.emptyList(), storeReadQuota, true);
+    Store quotaDisabledStore =
+        setUpStoreMock(quotaDisabledStoreName, 1, Collections.emptyList(), storeReadQuota, false);
     doReturn(store).when(storeRepository).getStore(eq(quotaEnabledStoreName));
-    doReturn(storeReadQuota).when(quotaDisabledStore).getReadQuotaInCU();
     doReturn(quotaDisabledStore).when(storeRepository).getStore(eq(quotaDisabledStoreName));
 
-    quotaEnforcer.onExternalViewChange(pa);
+    quotaEnforcer.onCustomizedViewChange(pa);
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
@@ -456,5 +532,39 @@ public class ReadQuotaEnforcementHandlerTest {
       blocked.incrementAndGet();
       return null;
     }).when(grpcCtx).setError();
+  }
+
+  private PartitionAssignment setUpPartitionAssignmentMock(String topic, List<Partition> partitions) {
+    PartitionAssignment pa = mock(PartitionAssignment.class);
+    doReturn(topic).when(pa).getTopic();
+    doReturn(partitions).when(pa).getAllPartitions();
+    return pa;
+  }
+
+  private Partition setUpPartitionMock(String topic, Instance instance, boolean isReadyToServe, int partitionId) {
+    Partition partition = mock(Partition.class);
+    doReturn(partitionId).when(partition).getId();
+    List<ReplicaState> replicaStates = new ArrayList<>();
+    ReplicaState thisReplicaState = mock(ReplicaState.class);
+    doReturn(instance.getNodeId()).when(thisReplicaState).getParticipantId();
+    doReturn(isReadyToServe).when(thisReplicaState).isReadyToServe();
+    replicaStates.add(thisReplicaState);
+    when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
+    return partition;
+  }
+
+  private Store setUpStoreMock(
+      String storeName,
+      int currentVersion,
+      List<Version> versionList,
+      long readQuota,
+      boolean readQuotaEnabled) {
+    Store store = mock(Store.class);
+    doReturn(storeName).when(store).getName();
+    doReturn(currentVersion).when(store).getCurrentVersion();
+    doReturn(versionList).when(store).getVersions();
+    doReturn(readQuota).when(store).getReadQuotaInCU();
+    doReturn(readQuotaEnabled).when(store).isStorageNodeReadQuotaEnabled();
+    return store;
   }
 }

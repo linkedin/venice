@@ -558,4 +558,10 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       throw new VeniceNoStoreException(storeName);
     }
   }
+
+  // For testing purpose only.
+  void removeValueSchema(String storeName, int schemaId) {
+    preCheckStoreCondition(storeName);
+    accessor.removeValueSchema(storeName, String.valueOf(schemaId));
+  }
 }
