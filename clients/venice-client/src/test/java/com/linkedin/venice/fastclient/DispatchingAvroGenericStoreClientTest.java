@@ -24,6 +24,7 @@ import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -461,6 +462,22 @@ public class DispatchingAvroGenericStoreClientTest {
       }
       metrics = getStats(clientConfig, RequestType.MULTI_GET);
       validateMultiGetMetrics(true, false, useStreamingBatchGetAsDefault, false);
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT, expectedExceptions = VeniceKeyCountLimitException.class)
+  public void testBatchGetWithMoreKeysThanMaxSize(boolean useStreamingBatchGetAsDefault)
+      throws ExecutionException, InterruptedException, IOException {
+    try {
+      setUpClient(useStreamingBatchGetAsDefault);
+      batchGetRequestContext = new BatchGetRequestContext<>();
+      Set<String> keys = new HashSet<>();
+      for (int i = 0; i < ClientConfig.MAX_ALLOWED_KEY_COUNT_IN_BATCHGET + 1; ++i) {
+        keys.add("testKey" + i);
+      }
+      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, keys).get();
     } finally {
       tearDown();
     }

@@ -11,7 +11,6 @@ import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -51,13 +50,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final long routingUnavailableRequestCounterResetDelayMS;
   private final int routingPendingRequestCounterInstanceBlockThreshold;
 
-  /**
-   * The max allowed key count in batch-get request.
-   * Right now, the batch-get implementation will leverage single-get, which is inefficient, when there
-   * are many keys, since the requests to the same storage node won't be reused.
-   * But to temporarily unblock the first customer, we will only allow at most two keys in a batch-get request.
-   */
+  // Max allowed key count in batch-get request
   private final int maxAllowedKeyCntInBatchGetReq;
+  protected static final int MAX_ALLOWED_KEY_COUNT_IN_BATCHGET = 150;
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   private final AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
   private final long metadataRefreshIntervalInSeconds;
@@ -387,16 +382,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private long routingUnavailableRequestCounterResetDelayMS = -1;
     private int routingPendingRequestCounterInstanceBlockThreshold = -1;
     /**
-     * TODO:
-     * maxAllowedKeyCntInBatchGetReq was set to 2 initially for singleGet based multiGet
-     * for a specific customer ask. This needs to be reevaluated for streamingBatchGet().
-     * Today, the batch-get size for thinclient is enforced in Venice Router via
-     * {@link VenicePathParser#getBatchGetLimit} and it is configurable in store-level.
-     * In Fast-Client, it is still an open question about how to setup the batch-get limit
-     * or whether we need any limit at all. To start with, this can be set similar to routers
-     * global config and evaluate from there.
+     * maxAllowedKeyCntInBatchGetReq is set to {@link #MAX_ALLOWED_KEY_COUNT_IN_BATCHGET}
+     * for fast-client and can be overridden by client config.
      */
-    private int maxAllowedKeyCntInBatchGetReq = 2;
+    private int maxAllowedKeyCntInBatchGetReq = MAX_ALLOWED_KEY_COUNT_IN_BATCHGET;
 
     private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
 

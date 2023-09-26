@@ -9,6 +9,7 @@ import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.Collections;
@@ -80,9 +81,11 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     }
     int keyCnt = keys.size();
     if (keyCnt > maxAllowedKeyCntInBatchGetReq) {
-      throw new VeniceClientException(
-          "Currently, the max allowed key count in a batch-get request: " + maxAllowedKeyCntInBatchGetReq
-              + ", but received: " + keyCnt);
+      throw new VeniceKeyCountLimitException(
+          getStoreName(),
+          RequestType.MULTI_GET,
+          keyCnt,
+          maxAllowedKeyCntInBatchGetReq);
     }
     CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
     Map<K, CompletableFuture<V>> valueFutures = new HashMap<>();
