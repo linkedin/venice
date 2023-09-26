@@ -5,12 +5,15 @@ import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.mockito.InOrder;
 import org.testng.annotations.Test;
 
 
@@ -46,5 +49,40 @@ public class TestVeniceHelixAdmin {
     veniceHelixAdmin.deleteHelixResource(clusterName, kafkaTopic);
     verify(adminClient, times(1)).enablePartition(true, clusterName, "node_1", kafkaTopic, partitions);
 
+  }
+
+  /**
+   * This test verify that in function {@link VeniceHelixAdmin#setUpMetaStoreAndMayProduceSnapshot},
+   * meta store RT topic creation has to happen before any writings to meta store's rt topic.
+   * As of today, topic creation and checks to make sure that RT exists are handled in function
+   * {@link VeniceHelixAdmin#getRealTimeTopic}. On the other hand, as {@link VeniceHelixAdmin#storeMetadataUpdate}
+   * writes to the same RT topic, it should happen after the above function. The following test enforces
+   * such order at the statement level.
+   *
+   * Notice that if function semantics change over time, as long as the above invariant can be obtained,
+   * it is okay to relax on the ordering enforcement or delete the unit test if necessary.
+   */
+  @Test
+  public void enforceRealTimeTopicCreationBeforeWriting() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doReturn("test_rt").when(veniceHelixAdmin).getRealTimeTopic(anyString(), anyString());
+    doCallRealMethod().when(veniceHelixAdmin).setUpMetaStoreAndMayProduceSnapshot(anyString(), anyString());
+
+    InOrder inorder = inOrder(veniceHelixAdmin);
+
+    HelixVeniceClusterResources veniceClusterResources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repo = mock(ReadWriteStoreRepository.class);
+    Store store = mock(Store.class);
+
+    doReturn(veniceClusterResources).when(veniceHelixAdmin).getHelixVeniceClusterResources(anyString());
+    doReturn(repo).when(veniceClusterResources).getStoreMetadataRepository();
+    doReturn(store).when(repo).getStore(anyString());
+    doReturn(Boolean.FALSE).when(store).isDaVinciPushStatusStoreEnabled();
+
+    veniceHelixAdmin.setUpMetaStoreAndMayProduceSnapshot(anyString(), anyString());
+
+    // Enforce that getRealTimeTopic happens before storeMetadataUpdate. See the above comments for the reasons.
+    inorder.verify(veniceHelixAdmin).getRealTimeTopic(anyString(), anyString());
+    inorder.verify(veniceHelixAdmin).storeMetadataUpdate(anyString(), anyString(), any());
   }
 }
