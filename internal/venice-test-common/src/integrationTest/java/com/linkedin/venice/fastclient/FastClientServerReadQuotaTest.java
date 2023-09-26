@@ -44,18 +44,23 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
     for (int i = 0; i < veniceCluster.getVeniceServers().size(); i++) {
       serverMetrics.add(veniceCluster.getVeniceServers().get(i).getMetricsRepository());
     }
+    String readQuotaStorageNodeTokenBucketRemaining =
+        "." + "venice-storage-node-token-bucket--QuotaRcuTokensRemaining.Gauge";
     String readQuotaRequestedString = "." + storeName + "--quota_rcu_requested.Count";
     String readQuotaRejectedString = "." + storeName + "--quota_rcu_rejected.Count";
-    String readQuotaUsageRatio = "." + storeName + "--read_quota_usage_ratio.Gauge";
+    String readQuotaAllowedUnintentionally = "." + storeName + "--quota_rcu_allowed_unintentionally.Count";
+    String readQuotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";
     String clientConnectionCountGaugeString = ".server_connection_stats--client_connection_count.Gauge";
     String routerConnectionCountGaugeString = ".server_connection_stats--router_connection_count.Gauge";
     String clientConnectionCountRateString = ".server_connection_stats--client_connection_count.OccurrenceRate";
     String routerConnectionCountRateString = ".server_connection_stats--router_connection_count.OccurrenceRate";
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       for (MetricsRepository serverMetric: serverMetrics) {
+        assertNotNull(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining));
         assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
         assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
         assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
+        assertNotNull(serverMetric.getMetric(readQuotaAllowedUnintentionally));
         assertNotNull(serverMetric.getMetric(clientConnectionCountGaugeString));
         assertNotNull(serverMetric.getMetric(routerConnectionCountGaugeString));
         assertNotNull(serverMetric.getMetric(clientConnectionCountRateString));
@@ -70,7 +75,8 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
       clientConnectionCountRateSum += serverMetric.getMetric(clientConnectionCountRateString).value();
       routerConnectionCountRateSum += serverMetric.getMetric(routerConnectionCountRateString).value();
       assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
-      assertTrue(serverMetric.getMetric(readQuotaUsageRatio).value() > 0);
+      assertEquals(serverMetric.getMetric(readQuotaAllowedUnintentionally).value(), 0d);
+      assertTrue(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining).value() > 0d);
     }
     assertTrue(quotaRequestedSum >= 500, "Quota requested sum: " + quotaRequestedSum);
     assertTrue(clientConnectionCountRateSum > 0, "Servers should have more than 0 client connections");
@@ -99,7 +105,6 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
     for (MetricsRepository serverMetric: serverMetrics) {
       if (serverMetric.getMetric(readQuotaRejectedString).value() > 0) {
         readQuotaRejected = true;
-        break;
       }
     }
     assertTrue(readQuotaRejected);
