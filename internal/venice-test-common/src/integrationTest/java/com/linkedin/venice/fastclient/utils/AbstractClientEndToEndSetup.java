@@ -157,28 +157,15 @@ public abstract class AbstractClientEndToEndSetup {
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
 
-  @DataProvider(name = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode")
-  public Object[][] twoBooleanStoreMetadataFetchMode() {
-    return DataProviderUtils.allPermutationGenerator((permutation) -> {
-      boolean batchGet = (boolean) permutation[0];
-      boolean useStreamingBatchGetAsDefault = (boolean) permutation[1];
-      if (!batchGet) {
-        if (useStreamingBatchGetAsDefault) {
-          // this parameter is related only to batchGet, so just allowing 1 set
-          // to avoid duplicate tests
-          return false;
-        }
-      }
-      return true;
-    },
-        DataProviderUtils.BOOLEAN, // batchGet
-        DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
-        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
-  }
-
   @DataProvider(name = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode")
   public Object[][] oneBooleanStoreMetadataFetchMode() {
     return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
+  }
+
+  @DataProvider(name = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode")
+  public Object[][] twoBooleanStoreMetadataFetchMode() {
+    return DataProviderUtils
+        .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
   }
 
   @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
