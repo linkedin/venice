@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Total;
 
 
@@ -15,6 +16,8 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
   private final Sensor rejectedQPS; // rejected query per second
   private final Sensor rejectedKPS; // rejected key per second
   private final Sensor allowedUnintentionallyKPS; // allowed KPS unintentionally due to error or insufficient info
+  private final Sensor usageRatioSensor; // requested qps divided by amortized refill per second on this node for a
+                                         // store
 
   public ServerQuotaUsageStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -23,6 +26,7 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
     rejectedQPS = registerSensor("quota_rcu_rejected", new Count());
     rejectedKPS = registerSensor("quota_rcu_rejected_key", new Total());
     allowedUnintentionallyKPS = registerSensor("quota_rcu_allowed_unintentionally", new Count());
+    usageRatioSensor = registerSensor("quota_requested_usage_ratio", new Gauge());
   }
 
   /**
@@ -46,5 +50,9 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
 
   public void recordAllowedUnintentionally(long rcu) {
     allowedUnintentionallyKPS.record(rcu);
+  }
+
+  public void recordReadQuotaUsageRatio(double usageRatio) {
+    usageRatioSensor.record(usageRatio);
   }
 }

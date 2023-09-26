@@ -60,11 +60,13 @@ public class FastClientGrpcServerReadQuotaTest extends AbstractClientEndToEndSet
     String readQuotaRequestedString = "." + storeName + "--quota_rcu_requested.Count";
     String readQuotaRejectedString = "." + storeName + "--quota_rcu_rejected.Count";
     String readQuotaAllowedUnintentionally = "." + storeName + "--quota_rcu_allowed_unintentionally.Count";
+    String readQuotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       for (MetricsRepository serverMetric: serverMetrics) {
         assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
         assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
         assertNotNull(serverMetric.getMetric(readQuotaAllowedUnintentionally));
+        assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
       }
     });
     int quotaRequestedSum = 0;

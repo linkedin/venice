@@ -175,7 +175,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           "Null resource assignment from HelixCustomizedViewOfflinePushRepository in ReadQuotaEnforcementHandler");
     } else {
       for (String resource: resourceAssignment.getAssignedResources()) {
-        this.onExternalViewChange(resourceAssignment.getPartitionAssignment(resource));
+        this.onCustomizedViewChange(resourceAssignment.getPartitionAssignment(resource));
       }
     }
     this.initializedVolatile = true;
@@ -218,6 +218,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
      */
     TokenBucket tokenBucket = storeVersionBuckets.get(request.getResourceName());
     if (tokenBucket != null) {
+      // Can always emit the stale usage ratio first because it's using numbers from the previous refill
+      stats.recordReadQuotaUsageRatio(storeName, tokenBucket.getStaleUsageRatio());
       if (!request.isRetryRequest() && !tokenBucket.tryConsume(rcu)
           && handleTooManyRequests(ctx, request, null, store, rcu, false)) {
         // Enforce store version quota for non-retry requests.
@@ -481,7 +483,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
          * a the future version will fail in most cases, because the new topic is not in the external view at all.
          *
          */
-        this.onExternalViewChange(customizedViewRepository.getPartitionAssignments(topic));
+        this.onCustomizedViewChange(customizedViewRepository.getPartitionAssignments(topic));
       } catch (VeniceNoHelixResourceException e) {
         Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic));
         if (version.isPresent() && version.get().getStatus().equals(VersionStatus.ONLINE)) {

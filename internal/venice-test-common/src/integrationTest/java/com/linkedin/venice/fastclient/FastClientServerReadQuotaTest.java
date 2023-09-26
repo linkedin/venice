@@ -49,6 +49,7 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
     String readQuotaRequestedString = "." + storeName + "--quota_rcu_requested.Count";
     String readQuotaRejectedString = "." + storeName + "--quota_rcu_rejected.Count";
     String readQuotaAllowedUnintentionally = "." + storeName + "--quota_rcu_allowed_unintentionally.Count";
+    String readQuotaUsageRatio = "." + storeName + "--quota_requested_usage_ratio.Gauge";
     String clientConnectionCountGaugeString = ".server_connection_stats--client_connection_count.Gauge";
     String routerConnectionCountGaugeString = ".server_connection_stats--router_connection_count.Gauge";
     String clientConnectionCountRateString = ".server_connection_stats--client_connection_count.OccurrenceRate";
@@ -58,6 +59,7 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
         assertNotNull(serverMetric.getMetric(readQuotaStorageNodeTokenBucketRemaining));
         assertNotNull(serverMetric.getMetric(readQuotaRequestedString));
         assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
+        assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
         assertNotNull(serverMetric.getMetric(readQuotaAllowedUnintentionally));
         assertNotNull(serverMetric.getMetric(clientConnectionCountGaugeString));
         assertNotNull(serverMetric.getMetric(routerConnectionCountGaugeString));
@@ -103,7 +105,6 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
     for (MetricsRepository serverMetric: serverMetrics) {
       if (serverMetric.getMetric(readQuotaRejectedString).value() > 0) {
         readQuotaRejected = true;
-        break;
       }
     }
     assertTrue(readQuotaRejected);

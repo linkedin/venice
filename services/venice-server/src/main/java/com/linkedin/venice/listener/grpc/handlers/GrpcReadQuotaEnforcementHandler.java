@@ -34,6 +34,7 @@ public class GrpcReadQuotaEnforcementHandler extends VeniceServerGrpcHandler {
 
     TokenBucket tokenBucket = readQuota.getStoreVersionBuckets().get(request.getResourceName());
     if (tokenBucket != null) {
+      readQuota.getStats().recordReadQuotaUsageRatio(storeName, tokenBucket.getStaleUsageRatio());
       if (!request.isRetryRequest() && !tokenBucket.tryConsume(rcu)
           && readQuota.handleTooManyRequests(null, request, ctx, store, rcu, true)) {
         invokeNextHandler(ctx);
