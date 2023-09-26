@@ -153,7 +153,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
-    quotaEnforcer.onExternalViewChange(pa);
+    quotaEnforcer.onCustomizedViewChange(pa);
 
     runTest(topic, storeReadQuota * 5 * 10, storeReadQuota * 10, 10000);
   }
@@ -348,7 +348,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(store).when(storeRepository).getStore(eq(quotaEnabledStoreName));
     doReturn(quotaDisabledStore).when(storeRepository).getStore(eq(quotaDisabledStoreName));
 
-    quotaEnforcer.onExternalViewChange(pa);
+    quotaEnforcer.onCustomizedViewChange(pa);
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
@@ -405,7 +405,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(store).when(storeRepository).getStore(eq(quotaEnabledStoreName));
     doReturn(quotaDisabledStore).when(storeRepository).getStore(eq(quotaDisabledStoreName));
 
-    quotaEnforcer.onExternalViewChange(pa);
+    quotaEnforcer.onCustomizedViewChange(pa);
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);

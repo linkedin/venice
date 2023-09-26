@@ -388,7 +388,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
 
   @Override
   public void onExternalViewChange(PartitionAssignment partitionAssignment) {
-    updateQuota(partitionAssignment);
+    // Ignore this event since the partition assignment triggered by EV won't contain the right states.
   }
 
   @Override
