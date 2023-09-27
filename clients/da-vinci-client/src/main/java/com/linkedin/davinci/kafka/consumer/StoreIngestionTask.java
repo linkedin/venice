@@ -2639,24 +2639,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState,
             leaderProducedRecordContext,
             currentTimeMs);
-        if (!isUserSystemStore() && isHybridMode() && partitionConsumptionState.hasLagCaughtUp()) {
-          long afterProcessingRecordTimestampMs = System.currentTimeMillis();
-          long brokerProducedTimeStamp = (leaderProducedRecordContext == null)
-              ? kafkaValue.producerMetadata.messageTimestamp
-              : leaderProducedRecordContext.getProducedTimestampMs();
-          /** This metric is used in combination with the nearlineProducerToLocalBrokerLatency metric to measure the
-           * end to end latency of a record from the time it is produced to the time it is ready to serve. If we add
-           * them together we get the approx end to end latency of a message. Though the time taken to receive broker
-           * acknowledgement will be double counted for followers. This is estimated to be very small (1%)
-           * TODO: We plan to upgrade the KME to include the producer timestamp after the KME prrotocol upgrade
-           * enhancements and that will give us more accurate E2E latency.
-           */
-          versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
-              storeName,
-              versionNumber,
-              afterProcessingRecordTimestampMs - brokerProducedTimeStamp,
-              afterProcessingRecordTimestampMs);
-        }
+        recordNearlineLocalBrokerToReadyToServerLatency(
+            storeName,
+            versionNumber,
+            partitionConsumptionState,
+            kafkaValue,
+            leaderProducedRecordContext);
       }
       versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
           storeName,
@@ -3567,6 +3555,69 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * The consumer record is skipped. e.g. remote VT's TS message during data recovery.
      */
     SKIPPED_MESSAGE
+  }
+
+  private void recordNearlineLocalBrokerToReadyToServerLatency(
+      String storeName,
+      int versionNumber,
+      PartitionConsumptionState partitionConsumptionState,
+      KafkaMessageEnvelope kafkaMessageEnvelope,
+      LeaderProducedRecordContext leaderProducedRecordContext) {
+    long afterProcessingRecordTimestampMs = System.currentTimeMillis();
+    if (!isUserSystemStore() && isHybridMode() && partitionConsumptionState.hasLagCaughtUp()
+        && (partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.LEADER
+            || partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.STANDBY)) {
+      if (partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.LEADER
+          && leaderProducedRecordContext == null) {
+        LOGGER.error(
+            "LeaderProducedRecordContext is null when PCS state is LEADER for storeName: {},"
+                + " versionNumber: {}, partition: {}",
+            storeName,
+            versionNumber,
+            partitionConsumptionState.getPartition());
+        return;
+      }
+      if (partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.STANDBY
+          && kafkaMessageEnvelope.getLeaderMetadataFooter() == null) {
+        LOGGER.error(
+            "LeaderMetadataFooter is null when PCS state is STANDBY for storeName: {},"
+                + " versionNumber: {}, partition: {}",
+            storeName,
+            versionNumber,
+            partitionConsumptionState.getPartition());
+        return;
+      }
+      boolean hasCorrespondingUpstreamMessage = false; // No point in recording E2E latency if there is no upstream
+      if (partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.LEADER) {
+        hasCorrespondingUpstreamMessage = leaderProducedRecordContext.hasCorrespondingUpstreamMessage();
+      } else if (partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.STANDBY
+          && kafkaMessageEnvelope.getLeaderMetadataFooter() != null) {
+        hasCorrespondingUpstreamMessage = kafkaMessageEnvelope.getLeaderMetadataFooter().getUpstreamOffset() > 0;
+      }
+      if (hasCorrespondingUpstreamMessage) {
+        long producerTimestamp = (leaderProducedRecordContext == null)
+            ? kafkaMessageEnvelope.producerMetadata.messageTimestamp
+            : leaderProducedRecordContext.getProducedTimestampMs();
+        if (producerTimestamp <= 0) {
+          LOGGER.warn(
+              "Illegal timestamp for storeName: {}, versionNumber: {}, partition: {}, "
+                  + "leaderProducedRecordContext: {}, leaderMetadataFooter: {}",
+              storeName,
+              versionNumber,
+              partitionConsumptionState.getPartition(),
+              leaderProducedRecordContext == null ? "NA" : leaderProducedRecordContext,
+              kafkaMessageEnvelope.getLeaderMetadataFooter() == null
+                  ? "NA"
+                  : kafkaMessageEnvelope.getLeaderMetadataFooter());
+        } else {
+          versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
+              storeName,
+              versionNumber,
+              afterProcessingRecordTimestampMs - producerTimestamp,
+              afterProcessingRecordTimestampMs);
+        }
+      }
+    }
   }
 
   protected void recordProcessedRecordStats(
