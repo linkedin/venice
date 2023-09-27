@@ -404,7 +404,15 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     Long minLogCompactionLagMs = properties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
         ? Long.parseLong((String) properties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
         : 0L;
-    return new PubSubTopicConfiguration(retentionMs, isLogCompacted, minInSyncReplicas, minLogCompactionLagMs);
+    Optional<Long> maxLogCompactionLagMs = properties.containsKey(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG)
+        ? Optional.of(Long.parseLong(properties.getProperty(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG)))
+        : Optional.empty();
+    return new PubSubTopicConfiguration(
+        retentionMs,
+        isLogCompacted,
+        minInSyncReplicas,
+        minLogCompactionLagMs,
+        maxLogCompactionLagMs);
   }
 
   private Properties unmarshallProperties(PubSubTopicConfiguration pubSubTopicConfiguration) {
@@ -418,6 +426,11 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
       topicProperties.put(
           TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG,
           Long.toString(pubSubTopicConfiguration.minLogCompactionLagMs()));
+      if (pubSubTopicConfiguration.getMaxLogCompactionLagMs().isPresent()) {
+        topicProperties.put(
+            TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG,
+            Long.toString(pubSubTopicConfiguration.getMaxLogCompactionLagMs().get()));
+      }
     } else {
       topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE);
     }
