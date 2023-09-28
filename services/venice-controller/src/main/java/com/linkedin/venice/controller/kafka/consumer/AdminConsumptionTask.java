@@ -291,7 +291,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         60,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(MAX_WORKER_QUEUE_SIZE),
-        new DaemonThreadFactory("Venice-Admin-Execution-Task"));
+        new DaemonThreadFactory(String.format("Venice-Admin-Execution-Task-%s", clusterName)));
     this.undelegatedRecords = new LinkedList<>();
     this.stats.setAdminConsumptionFailedOffset(failingOffset);
     this.pubSubTopicRepository = pubSubTopicRepository;
