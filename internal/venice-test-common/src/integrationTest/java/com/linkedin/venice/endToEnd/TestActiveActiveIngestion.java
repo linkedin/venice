@@ -788,7 +788,7 @@ public class TestActiveActiveIngestion {
     // After image consumer consumed 3 different topics: v2, v2_cc and v3_cc.
     // The total messages: 102 (v2 repush from v1, key: 0-100, 1000) + 1 (v2_cc, key: 1001) + 42 (v3_cc, key: 0-39,
     // 1000, 1001) - 22 (filtered from v3_cc, key: 0-19, 1000 and 1001 as they were read already.)
-    Assert.assertEquals(totalPolledAfterImageMessages.get(), 148);
+    Assert.assertEquals(totalPolledAfterImageMessages.get(), 149);
 
     for (int i = 1; i < 100; i++) {
       String key = Integer.toString(i);
@@ -945,7 +945,7 @@ public class TestActiveActiveIngestion {
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
-        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 85));
+        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 86));
     parentControllerClient.disableAndDeleteStore(storeName);
     // Verify that topics and store is cleaned up
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {

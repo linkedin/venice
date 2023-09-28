@@ -19,6 +19,7 @@ import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.store.view.ViewWriterUtils;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -39,6 +40,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
@@ -491,30 +493,51 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
       int valueSchemaId =
           rmdWithValueSchemaID != null ? rmdWithValueSchemaID.getValueSchemaId() : incomingValueSchemaId;
-      this.viewWriters.forEach(
-          (k, v) -> v.processRecord(
-              mergeConflictResult.getNewValue(),
-              oldValueProvider.get(),
-              keyBytes,
-              versionNumber,
-              incomingValueSchemaId,
-              valueSchemaId,
-              mergeConflictResult.getRmdRecord()));
 
-      // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
-      // this call.
-      producePutOrDeleteToKafka(
-          mergeConflictResult,
-          partitionConsumptionState,
-          keyBytes,
-          consumerRecord,
-          subPartition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs,
-          valueManifestContainer.getManifest(),
-          rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+      // Get Futures and
+      // Pass callback with on completion which decrements, once all decrement call producePutOrDeleteToKafka
+      if (this.viewWriters.size() > 0) {
+        PubSubProducerCallback callback = ViewWriterUtils.createViewCountDownCallback(viewWriters.size(), () -> {
+          producePutOrDeleteToKafka(
+              mergeConflictResult,
+              partitionConsumptionState,
+              keyBytes,
+              consumerRecord,
+              subPartition,
+              kafkaUrl,
+              kafkaClusterId,
+              beforeProcessingRecordTimestampNs,
+              valueManifestContainer.getManifest(),
+              rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+        });
+        this.viewWriters.forEach(
+            (k, v) -> v.processRecord(
+                mergeConflictResult.getNewValue(),
+                oldValueProvider.get(),
+                keyBytes,
+                versionNumber,
+                incomingValueSchemaId,
+                valueSchemaId,
+                mergeConflictResult.getRmdRecord(),
+                callback));
+      } else {
+        // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
+        // after
+        // this call.
+        producePutOrDeleteToKafka(
+            mergeConflictResult,
+            partitionConsumptionState,
+            keyBytes,
+            consumerRecord,
+            subPartition,
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingRecordTimestampNs,
+            valueManifestContainer.getManifest(),
+            rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+      }
     }
+
   }
 
   private long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {

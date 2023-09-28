@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Map;
@@ -35,7 +36,9 @@ public class TestViewWriter extends VeniceViewWriter {
       int version,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord) {
+      GenericRecord replicationMetadataRecord,
+      PubSubProducerCallback callback) {
+    callback.onCompletion(null, null);
     internalView.incrementRecordCount(store.getName());
   }
 

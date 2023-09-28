@@ -28,6 +28,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -718,6 +719,14 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public boolean isChunked() {
     StoreVersionState svs = getStoreVersionState();
     return svs == null ? false : svs.chunked;
+  }
+
+  public void enableLogging(boolean enable) {
+    if (enable) {
+      LOGGER.isEnabled(Level.INFO);
+    } else {
+      LOGGER.isEnabled(Level.OFF);
+    }
   }
 
   public boolean hasMemorySpaceLeft() {

@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.views.VeniceView;
 import java.nio.ByteBuffer;
 import java.util.Map;
@@ -50,7 +51,8 @@ public abstract class VeniceViewWriter extends VeniceView {
       int version,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord) {
+      GenericRecord replicationMetadataRecord,
+      PubSubProducerCallback callback) {
   }
 
   /**
