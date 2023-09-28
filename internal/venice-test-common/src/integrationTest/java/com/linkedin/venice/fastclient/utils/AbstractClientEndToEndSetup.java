@@ -512,16 +512,18 @@ public abstract class AbstractClientEndToEndSetup {
   }
 
   protected void validateSingleGetMetrics(MetricsRepository metricsRepository, boolean retryEnabled) {
-    validateBatchGetMetrics(metricsRepository, false, 0, 0, retryEnabled);
+    validateBatchGetMetrics(metricsRepository, false, false, 0, 0, retryEnabled);
   }
 
   protected void validateBatchGetMetrics(
       MetricsRepository metricsRepository,
       boolean useStreamingBatchGetAsDefault,
+      boolean streamingBatchGetApi,
       int expectedBatchGetKeySizeMetricsCount,
       int expectedBatchGetKeySizeSuccessMetricsCount,
       boolean retryEnabled) {
-    String metricPrefix = "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--");
+    String metricPrefix = "." + storeName
+        + (streamingBatchGetApi ? "--multiget_streaming_" : (useStreamingBatchGetAsDefault ? "--multiget_" : "--"));
     double keyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeMetricsCount : 1;
     double successKeyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeSuccessMetricsCount : 1;
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();

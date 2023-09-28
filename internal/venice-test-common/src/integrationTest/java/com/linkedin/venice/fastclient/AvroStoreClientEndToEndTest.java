@@ -306,6 +306,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         fastClientStatsValidation = metricsRepository -> validateBatchGetMetrics(
             metricsRepository,
             useStreamingBatchGetAsDefault,
+            false,
             batchGetKeySize,
             batchGetKeySize,
             false);
@@ -418,6 +419,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     fastClientStatsValidation = metricsRepository -> validateBatchGetMetrics(
         metricsRepository,
         true, // testing batch get with useStreamingBatchGetAsDefault as true
+        false,
         recordCnt,
         recordCnt,
         false);
@@ -449,7 +451,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(1);
       fastClientStatsValidation =
-          metricsRepository -> validateBatchGetMetrics(metricsRepository, true, recordCnt, recordCnt, true);
+          metricsRepository -> validateBatchGetMetrics(metricsRepository, true, false, recordCnt, recordCnt, true);
     } else {
       clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);

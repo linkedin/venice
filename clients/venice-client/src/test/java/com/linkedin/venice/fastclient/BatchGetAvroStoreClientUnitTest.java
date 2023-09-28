@@ -709,7 +709,7 @@ public class BatchGetAvroStoreClientUnitTest {
       double expectedNumberOfKeysToBeRetried,
       double expectedNumberOfKeysToBeRetriedSuccessfully) {
     Map<String, ? extends Metric> metrics = getStats(client.getClientConfig());
-    String metricPrefix = "." + client.UNIT_TEST_STORE_NAME + "--multiget_";
+    String metricPrefix = "." + client.UNIT_TEST_STORE_NAME + "--multiget_streaming_";
     if (totalNumberOfKeys > 0) {
       assertTrue(metrics.get(metricPrefix + "request.OccurrenceRate").value() > 0);
       assertEquals(metrics.get(metricPrefix + "request_key_count.Max").value(), totalNumberOfKeys);

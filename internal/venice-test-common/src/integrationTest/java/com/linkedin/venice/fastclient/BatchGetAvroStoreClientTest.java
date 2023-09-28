@@ -158,7 +158,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    validateBatchGetMetrics(metricsRepository, useStreamingBatchGetAsDefault, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, useStreamingBatchGetAsDefault, false, recordCnt + 1, recordCnt, false);
 
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
@@ -195,7 +195,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    validateBatchGetMetrics(metricsRepository, useStreamingBatchGetAsDefault, recordCnt, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, useStreamingBatchGetAsDefault, false, recordCnt, recordCnt, false);
 
     specificFastClient.close();
     printAllStats();
@@ -247,7 +247,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         1,
         "Incorrect non existing key size . Expected  1 got " + veniceResponseMap.getNonExistingKeys().size());
 
-    validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, true, true, recordCnt + 1, recordCnt, false);
   }
 
   @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
@@ -323,7 +323,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         "STATS: latency -> {}",
         stats.buildSensorStatSummary("multiget_healthy_request_latency", "99thPercentile"));
 
-    validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, true, true, recordCnt + 1, recordCnt, false);
     printAllStats();
   }
 }

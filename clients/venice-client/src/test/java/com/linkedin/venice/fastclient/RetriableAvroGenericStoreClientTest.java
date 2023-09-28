@@ -244,7 +244,7 @@ public class RetriableAvroGenericStoreClientTest {
       }
     }
 
-    validateMetrics(false, errorRetry, longTailRetry, retryWin);
+    validateMetrics(false, false, errorRetry, longTailRetry, retryWin);
   }
 
   private void testBatchGetAndValidateMetrics(
@@ -272,7 +272,7 @@ public class RetriableAvroGenericStoreClientTest {
       }
     }
 
-    validateMetrics(true, false, longTailRetry, retryWin);
+    validateMetrics(true, false, false, longTailRetry, retryWin);
   }
 
   private void testStreamingBatchGetAndValidateMetrics(
@@ -301,7 +301,7 @@ public class RetriableAvroGenericStoreClientTest {
       }
     }
 
-    validateMetrics(true, false, longTailRetry, retryWin);
+    validateMetrics(true, true, false, longTailRetry, retryWin);
   }
 
   /**
@@ -311,9 +311,15 @@ public class RetriableAvroGenericStoreClientTest {
    * @param longTailRetry request is retried because the original request is taking more time
    * @param retryWin retry request wins
    */
-  private void validateMetrics(boolean batchGet, boolean errorRetry, boolean longTailRetry, boolean retryWin) {
+  private void validateMetrics(
+      boolean batchGet,
+      boolean streamingBatchGet,
+      boolean errorRetry,
+      boolean longTailRetry,
+      boolean retryWin) {
     metrics = getStats(clientConfig);
-    String metricsPrefix = "." + STORE_NAME + (batchGet ? "--multiget_" : "--");
+    String metricsPrefix =
+        "." + STORE_NAME + (batchGet ? (streamingBatchGet ? "--multiget_streaming_" : "--multiget_") : "--");
     double expectedKeyCount = batchGet ? 2.0 : 1.0;
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {

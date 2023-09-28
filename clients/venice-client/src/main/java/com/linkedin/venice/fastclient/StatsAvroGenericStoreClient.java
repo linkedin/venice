@@ -31,6 +31,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
   private final FastClientStats clientStatsForSingleGet;
   private final FastClientStats clientStatsForBatchGet;
+  private final FastClientStats clientStatsForStreamingBatchGet;
   private final ClusterStats clusterStats;
 
   private final int maxAllowedKeyCntInBatchGetReq;
@@ -40,6 +41,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     super(delegate);
     this.clientStatsForSingleGet = clientConfig.getStats(RequestType.SINGLE_GET);
     this.clientStatsForBatchGet = clientConfig.getStats(RequestType.MULTI_GET);
+    this.clientStatsForStreamingBatchGet = clientConfig.getStats(RequestType.MULTI_GET_STREAMING);
     this.clusterStats = clientConfig.getClusterStats();
     this.maxAllowedKeyCntInBatchGetReq = clientConfig.getMaxAllowedKeyCntInBatchGetReq();
     this.useStreamingBatchGetAsDefault = clientConfig.useStreamingBatchGetAsDefault();
@@ -121,7 +123,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         requestContext,
         keys,
         new StatTrackingStreamingCallBack<>(callback, statFuture, requestContext));
-    recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForBatchGet);
+    recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForStreamingBatchGet);
   }
 
   @Override
@@ -130,7 +132,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       Set<K> keys) {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGetFuture = super.streamingBatchGet(requestContext, keys);
-    recordMetrics(requestContext, keys.size(), streamingBatchGetFuture, startTimeInNS, clientStatsForBatchGet);
+    recordMetrics(requestContext, keys.size(), streamingBatchGetFuture, startTimeInNS, clientStatsForStreamingBatchGet);
     return streamingBatchGetFuture;
   }
 

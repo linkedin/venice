@@ -266,13 +266,14 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   private void validateSingleGetMetrics(boolean healthyRequest) {
-    validateMetrics(healthyRequest, false, false, false, false, 1, 0);
+    validateMetrics(healthyRequest, false, false, false, false, false, 1, 0);
   }
 
   private void validateMultiGetMetrics(
       boolean healthyRequest,
       boolean partialHealthyRequest,
       boolean useStreamingBatchGetAsDefault,
+      boolean streamingBatchGetApi,
       boolean noAvailableReplicas,
       int numKeys) {
     validateMetrics(
@@ -280,6 +281,7 @@ public class DispatchingAvroGenericStoreClientTest {
         partialHealthyRequest,
         true,
         useStreamingBatchGetAsDefault,
+        streamingBatchGetApi,
         noAvailableReplicas,
         numKeys,
         2);
@@ -289,6 +291,7 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean healthyRequest,
       boolean partialHealthyRequest,
       boolean useStreamingBatchGetAsDefault,
+      boolean streamingBatchGetApi,
       boolean noAvailableReplicas,
       int numKeys,
       double numBlockedReplicas) {
@@ -297,6 +300,7 @@ public class DispatchingAvroGenericStoreClientTest {
         partialHealthyRequest,
         true,
         useStreamingBatchGetAsDefault,
+        streamingBatchGetApi,
         noAvailableReplicas,
         numKeys,
         numBlockedReplicas);
@@ -306,12 +310,16 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean healthyRequest,
       boolean partialHealthyRequest,
       boolean batchGet,
-      boolean useStreamingBatchGetAsDefault,
+      boolean useStreamingBatchGetAsDefault, // use streaming implementation for batchGet
+      boolean streamingBatchGetApi, // calling streamingBatchGet() API to test
       boolean noAvailableReplicas,
       int numKeys,
       double numBlockedReplicas) {
     metrics = getStats(clientConfig);
-    String metricPrefix = "." + STORE_NAME + ((batchGet && useStreamingBatchGetAsDefault) ? "--multiget_" : "--");
+    String metricPrefix = "." + STORE_NAME
+        + (streamingBatchGetApi
+            ? "--multiget_streaming_"
+            : ((batchGet && useStreamingBatchGetAsDefault) ? "--multiget_" : "--"));
     String routeMetricsPrefix = "." + STORE_NAME;
     double successKeyCount;
     double requestKeyCount = numKeys;
@@ -482,7 +490,13 @@ public class DispatchingAvroGenericStoreClientTest {
         });
       }
       metrics = getStats(clientConfig, RequestType.MULTI_GET);
-      validateMultiGetMetrics(true, false, useStreamingBatchGetAsDefault, false, useStreamingBatchGetAsDefault ? 2 : 1);
+      validateMultiGetMetrics(
+          true,
+          false,
+          useStreamingBatchGetAsDefault,
+          false,
+          false,
+          useStreamingBatchGetAsDefault ? 2 : 1);
     } finally {
       tearDown();
     }
@@ -522,6 +536,7 @@ public class DispatchingAvroGenericStoreClientTest {
           false,
           useStreamingBatchGetAsDefault,
           false,
+          false,
           useStreamingBatchGetAsDefault ? 2 : 1);
     } finally {
       tearDown();
@@ -549,6 +564,7 @@ public class DispatchingAvroGenericStoreClientTest {
             false,
             useStreamingBatchGetAsDefault,
             false,
+            false,
             useStreamingBatchGetAsDefault ? 2 : 1);
       }
     } catch (Exception e) {
@@ -557,7 +573,13 @@ public class DispatchingAvroGenericStoreClientTest {
       } else {
         fail();
       }
-      validateMultiGetMetrics(false, true, useStreamingBatchGetAsDefault, false, useStreamingBatchGetAsDefault ? 2 : 1);
+      validateMultiGetMetrics(
+          false,
+          true,
+          useStreamingBatchGetAsDefault,
+          false,
+          false,
+          useStreamingBatchGetAsDefault ? 2 : 1);
     } finally {
       tearDown();
     }
@@ -584,7 +606,7 @@ public class DispatchingAvroGenericStoreClientTest {
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
         assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false, 2);
+      validateMultiGetMetrics(false, true, true, false, false, 2);
       tearDown();
     }
   }
@@ -611,7 +633,7 @@ public class DispatchingAvroGenericStoreClientTest {
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
         assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false, 2);
+      validateMultiGetMetrics(false, true, true, false, false, 2);
       tearDown();
     }
   }
@@ -638,7 +660,7 @@ public class DispatchingAvroGenericStoreClientTest {
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
         assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false, 2);
+      validateMultiGetMetrics(false, true, true, false, false, 2);
       tearDown();
     }
   }
@@ -670,7 +692,7 @@ public class DispatchingAvroGenericStoreClientTest {
         TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
           assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
         });
-        validateMultiGetMetrics(false, true, true, true, 2, 1);
+        validateMultiGetMetrics(false, true, true, false, true, 2, 1);
       }
     } finally {
       tearDown();
@@ -697,9 +719,9 @@ public class DispatchingAvroGenericStoreClientTest {
       // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
       metrics = getStats(clientConfig);
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
-        assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
+        assertTrue(metrics.get("." + STORE_NAME + "--multiget_streaming_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false, 2);
+      validateMultiGetMetrics(false, true, true, true, false, 2);
       tearDown();
     }
   }
@@ -725,9 +747,9 @@ public class DispatchingAvroGenericStoreClientTest {
       // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
       metrics = getStats(clientConfig);
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
-        assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
+        assertTrue(metrics.get("." + STORE_NAME + "--multiget_streaming_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false, 2);
+      validateMultiGetMetrics(false, true, true, true, false, 2);
       tearDown();
     }
   }
@@ -754,9 +776,9 @@ public class DispatchingAvroGenericStoreClientTest {
       // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
       metrics = getStats(clientConfig);
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
-        assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
+        assertTrue(metrics.get("." + STORE_NAME + "--multiget_streaming_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false, 2);
+      validateMultiGetMetrics(false, true, true, true, false, 2);
     } finally {
       tearDown();
     }
@@ -782,6 +804,7 @@ public class DispatchingAvroGenericStoreClientTest {
           false,
           useStreamingBatchGetAsDefault,
           false,
+          false,
           useStreamingBatchGetAsDefault ? 2 : 1);
 
       try {
@@ -801,6 +824,7 @@ public class DispatchingAvroGenericStoreClientTest {
             false,
             false,
             useStreamingBatchGetAsDefault,
+            false,
             true,
             useStreamingBatchGetAsDefault ? 2 : 1);
       }
@@ -826,7 +850,7 @@ public class DispatchingAvroGenericStoreClientTest {
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
       assertTrue(e.getMessage().endsWith("At least one route did not complete"));
-      validateMultiGetMetrics(false, false, true, false, 2);
+      validateMultiGetMetrics(false, false, true, true, false, 2);
 
       try {
         // the second batchGet is not going to find any routes (as the instances
@@ -836,7 +860,7 @@ public class DispatchingAvroGenericStoreClientTest {
         fail();
       } catch (Exception e1) {
         assertTrue(e1.getMessage().endsWith("At least one route did not complete"));
-        validateMultiGetMetrics(false, false, true, true, 2);
+        validateMultiGetMetrics(false, false, true, true, true, 2);
       }
     } finally {
       tearDown();
@@ -860,7 +884,7 @@ public class DispatchingAvroGenericStoreClientTest {
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
       assertTrue(e.getMessage().endsWith("At least one route did not complete"));
-      validateMultiGetMetrics(false, false, true, false, 1);
+      validateMultiGetMetrics(false, false, true, true, false, 1);
 
       try {
         batchGetRequestContext = new BatchGetRequestContext<>();
@@ -868,7 +892,7 @@ public class DispatchingAvroGenericStoreClientTest {
         fail();
       } catch (Exception e1) {
         assertTrue(e1.getMessage().endsWith("At least one route did not complete"));
-        validateMultiGetMetrics(false, false, true, true, 2);
+        validateMultiGetMetrics(false, false, true, true, true, 2);
       }
     } finally {
       tearDown();
@@ -893,7 +917,7 @@ public class DispatchingAvroGenericStoreClientTest {
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
       assertTrue(e.getMessage().endsWith("At least one route did not complete"));
-      validateMultiGetMetrics(false, false, true, false, 1);
+      validateMultiGetMetrics(false, false, true, true, false, 1);
       batchGetRequestContext = new BatchGetRequestContext<>();
 
       CompletableFuture<VeniceResponseMap<String, String>> future =
@@ -923,7 +947,7 @@ public class DispatchingAvroGenericStoreClientTest {
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
       assertTrue(e.getMessage().endsWith("At least one route did not complete"));
-      validateMultiGetMetrics(false, true, true, false, 2);
+      validateMultiGetMetrics(false, true, true, true, false, 2);
     } finally {
       tearDown();
     }
@@ -944,7 +968,7 @@ public class DispatchingAvroGenericStoreClientTest {
       // First batchGet fails with unreachable host after timeout and this adds the hosts
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
       assertTrue(e.getMessage().endsWith("At least one route did not complete"));
-      validateMultiGetMetrics(false, false, true, false, 2);
+      validateMultiGetMetrics(false, false, true, true, false, 2);
     } finally {
       tearDown();
     }
