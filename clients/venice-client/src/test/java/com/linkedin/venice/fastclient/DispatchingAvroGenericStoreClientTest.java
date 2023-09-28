@@ -266,15 +266,40 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   private void validateSingleGetMetrics(boolean healthyRequest) {
-    validateMetrics(healthyRequest, false, false, false, false);
+    validateMetrics(healthyRequest, false, false, false, false, 1, 0);
   }
 
   private void validateMultiGetMetrics(
       boolean healthyRequest,
       boolean partialHealthyRequest,
       boolean useStreamingBatchGetAsDefault,
-      boolean noAvailableReplicas) {
-    validateMetrics(healthyRequest, partialHealthyRequest, true, useStreamingBatchGetAsDefault, noAvailableReplicas);
+      boolean noAvailableReplicas,
+      int numKeys) {
+    validateMetrics(
+        healthyRequest,
+        partialHealthyRequest,
+        true,
+        useStreamingBatchGetAsDefault,
+        noAvailableReplicas,
+        numKeys,
+        2);
+  }
+
+  private void validateMultiGetMetrics(
+      boolean healthyRequest,
+      boolean partialHealthyRequest,
+      boolean useStreamingBatchGetAsDefault,
+      boolean noAvailableReplicas,
+      int numKeys,
+      double numBlockedReplicas) {
+    validateMetrics(
+        healthyRequest,
+        partialHealthyRequest,
+        true,
+        useStreamingBatchGetAsDefault,
+        noAvailableReplicas,
+        numKeys,
+        numBlockedReplicas);
   }
 
   private void validateMetrics(
@@ -282,26 +307,19 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean partialHealthyRequest,
       boolean batchGet,
       boolean useStreamingBatchGetAsDefault,
-      boolean noAvailableReplicas) {
+      boolean noAvailableReplicas,
+      int numKeys,
+      double numBlockedReplicas) {
     metrics = getStats(clientConfig);
     String metricPrefix = "." + STORE_NAME + ((batchGet && useStreamingBatchGetAsDefault) ? "--multiget_" : "--");
     String routeMetricsPrefix = "." + STORE_NAME;
-    double requestKeyCount;
     double successKeyCount;
-    if (useStreamingBatchGetAsDefault) {
-      if (partialHealthyRequest) {
-        // batchGet and partialHealthyRequest: 2 request tried but only 1 request is successful
-        requestKeyCount = 2.0;
-        successKeyCount = 1.0;
-      } else {
-        requestKeyCount = 2.0;
-        successKeyCount = 2.0;
-      }
+    double requestKeyCount = numKeys;
+    if (partialHealthyRequest) {
+      // batchGet and partialHealthyRequest: 1 request is unsuccessful
+      successKeyCount = numKeys - 1;
     } else {
-      // single get: 1
-      // batchGet using single get: 1 will be recorded twice rather than 2
-      requestKeyCount = 1.0;
-      successKeyCount = 1.0;
+      successKeyCount = numKeys;
     }
     assertTrue(metrics.get(metricPrefix + "request.OccurrenceRate").value() > 0);
     assertEquals(metrics.get(metricPrefix + "request_key_count.Max").value(), requestKeyCount);
@@ -350,16 +368,19 @@ public class DispatchingAvroGenericStoreClientTest {
     if (noAvailableReplicas) {
       assertTrue(metrics.get(metricPrefix + "no_available_replica_request_count.OccurrenceRate").value() > 0);
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        assertNotNull(metrics.get(routeMetricsPrefix + "_" + REPLICA1_NAME + "--pending_request_count.Max"));
-        assertEquals(
-            metrics.get(routeMetricsPrefix + "_" + REPLICA1_NAME + "--pending_request_count.Max").value(),
-            1.0);
+        if (numBlockedReplicas == 2) {
+          // some test cases only have 1 replica having pending and some have 2.
+          assertNotNull(metrics.get(routeMetricsPrefix + "_" + REPLICA1_NAME + "--pending_request_count.Max"));
+          assertEquals(
+              metrics.get(routeMetricsPrefix + "_" + REPLICA1_NAME + "--pending_request_count.Max").value(),
+              1.0);
+        }
         assertNotNull(metrics.get(routeMetricsPrefix + "_" + REPLICA2_NAME + "--pending_request_count.Max"));
         assertEquals(
             metrics.get(routeMetricsPrefix + "_" + REPLICA2_NAME + "--pending_request_count.Max").value(),
             1.0);
       });
-      assertEquals(metrics.get(routeMetricsPrefix + "--blocked_instance_count.Max").value(), 2.0);
+      assertEquals(metrics.get(routeMetricsPrefix + "--blocked_instance_count.Max").value(), numBlockedReplicas);
       if (batchGet) {
         if (useStreamingBatchGetAsDefault) {
           assertTrue(batchGetRequestContext.noAvailableReplica);
@@ -461,7 +482,7 @@ public class DispatchingAvroGenericStoreClientTest {
         });
       }
       metrics = getStats(clientConfig, RequestType.MULTI_GET);
-      validateMultiGetMetrics(true, false, useStreamingBatchGetAsDefault, false);
+      validateMultiGetMetrics(true, false, useStreamingBatchGetAsDefault, false, useStreamingBatchGetAsDefault ? 2 : 1);
     } finally {
       tearDown();
     }
@@ -496,7 +517,12 @@ public class DispatchingAvroGenericStoreClientTest {
       } else {
         assertTrue(e.getMessage().endsWith("Exception for client to return 503"));
       }
-      validateMultiGetMetrics(false, false, useStreamingBatchGetAsDefault, false);
+      validateMultiGetMetrics(
+          false,
+          false,
+          useStreamingBatchGetAsDefault,
+          false,
+          useStreamingBatchGetAsDefault ? 2 : 1);
     } finally {
       tearDown();
     }
@@ -518,7 +544,12 @@ public class DispatchingAvroGenericStoreClientTest {
         BATCH_GET_KEYS.stream().forEach(key -> {
           assertTrue(SINGLE_GET_VALUE_RESPONSE.contentEquals(value.get(key)));
         });
-        validateMultiGetMetrics(true, false, useStreamingBatchGetAsDefault, false);
+        validateMultiGetMetrics(
+            true,
+            false,
+            useStreamingBatchGetAsDefault,
+            false,
+            useStreamingBatchGetAsDefault ? 2 : 1);
       }
     } catch (Exception e) {
       if (useStreamingBatchGetAsDefault) {
@@ -526,7 +557,7 @@ public class DispatchingAvroGenericStoreClientTest {
       } else {
         fail();
       }
-      validateMultiGetMetrics(false, true, useStreamingBatchGetAsDefault, false);
+      validateMultiGetMetrics(false, true, useStreamingBatchGetAsDefault, false, useStreamingBatchGetAsDefault ? 2 : 1);
     } finally {
       tearDown();
     }
@@ -553,7 +584,7 @@ public class DispatchingAvroGenericStoreClientTest {
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
         assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false);
+      validateMultiGetMetrics(false, true, true, false, 2);
       tearDown();
     }
   }
@@ -580,7 +611,7 @@ public class DispatchingAvroGenericStoreClientTest {
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
         assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false);
+      validateMultiGetMetrics(false, true, true, false, 2);
       tearDown();
     }
   }
@@ -607,7 +638,41 @@ public class DispatchingAvroGenericStoreClientTest {
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
         assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false);
+      validateMultiGetMetrics(false, true, true, false, 2);
+      tearDown();
+    }
+  }
+
+  /**
+   * 1st batchGet(1 key) blocks one replica and 2nd batchGet(2 keys) returns value for only 1 key as the other
+   * route is blocked, so batchGet() return an exception.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchGetWithTimeoutV4() throws IOException {
+    long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
+    try {
+      setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
+      batchGetRequestContext = new BatchGetRequestContext<>();
+      statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_2).get();
+      fail();
+    } catch (Exception e) {
+      assertTrue(e.getMessage().endsWith("At least one route did not complete"));
+
+      try {
+        batchGetRequestContext = new BatchGetRequestContext<>();
+        statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
+        fail();
+      } catch (Exception e1) {
+        assertTrue(e1.getMessage().endsWith("Response was not complete"));
+        assertTrue(e1.getCause().getCause().getMessage().matches(".*No available route for.*"));
+        // wait for routingLeakedRequestCleanupThresholdMS for the metrics to be increased
+        metrics = getStats(clientConfig);
+        TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
+          assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
+        });
+        validateMultiGetMetrics(false, true, true, true, 2, 1);
+      }
+    } finally {
       tearDown();
     }
   }
@@ -634,7 +699,7 @@ public class DispatchingAvroGenericStoreClientTest {
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
         assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false);
+      validateMultiGetMetrics(false, true, true, false, 2);
       tearDown();
     }
   }
@@ -662,7 +727,7 @@ public class DispatchingAvroGenericStoreClientTest {
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
         assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false);
+      validateMultiGetMetrics(false, true, true, false, 2);
       tearDown();
     }
   }
@@ -691,7 +756,7 @@ public class DispatchingAvroGenericStoreClientTest {
       TestUtils.waitForNonDeterministicAssertion(routingLeakedRequestCleanupThresholdMS + 1, TimeUnit.SECONDS, () -> {
         assertTrue(metrics.get("." + STORE_NAME + "--multiget_request.OccurrenceRate").value() > 0);
       });
-      validateMultiGetMetrics(false, true, true, false);
+      validateMultiGetMetrics(false, true, true, false, 2);
     } finally {
       tearDown();
     }
@@ -712,7 +777,12 @@ public class DispatchingAvroGenericStoreClientTest {
       } else {
         assertTrue(e.getMessage().endsWith("http status: 410, Request timed out"));
       }
-      validateMultiGetMetrics(false, false, useStreamingBatchGetAsDefault, false);
+      validateMultiGetMetrics(
+          false,
+          false,
+          useStreamingBatchGetAsDefault,
+          false,
+          useStreamingBatchGetAsDefault ? 2 : 1);
 
       try {
         // the second batchGet is not going to find any routes (as the instances
@@ -721,14 +791,160 @@ public class DispatchingAvroGenericStoreClientTest {
         statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
         fail();
       } catch (Exception e1) {
-        System.out.println("Exception is: " + e1.getMessage());
         if (useStreamingBatchGetAsDefault) {
-          assertTrue(e1.getMessage().endsWith("Response was not complete"));
+          assertTrue(e1.getMessage().endsWith("At least one route did not complete"));
+          assertTrue(e1.getCause().getCause().getMessage().matches(".*No available route for store.*"));
         } else {
           assertTrue(e1.getMessage().matches(".*No available route for store.*"));
         }
-        validateMultiGetMetrics(false, false, useStreamingBatchGetAsDefault, true);
+        validateMultiGetMetrics(
+            false,
+            false,
+            useStreamingBatchGetAsDefault,
+            true,
+            useStreamingBatchGetAsDefault ? 2 : 1);
       }
+    } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * 1. 1st streamingBatchGet(2 keys) will result in both the routes marked as
+   *    blocked(routingPendingRequestCounterInstanceBlockThreshold is 1).
+   * 2. 2nd streamingBatchGet(2 keys) will result in both route getting no replica
+   *    found leading to exception.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingBatchGetToUnreachableClient() throws IOException {
+    try {
+      setUpClient(true, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
+      batchGetRequestContext = new BatchGetRequestContext<>();
+      statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
+      fail();
+    } catch (Exception e) {
+      // First batchGet fails with unreachable host after timeout and this adds the hosts
+      // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
+      assertTrue(e.getMessage().endsWith("At least one route did not complete"));
+      validateMultiGetMetrics(false, false, true, false, 2);
+
+      try {
+        // the second batchGet is not going to find any routes (as the instances
+        // are blocked) and fail instantly
+        batchGetRequestContext = new BatchGetRequestContext<>();
+        statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
+        fail();
+      } catch (Exception e1) {
+        assertTrue(e1.getMessage().endsWith("At least one route did not complete"));
+        validateMultiGetMetrics(false, false, true, true, 2);
+      }
+    } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * 1. first streamingBatchGet() with 1 key getting timed out leading to the route getting
+   *    blocked (routingPendingRequestCounterInstanceBlockThreshold = 1)
+   * 2. second streamingBatchGet() with 2 keys (one key (same as above) failing with no available
+   *    replica and one key getting timed out) => exception
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingBatchGetToUnreachableClientV1() throws IOException {
+    try {
+      setUpClient(true, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
+      batchGetRequestContext = new BatchGetRequestContext<>();
+      statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_1).get();
+      fail();
+    } catch (Exception e) {
+      // First batchGet fails with unreachable host after timeout and this adds the hosts
+      // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
+      assertTrue(e.getMessage().endsWith("At least one route did not complete"));
+      validateMultiGetMetrics(false, false, true, false, 1);
+
+      try {
+        batchGetRequestContext = new BatchGetRequestContext<>();
+        statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
+        fail();
+      } catch (Exception e1) {
+        assertTrue(e1.getMessage().endsWith("At least one route did not complete"));
+        validateMultiGetMetrics(false, false, true, true, 2);
+      }
+    } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * 1. first streamingBatchGet() with 1 key getting timed out leading to the route getting
+   *    blocked (routingPendingRequestCounterInstanceBlockThreshold = 1)
+   * 2. second streamingBatchGet() with 2 keys (one key (same as above) failing with no available
+   *    replica and one key returning value) => no exception
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingBatchGetToUnreachableClientV2()
+      throws IOException, ExecutionException, InterruptedException {
+    try {
+      setUpClient(true, false, false, true, true, TimeUnit.SECONDS.toMillis(1));
+      batchGetRequestContext = new BatchGetRequestContext<>();
+      statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_2).get();
+      fail();
+    } catch (Exception e) {
+      // First batchGet fails with unreachable host after timeout and this adds the hosts
+      // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
+      assertTrue(e.getMessage().endsWith("At least one route did not complete"));
+      validateMultiGetMetrics(false, false, true, false, 1);
+      batchGetRequestContext = new BatchGetRequestContext<>();
+
+      CompletableFuture<VeniceResponseMap<String, String>> future =
+          statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
+      VeniceResponseMap<String, String> value = future.get();
+      assertFalse(value.isFullResponse());
+      // TODO metric validation: 1st get increments unhealthy metrics and the second get increments healthy
+      // metrics
+      // validateMultiGetMetrics(true, true, true, true, 2);
+    } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * same as testStreamingBatchGetToUnreachableClientV2: transportClientThrowsPartialException instead of
+   * transportClientPartialIncomplete.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingBatchGetToUnreachableClientV3() throws IOException {
+    try {
+      setUpClient(true, false, true, false, true, TimeUnit.SECONDS.toMillis(1));
+      batchGetRequestContext = new BatchGetRequestContext<>();
+      statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
+      fail();
+    } catch (Exception e) {
+      // First batchGet fails with unreachable host after timeout and this adds the hosts
+      // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
+      assertTrue(e.getMessage().endsWith("At least one route did not complete"));
+      validateMultiGetMetrics(false, true, true, false, 2);
+    } finally {
+      tearDown();
+    }
+  }
+
+  /**
+   * same as testStreamingBatchGetToUnreachableClientV3 but the transport mock throws exception
+   * for both the routes.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStreamingBatchGetToUnreachableClientV4() throws IOException {
+    try {
+      setUpClient(true, true, false, false, true, TimeUnit.SECONDS.toMillis(1));
+      batchGetRequestContext = new BatchGetRequestContext<>();
+      statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
+      fail();
+    } catch (Exception e) {
+      // First batchGet fails with unreachable host after timeout and this adds the hosts
+      // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
+      assertTrue(e.getMessage().endsWith("At least one route did not complete"));
+      validateMultiGetMetrics(false, false, true, false, 2);
     } finally {
       tearDown();
     }

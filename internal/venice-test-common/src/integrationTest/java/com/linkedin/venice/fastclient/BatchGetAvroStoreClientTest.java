@@ -135,8 +135,8 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
 
     if (retryEnabled) {
-      // enable retry to test the code path: mimic retry in integration tests
-      // be non-deterministic, so setting big retry threshold to not actually retry
+      // enable retry to test the code path: to mimic retry in integration tests
+      // can be non-deterministic, so setting big retry threshold to not actually retry
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(10 * US_PER_SECOND);
     }

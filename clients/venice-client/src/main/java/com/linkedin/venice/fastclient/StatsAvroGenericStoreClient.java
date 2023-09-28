@@ -148,6 +148,14 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     return AppTimeOutTrackingCompletableFuture.track(statFuture, clientStats);
   }
 
+  /**
+   * Metrics are incremented after one of the below cases
+   * 1. request is complete or
+   * 2. exception is thrown or
+   * 3. routingLeakedRequestCleanupThresholdMS is elapsed: In case of streamingBatchGet.get(timeout) returning
+   *            partial response and this timeout happens after than and before the full response is returned,
+   *            it will still raise a silent exception leading to the request being considered an unhealthy request.
+   */
   private <R> CompletableFuture<R> recordRequestMetrics(
       RequestContext requestContext,
       int numberOfKeys,

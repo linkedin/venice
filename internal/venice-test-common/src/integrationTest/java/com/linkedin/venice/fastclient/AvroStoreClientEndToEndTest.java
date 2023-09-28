@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -228,13 +229,14 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "FastClient-Five-Boolean-A-Number-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Six-Boolean-A-Number-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
   public void testFastClientGet(
       boolean dualRead,
       boolean speculativeQueryEnabled,
       boolean batchGet,
       boolean useStreamingBatchGetAsDefault,
       boolean enableGrpc,
+      boolean retryEnabled,
       int batchGetKeySize,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
@@ -254,6 +256,13 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
 
     if (enableGrpc) {
       setUpGrpcFastClient(clientConfigBuilder);
+    }
+
+    if (retryEnabled) {
+      clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
+          .setLongTailRetryThresholdForSingleGetInMicroSeconds(TIME_OUT * MS_PER_SECOND)
+          .setLongTailRetryEnabledForBatchGet(true)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
     }
 
     // dualRead needs thinClient

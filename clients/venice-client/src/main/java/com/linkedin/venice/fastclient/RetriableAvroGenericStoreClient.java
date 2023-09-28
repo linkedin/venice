@@ -175,6 +175,30 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
    */
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
+    CompletableFuture<Map<K, V>> responseFuture = new CompletableFuture<>();
+    CompletableFuture<VeniceResponseMap<K, V>> streamingResponseFuture = streamingBatchGet(requestContext, keys);
+    streamingResponseFuture.whenComplete((response, throwable) -> {
+      if (throwable != null) {
+        responseFuture.completeExceptionally(throwable);
+      } else if (!response.isFullResponse()) {
+        if (requestContext.getPartialResponseException().isPresent()) {
+          responseFuture.completeExceptionally(
+              new VeniceClientException(
+                  "Response was not complete",
+                  requestContext.getPartialResponseException().get()));
+        } else {
+          responseFuture.completeExceptionally(new VeniceClientException("Response was not complete"));
+        }
+      } else {
+        responseFuture.complete(response);
+      }
+    });
+    return responseFuture;
+  }
+
+  protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
+      BatchGetRequestContext<K, V> requestContext,
+      Set<K> keys) throws VeniceClientException {
     // keys that do not exist in the storage nodes
     Queue<K> nonExistingKeys = new ConcurrentLinkedQueue<>();
     VeniceConcurrentHashMap<K, V> valueMap = new VeniceConcurrentHashMap<>();
@@ -204,24 +228,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         }
       }
     });
-    CompletableFuture<Map<K, V>> responseFuture = new CompletableFuture<>();
-    streamingResponseFuture.whenComplete((response, throwable) -> {
-      if (throwable != null) {
-        responseFuture.completeExceptionally(throwable);
-      } else if (!response.isFullResponse()) {
-        if (requestContext.getPartialResponseException().isPresent()) {
-          responseFuture.completeExceptionally(
-              new VeniceClientException(
-                  "Response was not complete",
-                  requestContext.getPartialResponseException().get()));
-        } else {
-          responseFuture.completeExceptionally(new VeniceClientException("Response was not complete"));
-        }
-      } else {
-        responseFuture.complete(response);
-      }
-    });
-    return responseFuture;
+    return streamingResponseFuture;
   }
 
   @Override
@@ -301,7 +308,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       if (finalException == null) {
         callback.onCompletion(Optional.empty());
       } else {
-        callback.onCompletion(Optional.of(new VeniceClientException("Request failed with exception ", finalException)));
+        callback.onCompletion(Optional.of(new VeniceClientException("Request failed with exception", finalException)));
       }
     });
   }

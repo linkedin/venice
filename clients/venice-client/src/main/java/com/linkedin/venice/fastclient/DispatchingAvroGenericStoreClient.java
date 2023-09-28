@@ -393,9 +393,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
      * that exception will be passed to the aggregate future's next stages. */
     CompletableFuture.allOf(requestContext.getAllRouteFutures().toArray(new CompletableFuture[0]))
         .whenComplete((response, throwable) -> {
-          if (throwable == null) {
-            callback.onCompletion(Optional.empty());
-          } else {
+          if (throwable != null || requestContext.getAllRouteFutures().size() == 0) {
             // The exception to send to the client might be different. Get from the requestContext
             Throwable clientException = throwable;
             if (requestContext.getPartialResponseException().isPresent()) {
@@ -403,6 +401,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             }
             callback.onCompletion(
                 Optional.of(new VeniceClientException("At least one route did not complete", clientException)));
+          } else {
+            callback.onCompletion(Optional.empty());
           }
         });
   }
@@ -452,10 +452,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
          * an error */
         requestContext.noAvailableReplica = true;
         String errorMessage = String.format(
-            "No route found for partitionId: %s, store: %s, version: %s",
-            partitionId,
+            "No available route for store: %s, version: %s, partitionId: %s",
             getStoreName(),
-            currentVersion);
+            currentVersion,
+            partitionId);
         LOGGER.error(errorMessage);
         requestContext.setPartialResponseException(new VeniceClientException(errorMessage));
       }
