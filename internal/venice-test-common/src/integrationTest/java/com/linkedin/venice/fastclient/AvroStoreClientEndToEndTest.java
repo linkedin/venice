@@ -259,6 +259,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
 
     if (retryEnabled) {
+      // enable retry to test the code path: to mimic retry in integration tests
+      // can be non-deterministic, so setting big retry threshold to not actually retry
       clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(TIME_OUT * MS_PER_SECOND)
           .setLongTailRetryEnabledForBatchGet(true)

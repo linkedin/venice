@@ -1,6 +1,6 @@
 package com.linkedin.venice.fastclient;
 
-import static com.linkedin.venice.utils.Time.US_PER_SECOND;
+import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -138,7 +138,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       // enable retry to test the code path: to mimic retry in integration tests
       // can be non-deterministic, so setting big retry threshold to not actually retry
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
-          .setLongTailRetryThresholdForBatchGetInMicroSeconds(10 * US_PER_SECOND);
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
     }
 
     MetricsRepository metricsRepository = new MetricsRepository();
