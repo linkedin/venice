@@ -21,6 +21,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
+import java.io.Closeable;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,7 +33,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class ControllerClientBackedSystemSchemaInitializer {
+public class ControllerClientBackedSystemSchemaInitializer implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(ControllerClientBackedSystemSchemaInitializer.class);
   private static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
   /**
@@ -344,6 +345,13 @@ public class ControllerClientBackedSystemSchemaInitializer {
             "Error when getting derived schema from system store " + storeName + " in cluster " + clusterName
                 + " after retries. Error: " + getSchemaResponse.getError());
       }
+    }
+  }
+
+  @Override
+  public void close() {
+    if (controllerClient != null) {
+      controllerClient.close();
     }
   }
 

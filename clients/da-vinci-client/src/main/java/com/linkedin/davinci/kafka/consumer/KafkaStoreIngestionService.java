@@ -416,20 +416,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      */
     BiConsumer<Integer, Schema> newSchemaEncountered = (schemaId, schema) -> {
       LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
-      try {
-        ControllerClientBackedSystemSchemaInitializer schemaInitializer =
-            new ControllerClientBackedSystemSchemaInitializer(
-                AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
-                serverConfig.getSystemSchemaClusterName(),
-                null,
-                null,
-                false,
-                sslFactory,
-                serverConfig.getLocalControllerUrl(),
-                serverConfig.getLocalControllerD2ServiceName(),
-                serverConfig.getLocalD2ZkHost(),
-                false);
-
+      try (ControllerClientBackedSystemSchemaInitializer schemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+              serverConfig.getSystemSchemaClusterName(),
+              null,
+              null,
+              false,
+              sslFactory,
+              serverConfig.getLocalControllerUrl(),
+              serverConfig.getLocalControllerD2ServiceName(),
+              serverConfig.getLocalD2ZkHost(),
+              false)) {
         schemaInitializer.execute(ImmutableMap.of(schemaId, schema));
       } catch (VeniceException e) {
         LOGGER.error(
