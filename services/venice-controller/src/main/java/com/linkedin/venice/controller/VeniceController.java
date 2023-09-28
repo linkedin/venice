@@ -238,6 +238,10 @@ public class VeniceController {
     if (!multiClusterConfigs.isParent() && multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
         && systemStoreClusterConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
       String regionName = systemStoreClusterConfig.getRegionName();
+      String childControllerUrl = systemStoreClusterConfig.getChildControllerUrl(regionName);
+      String d2ServiceName = systemStoreClusterConfig.getD2ServiceName();
+      String d2ZkHost = systemStoreClusterConfig.getChildControllerD2ZkHost(regionName);
+      boolean sslOnly = systemStoreClusterConfig.isControllerEnforceSSLOnly();
       ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
           new ControllerClientBackedSystemSchemaInitializer(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
@@ -246,11 +250,24 @@ public class VeniceController {
               VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
               true,
               ((VeniceHelixAdmin) admin).getSslFactory(),
-              systemStoreClusterConfig.getChildControllerUrl(regionName),
-              systemStoreClusterConfig.getChildControllerD2ServiceName(),
-              systemStoreClusterConfig.getChildControllerD2ZkHost(regionName),
-              systemStoreClusterConfig.isControllerEnforceSSLOnly());
+              childControllerUrl,
+              d2ServiceName,
+              d2ZkHost,
+              sslOnly);
+      ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+              systemStoreCluster,
+              null,
+              null,
+              false,
+              ((VeniceHelixAdmin) admin).getSslFactory(),
+              childControllerUrl,
+              d2ServiceName,
+              d2ZkHost,
+              sslOnly);
       metaSystemStoreSchemaInitializer.execute();
+      kmeSchemaInitializer.execute();
     }
   }
 

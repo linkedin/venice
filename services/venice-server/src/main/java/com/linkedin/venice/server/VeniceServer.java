@@ -204,6 +204,9 @@ public class VeniceServer {
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
     if (serverConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+      String childControllerUrl = serverConfig.getLocalControllerUrl();
+      String d2ServiceName = serverConfig.getLocalControllerD2ServiceName();
+      String d2ZkHost = serverConfig.getLocalD2ZkHost();
       ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
           new ControllerClientBackedSystemSchemaInitializer(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
@@ -216,7 +219,20 @@ public class VeniceServer {
               serverConfig.getLocalControllerD2ServiceName(),
               serverConfig.getLocalD2ZkHost(),
               false);
+      ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+              serverConfig.getSystemSchemaClusterName(),
+              null,
+              null,
+              false,
+              sslFactory,
+              childControllerUrl,
+              d2ServiceName,
+              d2ZkHost,
+              false);
       metaSystemStoreSchemaInitializer.execute();
+      kmeSchemaInitializer.execute();
     }
 
     Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(
