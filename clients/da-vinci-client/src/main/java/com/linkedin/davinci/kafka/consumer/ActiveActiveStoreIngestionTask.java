@@ -497,6 +497,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // Get Futures and
       // Pass callback with on completion which decrements, once all decrement call producePutOrDeleteToKafka
       if (this.viewWriters.size() > 0) {
+        Long preprocessingTime = System.currentTimeMillis();
         CompletableFuture
             .allOf(
                 this.viewWriters.values()
@@ -513,6 +514,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                     .collect(Collectors.toList())
                     .toArray(new CompletableFuture[this.viewWriters.size()]))
             .whenCompleteAsync((value, exception) -> {
+              hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getLatencyInMS(preprocessingTime));
               if (exception == null) {
                 producePutOrDeleteToKafka(
                     mergeConflictResult,
