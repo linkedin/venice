@@ -588,13 +588,7 @@ public class DispatchingAvroGenericStoreClientTest {
         BATCH_GET_KEYS.stream().forEach(key -> {
           assertTrue(SINGLE_GET_VALUE_RESPONSE.contentEquals(value.get(key)));
         });
-        validateMultiGetMetrics(
-            true,
-            false,
-            useStreamingBatchGetAsDefault,
-            false,
-            false,
-            useStreamingBatchGetAsDefault ? 2 : 1);
+        validateMultiGetMetrics(true, false, useStreamingBatchGetAsDefault, false, false, 1);
       }
     } catch (Exception e) {
       if (useStreamingBatchGetAsDefault) {
