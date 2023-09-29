@@ -22,6 +22,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_METRICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_WRITE_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.LISTENER_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
@@ -396,6 +397,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean schemaPresenceCheckEnabled;
   private final boolean systemSchemaInitializationAtStartTimeEnabled;
+  private final boolean isKMERegistrationFromMessageHeaderEnabled;
   private final String localControllerUrl;
   private final String localControllerD2ServiceName;
   private final String localD2ZkHost;
@@ -645,6 +647,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     schemaPresenceCheckEnabled = serverProperties.getBoolean(SERVER_SCHEMA_PRESENCE_CHECK_ENABLED, true);
     systemSchemaInitializationAtStartTimeEnabled =
         serverProperties.getBoolean(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, false);
+    isKMERegistrationFromMessageHeaderEnabled =
+        serverProperties.getBoolean(KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED, false);
     localControllerUrl = serverProperties.getString(LOCAL_CONTROLLER_URL, "");
     localControllerD2ServiceName = serverProperties.getString(LOCAL_CONTROLLER_D2_SERVICE_NAME, "");
     localD2ZkHost = serverProperties.getString(LOCAL_D2_ZK_HOST, "");
@@ -1251,5 +1255,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getIngestionTaskMaxIdleCount() {
     return ingestionTaskMaxIdleCount;
+  }
+
+  public boolean isKMERegistrationFromMessageHeaderEnabled() {
+    return isKMERegistrationFromMessageHeaderEnabled;
   }
 }

@@ -18,6 +18,7 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
+import com.google.common.collect.ImmutableMap;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -74,11 +75,14 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdap
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
@@ -119,8 +123,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
@@ -205,6 +211,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ResourceAutoClosableLockManager<String> topicLockManager;
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private Optional<SSLFactory> sslFactory;
+
+  private KafkaValueSerializer kafkaValueSerializer;
 
   public KafkaStoreIngestionService(
       StorageEngineRepository storageEngineRepository,
@@ -227,7 +236,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       Optional<ObjectCacheBackend> cacheBackend,
       boolean isDaVinciClient,
       RemoteIngestionRepairService remoteIngestionRepairService,
-      PubSubClientsFactory pubSubClientsFactory) {
+      PubSubClientsFactory pubSubClientsFactory,
+      Optional<SSLFactory> sslFactory) {
     this.cacheBackend = cacheBackend;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
@@ -239,6 +249,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.compressorFactory = compressorFactory;
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
+    this.sslFactory = sslFactory;
 
     customizedViewFuture.ifPresent(future -> future.thenApply(cv -> this.customizedViewRepository = cv));
     helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
@@ -399,8 +410,40 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               + "may not be killed if admin helix messaging channel is disabled");
     }
 
-    // TODO: Wire configs into these params
-    KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
+    /**
+     * Register a callback function to handle the case when a new KME value schema is encountered when the server
+     * consumes messages from Kafka.
+     */
+    BiConsumer<Integer, Schema> newSchemaEncountered = (schemaId, schema) -> {
+      LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
+      try (ControllerClientBackedSystemSchemaInitializer schemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+              serverConfig.getSystemSchemaClusterName(),
+              null,
+              null,
+              false,
+              sslFactory,
+              serverConfig.getLocalControllerUrl(),
+              serverConfig.getLocalControllerD2ServiceName(),
+              serverConfig.getLocalD2ZkHost(),
+              false)) {
+        schemaInitializer.execute(ImmutableMap.of(schemaId, schema));
+      } catch (VeniceException e) {
+        LOGGER.error(
+            "Exception in registering '{}' schema version '{}'",
+            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.name(),
+            schemaId,
+            e);
+        throw e;
+      }
+    };
+
+    // Don't apply newSchemaEncountered callbacks for da vinci client.
+    kafkaValueSerializer = (!isDaVinciClient && serverConfig.isKMERegistrationFromMessageHeaderEnabled())
+        ? new OptimizedKafkaValueSerializer(newSchemaEncountered)
+        : new OptimizedKafkaValueSerializer();
+
     kafkaMessageEnvelopeSchemaReader.ifPresent(kafkaValueSerializer::setSchemaReader);
     PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
         kafkaValueSerializer,
@@ -1357,5 +1400,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
     }
     LOGGER.info("Offset reset to beginning - Kafka Partition: {}-{}.", topic, partitionId);
+  }
+
+  // For testing purpose only.
+  public KafkaValueSerializer getKafkaValueSerializer() {
+    return kafkaValueSerializer;
   }
 }
