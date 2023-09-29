@@ -165,7 +165,7 @@ public class TestActiveActiveIngestion {
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(100);
+        veniceChangelogConsumer.poll(1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -809,7 +809,12 @@ public class TestActiveActiveIngestion {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      Assert.assertEquals(polledChangeEvents.size(), 23);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 28);
       for (int i = 20; i < 40; i++) {
         String key = Integer.toString(i);
         ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();

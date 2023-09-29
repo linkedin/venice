@@ -140,7 +140,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     // here in order to reduce confusion (as this storage engine can be used across version topics).
     this.inMemoryStorageEngine = new InMemoryStorageEngine(storeName);
     // disable noisy logs
-    this.inMemoryStorageEngine.enableLogging(false);
+    this.inMemoryStorageEngine.suppressLogs(true);
     this.storeRepository = new ThinClientMetaStoreBasedRepository(
         changelogClientConfig.getInnerClientConfig(),
         VeniceProperties.empty(),

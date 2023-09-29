@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -194,7 +195,7 @@ public class ChangeCaptureViewWriterTest {
   }
 
   @Test
-  public void testProcessRecord() {
+  public void testProcessRecord() throws ExecutionException, InterruptedException {
     // Set up mocks
     Store mockStore = Mockito.mock(Store.class);
     VeniceProperties props = VeniceProperties.empty();
@@ -226,13 +227,13 @@ public class ChangeCaptureViewWriterTest {
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Update Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp, null);
+    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Insert Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp, null);
+    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Deletion Case
-    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp, null);
+    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Set up argument captors
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);

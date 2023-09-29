@@ -2,14 +2,11 @@ package com.linkedin.davinci.store.view;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
-import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 
 
@@ -32,23 +29,5 @@ public class ViewWriterUtils extends ViewUtils {
         new Object[] { configLoader, store, keySchema, extraViewParameters });
 
     return viewWriter;
-  }
-
-  public static PubSubProducerCallback createViewCountDownCallback(int viewCount, Runnable baseCallback) {
-    return new PubSubProducerCallback() {
-      AtomicInteger count = new AtomicInteger(viewCount);
-      Runnable callback = baseCallback;
-
-      @Override
-      public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
-        if (exception != null) {
-          // Need to figure out exceptions
-        } else {
-          if (count.decrementAndGet() <= 0) {
-            callback.run();
-          }
-        }
-      }
-    };
   }
 }

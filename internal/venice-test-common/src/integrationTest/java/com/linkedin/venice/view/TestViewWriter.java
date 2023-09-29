@@ -8,10 +8,12 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -29,17 +31,17 @@ public class TestViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public void processRecord(
+  public Future<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
       int version,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord,
-      PubSubProducerCallback callback) {
-    callback.onCompletion(null, null);
+      GenericRecord replicationMetadataRecord) {
     internalView.incrementRecordCount(store.getName());
+    return CompletableFuture.completedFuture(null);
+
   }
 
   @Override

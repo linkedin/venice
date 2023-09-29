@@ -19,7 +19,6 @@ import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.store.view.ViewWriterUtils;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -40,7 +39,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
@@ -65,10 +63,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.stream.Collectors;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.logging.log4j.LogManager;
@@ -362,7 +362,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long beforeProcessingRecordTimestampNs,
       long currentTimeForMetricsMs) {
     /**
-     * With {@link com.linkedin.davinci.replication.BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
+     * With {@link BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
      * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
      * recovery then there is no need to perform DCR until we completed data recovery and switched to consume from RT.
      * TODO. We need to refactor this logic when we support other batch conflict resolution policy.
@@ -497,29 +497,38 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // Get Futures and
       // Pass callback with on completion which decrements, once all decrement call producePutOrDeleteToKafka
       if (this.viewWriters.size() > 0) {
-        PubSubProducerCallback callback = ViewWriterUtils.createViewCountDownCallback(viewWriters.size(), () -> {
-          producePutOrDeleteToKafka(
-              mergeConflictResult,
-              partitionConsumptionState,
-              keyBytes,
-              consumerRecord,
-              subPartition,
-              kafkaUrl,
-              kafkaClusterId,
-              beforeProcessingRecordTimestampNs,
-              valueManifestContainer.getManifest(),
-              rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
-        });
-        this.viewWriters.forEach(
-            (k, v) -> v.processRecord(
-                mergeConflictResult.getNewValue(),
-                oldValueProvider.get(),
-                keyBytes,
-                versionNumber,
-                incomingValueSchemaId,
-                valueSchemaId,
-                mergeConflictResult.getRmdRecord(),
-                callback));
+        CompletableFuture
+            .allOf(
+                this.viewWriters.values()
+                    .stream()
+                    .map(
+                        (v) -> v.processRecord(
+                            mergeConflictResult.getNewValue(),
+                            oldValueProvider.get(),
+                            keyBytes,
+                            versionNumber,
+                            incomingValueSchemaId,
+                            valueSchemaId,
+                            mergeConflictResult.getRmdRecord()))
+                    .collect(Collectors.toList())
+                    .toArray(new CompletableFuture[this.viewWriters.size()]))
+            .whenCompleteAsync((value, exception) -> {
+              if (exception == null) {
+                producePutOrDeleteToKafka(
+                    mergeConflictResult,
+                    partitionConsumptionState,
+                    keyBytes,
+                    consumerRecord,
+                    subPartition,
+                    kafkaUrl,
+                    kafkaClusterId,
+                    beforeProcessingRecordTimestampNs,
+                    valueManifestContainer.getManifest(),
+                    rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+              } else {
+                throw new VeniceException(exception);
+              }
+            });
       } else {
         // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
         // after

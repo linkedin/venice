@@ -16,7 +16,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Future;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
@@ -61,15 +62,14 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public void processRecord(
+  public Future<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
       int version,
       int newValueSchemaId,
       int oldValueSchemaId,
-      GenericRecord replicationMetadataRecord,
-      PubSubProducerCallback callback) {
+      GenericRecord replicationMetadataRecord) {
     // TODO: not sold about having currentValue in the interface but it VASTLY simplifies a lot of things with regards
     // to dealing with compression/chunking/etc. in the storage layer.
 
@@ -83,7 +83,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       initializeVeniceWriter(version);
     }
     // TODO: RecordChangeEvent isn't versioned today.
-    veniceWriter.put(key, recordChangeEvent, 1, callback);
+    return veniceWriter.put(key, recordChangeEvent, 1);
   }
 
   @Override
