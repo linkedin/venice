@@ -215,6 +215,11 @@ public abstract class AbstractClientEndToEndSetup {
     return DataProviderUtils.allPermutationGenerator(STORE_METADATA_FETCH_MODES);
   }
 
+  @DataProvider(name = "Boolean-And-StoreMetadataFetchModes")
+  public static Object[][] booleanAndstoreMetadataFetchModes() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();

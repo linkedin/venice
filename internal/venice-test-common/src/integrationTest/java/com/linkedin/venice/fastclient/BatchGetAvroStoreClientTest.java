@@ -201,13 +201,21 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     printAllStats();
   }
 
-  @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
-  public void testStreamingBatchGetGenericClient(StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+  @Test(dataProvider = "Boolean-And-StoreMetadataFetchModes", timeOut = TIME_OUT)
+  public void testStreamingBatchGetGenericClient(boolean retryEnabled, StoreMetadataFetchMode storeMetadataFetchMode)
+      throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(true)
+            .setSpeculativeQueryEnabled(false)
             .setDualReadEnabled(false);
+
+    if (retryEnabled) {
+      // enable retry to test the code path: to mimic retry in integration tests
+      // can be non-deterministic, so setting big retry threshold to not actually retry
+      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
+    }
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
@@ -250,14 +258,22 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     validateBatchGetMetrics(metricsRepository, true, true, recordCnt + 1, recordCnt, false);
   }
 
-  @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
-  public void testStreamingBatchGetWithCallbackGenericClient(StoreMetadataFetchMode storeMetadataFetchMode)
-      throws Exception {
+  @Test(dataProvider = "Boolean-And-StoreMetadataFetchModes", timeOut = TIME_OUT)
+  public void testStreamingBatchGetWithCallbackGenericClient(
+      boolean retryEnabled,
+      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(true)
+            .setSpeculativeQueryEnabled(false)
             .setDualReadEnabled(false);
+
+    if (retryEnabled) {
+      // enable retry to test the code path: to mimic retry in integration tests
+      // can be non-deterministic, so setting big retry threshold to not actually retry
+      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
+    }
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =

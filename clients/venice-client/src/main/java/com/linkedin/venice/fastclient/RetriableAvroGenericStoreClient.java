@@ -181,14 +181,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       if (throwable != null) {
         responseFuture.completeExceptionally(throwable);
       } else if (!response.isFullResponse()) {
-        if (requestContext.getPartialResponseException().isPresent()) {
-          responseFuture.completeExceptionally(
-              new VeniceClientException(
-                  "Response was not complete",
-                  requestContext.getPartialResponseException().get()));
-        } else {
-          responseFuture.completeExceptionally(new VeniceClientException("Response was not complete"));
-        }
+        responseFuture.completeExceptionally(
+            new VeniceClientException(
+                "Response was not complete",
+                requestContext.getPartialResponseException().orElse(null)));
       } else {
         responseFuture.complete(response);
       }
@@ -200,6 +196,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) throws VeniceClientException {
     // keys that do not exist in the storage nodes
+    int keysSize = keys.size();
     Queue<K> nonExistingKeys = new ConcurrentLinkedQueue<>();
     VeniceConcurrentHashMap<K, V> valueMap = new VeniceConcurrentHashMap<>();
     CompletableFuture<VeniceResponseMap<K, V>> streamingResponseFuture = new VeniceResponseCompletableFuture<>(
@@ -223,7 +220,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         if (exception.isPresent()) {
           streamingResponseFuture.completeExceptionally(exception.get());
         } else {
-          boolean isFullResponse = (valueMap.size() + nonExistingKeys.size()) == keys.size();
+          boolean isFullResponse = (valueMap.size() + nonExistingKeys.size()) == keysSize;
           streamingResponseFuture.complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, isFullResponse));
         }
       }

@@ -502,6 +502,35 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testBatchGetWithEmptyKeys(boolean streamingBatchGet)
+      throws ExecutionException, InterruptedException, IOException {
+
+    try {
+      setUpClient(true);
+      batchGetRequestContext = new BatchGetRequestContext<>();
+      Map<String, String> value;
+      if (streamingBatchGet) {
+        value =
+            (Map<String, String>) statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, new HashSet())
+                .get();
+      } else {
+        value = (Map<String, String>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, new HashSet()).get();
+      }
+      assertTrue(value.isEmpty());
+      metrics = getStats(clientConfig, RequestType.MULTI_GET);
+      String metricPrefix = "." + STORE_NAME + (streamingBatchGet ? "--multiget_streaming_" : "--multiget_");
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertTrue(metrics.get(metricPrefix + "request.OccurrenceRate").value() > 0);
+        assertTrue(metrics.get(metricPrefix + "healthy_request.OccurrenceRate").value() > 0);
+        assertFalse(metrics.get(metricPrefix + "request_key_count.Max").value() > 0);
+        assertFalse(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
+      });
+    } finally {
+      tearDown();
+    }
+  }
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT, expectedExceptions = VeniceKeyCountLimitException.class)
   public void testBatchGetWithMoreKeysThanMaxSize(boolean useStreamingBatchGetAsDefault)
       throws ExecutionException, InterruptedException, IOException {

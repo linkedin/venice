@@ -167,6 +167,12 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
+      if (numberOfKeys == 0) {
+        clientStats.recordHealthyRequest();
+        clientStats.recordHealthyLatency(latency);
+        return value;
+      }
+
       clientStats.recordRequestKeyCount(numberOfKeys);
 
       boolean exceptionReceived = false;
