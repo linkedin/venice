@@ -390,7 +390,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
      * that exception will be passed to the aggregate future's next stages. */
     CompletableFuture.allOf(requestContext.getAllRouteFutures().toArray(new CompletableFuture[0]))
         .whenComplete((response, throwable) -> {
-          if (throwable != null || (keys.size() > 0 && requestContext.getAllRouteFutures().size() == 0)) {
+          if (throwable != null || (!keys.isEmpty() && requestContext.getAllRouteFutures().isEmpty())) {
+            // If there is an exception or if no partition has a healthy replica.
             // The exception to send to the client might be different. Get from the requestContext
             Throwable clientException = throwable;
             if (requestContext.getPartialResponseException().isPresent()) {
