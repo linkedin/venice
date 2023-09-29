@@ -9,6 +9,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -161,6 +162,14 @@ public class OfflinePushStatusTest {
     partitionStatus.updateReplicaStatus("i1", COMPLETED);
     offlinePushStatus.setPartitionStatus(partitionStatus);
     Assert.assertNotEquals(clonedPush, offlinePushStatus);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Partition 0 not found in partition assignment")
+  public void testNPECaughtWhenPollingIncPushStatus() {
+    OfflinePushStatus offlinePushStatus =
+        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
+    PartitionAssignment partitionAssignment = new PartitionAssignment("test-topic", 10);
+    offlinePushStatus.getIncrementalPushStatus(partitionAssignment, "ignore");
   }
 
   private void testValidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
