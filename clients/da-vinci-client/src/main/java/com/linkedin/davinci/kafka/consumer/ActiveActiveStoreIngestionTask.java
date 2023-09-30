@@ -19,6 +19,7 @@ import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -64,11 +65,11 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import java.util.stream.Collectors;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.logging.log4j.LogManager;
@@ -498,36 +499,39 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // Pass callback with on completion which decrements, once all decrement call producePutOrDeleteToKafka
       if (this.viewWriters.size() > 0) {
         Long preprocessingTime = System.currentTimeMillis();
-        CompletableFuture
-            .allOf(
-                this.viewWriters.values()
-                    .stream()
-                    .map(
-                        (v) -> v.processRecord(
-                            mergeConflictResult.getNewValue(),
-                            oldValueProvider.get(),
-                            keyBytes,
-                            versionNumber,
-                            incomingValueSchemaId,
-                            valueSchemaId,
-                            mergeConflictResult.getRmdRecord()))
-                    .collect(Collectors.toList())
-                    .toArray(new CompletableFuture[this.viewWriters.size()]))
+
+        List<Future> viewWriteCallbacks = new ArrayList<>();
+        for (VeniceViewWriter writer: viewWriters.values()) {
+          viewWriteCallbacks.add(
+              writer.processRecord(
+                  mergeConflictResult.getNewValue(),
+                  oldValueProvider.get(),
+                  keyBytes,
+                  versionNumber,
+                  incomingValueSchemaId,
+                  valueSchemaId,
+                  mergeConflictResult.getRmdRecord()));
+        }
+        viewWriteCallbacks.add(partitionConsumptionState.getLastVTProduceCallFuture());
+        CompletableFuture.allOf(viewWriteCallbacks.toArray(new CompletableFuture[0]))
             .whenCompleteAsync((value, exception) -> {
               hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getLatencyInMS(preprocessingTime));
               if (exception == null) {
-                producePutOrDeleteToKafka(
-                    mergeConflictResult,
-                    partitionConsumptionState,
-                    keyBytes,
-                    consumerRecord,
-                    subPartition,
-                    kafkaUrl,
-                    kafkaClusterId,
-                    beforeProcessingRecordTimestampNs,
-                    valueManifestContainer.getManifest(),
-                    rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+                partitionConsumptionState.setLastVTProduceCallFuture(CompletableFuture.runAsync(() -> {
+                  producePutOrDeleteToKafka(
+                      mergeConflictResult,
+                      partitionConsumptionState,
+                      keyBytes,
+                      consumerRecord,
+                      subPartition,
+                      kafkaUrl,
+                      kafkaClusterId,
+                      beforeProcessingRecordTimestampNs,
+                      valueManifestContainer.getManifest(),
+                      rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+                }));
               } else {
+                partitionConsumptionState.setLastVTProduceCallFuture(CompletableFuture.completedFuture(null));
                 throw new VeniceException(exception);
               }
             });

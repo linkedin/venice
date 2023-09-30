@@ -48,6 +48,8 @@ public class PartitionConsumptionState {
   private boolean isDataRecoveryCompleted;
   private LeaderFollowerStateType leaderFollowerState;
 
+  private Future<Void> lastVTProduceCallFuture;
+
   /**
    * Only used in L/F model. Check if the partition has released the latch.
    * In L/F ingestion task, Optionally, the state model holds a latch that
@@ -230,10 +232,19 @@ public class PartitionConsumptionState {
     this.latestIgnoredUpstreamRTOffsetMap = new HashMap<>();
     // On start we haven't sent anything
     this.latestRTOffsetTriedToProduceToVTMap = new HashMap<>();
+    this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
   }
 
   public int getPartition() {
     return this.partition;
+  }
+
+  public Future<Void> getLastVTProduceCallFuture() {
+    return this.lastVTProduceCallFuture;
+  }
+
+  public void setLastVTProduceCallFuture(Future<Void> lastVTProduceCallFuture) {
+    this.lastVTProduceCallFuture = lastVTProduceCallFuture;
   }
 
   public int getUserPartition() {

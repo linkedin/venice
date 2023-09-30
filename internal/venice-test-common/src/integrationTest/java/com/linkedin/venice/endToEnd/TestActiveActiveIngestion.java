@@ -618,11 +618,13 @@ public class TestActiveActiveIngestion {
 
     // Validate change events for version 1. 100 records exist in version 1.
     Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> allChangeEvents = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 100);
     });
 
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // 21 changes in nearline. 10 puts, 10 deletes, and 1 record with a producer timestamp
@@ -716,6 +718,7 @@ public class TestActiveActiveIngestion {
         veniceAfterImageConsumerClientFactory.getChangelogConsumer(storeName);
     veniceAfterImageConsumer.subscribeAll().get();
     // Validate changed events for version 2.
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
     // As records keys from VPJ start from 1, real-time produced records' key starts from 0, the message with key as 0
     // is new message.
@@ -804,17 +807,12 @@ public class TestActiveActiveIngestion {
       }
     }
 
-    // Drain the remaining events on version 3 and verify that we got everything
+    // Drain the remaining events on version 3 and verify that we got everything. We don't verify the count
+    // because at this stage, the total events which will get polled
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      Assert.assertEquals(polledChangeEvents.size(), 28);
       for (int i = 20; i < 40; i++) {
         String key = Integer.toString(i);
         ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
@@ -828,6 +826,7 @@ public class TestActiveActiveIngestion {
       }
     });
 
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // This should get everything submitted to the CC topic on this version since the timestamp is before anything got
@@ -848,6 +847,7 @@ public class TestActiveActiveIngestion {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 42);
     });
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // enable repush ttl
@@ -903,10 +903,12 @@ public class TestActiveActiveIngestion {
     // Save a checkpoint and clear the map
     Set<VeniceChangeCoordinate> checkpointSet = new HashSet<>();
     checkpointSet.add(polledChangeEvents.get(Integer.toString(20)).getOffset());
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // Seek the consumer by checkpoint
     veniceChangelogConsumer.seekToCheckpoint(checkpointSet).join();
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // Poll Change events again, verify we get everything
@@ -914,7 +916,9 @@ public class TestActiveActiveIngestion {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 8);
     });
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
+    Assert.assertEquals(allChangeEvents.size(), 121);
 
     // Seek the consumer to the beginning of push (since the latest is version 4 with no nearline writes, shouldn't have
     // any new writes)
