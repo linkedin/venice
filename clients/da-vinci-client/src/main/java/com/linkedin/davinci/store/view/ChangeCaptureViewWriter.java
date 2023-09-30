@@ -189,7 +189,6 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       return;
     }
     // We don't want any linger time for this producer
-    props.put(KAFKA_LINGER_MS, 0);
     veniceWriter = new VeniceWriterFactory(props, pubSubProducerAdapterFactory, null)
         .createVeniceWriter(buildWriterOptions(version));
   }

@@ -2,8 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
@@ -544,13 +543,15 @@ public class TestActiveActiveIngestion {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     Map<String, String> viewConfig = new HashMap<>();
+    props.put(KAFKA_LINGER_MS, 0);
     viewConfig.put(
         "testView",
         "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
 
     viewConfig.put(
         "changeCaptureView",
-        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName()
+            + "\", \"viewParameters\" : {\"kafka.linger.ms\": \"0\"}}");
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(500)
         .setHybridOffsetLagThreshold(8)
