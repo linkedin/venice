@@ -31,6 +31,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
   private final FastClientStats clientStatsForSingleGet;
   private final FastClientStats clientStatsForBatchGet;
+  private final FastClientStats clientStatsForStreamingBatchGet;
   private final ClusterStats clusterStats;
 
   private final int maxAllowedKeyCntInBatchGetReq;
@@ -40,6 +41,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     super(delegate);
     this.clientStatsForSingleGet = clientConfig.getStats(RequestType.SINGLE_GET);
     this.clientStatsForBatchGet = clientConfig.getStats(RequestType.MULTI_GET);
+    this.clientStatsForStreamingBatchGet = clientConfig.getStats(RequestType.MULTI_GET_STREAMING);
     this.clusterStats = clientConfig.getClusterStats();
     this.maxAllowedKeyCntInBatchGetReq = clientConfig.getMaxAllowedKeyCntInBatchGetReq();
     this.useStreamingBatchGetAsDefault = clientConfig.useStreamingBatchGetAsDefault();
@@ -121,7 +123,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         requestContext,
         keys,
         new StatTrackingStreamingCallBack<>(callback, statFuture, requestContext));
-    recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForBatchGet);
+    recordMetrics(requestContext, keys.size(), statFuture, startTimeInNS, clientStatsForStreamingBatchGet);
   }
 
   @Override
@@ -130,7 +132,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       Set<K> keys) {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGetFuture = super.streamingBatchGet(requestContext, keys);
-    recordMetrics(requestContext, keys.size(), streamingBatchGetFuture, startTimeInNS, clientStatsForBatchGet);
+    recordMetrics(requestContext, keys.size(), streamingBatchGetFuture, startTimeInNS, clientStatsForStreamingBatchGet);
     return streamingBatchGetFuture;
   }
 
@@ -148,6 +150,14 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     return AppTimeOutTrackingCompletableFuture.track(statFuture, clientStats);
   }
 
+  /**
+   * Metrics are incremented after one of the below cases
+   * 1. request is complete or
+   * 2. exception is thrown or
+   * 3. routingLeakedRequestCleanupThresholdMS is elapsed: In case of streamingBatchGet.get(timeout) returning
+   *            partial response and this timeout happens after than and before the full response is returned,
+   *            it will still raise a silent exception leading to the request being considered an unhealthy request.
+   */
   private <R> CompletableFuture<R> recordRequestMetrics(
       RequestContext requestContext,
       int numberOfKeys,

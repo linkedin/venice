@@ -314,14 +314,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       if (throwable != null) {
         responseFuture.completeExceptionally(throwable);
       } else if (!response.isFullResponse()) {
-        if (requestContext.getPartialResponseException().isPresent()) {
-          responseFuture.completeExceptionally(
-              new VeniceClientException(
-                  "Response was not complete",
-                  requestContext.getPartialResponseException().get()));
-        } else {
-          responseFuture.completeExceptionally(new VeniceClientException("Response was not complete"));
-        }
+        responseFuture.completeExceptionally(
+            new VeniceClientException(
+                "Response was not complete",
+                requestContext.getPartialResponseException().orElse(null)));
       } else {
         responseFuture.complete(response);
       }
@@ -334,6 +330,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) throws VeniceClientException {
     verifyMetadataInitialized();
+    int keySize = keys.size();
     // keys that do not exist in the storage nodes
     Queue<K> nonExistingKeys = new ConcurrentLinkedQueue<>();
     VeniceConcurrentHashMap<K, V> valueMap = new VeniceConcurrentHashMap<>();
@@ -358,7 +355,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         if (exception.isPresent()) {
           streamingResponseFuture.completeExceptionally(exception.get());
         } else {
-          boolean isFullResponse = ((valueMap.size() + nonExistingKeys.size()) == keys.size());
+          boolean isFullResponse = (valueMap.size() + nonExistingKeys.size()) == keySize;
           streamingResponseFuture.complete(new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, isFullResponse));
         }
       }
@@ -393,9 +390,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
      * that exception will be passed to the aggregate future's next stages. */
     CompletableFuture.allOf(requestContext.getAllRouteFutures().toArray(new CompletableFuture[0]))
         .whenComplete((response, throwable) -> {
-          if (throwable == null) {
-            callback.onCompletion(Optional.empty());
-          } else {
+          if (throwable != null || (!keys.isEmpty() && requestContext.getAllRouteFutures().isEmpty())) {
+            // If there is an exception or if no partition has a healthy replica.
             // The exception to send to the client might be different. Get from the requestContext
             Throwable clientException = throwable;
             if (requestContext.getPartialResponseException().isPresent()) {
@@ -403,6 +399,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             }
             callback.onCompletion(
                 Optional.of(new VeniceClientException("At least one route did not complete", clientException)));
+          } else {
+            callback.onCompletion(Optional.empty());
           }
         });
   }
@@ -452,10 +450,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
          * an error */
         requestContext.noAvailableReplica = true;
         String errorMessage = String.format(
-            "No route found for partitionId: %s, store: %s, version: %s",
-            partitionId,
+            "No available route for store: %s, version: %s, partitionId: %s",
             getStoreName(),
-            currentVersion);
+            currentVersion,
+            partitionId);
         LOGGER.error(errorMessage);
         requestContext.setPartialResponseException(new VeniceClientException(errorMessage));
       }

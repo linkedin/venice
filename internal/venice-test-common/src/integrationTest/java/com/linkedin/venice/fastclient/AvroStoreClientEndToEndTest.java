@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -228,13 +229,14 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "FastClient-Five-Boolean-A-Number-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Six-Boolean-A-Number-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
   public void testFastClientGet(
       boolean dualRead,
       boolean speculativeQueryEnabled,
       boolean batchGet,
       boolean useStreamingBatchGetAsDefault,
       boolean enableGrpc,
+      boolean retryEnabled,
       int batchGetKeySize,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
@@ -254,6 +256,15 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
 
     if (enableGrpc) {
       setUpGrpcFastClient(clientConfigBuilder);
+    }
+
+    if (retryEnabled) {
+      // enable retry to test the code path: to mimic retry in integration tests
+      // can be non-deterministic, so setting big retry threshold to not actually retry
+      clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
+          .setLongTailRetryThresholdForSingleGetInMicroSeconds(TIME_OUT * MS_PER_SECOND)
+          .setLongTailRetryEnabledForBatchGet(true)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
     }
 
     // dualRead needs thinClient
@@ -295,6 +306,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         fastClientStatsValidation = metricsRepository -> validateBatchGetMetrics(
             metricsRepository,
             useStreamingBatchGetAsDefault,
+            false,
             batchGetKeySize,
             batchGetKeySize,
             false);
@@ -407,6 +419,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     fastClientStatsValidation = metricsRepository -> validateBatchGetMetrics(
         metricsRepository,
         true, // testing batch get with useStreamingBatchGetAsDefault as true
+        false,
         recordCnt,
         recordCnt,
         false);
@@ -438,7 +451,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(1);
       fastClientStatsValidation =
-          metricsRepository -> validateBatchGetMetrics(metricsRepository, true, recordCnt, recordCnt, true);
+          metricsRepository -> validateBatchGetMetrics(metricsRepository, true, false, recordCnt, recordCnt, true);
     } else {
       clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true)
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(1);
