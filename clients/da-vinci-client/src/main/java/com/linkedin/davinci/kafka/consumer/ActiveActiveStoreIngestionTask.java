@@ -535,7 +535,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
             currentVersionTopicWrite.complete(null);
           } else {
-            currentVersionTopicWrite.completeExceptionally(new VeniceException(exception));
+            VeniceException veniceException = new VeniceException(exception);
+            this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+            currentVersionTopicWrite.completeExceptionally(veniceException);
           }
         });
         partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);

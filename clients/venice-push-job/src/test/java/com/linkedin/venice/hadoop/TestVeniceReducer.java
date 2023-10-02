@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.BytesWritable;
@@ -447,7 +448,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
-      public Future<PubSubProduceResult> put(
+      public CompletableFuture<PubSubProduceResult> put(
           Object key,
           Object value,
           int valueSchemaId,
@@ -539,7 +540,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
-      public Future<PubSubProduceResult> put(
+      public CompletableFuture<PubSubProduceResult> put(
           Object key,
           Object value,
           int valueSchemaId,
