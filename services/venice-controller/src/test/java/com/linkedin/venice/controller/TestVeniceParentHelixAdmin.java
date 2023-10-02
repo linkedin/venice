@@ -96,7 +96,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
@@ -329,7 +328,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         // Once we send message to topic through venice writer, return offset 1
         when(zkClient.readData(metadataPath, null))
             .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
-        Future future = mock(Future.class);
+        CompletableFuture future = mock(CompletableFuture.class);
         doReturn(new SimplePubSubProduceResultImpl(adminTopic, partitionId, 1, -1)).when(future).get();
         return future;
       });
