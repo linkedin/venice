@@ -2,6 +2,7 @@ package com.linkedin.davinci.consumer;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
@@ -80,7 +81,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final CompressorFactory compressorFactory = new CompressorFactory();
 
   protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
-  protected final AvroStoreDeserializerCache<V> storeDeserializerCache;
+  protected AvroStoreDeserializerCache<V> storeDeserializerCache;
   private final AvroStoreDeserializerCache<RecordChangeEvent> recordChangeEventDeserializerCache;
 
   protected ThinClientMetaStoreBasedRepository storeRepository;
@@ -883,8 +884,16 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     pubSubConsumer.close();
   }
 
+  @VisibleForTesting
   protected void setStoreRepository(ThinClientMetaStoreBasedRepository repository) {
     this.storeRepository = repository;
+    if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
+      // If a value class is supplied, we'll use a Specific record adapter
+      Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
+      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, valueClass);
+    } else {
+      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
+    }
   }
 
   protected VeniceChangeCoordinate getLatestCoordinate(Integer partition) {
@@ -895,7 +904,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       throw new VeniceException(
           "Cannot get latest coordinate position for partition " + partition + "! Consumer isn't subscribed!");
     }
-    long offset = pubSubConsumer.getLatestOffset(topicPartition.get());
+    long offset = pubSubConsumer.endOffset(topicPartition.get()) - 1;
     return new VeniceChangeCoordinate(
         topicPartition.get().getPubSubTopic().getName(),
         new ApacheKafkaOffsetPosition(offset),

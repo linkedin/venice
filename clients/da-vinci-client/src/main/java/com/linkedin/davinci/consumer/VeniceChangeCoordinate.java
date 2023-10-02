@@ -13,6 +13,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.util.Base64;
+import java.util.Objects;
 
 
 public class VeniceChangeCoordinate implements Externalizable {
@@ -67,7 +68,7 @@ public class VeniceChangeCoordinate implements Externalizable {
    *          and 1 if this position is greater than the other position
    */
   public int comparePosition(VeniceChangeCoordinate other) {
-    if (other.partition != partition) {
+    if (!Objects.equals(other.partition, partition)) {
       throw new VeniceException("Coordinates from different partitions are not comparable!");
     }
     if (topic.compareTo(other.topic) != 0) {
