@@ -188,7 +188,6 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     if (veniceWriter != null) {
       return;
     }
-    // We don't want any linger time for this producer
     veniceWriter = new VeniceWriterFactory(props, pubSubProducerAdapterFactory, null)
         .createVeniceWriter(buildWriterOptions(version));
   }
