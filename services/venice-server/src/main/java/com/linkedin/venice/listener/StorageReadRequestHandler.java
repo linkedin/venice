@@ -124,8 +124,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private static class PerStoreVersionState {
     final PartitionerConfig partitionerConfig;
     final VenicePartitioner partitioner;
-    final AbstractStorageEngine storageEngine;
     final StoreDeserializerCache<GenericRecord> storeDeserializerCache;
+    AbstractStorageEngine storageEngine;
 
     public PerStoreVersionState(
         PartitionerConfig partitionerConfig,
@@ -403,7 +403,17 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private PerStoreVersionState getPerStoreVersionState(String storeVersion) {
-    return perStoreVersionStateMap.computeIfAbsent(storeVersion, this::generatePerStoreVersionState);
+    PerStoreVersionState s = perStoreVersionStateMap.computeIfAbsent(storeVersion, this::generatePerStoreVersionState);
+    if (s.storageEngine.isClosed()) {
+      /**
+       * This scenario can happen if the last partition hosted on this server got dropped by Helix, for example in a
+       * case where a store has a small number of partition-replicas spread across a larger number of servers, and a
+       * rebalance happens. In such case, we refresh the storage engine by getting a reference to the latest one from
+       * the {@link storageEngineRepository}.
+       */
+      s.storageEngine = getStorageEngineOrThrow(storeVersion);
+    }
+    return s;
   }
 
   private PerStoreVersionState generatePerStoreVersionState(String storeVersion) {
@@ -441,14 +451,19 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       partitioner = PartitionUtils
           .getVenicePartitioner(partitionerConfig.getPartitionerClass(), 1, new VeniceProperties(partitionerParams));
     }
-    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeVersion);
-    if (storageEngine == null) {
-      throw new VeniceNoStoreException(storeVersion);
-    }
+    AbstractStorageEngine storageEngine = getStorageEngineOrThrow(storeVersion);
     StoreDeserializerCache<GenericRecord> storeDeserializerCache = storeDeserializerCacheMap.computeIfAbsent(
         storeName,
         s -> new AvroStoreDeserializerCache<>(this.schemaRepository, s, this.fastAvroEnabled));
     return new PerStoreVersionState(partitionerConfig, partitioner, storageEngine, storeDeserializerCache);
+  }
+
+  private AbstractStorageEngine getStorageEngineOrThrow(String storeVersion) {
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeVersion);
+    if (storageEngine == null) {
+      throw new VeniceNoStoreException(storeVersion);
+    }
+    return storageEngine;
   }
 
   public ReadResponse handleSingleGetRequest(GetRouterRequest request) {
@@ -472,10 +487,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     return response;
-  }
-
-  public ReadResponse handleSingleGetGrpcRequest(GetRouterRequest request) {
-    return handleSingleGetRequest(request);
   }
 
   private CompletableFuture<ReadResponse> handleMultiGetRequestInParallel(

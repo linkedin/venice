@@ -523,6 +523,7 @@ public class TestClientSimulator implements Client {
     clientConfigBuilder.setR2Client(this);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(speculativeQueryEnabled);
+    clientConfigBuilder.setMaxAllowedKeyCntInBatchGetReq(1000);
     if (longTailRetryEnabledForBatchGet) {
       clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true);
       clientConfigBuilder

@@ -32,6 +32,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -48,6 +49,7 @@ public class RetriableAvroGenericStoreClientTest {
   private static final String STORE_NAME = "test_store";
   private static final Set<String> BATCH_GET_KEYS = new HashSet<>();
   private static final Map<String, String> BATCH_GET_VALUE_RESPONSE = new HashMap<>();
+  private static final Map<String, String> BATCH_GET_VALUE_RESPONSE_KEY_NOT_FOUND_CASE = new HashMap<>();
 
   private TimeoutProcessor timeoutProcessor;
   private ClientConfig.ClientConfigBuilder clientConfigBuilder;
@@ -57,6 +59,22 @@ public class RetriableAvroGenericStoreClientTest {
   private RetriableAvroGenericStoreClient<String, String> retriableClient;
   private StatsAvroGenericStoreClient statsAvroGenericStoreClient;
   private Map<String, ? extends Metric> metrics;
+
+  @DataProvider(name = "FastClient-Single-Get-MultiGet-And-Streaming-MultiGet")
+  public Object[][] twoBoolean() {
+    return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean batchGet = (boolean) permutation[0];
+      boolean streamingBatchGet = (boolean) permutation[1];
+      if (!batchGet) {
+        if (streamingBatchGet) {
+          return false;
+        }
+      }
+      return true;
+    },
+        DataProviderUtils.BOOLEAN, // batchGet
+        DataProviderUtils.BOOLEAN); // streamingBatchGet
+  }
 
   @BeforeClass
   public void setUp() {
@@ -74,6 +92,7 @@ public class RetriableAvroGenericStoreClientTest {
     BATCH_GET_KEYS.add("test_key_2");
     BATCH_GET_VALUE_RESPONSE.put("test_key_1", "test_value_1");
     BATCH_GET_VALUE_RESPONSE.put("test_key_2", "test_value_2");
+    BATCH_GET_VALUE_RESPONSE_KEY_NOT_FOUND_CASE.put("test_key_2", "test_value_2");
   }
 
   @AfterClass
@@ -91,6 +110,7 @@ public class RetriableAvroGenericStoreClientTest {
       long originalRequestDelayMs,
       boolean retryRequestThrowException,
       long retryRequestDelayMs,
+      boolean keyNotFound,
       ClientConfig clientConfig) {
     return new DispatchingAvroGenericStoreClient(null, clientConfig) {
       private int requestCnt = 0;
@@ -109,7 +129,11 @@ public class RetriableAvroGenericStoreClientTest {
             if (originalRequestThrowException) {
               originalRequestFuture.completeExceptionally(new VeniceClientException("Original request exception"));
             } else {
-              originalRequestFuture.complete(SINGLE_GET_VALUE_RESPONSE);
+              if (keyNotFound) {
+                originalRequestFuture.complete(null);
+              } else {
+                originalRequestFuture.complete(SINGLE_GET_VALUE_RESPONSE);
+              }
             }
           }, originalRequestDelayMs, TimeUnit.MILLISECONDS);
           return originalRequestFuture;
@@ -120,7 +144,11 @@ public class RetriableAvroGenericStoreClientTest {
             if (retryRequestThrowException) {
               retryRequestFuture.completeExceptionally(new VeniceClientException("Retry request exception"));
             } else {
-              retryRequestFuture.complete(SINGLE_GET_VALUE_RESPONSE);
+              if (keyNotFound) {
+                retryRequestFuture.complete(null);
+              } else {
+                retryRequestFuture.complete(SINGLE_GET_VALUE_RESPONSE);
+              }
             }
           }, retryRequestDelayMs, TimeUnit.MILLISECONDS);
           return retryRequestFuture;
@@ -143,7 +171,11 @@ public class RetriableAvroGenericStoreClientTest {
               callback.onCompletion(Optional.of(new VeniceClientException("Original request exception")));
             } else {
               BATCH_GET_KEYS.forEach(key -> {
-                callback.onRecordReceived(key, BATCH_GET_VALUE_RESPONSE.get(key));
+                if (key.equals("test_key_1") && keyNotFound) {
+                  callback.onRecordReceived(key, null);
+                } else {
+                  callback.onRecordReceived(key, BATCH_GET_VALUE_RESPONSE.get(key));
+                }
               });
               callback.onCompletion(Optional.empty());
             }
@@ -155,7 +187,11 @@ public class RetriableAvroGenericStoreClientTest {
               callback.onCompletion(Optional.of(new VeniceClientException("Retry request exception")));
             } else {
               BATCH_GET_KEYS.forEach(key -> {
-                callback.onRecordReceived(key, BATCH_GET_VALUE_RESPONSE.get(key));
+                if (key.equals("test_key_1") && keyNotFound) {
+                  callback.onRecordReceived(key, null);
+                } else {
+                  callback.onRecordReceived(key, BATCH_GET_VALUE_RESPONSE.get(key));
+                }
               });
               callback.onCompletion(Optional.empty());
             }
@@ -189,27 +225,33 @@ public class RetriableAvroGenericStoreClientTest {
       boolean bothOriginalAndRetryFails,
       boolean errorRetry,
       boolean longTailRetry,
-      boolean retryWin) throws ExecutionException, InterruptedException {
+      boolean retryWin,
+      boolean keyNotFound) throws ExecutionException, InterruptedException {
     getRequestContext = new GetRequestContext();
     try {
       String value = (String) statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       if (bothOriginalAndRetryFails) {
         fail("An ExecutionException should be thrown here");
       }
-      assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
+      if (keyNotFound) {
+        assertEquals(value, null);
+      } else {
+        assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
+      }
     } catch (ExecutionException e) {
       if (!bothOriginalAndRetryFails) {
         throw e;
       }
     }
 
-    validateMetrics(false, errorRetry, longTailRetry, retryWin);
+    validateMetrics(false, false, errorRetry, longTailRetry, retryWin);
   }
 
-  private void testBatchGetAndvalidateMetrics(
+  private void testBatchGetAndValidateMetrics(
       boolean bothOriginalAndRetryFails,
       boolean longTailRetry,
-      boolean retryWin) throws ExecutionException, InterruptedException {
+      boolean retryWin,
+      boolean keyNotFound) throws ExecutionException, InterruptedException {
     batchGetRequestContext = new BatchGetRequestContext<>();
     try {
       Map<String, String> value =
@@ -218,14 +260,48 @@ public class RetriableAvroGenericStoreClientTest {
       if (bothOriginalAndRetryFails) {
         fail("An ExecutionException should be thrown here");
       }
-      assertEquals(value, BATCH_GET_VALUE_RESPONSE);
+
+      if (keyNotFound) {
+        assertEquals(value, BATCH_GET_VALUE_RESPONSE_KEY_NOT_FOUND_CASE);
+      } else {
+        assertEquals(value, BATCH_GET_VALUE_RESPONSE);
+      }
     } catch (ExecutionException e) {
       if (!bothOriginalAndRetryFails) {
         throw e;
       }
     }
 
-    validateMetrics(true, false, longTailRetry, retryWin);
+    validateMetrics(true, false, false, longTailRetry, retryWin);
+  }
+
+  private void testStreamingBatchGetAndValidateMetrics(
+      boolean bothOriginalAndRetryFails,
+      boolean longTailRetry,
+      boolean retryWin,
+      boolean keyNotFound) throws ExecutionException, InterruptedException {
+    batchGetRequestContext = new BatchGetRequestContext<>();
+    try {
+      Map<String, String> value =
+          (Map<String, String>) statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS)
+              .get();
+
+      if (bothOriginalAndRetryFails) {
+        fail("An ExecutionException should be thrown here");
+      }
+
+      if (keyNotFound) {
+        assertEquals(value, BATCH_GET_VALUE_RESPONSE_KEY_NOT_FOUND_CASE);
+      } else {
+        assertEquals(value, BATCH_GET_VALUE_RESPONSE);
+      }
+    } catch (ExecutionException e) {
+      if (!bothOriginalAndRetryFails) {
+        throw e;
+      }
+    }
+
+    validateMetrics(true, true, false, longTailRetry, retryWin);
   }
 
   /**
@@ -235,11 +311,20 @@ public class RetriableAvroGenericStoreClientTest {
    * @param longTailRetry request is retried because the original request is taking more time
    * @param retryWin retry request wins
    */
-  private void validateMetrics(boolean batchGet, boolean errorRetry, boolean longTailRetry, boolean retryWin) {
+  private void validateMetrics(
+      boolean batchGet,
+      boolean streamingBatchGet,
+      boolean errorRetry,
+      boolean longTailRetry,
+      boolean retryWin) {
     metrics = getStats(clientConfig);
-    String metricsPrefix = "." + STORE_NAME + (batchGet ? "--multiget_" : "--");
+    String metricsPrefix =
+        "." + STORE_NAME + (batchGet ? (streamingBatchGet ? "--multiget_streaming_" : "--multiget_") : "--");
     double expectedKeyCount = batchGet ? 2.0 : 1.0;
-    assertTrue(metrics.get(metricsPrefix + "request.OccurrenceRate").value() > 0);
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertTrue(metrics.get(metricsPrefix + "request.OccurrenceRate").value() > 0);
+    });
     assertEquals(metrics.get(metricsPrefix + "request_key_count.Max").value(), expectedKeyCount);
 
     if (errorRetry || longTailRetry) {
@@ -302,8 +387,9 @@ public class RetriableAvroGenericStoreClientTest {
   /**
    * Original request is faster than retry threshold.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithoutTriggeringLongTailRetry(boolean batchGet) throws ExecutionException, InterruptedException {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testGetWithoutTriggeringLongTailRetry(boolean batchGet, boolean keyNotFound)
+      throws ExecutionException, InterruptedException {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
@@ -312,21 +398,22 @@ public class RetriableAvroGenericStoreClientTest {
             LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2,
             false,
             LONG_TAIL_RETRY_THRESHOLD_IN_MS * 2,
+            keyNotFound,
             clientConfig),
         clientConfig);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     if (!batchGet) {
-      testSingleGetAndValidateMetrics(false, false, false, false);
+      testSingleGetAndValidateMetrics(false, false, false, false, keyNotFound);
     } else {
-      testBatchGetAndvalidateMetrics(false, false, false);
+      testBatchGetAndValidateMetrics(false, false, false, keyNotFound);
     }
   }
 
   /**
    * Original request latency is higher than retry threshold, but still faster than retry request
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndOriginalWins(boolean batchGet)
+  @Test(dataProvider = "FastClient-Single-Get-MultiGet-And-Streaming-MultiGet", timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringLongTailRetryAndOriginalWins(boolean batchGet, boolean streamingBatchGet)
       throws ExecutionException, InterruptedException {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();
@@ -336,21 +423,26 @@ public class RetriableAvroGenericStoreClientTest {
             LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10,
             false,
             LONG_TAIL_RETRY_THRESHOLD_IN_MS * 50,
+            false,
             clientConfig),
         clientConfig);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     if (!batchGet) {
-      testSingleGetAndValidateMetrics(false, false, true, false);
+      testSingleGetAndValidateMetrics(false, false, true, false, false);
     } else {
-      testBatchGetAndvalidateMetrics(false, true, false);
+      if (streamingBatchGet) {
+        testStreamingBatchGetAndValidateMetrics(false, true, false, false);
+      } else {
+        testBatchGetAndValidateMetrics(false, true, false, false);
+      }
     }
   }
 
   /**
    * Original request latency is higher than retry threshold and slower than the retry request
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndRetryWins(boolean batchGet)
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringLongTailRetryAndRetryWins(boolean batchGet, boolean keyNotFound)
       throws ExecutionException, InterruptedException {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();
@@ -360,64 +452,73 @@ public class RetriableAvroGenericStoreClientTest {
             LONG_TAIL_RETRY_THRESHOLD_IN_MS * 10,
             false,
             LONG_TAIL_RETRY_THRESHOLD_IN_MS / 2,
+            keyNotFound,
             clientConfig),
         clientConfig);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     if (!batchGet) {
-      testSingleGetAndValidateMetrics(false, false, true, true);
+      testSingleGetAndValidateMetrics(false, false, true, true, keyNotFound);
     } else {
-      testBatchGetAndvalidateMetrics(false, true, true);
+      testBatchGetAndValidateMetrics(false, true, true, keyNotFound);
     }
   }
 
   /**
    * Original request fails and retry succeeds.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringErrorRetryAndRetryWins(boolean batchGet)
+  @Test(dataProvider = "FastClient-Single-Get-MultiGet-And-Streaming-MultiGet", timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringErrorRetryAndRetryWins(boolean batchGet, boolean streamingBatchGet)
       throws ExecutionException, InterruptedException {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(true, 0, false, LONG_TAIL_RETRY_THRESHOLD_IN_MS, clientConfig),
+        prepareDispatchingClient(true, 0, false, LONG_TAIL_RETRY_THRESHOLD_IN_MS, false, clientConfig),
         clientConfig);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     if (!batchGet) {
-      testSingleGetAndValidateMetrics(false, true, false, true);
+      testSingleGetAndValidateMetrics(false, true, false, true, false);
     } else {
-      testBatchGetAndvalidateMetrics(false, true, true);
+      if (streamingBatchGet) {
+        testStreamingBatchGetAndValidateMetrics(false, true, true, false);
+      } else {
+        testBatchGetAndValidateMetrics(false, true, true, false);
+      }
     }
   }
 
   /**
    * Original request latency exceeds the retry threshold but succeeds and the retry fails.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndRetryFails(boolean batchGet)
+  @Test(dataProvider = "FastClient-Single-Get-MultiGet-And-Streaming-MultiGet", timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringLongTailRetryAndRetryFails(boolean batchGet, boolean streamingBatchGet)
       throws ExecutionException, InterruptedException {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(false, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, clientConfig),
+        prepareDispatchingClient(false, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, false, clientConfig),
         clientConfig);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     if (!batchGet) {
-      testSingleGetAndValidateMetrics(false, false, true, false);
+      testSingleGetAndValidateMetrics(false, false, true, false, false);
     } else {
-      testBatchGetAndvalidateMetrics(false, true, false);
+      if (streamingBatchGet) {
+        testStreamingBatchGetAndValidateMetrics(false, true, false, false);
+      } else {
+        testBatchGetAndValidateMetrics(false, true, false, false);
+      }
     }
   }
 
   /**
    * Original request latency exceeds the retry threshold, and both the original request and the retry fails.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndBothFailsV1(boolean batchGet)
+  @Test(dataProvider = "FastClient-Single-Get-MultiGet-And-Streaming-MultiGet", timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringLongTailRetryAndBothFailsV1(boolean batchGet, boolean streamingBatchGet)
       throws InterruptedException, ExecutionException {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
-        prepareDispatchingClient(true, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, clientConfig),
+        prepareDispatchingClient(true, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, false, clientConfig),
         clientConfig);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     /**
@@ -427,22 +528,27 @@ public class RetriableAvroGenericStoreClientTest {
      *  Check {@link StatsAvroGenericStoreClient#recordRequestMetrics} for more details.
      */
     if (!batchGet) {
-      testSingleGetAndValidateMetrics(true, false, true, false);
+      testSingleGetAndValidateMetrics(true, false, true, false, false);
     } else {
-      testBatchGetAndvalidateMetrics(true, true, false);
+      if (streamingBatchGet) {
+        testStreamingBatchGetAndValidateMetrics(true, true, false, false);
+      } else {
+        testBatchGetAndValidateMetrics(true, true, false, false);
+      }
     }
   }
 
   /**
    * Original request latency is lower than the retry threshold, and both the original request and the retry fails.
    */
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testGetWithTriggeringLongTailRetryAndBothFailsV2(boolean batchGet)
+  @Test(dataProvider = "FastClient-Single-Get-MultiGet-And-Streaming-MultiGet", timeOut = TEST_TIMEOUT)
+  public void testGetWithTriggeringLongTailRetryAndBothFailsV2(boolean batchGet, boolean streamingBatchGet)
       throws InterruptedException, ExecutionException {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfig = clientConfigBuilder.build();
-    retriableClient =
-        new RetriableAvroGenericStoreClient<>(prepareDispatchingClient(true, 0, true, 0, clientConfig), clientConfig);
+    retriableClient = new RetriableAvroGenericStoreClient<>(
+        prepareDispatchingClient(true, 0, true, 0, false, clientConfig),
+        clientConfig);
     statsAvroGenericStoreClient = new StatsAvroGenericStoreClient(retriableClient, clientConfig);
     /**
      *  When the request is closed exceptionally (when both original request and the retry throws exception),
@@ -451,9 +557,13 @@ public class RetriableAvroGenericStoreClientTest {
      *  Check {@link StatsAvroGenericStoreClient#recordRequestMetrics} for more details.
      */
     if (!batchGet) {
-      testSingleGetAndValidateMetrics(true, true, false, false);
+      testSingleGetAndValidateMetrics(true, true, false, false, false);
     } else {
-      testBatchGetAndvalidateMetrics(true, true, false);
+      if (streamingBatchGet) {
+        testStreamingBatchGetAndValidateMetrics(true, true, false, false);
+      } else {
+        testBatchGetAndValidateMetrics(true, true, false, false);
+      }
     }
   }
 }

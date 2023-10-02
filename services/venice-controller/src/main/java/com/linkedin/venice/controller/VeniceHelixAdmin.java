@@ -7408,13 +7408,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void setUpMetaStoreAndMayProduceSnapshot(String clusterName, String regularStoreName) {
+  void setUpMetaStoreAndMayProduceSnapshot(String clusterName, String regularStoreName) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     Store store = repository.getStore(regularStoreName);
     if (store == null) {
       throwStoreDoesNotExist(clusterName, regularStoreName);
     }
+
+    // Make sure RT topic exists before producing. There's no write to parent region meta store RT, but we still create
+    // the RT topic to be consistent in case it was not auto-materialized
+    getRealTimeTopic(clusterName, VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName));
 
     // Update the store flag to enable meta system store.
     if (!store.isStoreMetaSystemStoreEnabled()) {
@@ -7423,10 +7427,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return s;
       });
     }
-
-    // Make sure RT topic exists before producing. There's no write to parent region meta store RT, but we still create
-    // the RT topic to be consistent in case it was not auto-materialized
-    getRealTimeTopic(clusterName, VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName));
 
     Optional<MetaStoreWriter> metaStoreWriter = getHelixVeniceClusterResources(clusterName).getMetaStoreWriter();
     if (!metaStoreWriter.isPresent()) {

@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -60,7 +59,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public static final int METADATA_PARTITION_ID = 1000_000_000;
 
   private final String storeName;
-  private final List<Partition> partitionList = new SparseConcurrentList<>();
+  private final SparseConcurrentList<Partition> partitionList = new SparseConcurrentList<>();
   private Partition metadataPartition;
   private final AtomicReference<StoreVersionState> versionStateCache = new AtomicReference<>();
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
@@ -352,6 +351,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
         LatencyUtils.getElapsedTimeInMs(startTime));
     partitionList.clear();
     closeMetadataPartition();
+  }
+
+  public boolean isClosed() {
+    return this.partitionList.isEmpty();
   }
 
   /**
@@ -656,7 +659,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * @return the number of non-null partitions in {@link #partitionList}
    */
   public synchronized long getNumberOfPartitions() {
-    return this.partitionList.stream().filter(Objects::nonNull).count();
+    return this.partitionList.nonNullSize();
   }
 
   /**
@@ -665,10 +668,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    * @return partition Ids that are hosted in the current Storage Engine.
    */
   public synchronized Set<Integer> getPartitionIds() {
-    return this.partitionList.stream()
-        .filter(Objects::nonNull)
-        .map(Partition::getPartitionId)
-        .collect(Collectors.toSet());
+    return this.partitionList.values().stream().map(Partition::getPartitionId).collect(Collectors.toSet());
   }
 
   public AbstractStoragePartition getPartitionOrThrow(int partitionId) {

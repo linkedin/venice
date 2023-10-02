@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -50,6 +51,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
         mock(HelixCustomizedViewOfflinePushRepository.class);
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
+    MetricsRepository metricsRepository = new MetricsRepository();
 
     List<StoreDataChangedListener> listeners = new ArrayList<>();
     doAnswer((invocation) -> {
@@ -63,7 +65,8 @@ public class ReadQuotaEnforcementHandlerListenerTest {
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
         nodeId,
-        stats);
+        stats,
+        metricsRepository);
 
     Assert.assertEquals(listeners.get(0), quotaEnforcer);
   }
@@ -100,6 +103,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     }).when(customizedViewRepository).getPartitionAssignments(anyString());
 
     AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
+    MetricsRepository metricsRepository = new MetricsRepository();
 
     // Object under test
     ReadQuotaEnforcementHandler quotaEnforcer = new ReadQuotaEnforcementHandler(
@@ -107,7 +111,8 @@ public class ReadQuotaEnforcementHandlerListenerTest {
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
         nodeId,
-        stats);
+        stats,
+        metricsRepository);
 
     // Add a store (call store created) verify all versions in buckets and in subscriptions
     Store store1 = getDummyStore("store1", Arrays.asList(new Integer[] { 1 }), 10);

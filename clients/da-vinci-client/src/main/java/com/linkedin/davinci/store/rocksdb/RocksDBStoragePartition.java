@@ -750,7 +750,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           // Since Venice RocksDB database disables WAL, flush will be triggered for every 'sync' to avoid data loss
           // during
           // crash recovery
-          rocksDB.flush(WAIT_FOR_FLUSH_OPTIONS);
+          rocksDB.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList);
         } catch (RocksDBException e) {
           checkAndThrowMemoryLimitException(e);
           throw new VeniceException(

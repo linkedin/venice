@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -118,9 +119,10 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   /**
    * Creates a batchget request which uses scatter gather to fetch all keys from different replicas.
    */
-  @Test(dataProvider = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode", timeOut = TIME_OUT)
   public void testBatchGetGenericClient(
       boolean useStreamingBatchGetAsDefault,
+      boolean retryEnabled,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -131,6 +133,13 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1)
             .setUseStreamingBatchGetAsDefault(useStreamingBatchGetAsDefault);
+
+    if (retryEnabled) {
+      // enable retry to test the code path: to mimic retry in integration tests
+      // can be non-deterministic, so setting big retry threshold to not actually retry
+      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
+    }
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
@@ -149,7 +158,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    validateBatchGetMetrics(metricsRepository, useStreamingBatchGetAsDefault, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, useStreamingBatchGetAsDefault, false, recordCnt + 1, recordCnt, false);
 
     FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
@@ -186,19 +195,27 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
 
-    validateBatchGetMetrics(metricsRepository, useStreamingBatchGetAsDefault, recordCnt, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, useStreamingBatchGetAsDefault, false, recordCnt, recordCnt, false);
 
     specificFastClient.close();
     printAllStats();
   }
 
-  @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
-  public void testStreamingBatchGetGenericClient(StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
+  @Test(dataProvider = "Boolean-And-StoreMetadataFetchModes", timeOut = TIME_OUT)
+  public void testStreamingBatchGetGenericClient(boolean retryEnabled, StoreMetadataFetchMode storeMetadataFetchMode)
+      throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(true)
+            .setSpeculativeQueryEnabled(false)
             .setDualReadEnabled(false);
+
+    if (retryEnabled) {
+      // enable retry to test the code path: to mimic retry in integration tests
+      // can be non-deterministic, so setting big retry threshold to not actually retry
+      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
+    }
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
@@ -238,17 +255,25 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         1,
         "Incorrect non existing key size . Expected  1 got " + veniceResponseMap.getNonExistingKeys().size());
 
-    validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, true, true, recordCnt + 1, recordCnt, false);
   }
 
-  @Test(dataProvider = "StoreMetadataFetchModes", timeOut = TIME_OUT)
-  public void testStreamingBatchGetWithCallbackGenericClient(StoreMetadataFetchMode storeMetadataFetchMode)
-      throws Exception {
+  @Test(dataProvider = "Boolean-And-StoreMetadataFetchModes", timeOut = TIME_OUT)
+  public void testStreamingBatchGetWithCallbackGenericClient(
+      boolean retryEnabled,
+      StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setSpeculativeQueryEnabled(true)
+            .setSpeculativeQueryEnabled(false)
             .setDualReadEnabled(false);
+
+    if (retryEnabled) {
+      // enable retry to test the code path: to mimic retry in integration tests
+      // can be non-deterministic, so setting big retry threshold to not actually retry
+      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(TIME_OUT * MS_PER_SECOND);
+    }
 
     MetricsRepository metricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
@@ -314,7 +339,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         "STATS: latency -> {}",
         stats.buildSensorStatSummary("multiget_healthy_request_latency", "99thPercentile"));
 
-    validateBatchGetMetrics(metricsRepository, true, recordCnt + 1, recordCnt, false);
+    validateBatchGetMetrics(metricsRepository, true, true, recordCnt + 1, recordCnt, false);
     printAllStats();
   }
 }
