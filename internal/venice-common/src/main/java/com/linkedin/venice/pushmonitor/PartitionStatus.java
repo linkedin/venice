@@ -118,7 +118,6 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("Partition ").append(partitionId).append(": ");
     for (Map.Entry<String, ReplicaStatus> entry: replicaStatusMap.entrySet()) {
       sb.append(entry.getKey()).append(":").append(entry.getValue().getCurrentStatus().name()).append(" ");
     }
