@@ -235,25 +235,27 @@ public class VeniceController {
   private void initializeSystemSchema(Admin admin) {
     String systemStoreCluster = multiClusterConfigs.getSystemSchemaClusterName();
     VeniceControllerConfig systemStoreClusterConfig = multiClusterConfigs.getControllerConfig(systemStoreCluster);
-    if (!multiClusterConfigs.isParent() && multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()
-        && systemStoreClusterConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+    if (!multiClusterConfigs.isParent() && systemStoreClusterConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
       String regionName = systemStoreClusterConfig.getRegionName();
       String childControllerUrl = systemStoreClusterConfig.getChildControllerUrl(regionName);
       String d2ServiceName = systemStoreClusterConfig.getD2ServiceName();
       String d2ZkHost = systemStoreClusterConfig.getChildControllerD2ZkHost(regionName);
       boolean sslOnly = systemStoreClusterConfig.isControllerEnforceSSLOnly();
-      ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
-          new ControllerClientBackedSystemSchemaInitializer(
-              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
-              systemStoreCluster,
-              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
-              VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
-              true,
-              ((VeniceHelixAdmin) admin).getSslFactory(),
-              childControllerUrl,
-              d2ServiceName,
-              d2ZkHost,
-              sslOnly);
+      if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
+        ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
+            new ControllerClientBackedSystemSchemaInitializer(
+                AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+                systemStoreCluster,
+                AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
+                VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
+                true,
+                ((VeniceHelixAdmin) admin).getSslFactory(),
+                childControllerUrl,
+                d2ServiceName,
+                d2ZkHost,
+                sslOnly);
+        metaSystemStoreSchemaInitializer.execute();
+      }
       ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
           new ControllerClientBackedSystemSchemaInitializer(
               AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
@@ -266,7 +268,6 @@ public class VeniceController {
               d2ServiceName,
               d2ZkHost,
               sslOnly);
-      metaSystemStoreSchemaInitializer.execute();
       kmeSchemaInitializer.execute();
     }
   }
