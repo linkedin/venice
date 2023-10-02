@@ -22,13 +22,21 @@ import org.testng.annotations.DataProvider;
 
 public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest {
   @Override
-  @DataProvider(name = "FastClient-Five-Boolean-A-Number-Store-Metadata-Fetch-Mode")
-  public Object[][] fiveBooleanANumberStoreMetadataFetchMode() {
+  @DataProvider(name = "FastClient-Six-Boolean-A-Number-Store-Metadata-Fetch-Mode")
+  public Object[][] sixBooleanANumberStoreMetadataFetchMode() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean speculativeQueryEnabled = (boolean) permutation[1];
+      if (speculativeQueryEnabled) {
+        return false;
+      }
       boolean batchGet = (boolean) permutation[2];
       boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
-      int batchGetKeySize = (int) permutation[5];
-      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[6];
+      boolean retryEnabled = (boolean) permutation[5];
+      if (retryEnabled) {
+        return false;
+      }
+      int batchGetKeySize = (int) permutation[6];
+      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[7];
       if (!batchGet) {
         if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
@@ -36,7 +44,7 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
           return false;
         }
       }
-      if (storeMetadataFetchMode == StoreMetadataFetchMode.DA_VINCI_CLIENT_BASED_METADATA) {
+      if (storeMetadataFetchMode != StoreMetadataFetchMode.SERVER_BASED_METADATA) {
         return false;
       }
       return true;
@@ -46,6 +54,7 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
         DataProviderUtils.BOOLEAN, // batchGet
         DataProviderUtils.BOOLEAN_TRUE, // useStreamingBatchGetAsDefault
         DataProviderUtils.BOOLEAN, // enableGrpc
+        DataProviderUtils.BOOLEAN, // retryEnabled
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
