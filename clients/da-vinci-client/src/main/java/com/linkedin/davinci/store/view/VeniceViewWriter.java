@@ -9,7 +9,6 @@ import com.linkedin.venice.views.VeniceView;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -46,7 +45,7 @@ public abstract class VeniceViewWriter extends VeniceView {
    * @param oldValueSchemaId the schemaId of the old record
    * @param replicationMetadataRecord the associated RMD for the incoming record.
    */
-  public Future<PubSubProduceResult> processRecord(
+  public CompletableFuture<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,

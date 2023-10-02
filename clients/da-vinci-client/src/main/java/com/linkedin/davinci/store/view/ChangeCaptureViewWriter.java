@@ -8,6 +8,7 @@ import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -32,7 +33,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
@@ -62,7 +64,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public Future<PubSubProduceResult> processRecord(
+  public CompletableFuture<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
@@ -83,7 +85,15 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       initializeVeniceWriter(version);
     }
     // TODO: RecordChangeEvent isn't versioned today.
-    return veniceWriter.put(key, recordChangeEvent, 1);
+    return CompletableFuture.supplyAsync(() -> {
+      try {
+        return (PubSubProduceResult) veniceWriter.put(key, recordChangeEvent, 1).get();
+      } catch (InterruptedException | ExecutionException e) {
+        throw new VeniceException(
+            "Writing to Change capture view for store: " + store.getName() + " failed with exception:",
+            e);
+      }
+    });
   }
 
   @Override

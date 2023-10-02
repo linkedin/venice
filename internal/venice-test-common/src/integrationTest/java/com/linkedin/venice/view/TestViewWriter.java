@@ -13,7 +13,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -31,7 +30,7 @@ public class TestViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public Future<PubSubProduceResult> processRecord(
+  public CompletableFuture<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,

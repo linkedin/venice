@@ -65,7 +65,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
@@ -495,46 +494,51 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int valueSchemaId =
           rmdWithValueSchemaID != null ? rmdWithValueSchemaID.getValueSchemaId() : incomingValueSchemaId;
 
-      // Get Futures and
-      // Pass callback with on completion which decrements, once all decrement call producePutOrDeleteToKafka
+      // Write to views
       if (this.viewWriters.size() > 0) {
+        /**
+         * The ordering guarantees we want is the following:
+         *
+         * 1. Write to all view topics (in parallel).
+         * 2. Write to the VT only after we get the ack for all views AND the previous write to VT was queued into the
+         *    producer (but not necessarily acked).
+         */
         Long preprocessingTime = System.currentTimeMillis();
-
-        List<Future> viewWriteCallbacks = new ArrayList<>();
+        CompletableFuture currentVersionTopicWrite = new CompletableFuture();
+        CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
+        int index = 0;
+        // The first future is for the previous write to VT
+        viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
         for (VeniceViewWriter writer: viewWriters.values()) {
-          viewWriteCallbacks.add(
-              writer.processRecord(
-                  mergeConflictResult.getNewValue(),
-                  oldValueProvider.get(),
-                  keyBytes,
-                  versionNumber,
-                  incomingValueSchemaId,
-                  valueSchemaId,
-                  mergeConflictResult.getRmdRecord()));
+          viewWriterFutures[index++] = writer.processRecord(
+              mergeConflictResult.getNewValue(),
+              oldValueProvider.get(),
+              keyBytes,
+              versionNumber,
+              incomingValueSchemaId,
+              valueSchemaId,
+              mergeConflictResult.getRmdRecord());
         }
-        viewWriteCallbacks.add(partitionConsumptionState.getLastVTProduceCallFuture());
-        CompletableFuture.allOf(viewWriteCallbacks.toArray(new CompletableFuture[0]))
-            .whenCompleteAsync((value, exception) -> {
-              hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getLatencyInMS(preprocessingTime));
-              if (exception == null) {
-                partitionConsumptionState.setLastVTProduceCallFuture(CompletableFuture.runAsync(() -> {
-                  producePutOrDeleteToKafka(
-                      mergeConflictResult,
-                      partitionConsumptionState,
-                      keyBytes,
-                      consumerRecord,
-                      subPartition,
-                      kafkaUrl,
-                      kafkaClusterId,
-                      beforeProcessingRecordTimestampNs,
-                      valueManifestContainer.getManifest(),
-                      rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
-                }));
-              } else {
-                partitionConsumptionState.setLastVTProduceCallFuture(CompletableFuture.completedFuture(null));
-                throw new VeniceException(exception);
-              }
-            });
+        CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
+          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getLatencyInMS(preprocessingTime));
+          if (exception == null) {
+            producePutOrDeleteToKafka(
+                mergeConflictResult,
+                partitionConsumptionState,
+                keyBytes,
+                consumerRecord,
+                subPartition,
+                kafkaUrl,
+                kafkaClusterId,
+                beforeProcessingRecordTimestampNs,
+                valueManifestContainer.getManifest(),
+                rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+            currentVersionTopicWrite.complete(null);
+          } else {
+            currentVersionTopicWrite.completeExceptionally(new VeniceException(exception));
+          }
+        });
+        partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
       } else {
         // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
         // after

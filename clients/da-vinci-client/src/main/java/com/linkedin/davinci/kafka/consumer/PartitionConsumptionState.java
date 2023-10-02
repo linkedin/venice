@@ -48,7 +48,7 @@ public class PartitionConsumptionState {
   private boolean isDataRecoveryCompleted;
   private LeaderFollowerStateType leaderFollowerState;
 
-  private Future<Void> lastVTProduceCallFuture;
+  private CompletableFuture<Void> lastVTProduceCallFuture;
 
   /**
    * Only used in L/F model. Check if the partition has released the latch.
@@ -239,11 +239,11 @@ public class PartitionConsumptionState {
     return this.partition;
   }
 
-  public Future<Void> getLastVTProduceCallFuture() {
+  public CompletableFuture<Void> getLastVTProduceCallFuture() {
     return this.lastVTProduceCallFuture;
   }
 
-  public void setLastVTProduceCallFuture(Future<Void> lastVTProduceCallFuture) {
+  public void setLastVTProduceCallFuture(CompletableFuture<Void> lastVTProduceCallFuture) {
     this.lastVTProduceCallFuture = lastVTProduceCallFuture;
   }
 
