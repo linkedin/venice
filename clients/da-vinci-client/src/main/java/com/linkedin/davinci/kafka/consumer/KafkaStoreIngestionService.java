@@ -18,7 +18,6 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
-import com.google.common.collect.ImmutableMap;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -428,7 +427,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               serverConfig.getLocalControllerD2ServiceName(),
               serverConfig.getLocalD2ZkHost(),
               false)) {
-        schemaInitializer.execute(ImmutableMap.of(schemaId, schema));
+        schemaInitializer.execute(Collections.singletonMap(schemaId, schema));
       } catch (VeniceException e) {
         LOGGER.error(
             "Exception in registering '{}' schema version '{}'",
