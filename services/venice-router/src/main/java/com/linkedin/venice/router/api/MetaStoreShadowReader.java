@@ -42,11 +42,12 @@ public class MetaStoreShadowReader {
   private static final Logger LOGGER = LogManager.getLogger(MetaStoreShadowReader.class);
   private final ReadOnlySchemaRepository schemaRepo;
   private final RecordDeserializer<StoreMetaKey> keyDeserializer =
-      FastSerializerDeserializerFactory.getAvroSpecificDeserializer(StoreMetaKey.class);
+      FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(StoreMetaKey.SCHEMA$, StoreMetaKey.class);
   private final int metaSystemStoreSchemaId =
       AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
-  private final RecordSerializer<StoreMetaValue> valueSerializer = FastSerializerDeserializerFactory
-      .getAvroGenericSerializer(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
+  private final RecordSerializer<StoreMetaValue> valueSerializer =
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(
+          AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
   private final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public MetaStoreShadowReader(ReadOnlySchemaRepository readOnlySchemaRepository) {

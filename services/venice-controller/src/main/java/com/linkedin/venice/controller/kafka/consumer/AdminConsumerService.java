@@ -213,4 +213,9 @@ public class AdminConsumerService extends AbstractVeniceService {
     return consumerFactory
         .create(new VeniceProperties(kafkaConsumerProperties), false, pubSubMessageDeserializer, clusterName);
   }
+
+  // For testing only.
+  public PubSubMessageDeserializer getDeserializer() {
+    return this.pubSubMessageDeserializer;
+  }
 }

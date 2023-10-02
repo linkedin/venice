@@ -1,6 +1,6 @@
 package com.linkedin.venice.compute;
 
-import static com.linkedin.venice.serializer.SerializerDeserializerFactory.getAvroGenericSerializer;
+import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.getFastAvroGenericSerializer;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV3;
@@ -21,7 +21,7 @@ public class ComputeRequestWrapper {
   public static final int LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST = 3;
 
   private static final RecordSerializer<ComputeRequestV3> SERIALIZER =
-      getAvroGenericSerializer(ComputeRequestV3.SCHEMA$);
+      getFastAvroGenericSerializer(ComputeRequestV3.SCHEMA$);
 
   private final ComputeRequestV3 computeRequest;
   private final Schema valueSchema;

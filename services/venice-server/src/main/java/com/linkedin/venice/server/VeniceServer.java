@@ -381,7 +381,8 @@ public class VeniceServer {
         Optional.empty(),
         false,
         remoteIngestionRepairService,
-        pubSubClientsFactory);
+        pubSubClientsFactory,
+        sslFactory);
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     this.diskHealthCheckService = new DiskHealthCheckService(

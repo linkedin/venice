@@ -87,14 +87,14 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
   }
 
   @Override
-  public Iterable<V> deserializeObjects(byte[] bytes) throws VeniceSerializationException {
+  public List<V> deserializeObjects(byte[] bytes) throws VeniceSerializationException {
     InputStream in = new ByteArrayInputStream(bytes);
     BinaryDecoder decoder = AvroCompatibilityHelper.newBinaryDecoder(in, BUFFERED_AVRO_DECODER, null);
     return deserializeObjects(decoder);
   }
 
   @Override
-  public Iterable<V> deserializeObjects(BinaryDecoder decoder) throws VeniceSerializationException {
+  public List<V> deserializeObjects(BinaryDecoder decoder) throws VeniceSerializationException {
     List<V> objects = new ArrayList();
     try {
       while (!decoder.isEnd()) {

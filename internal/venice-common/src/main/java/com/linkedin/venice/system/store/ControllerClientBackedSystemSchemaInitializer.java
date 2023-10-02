@@ -15,11 +15,13 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
+import java.io.Closeable;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -31,7 +33,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class ControllerClientBackedSystemSchemaInitializer {
+public class ControllerClientBackedSystemSchemaInitializer implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(ControllerClientBackedSystemSchemaInitializer.class);
   private static final String DEFAULT_KEY_SCHEMA_STR = "\"int\"";
   /**
@@ -76,7 +78,7 @@ public class ControllerClientBackedSystemSchemaInitializer {
     this.enforceSslOnly = enforceSslOnly;
   }
 
-  public void execute() {
+  public void execute(Map<Integer, Schema> inputSchemas) {
     if (controllerClient == null) {
       if (!controllerUrl.isEmpty()) {
         controllerClient = ControllerClient.constructClusterControllerClient(clusterName, controllerUrl, sslFactory);
@@ -100,14 +102,16 @@ public class ControllerClientBackedSystemSchemaInitializer {
     }
 
     String storeName = protocolDefinition.getSystemStoreName();
-    Map<Integer, Schema> schemasInLocalResources = Utils.getAllSchemasFromResources(protocolDefinition);
+    boolean isSchemaResourceInLocal = inputSchemas == null;
+    Map<Integer, Schema> schemaResources =
+        isSchemaResourceInLocal ? Utils.getAllSchemasFromResources(protocolDefinition) : inputSchemas;
     D2ServiceDiscoveryResponse discoveryResponse = controllerClient.retryableRequest(
         DEFAULT_RETRY_TIMES,
         c -> c.discoverCluster(storeName),
         r -> ErrorType.STORE_NOT_FOUND.equals(r.getErrorType()));
     if (discoveryResponse.isError()) {
       if (ErrorType.STORE_NOT_FOUND.equals(discoveryResponse.getErrorType())) {
-        checkAndMayCreateSystemStore(storeName, schemasInLocalResources.get(1));
+        checkAndMayCreateSystemStore(storeName, schemaResources.get(1));
       } else {
         throw new VeniceException(
             "Error when discovering system store " + storeName + " after retries. Error: "
@@ -139,20 +143,63 @@ public class ControllerClientBackedSystemSchemaInitializer {
     Map<Integer, Schema> schemasInZk = new HashMap<>();
     Arrays.stream(multiSchemaResponse.getSchemas())
         .forEach(schema -> schemasInZk.put(schema.getId(), AvroCompatibilityHelper.parse(schema.getSchemaStr())));
+
+    if (isSchemaResourceInLocal) {
+      registerLocalSchemaResources(storeName, schemaResources, schemasInZk);
+    } else {
+      // For passed in new schemas, its version could be larger than protocolDefinition.getCurrentProtocolVersion(),
+      // register schema directly.
+      for (Map.Entry<Integer, Schema> entry: schemaResources.entrySet()) {
+        checkAndMayRegisterValueSchema(
+            storeName,
+            entry.getKey(),
+            schemasInZk.get(entry.getKey()),
+            entry.getValue(),
+            determineSchemaCompatabilityType());
+      }
+    }
+  }
+
+  private void registerLocalSchemaResources(
+      String storeName,
+      Map<Integer, Schema> schemaResources,
+      Map<Integer, Schema> schemasInZk) {
     for (int version = 1; version <= protocolDefinition.getCurrentProtocolVersion(); version++) {
-      Schema schemaInLocalResources = schemasInLocalResources.get(version);
+      Schema schemaInLocalResources = schemaResources.get(version);
       if (schemaInLocalResources == null) {
         throw new VeniceException(
             "Invalid protocol definition: " + protocolDefinition.name() + " does not have a version " + version
                 + " even though it is less than or equal to the current version ("
                 + protocolDefinition.getCurrentProtocolVersion() + ").");
-      }
-      checkAndMayRegisterValueSchema(storeName, version, schemasInZk.get(version), schemaInLocalResources);
+      } else {
+        checkAndMayRegisterValueSchema(
+            storeName,
+            version,
+            schemasInZk.get(version),
+            schemaInLocalResources,
+            determineSchemaCompatabilityType());
 
-      if (autoRegisterPartialUpdateSchema) {
-        checkAndMayRegisterPartialUpdateSchema(storeName, version, schemaInLocalResources);
+        if (autoRegisterPartialUpdateSchema) {
+          checkAndMayRegisterPartialUpdateSchema(storeName, version, schemaInLocalResources);
+        }
       }
     }
+  }
+
+  DirectionalSchemaCompatibilityType determineSchemaCompatabilityType() {
+    if (protocolDefinition == AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE) {
+      return DirectionalSchemaCompatibilityType.FULL;
+    }
+
+    if (protocolDefinition == AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE) {
+      return DirectionalSchemaCompatibilityType.BACKWARD;
+    }
+
+    return DirectionalSchemaCompatibilityType.FULL;
+  }
+
+  public void execute() {
+    execute(null);
   }
 
   private boolean hasLeaderController() {
@@ -236,11 +283,13 @@ public class ControllerClientBackedSystemSchemaInitializer {
       String storeName,
       int valueSchemaId,
       Schema schemaInZk,
-      Schema schemaInLocalResources) {
+      Schema schemaInLocalResources,
+      DirectionalSchemaCompatibilityType compatType) {
     if (schemaInZk == null) {
       SchemaResponse addValueSchemaResponse = controllerClient.retryableRequest(
           DEFAULT_RETRY_TIMES,
-          c -> c.addValueSchema(storeName, schemaInLocalResources.toString(), valueSchemaId));
+          c -> c.addValueSchema(storeName, schemaInLocalResources.toString(), valueSchemaId, compatType));
+
       if (addValueSchemaResponse.isError()) {
         throw new VeniceException(
             "Error when adding value schema " + valueSchemaId + " to system store " + storeName + " in cluster "
@@ -296,6 +345,13 @@ public class ControllerClientBackedSystemSchemaInitializer {
             "Error when getting derived schema from system store " + storeName + " in cluster " + clusterName
                 + " after retries. Error: " + getSchemaResponse.getError());
       }
+    }
+  }
+
+  @Override
+  public void close() {
+    if (controllerClient != null) {
+      controllerClient.close();
     }
   }
 

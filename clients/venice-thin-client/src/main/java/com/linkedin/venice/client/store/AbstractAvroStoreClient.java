@@ -358,7 +358,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    */
   protected RecordSerializer<K> createKeySerializer() {
     return getClientConfig().isUseFastAvro()
-        ? FastSerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema())
+        ? FastSerializerDeserializerFactory.getFastAvroGenericSerializer(getKeySchema())
         : SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
   }
 
@@ -369,13 +369,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         // init multi-get request serializer
         this.multiGetRequestSerializer = getClientConfig().isUseFastAvro()
             ? FastSerializerDeserializerFactory
-                .getAvroGenericSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema())
+                .getFastAvroGenericSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema())
             : SerializerDeserializerFactory
                 .getAvroGenericSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
         // init compute request serializer
         this.computeRequestClientKeySerializer = getClientConfig().isUseFastAvro()
             ? FastSerializerDeserializerFactory
-                .getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema())
+                .getFastAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema())
             : SerializerDeserializerFactory
                 .getAvroGenericSerializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
         this.streamingFooterRecordDeserializer = getClientConfig().isUseFastAvro()

@@ -109,7 +109,7 @@ public abstract class AbstractClientEndToEndSetup {
 
   protected ClientConfig clientConfig;
 
-  protected static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
+  protected static final int TIME_OUT = 60 * Time.MS_PER_SECOND;
   protected static final String KEY_SCHEMA_STR = "\"string\"";
   protected static final String VALUE_FIELD_NAME = "int_field";
   protected static final String VALUE_SCHEMA_STR = "{\n" + "\"type\": \"record\",\n"
@@ -133,18 +133,29 @@ public abstract class AbstractClientEndToEndSetup {
    */
   protected static final ImmutableList<Object> BATCH_GET_KEY_SIZE = ImmutableList.of(2, recordCnt);
 
-  @DataProvider(name = "FastClient-Five-Boolean-A-Number-Store-Metadata-Fetch-Mode")
-  public Object[][] fiveBooleanANumberStoreMetadataFetchMode() {
+  @DataProvider(name = "FastClient-Six-Boolean-A-Number-Store-Metadata-Fetch-Mode")
+  public Object[][] sixBooleanANumberStoreMetadataFetchMode() {
     return DataProviderUtils.allPermutationGenerator((permutation) -> {
+      boolean speculativeQueryEnabled = (boolean) permutation[1];
       boolean batchGet = (boolean) permutation[2];
       boolean useStreamingBatchGetAsDefault = (boolean) permutation[3];
-      int batchGetKeySize = (int) permutation[5];
+      boolean retryEnabled = (boolean) permutation[5];
+      int batchGetKeySize = (int) permutation[6];
+      StoreMetadataFetchMode storeMetadataFetchMode = (StoreMetadataFetchMode) permutation[7];
       if (!batchGet) {
         if (useStreamingBatchGetAsDefault || batchGetKeySize != (int) BATCH_GET_KEY_SIZE.get(0)) {
           // these parameters are related only to batchGet, so just allowing 1 set
           // to avoid duplicate tests
           return false;
         }
+      }
+      if (storeMetadataFetchMode != StoreMetadataFetchMode.SERVER_BASED_METADATA) {
+        if (retryEnabled || speculativeQueryEnabled) {
+          return false;
+        }
+      }
+      if (retryEnabled && speculativeQueryEnabled) {
+        return false;
       }
       return true;
     },
@@ -153,32 +164,20 @@ public abstract class AbstractClientEndToEndSetup {
         DataProviderUtils.BOOLEAN, // batchGet
         DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
         DataProviderUtils.BOOLEAN, // enableGrpc
+        DataProviderUtils.BOOLEAN, // retryEnabled
         BATCH_GET_KEY_SIZE.toArray(), // batchGetKeySize
-        STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
-  }
-
-  @DataProvider(name = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode")
-  public Object[][] twoBooleanStoreMetadataFetchMode() {
-    return DataProviderUtils.allPermutationGenerator((permutation) -> {
-      boolean batchGet = (boolean) permutation[0];
-      boolean useStreamingBatchGetAsDefault = (boolean) permutation[1];
-      if (!batchGet) {
-        if (useStreamingBatchGetAsDefault) {
-          // this parameter is related only to batchGet, so just allowing 1 set
-          // to avoid duplicate tests
-          return false;
-        }
-      }
-      return true;
-    },
-        DataProviderUtils.BOOLEAN, // batchGet
-        DataProviderUtils.BOOLEAN, // useStreamingBatchGetAsDefault
         STORE_METADATA_FETCH_MODES); // storeMetadataFetchMode
   }
 
   @DataProvider(name = "FastClient-One-Boolean-Store-Metadata-Fetch-Mode")
   public Object[][] oneBooleanStoreMetadataFetchMode() {
     return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
+  }
+
+  @DataProvider(name = "FastClient-Two-Boolean-Store-Metadata-Fetch-Mode")
+  public Object[][] twoBooleanStoreMetadataFetchMode() {
+    return DataProviderUtils
+        .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
   }
 
   @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
@@ -214,6 +213,11 @@ public abstract class AbstractClientEndToEndSetup {
   @DataProvider(name = "StoreMetadataFetchModes")
   public static Object[][] storeMetadataFetchModes() {
     return DataProviderUtils.allPermutationGenerator(STORE_METADATA_FETCH_MODES);
+  }
+
+  @DataProvider(name = "Boolean-And-StoreMetadataFetchModes")
+  public static Object[][] booleanAndstoreMetadataFetchModes() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, STORE_METADATA_FETCH_MODES);
   }
 
   @BeforeClass(alwaysRun = true)
@@ -513,16 +517,18 @@ public abstract class AbstractClientEndToEndSetup {
   }
 
   protected void validateSingleGetMetrics(MetricsRepository metricsRepository, boolean retryEnabled) {
-    validateBatchGetMetrics(metricsRepository, false, 0, 0, retryEnabled);
+    validateBatchGetMetrics(metricsRepository, false, false, 0, 0, retryEnabled);
   }
 
   protected void validateBatchGetMetrics(
       MetricsRepository metricsRepository,
       boolean useStreamingBatchGetAsDefault,
+      boolean streamingBatchGetApi,
       int expectedBatchGetKeySizeMetricsCount,
       int expectedBatchGetKeySizeSuccessMetricsCount,
       boolean retryEnabled) {
-    String metricPrefix = "." + storeName + (useStreamingBatchGetAsDefault ? "--multiget_" : "--");
+    String metricPrefix = "." + storeName
+        + (streamingBatchGetApi ? "--multiget_streaming_" : (useStreamingBatchGetAsDefault ? "--multiget_" : "--"));
     double keyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeMetricsCount : 1;
     double successKeyCount = useStreamingBatchGetAsDefault ? expectedBatchGetKeySizeSuccessMetricsCount : 1;
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();

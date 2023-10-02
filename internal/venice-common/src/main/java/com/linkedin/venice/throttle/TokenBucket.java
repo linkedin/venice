@@ -17,9 +17,10 @@ public class TokenBucket {
   private final float refillPerSecond;// only used for logging
   private final Clock clock;
   private final AtomicLong tokens;
-  private final AtomicLong tokensCountAfterLastRefill;
-  private final AtomicLong tokensConsumedSinceLastRefill;
+  private final AtomicLong tokensRequestedSinceLastRefill;
+  private volatile long previousRefillTime = 0;
   private volatile long nextUpdateTime;
+  private volatile double staleUsageRatio = 0;
 
   /**
    * This constructor should only be used by tests.  Application should not specify it's own instance of Clock
@@ -50,12 +51,11 @@ public class TokenBucket {
     this.clock = clock;
 
     tokens = new AtomicLong(capacity);
-    tokensCountAfterLastRefill = new AtomicLong(tokens.get());
-    tokensConsumedSinceLastRefill = new AtomicLong(0);
-    nextUpdateTime = clock.millis() + refillIntervalMs;
+    tokensRequestedSinceLastRefill = new AtomicLong(0);
+    previousRefillTime = clock.millis();
+    nextUpdateTime = previousRefillTime + refillIntervalMs;
 
-    float refillIntervalSeconds = refillIntervalMs / (float) 1000;
-    refillPerSecond = refillAmount / refillIntervalSeconds;
+    refillPerSecond = refillAmount / (float) refillUnit.toSeconds(refillInterval);
   }
 
   /**
@@ -77,8 +77,9 @@ public class TokenBucket {
   private boolean update() {
     if (clock.millis() > nextUpdateTime) {
       synchronized (this) {
-        if (clock.millis() > nextUpdateTime) {
-          long refillCount = (clock.millis() - nextUpdateTime) / refillIntervalMs + 1;
+        long timeNow = clock.millis();
+        if (timeNow > nextUpdateTime) {
+          long refillCount = (timeNow - nextUpdateTime) / refillIntervalMs + 1;
           long totalRefillAmount = refillCount * refillAmount;
           tokens.getAndAccumulate(totalRefillAmount, (existing, toAdd) -> {
             long newTokens = existing + toAdd;
@@ -88,9 +89,14 @@ public class TokenBucket {
               return newTokens;
             }
           });
-          tokensCountAfterLastRefill.set(tokens.get());
-          tokensConsumedSinceLastRefill.set(0);
-          nextUpdateTime += refillCount * refillIntervalMs;
+          if (previousRefillTime > 0) {
+            long timeSinceLastRefill = TimeUnit.MILLISECONDS.toSeconds(timeNow - previousRefillTime);
+            staleUsageRatio =
+                ((double) tokensRequestedSinceLastRefill.get() / (double) timeSinceLastRefill) / refillPerSecond;
+          }
+          previousRefillTime = timeNow;
+          tokensRequestedSinceLastRefill.set(0);
+          nextUpdateTime = timeNow + refillIntervalMs;
         }
       }
       return true;
@@ -108,22 +114,14 @@ public class TokenBucket {
     return tokens.get();
   }
 
-  /**
-   * This method does not call #update(), so it is only accurate as of the last time #tryConsume() and update() was called
-   * @return ratio between number of tokens consumed since last refill over the total token count after the last refill
-   */
-  public double getStaleUsageRatio() {
-    return (double) tokensConsumedSinceLastRefill.get() / (double) tokensCountAfterLastRefill.get();
-  }
-
   public boolean tryConsume(long tokensToConsume) {
     return noRetryTryConsume(tokensToConsume) || (update() && noRetryTryConsume(tokensToConsume));
   }
 
   private boolean noRetryTryConsume(long tokensToConsume) {
+    tokensRequestedSinceLastRefill.getAndAdd(tokensToConsume);
     long tokensThatWereAvailable = tokens.getAndAccumulate(tokensToConsume, (existing, toConsume) -> {
       if (toConsume <= existing) { // there are sufficient tokens
-        tokensConsumedSinceLastRefill.getAndAdd(toConsume);
         return existing - toConsume;
       } else {
         return existing; // insufficient tokens, do not consume any
@@ -138,5 +136,9 @@ public class TokenBucket {
 
   public float getAmortizedRefillPerSecond() {
     return refillPerSecond;
+  }
+
+  public double getStaleUsageRatio() {
+    return staleUsageRatio;
   }
 }

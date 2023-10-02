@@ -149,7 +149,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   }
 
   protected RecordSerializer<Object> getSerializer(Schema schema) {
-    return FastSerializerDeserializerFactory.getAvroGenericSerializer(schema);
+    return FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema);
   }
 
   private static Schema getSchemaFromObject(Object object) {
@@ -346,7 +346,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
                 + ". This might be transient if the schema has been registered recently.");
       }
 
-      UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchemaEntry.getSchema());
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
       updateFunction.accept(updateBuilder);
       GenericRecord updateRecord = updateBuilder.build();
 

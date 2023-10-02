@@ -86,12 +86,12 @@ public class VeniceChunkedResponse {
    * to include meta data info, which are only available after processing the full request.
    */
   private static final RecordSerializer<StreamingFooterRecordV1> STREAMING_FOOTER_SERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericSerializer(StreamingFooterRecordV1.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(StreamingFooterRecordV1.getClassSchema());
   private static final Map<CharSequence, CharSequence> EMPTY_MAP = new HashMap<>();
   private static final RecordSerializer<MultiGetResponseRecordV1> MULTI_GET_RESPONSE_SERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
   private static final RecordSerializer<ComputeResponseRecordV1> COMPUTE_RESPONSE_SERIALIZER =
-      FastSerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
 
   private final String storeName;
   private final RequestType requestType;
