@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.client.store.ClientFactory.getSchemaReader;
 
-import com.google.common.collect.ImmutableMap;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -31,6 +30,7 @@ import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitia
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -150,7 +150,7 @@ public class VeniceControllerService extends AbstractVeniceService {
                 systemStoreClusterConfig.getChildControllerD2ZkHost(systemStoreClusterConfig.getRegionName()),
                 systemStoreClusterConfig.isControllerEnforceSSLOnly());
 
-        schemaInitializer.execute(ImmutableMap.of(schemaId, schema));
+        schemaInitializer.execute(Collections.singletonMap(schemaId, schema));
       } catch (VeniceException e) {
         LOGGER.error(
             "Exception in registering '{}' schema version '{}'",
