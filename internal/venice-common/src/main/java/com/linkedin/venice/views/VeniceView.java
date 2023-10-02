@@ -37,6 +37,7 @@ public abstract class VeniceView {
     this.props = props;
     this.store = store;
     this.viewParameters = viewParameters;
+    this.props.putAll(viewParameters);
   }
 
   /**

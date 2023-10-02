@@ -15,7 +15,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.util.Collections;
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -30,7 +30,7 @@ public class ViewWriterUtilsTest {
     Store mockStore = Mockito.mock(Store.class);
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);

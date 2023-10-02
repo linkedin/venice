@@ -18,6 +18,7 @@ import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -84,7 +85,7 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
    * @throws PubSubClientException - If the operation fails due to other reasons.
    */
   @Override
-  public Future<PubSubProduceResult> sendMessage(
+  public CompletableFuture<PubSubProduceResult> sendMessage(
       String topic,
       Integer partition,
       KafkaKey key,

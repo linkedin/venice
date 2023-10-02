@@ -57,6 +57,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor unexpectedMessageSensor;
   private final Sensor inconsistentStoreMetadataSensor;
   private final Sensor ingestionFailureSensor;
+
+  private final Sensor viewProducerLatencySensor;
   /**
    * Sensors for emitting if/when we detect DCR violations (such as a backwards timestamp or receding offset vector)
    */
@@ -296,6 +298,13 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
 
+    String viewTimerSensorName = "total_view_writer_latency";
+    this.viewProducerLatencySensor = registerPerStoreAndTotalSensor(
+        viewTimerSensorName,
+        totalStats,
+        () -> totalStats.viewProducerLatencySensor,
+        avgAndMax());
+
     this.storageQuotaUsedSensor =
         registerSensor("storage_quota_used", new Gauge(() -> hybridQuotaUsageGauge), new Avg(), new Min(), new Max());
 
@@ -439,6 +448,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordConsumerRecordsQueuePutLatency(double latency, long currentTimeMs) {
     consumerRecordsQueuePutLatencySensor.record(latency, currentTimeMs);
+  }
+
+  public void recordViewProducerLatency(double latency) {
+    viewProducerLatencySensor.record(latency);
   }
 
   public void recordUnexpectedMessage() {

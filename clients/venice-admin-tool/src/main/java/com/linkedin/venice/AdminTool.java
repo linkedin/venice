@@ -1013,7 +1013,7 @@ public class AdminTool {
 
   private static void updateStore(CommandLine cmd) {
     UpdateStoreQueryParams params = getUpdateStoreQueryParams(cmd);
-
+    params.setStoreViews(new HashMap<>());
     String storeName = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE);
     ControllerResponse response = controllerClient.updateStore(storeName, params);
     printSuccess(response);
