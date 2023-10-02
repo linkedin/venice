@@ -33,8 +33,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -89,7 +89,7 @@ public class ChangeCaptureViewWriterTest {
     urlMappingMap.put(LTX_1, 0);
     urlMappingMap.put(LVA_1, 1);
     urlMappingMap.put(LOR_1, 2);
-    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
@@ -165,7 +165,7 @@ public class ChangeCaptureViewWriterTest {
 
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
@@ -200,7 +200,7 @@ public class ChangeCaptureViewWriterTest {
     Store mockStore = Mockito.mock(Store.class);
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
