@@ -204,19 +204,36 @@ public class VeniceServer {
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
     if (serverConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+      String localControllerUrl = serverConfig.getLocalControllerUrl();
+      String d2ServiceName = serverConfig.getLocalControllerD2ServiceName();
+      String d2ZkHost = serverConfig.getLocalD2ZkHost();
+      String systemStoreCluster = serverConfig.getSystemSchemaClusterName();
       ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
           new ControllerClientBackedSystemSchemaInitializer(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
-              serverConfig.getSystemSchemaClusterName(),
+              systemStoreCluster,
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema(),
               VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS,
               true,
               sslFactory,
-              serverConfig.getLocalControllerUrl(),
-              serverConfig.getLocalControllerD2ServiceName(),
-              serverConfig.getLocalD2ZkHost(),
+              localControllerUrl,
+              d2ServiceName,
+              d2ZkHost,
+              false);
+      ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
+          new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+              systemStoreCluster,
+              null,
+              null,
+              false,
+              sslFactory,
+              localControllerUrl,
+              d2ServiceName,
+              d2ZkHost,
               false);
       metaSystemStoreSchemaInitializer.execute();
+      kmeSchemaInitializer.execute();
     }
 
     Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(
@@ -239,11 +256,11 @@ public class VeniceServer {
       storeVersionStateSchemaReader.ifPresent(
           schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.STORE_VERSION_STATE)
               .verifySchemaVersionPresentOrExit());
-      kafkaMessageEnvelopeSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
-              .verifySchemaVersionPresentOrExit());
       // For system schemas initialized via controller client, no need to verify again because they should already exist
       if (!serverConfig.isSystemSchemaInitializationAtStartTimeEnabled()) {
+        kafkaMessageEnvelopeSchemaReader.ifPresent(
+            schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
+                .verifySchemaVersionPresentOrExit());
         Optional<SchemaReader> metaSystemStoreSchemaReader = clientConfigForConsumer.map(
             cc -> ClientFactory.getSchemaReader(
                 cc.setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName()),
