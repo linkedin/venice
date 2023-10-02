@@ -33,7 +33,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -88,7 +89,7 @@ public class ChangeCaptureViewWriterTest {
     urlMappingMap.put(LTX_1, 0);
     urlMappingMap.put(LVA_1, 1);
     urlMappingMap.put(LOR_1, 2);
-    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
@@ -164,7 +165,7 @@ public class ChangeCaptureViewWriterTest {
 
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
@@ -194,12 +195,12 @@ public class ChangeCaptureViewWriterTest {
   }
 
   @Test
-  public void testProcessRecord() {
+  public void testProcessRecord() throws ExecutionException, InterruptedException {
     // Set up mocks
     Store mockStore = Mockito.mock(Store.class);
     VeniceProperties props = VeniceProperties.empty();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<PubSubProduceResult> mockFuture = Mockito.mock(CompletableFuture.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
@@ -226,13 +227,13 @@ public class ChangeCaptureViewWriterTest {
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
 
     // Update Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp);
+    changeCaptureViewWriter.processRecord(NEW_VALUE, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Insert Case
-    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp);
+    changeCaptureViewWriter.processRecord(NEW_VALUE, null, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Deletion Case
-    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp);
+    changeCaptureViewWriter.processRecord(null, OLD_VALUE, KEY, 1, 1, 1, rmdRecordWithValueLevelTimeStamp).get();
 
     // Set up argument captors
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);

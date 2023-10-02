@@ -19,6 +19,7 @@ import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -63,6 +64,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
@@ -360,7 +362,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long beforeProcessingRecordTimestampNs,
       long currentTimeForMetricsMs) {
     /**
-     * With {@link com.linkedin.davinci.replication.BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
+     * With {@link BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
      * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
      * recovery then there is no need to perform DCR until we completed data recovery and switched to consume from RT.
      * TODO. We need to refactor this logic when we support other batch conflict resolution policy.
@@ -491,30 +493,72 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
       int valueSchemaId =
           rmdWithValueSchemaID != null ? rmdWithValueSchemaID.getValueSchemaId() : incomingValueSchemaId;
-      this.viewWriters.forEach(
-          (k, v) -> v.processRecord(
+
+      // Write to views
+      if (this.viewWriters.size() > 0) {
+        /**
+         * The ordering guarantees we want is the following:
+         *
+         * 1. Write to all view topics (in parallel).
+         * 2. Write to the VT only after we get the ack for all views AND the previous write to VT was queued into the
+         *    producer (but not necessarily acked).
+         */
+        Long preprocessingTime = System.currentTimeMillis();
+        CompletableFuture currentVersionTopicWrite = new CompletableFuture();
+        CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
+        int index = 0;
+        // The first future is for the previous write to VT
+        viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
+        for (VeniceViewWriter writer: viewWriters.values()) {
+          viewWriterFutures[index++] = writer.processRecord(
               mergeConflictResult.getNewValue(),
               oldValueProvider.get(),
               keyBytes,
               versionNumber,
               incomingValueSchemaId,
               valueSchemaId,
-              mergeConflictResult.getRmdRecord()));
-
-      // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
-      // this call.
-      producePutOrDeleteToKafka(
-          mergeConflictResult,
-          partitionConsumptionState,
-          keyBytes,
-          consumerRecord,
-          subPartition,
-          kafkaUrl,
-          kafkaClusterId,
-          beforeProcessingRecordTimestampNs,
-          valueManifestContainer.getManifest(),
-          rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+              mergeConflictResult.getRmdRecord());
+        }
+        CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
+          hostLevelIngestionStats.recordViewProducerLatency(LatencyUtils.getLatencyInMS(preprocessingTime));
+          if (exception == null) {
+            producePutOrDeleteToKafka(
+                mergeConflictResult,
+                partitionConsumptionState,
+                keyBytes,
+                consumerRecord,
+                subPartition,
+                kafkaUrl,
+                kafkaClusterId,
+                beforeProcessingRecordTimestampNs,
+                valueManifestContainer.getManifest(),
+                rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+            currentVersionTopicWrite.complete(null);
+          } else {
+            VeniceException veniceException = new VeniceException(exception);
+            this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
+            currentVersionTopicWrite.completeExceptionally(veniceException);
+          }
+        });
+        partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
+      } else {
+        // This function may modify the original record in KME and it is unsafe to use the payload from KME directly
+        // after
+        // this call.
+        producePutOrDeleteToKafka(
+            mergeConflictResult,
+            partitionConsumptionState,
+            keyBytes,
+            consumerRecord,
+            subPartition,
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingRecordTimestampNs,
+            valueManifestContainer.getManifest(),
+            rmdWithValueSchemaID == null ? null : rmdWithValueSchemaID.getRmdManifest());
+      }
     }
+
   }
 
   private long getWriteTimestampFromKME(KafkaMessageEnvelope kme) {

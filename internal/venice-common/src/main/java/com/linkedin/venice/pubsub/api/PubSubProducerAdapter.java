@@ -9,6 +9,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationExcepti
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -57,7 +58,7 @@ public interface PubSubProducerAdapter {
    * @throws PubSubClientRetriableException If a retriable error occurs while producing the message.
    * @throws PubSubClientException If an error occurs while producing the message.
    */
-  Future<PubSubProduceResult> sendMessage(
+  CompletableFuture<PubSubProduceResult> sendMessage(
       String topic,
       Integer partition,
       KafkaKey key,

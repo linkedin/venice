@@ -8,7 +8,6 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.AuthenticationException;
@@ -84,7 +83,7 @@ public class ApacheKafkaProducerCallback implements Callback {
     }
   }
 
-  Future<PubSubProduceResult> getProduceResultFuture() {
+  CompletableFuture<PubSubProduceResult> getProduceResultFuture() {
     return produceResultFuture;
   }
 

@@ -65,6 +65,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
+  private boolean suppressLogs = false;
+
   /**
    * This lock is used to guard the re-opening logic in {@link #adjustStoragePartition} since
    * {@link #getPartitionOrThrow} is not synchronized and it could be invoked during the execution
@@ -274,7 +276,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       LOGGER.error("Failed to remove a non existing partition: {} Store {}", partitionId, getStoreName());
       return;
     }
-    LOGGER.info("Removing Partition: {} Store {}", partitionId, getStoreName());
+    if (!suppressLogs) {
+      LOGGER.info("Removing Partition: {} Store {}", partitionId, getStoreName());
+    }
 
     /**
      * Partition offset should be cleared by StorageEngine drops the corresponding partition. Here we may not be able to
@@ -289,7 +293,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.drop();
 
     if (getNumberOfPartitions() == 0) {
-      LOGGER.info("All Partitions deleted for Store {}", getStoreName());
+      if (!suppressLogs) {
+        LOGGER.info("All Partitions deleted for Store {}", getStoreName());
+      }
       /**
        * The reason to invoke {@link #drop} here is that storage engine might need to do some cleanup
        * in the store level.
@@ -314,8 +320,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (getNumberOfPartitions() == 0 && !metadataPartitionCreated()) {
       return;
     }
+    if (!suppressLogs) {
+      LOGGER.info("Started dropping store: {}", getStoreName());
+    }
 
-    LOGGER.info("Started dropping store: {}", getStoreName());
     // partitionList is implementation of SparseConcurrentList which sets element to null on `remove`. So its fine
     // to call size() while removing elements from the list.
     for (int partitionId = 0; partitionId < partitionList.size(); partitionId++) {
@@ -325,7 +333,9 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       dropPartition(partitionId);
     }
     dropMetadataPartition();
-    LOGGER.info("Finished dropping store: {}", getStoreName());
+    if (!suppressLogs) {
+      LOGGER.info("Finished dropping store: {}", getStoreName());
+    }
   }
 
   public synchronized Map<String, String> sync(int partitionId) {
@@ -718,6 +728,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public boolean isChunked() {
     StoreVersionState svs = getStoreVersionState();
     return svs == null ? false : svs.chunked;
+  }
+
+  public void suppressLogs(boolean suppressLogs) {
+    this.suppressLogs = suppressLogs;
   }
 
   public boolean hasMemorySpaceLeft() {

@@ -8,9 +8,11 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -28,7 +30,7 @@ public class TestViewWriter extends VeniceViewWriter {
   }
 
   @Override
-  public void processRecord(
+  public CompletableFuture<PubSubProduceResult> processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
       byte[] key,
@@ -37,6 +39,8 @@ public class TestViewWriter extends VeniceViewWriter {
       int oldValueSchemaId,
       GenericRecord replicationMetadataRecord) {
     internalView.incrementRecordCount(store.getName());
+    return CompletableFuture.completedFuture(null);
+
   }
 
   @Override

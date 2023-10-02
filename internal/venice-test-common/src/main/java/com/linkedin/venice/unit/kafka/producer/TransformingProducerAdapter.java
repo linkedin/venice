@@ -7,7 +7,7 @@ import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
 
 
 /**
@@ -32,7 +32,7 @@ public class TransformingProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
-  public Future<PubSubProduceResult> sendMessage(
+  public CompletableFuture<PubSubProduceResult> sendMessage(
       String topic,
       Integer partition,
       KafkaKey key,

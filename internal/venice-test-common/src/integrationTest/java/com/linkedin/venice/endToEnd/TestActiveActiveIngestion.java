@@ -2,8 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
@@ -165,7 +164,7 @@ public class TestActiveActiveIngestion {
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(100);
+        veniceChangelogConsumer.poll(1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -544,13 +543,15 @@ public class TestActiveActiveIngestion {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     Map<String, String> viewConfig = new HashMap<>();
+    props.put(KAFKA_LINGER_MS, 0);
     viewConfig.put(
         "testView",
         "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
 
     viewConfig.put(
         "changeCaptureView",
-        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName()
+            + "\", \"viewParameters\" : {\"kafka.linger.ms\": \"0\"}}");
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(500)
         .setHybridOffsetLagThreshold(8)
@@ -618,11 +619,13 @@ public class TestActiveActiveIngestion {
 
     // Validate change events for version 1. 100 records exist in version 1.
     Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> allChangeEvents = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 100);
     });
 
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // 21 changes in nearline. 10 puts, 10 deletes, and 1 record with a producer timestamp
@@ -716,6 +719,7 @@ public class TestActiveActiveIngestion {
         veniceAfterImageConsumerClientFactory.getChangelogConsumer(storeName);
     veniceAfterImageConsumer.subscribeAll().get();
     // Validate changed events for version 2.
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
     // As records keys from VPJ start from 1, real-time produced records' key starts from 0, the message with key as 0
     // is new message.
@@ -788,7 +792,7 @@ public class TestActiveActiveIngestion {
     // After image consumer consumed 3 different topics: v2, v2_cc and v3_cc.
     // The total messages: 102 (v2 repush from v1, key: 0-100, 1000) + 1 (v2_cc, key: 1001) + 42 (v3_cc, key: 0-39,
     // 1000, 1001) - 22 (filtered from v3_cc, key: 0-19, 1000 and 1001 as they were read already.)
-    Assert.assertEquals(totalPolledAfterImageMessages.get(), 148);
+    Assert.assertEquals(totalPolledAfterImageMessages.get(), 149);
 
     for (int i = 1; i < 100; i++) {
       String key = Integer.toString(i);
@@ -804,12 +808,12 @@ public class TestActiveActiveIngestion {
       }
     }
 
-    // Drain the remaining events on version 3 and verify that we got everything
+    // Drain the remaining events on version 3 and verify that we got everything. We don't verify the count
+    // because at this stage, the total events which will get polled
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      Assert.assertEquals(polledChangeEvents.size(), 23);
       for (int i = 20; i < 40; i++) {
         String key = Integer.toString(i);
         ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
@@ -823,6 +827,7 @@ public class TestActiveActiveIngestion {
       }
     });
 
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // This should get everything submitted to the CC topic on this version since the timestamp is before anything got
@@ -843,6 +848,7 @@ public class TestActiveActiveIngestion {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 42);
     });
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // enable repush ttl
@@ -898,10 +904,12 @@ public class TestActiveActiveIngestion {
     // Save a checkpoint and clear the map
     Set<VeniceChangeCoordinate> checkpointSet = new HashSet<>();
     checkpointSet.add(polledChangeEvents.get(Integer.toString(20)).getOffset());
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // Seek the consumer by checkpoint
     veniceChangelogConsumer.seekToCheckpoint(checkpointSet).join();
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // Poll Change events again, verify we get everything
@@ -909,7 +917,9 @@ public class TestActiveActiveIngestion {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 8);
     });
+    allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
+    Assert.assertEquals(allChangeEvents.size(), 121);
 
     // Seek the consumer to the beginning of push (since the latest is version 4 with no nearline writes, shouldn't have
     // any new writes)
@@ -945,7 +955,7 @@ public class TestActiveActiveIngestion {
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
-        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 85));
+        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 86));
     parentControllerClient.disableAndDeleteStore(storeName);
     // Verify that topics and store is cleaned up
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
