@@ -208,6 +208,10 @@ public class OfflinePushStatus {
     for (PartitionStatus partitionStatus: getPartitionStatuses()) {
       Map<CharSequence, Integer> partitionPushStatus = new HashMap<>();
       Partition partition = partitionAssignment.getPartition(partitionStatus.getPartitionId());
+      if (partition == null) {
+        throw new VeniceException(
+            "Partition " + partitionStatus.getPartitionId() + " not found in partition assignment");
+      }
       Set<String> workingInstances =
           partition.getWorkingInstances().stream().map(Instance::getNodeId).collect(Collectors.toSet());
       for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
