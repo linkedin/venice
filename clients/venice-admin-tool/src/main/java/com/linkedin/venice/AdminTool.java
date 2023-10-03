@@ -115,6 +115,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.BufferedReader;
 import java.io.Console;
 import java.io.FileInputStream;
@@ -541,6 +542,9 @@ public class AdminTool {
           break;
         case DUMP_INGESTION_STATE:
           dumpIngestionState(cmd);
+          break;
+        case ADD_CHANGE_CAPTURE_VIEW:
+          addChangeCaptureView(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -2879,6 +2883,30 @@ public class AdminTool {
     } finally {
       Utils.closeQuietlyWithErrorLogged(transportClient);
     }
+  }
+
+  private static void addChangeCaptureView(CommandLine cmd) {
+    addChangeCaptureView(cmd, controllerClient);
+  }
+
+  protected static void addChangeCaptureView(CommandLine cmd, ControllerClient client) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+
+    // Because of the way validation is done in the controller, we need to do this in two steps
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setChunkingEnabled(true)
+        .setRmdChunkingEnabled(true);
+    ControllerResponse response = client.updateStore(storeName, params);
+    if (response.isError()) {
+      printErrAndExit(response.getError());
+    }
+    Map<String, String> views = new HashMap<>();
+    views.put(
+        "changeCaptureView",
+        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+    params.setStoreViews(views);
+    ControllerResponse secondResponse = client.updateStore(storeName, params);
+    printSuccess(secondResponse);
   }
 
   static void dumpIngestionState(TransportClient transportClient, String storeName, String version, String partition)

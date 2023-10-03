@@ -474,6 +474,11 @@ public enum Command {
       "dump-ingestion-state",
       "Dump the real-time ingestion state for a certain store version in a certain storage node",
       new Arg[] { SERVER_URL, STORE, VERSION }, new Arg[] { PARTITION }
+  ),
+  ADD_CHANGE_CAPTURE_VIEW(
+      "add-change-capture-view",
+      "Add change capture to a given store. This will enable all required configs including AA replication and chunking.",
+      new Arg[] { URL, STORE, CLUSTER }
   );
 
   private final String commandName;

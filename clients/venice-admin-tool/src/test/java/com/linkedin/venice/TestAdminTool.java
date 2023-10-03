@@ -12,6 +12,7 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -39,6 +40,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.ParseException;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -206,6 +208,25 @@ public class TestAdminTool {
       // Expected exception.
     } catch (Exception err) {
       Assert.fail("Unexpected exception happens in data recovery APIs: ", err);
+    }
+  }
+
+  @Test
+  public void testSetChangeCaptureView() throws ParseException, IOException {
+    String storeName = "test-store1";
+    String[] setViewconfigArgs = { "--add-change-capture-view", "--url", "http://localhost:7036", "--store", storeName,
+        "--cluster", "test-cluster" };
+
+    CommandLine cmd = AdminTool.getCommandLine(setViewconfigArgs);
+    ControllerClient mockControllerClient = mock(ControllerClient.class);
+    ControllerResponse response = new ControllerResponse();
+    Mockito.when(mockControllerClient.updateStore(Mockito.any(), Mockito.any())).thenReturn(response);
+
+    try {
+      AdminTool.addChangeCaptureView(cmd, mockControllerClient);
+      Mockito.verify(mockControllerClient, Mockito.times(2));
+    } catch (Exception e) {
+      throw e;
     }
   }
 

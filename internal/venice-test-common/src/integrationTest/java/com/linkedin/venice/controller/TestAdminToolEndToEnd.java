@@ -122,6 +122,13 @@ public class TestAdminToolEndToEnd {
       newStoreResponse = controllerClient.createNewStore(testStoreName2, "test", "\"string\"", "\"string\"");
       Assert.assertFalse(newStoreResponse.isError());
 
+      // Update the store, cause why not?
+      String[] changeCaptureViewCommand = { "--add-change-capture-view", "--url",
+          venice.getLeaderVeniceController().getControllerUrl(), "--cluster", clusterName, "--store", testStoreName1 };
+      AdminTool.main(changeCaptureViewCommand);
+      StoreResponse storeResponseCheck = controllerClient.getStore(testStoreName1);
+      Assert.assertTrue(storeResponseCheck.getStore().getViewConfigs().containsKey("changeCaptureView"));
+
       // Delete a version
       String[] wipeClusterArgs1 = { "--wipe-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
           "--cluster", clusterName, "--fabric", "dc-0", "--store", testStoreName1, "--version", "1" };
