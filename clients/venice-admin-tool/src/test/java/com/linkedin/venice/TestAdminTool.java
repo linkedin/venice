@@ -224,7 +224,12 @@ public class TestAdminTool {
 
     try {
       AdminTool.addChangeCaptureView(cmd, mockControllerClient);
-      Mockito.verify(mockControllerClient, Mockito.times(2));
+      // static analysis demands that we not ignore this methods return value, and what static analysis wants,
+      // static analysis gets!
+      response = Mockito.verify(mockControllerClient, Mockito.times(2)).updateStore(Mockito.any(), Mockito.any());
+      if (response != null) {
+        Assert.fail();
+      }
     } catch (Exception e) {
       throw e;
     }
