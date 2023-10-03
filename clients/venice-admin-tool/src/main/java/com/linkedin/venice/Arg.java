@@ -238,7 +238,8 @@ public enum Arg {
       "interval", "itv", true,
       "monitor data recovery progress at seconds close to the number specified by the interval parameter until tasks are finished"
   ), DATETIME("datetime", "dtm", true, "Date and time stamp (YYYY-MM-DDTHH:MM:SS) in UTC time zone for data recovery"),
-  DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
+  DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
+  VIEW_NAME("viewName", "vn", false, "argument to specify the name of a view for a given update.");
 
   private final String argName;
   private final String first;

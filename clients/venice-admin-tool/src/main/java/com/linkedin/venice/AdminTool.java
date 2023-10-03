@@ -2901,8 +2901,9 @@ public class AdminTool {
       printErrAndExit(response.getError());
     }
     Map<String, String> views = new HashMap<>();
+
     views.put(
-        "changeCaptureView",
+        getOptionalArgument(cmd, Arg.VIEW_NAME, ChangeCaptureView.DEFAULT_CHANGE_CAPTURE_VIEW_NAME),
         "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
     params.setStoreViews(views);
     ControllerResponse secondResponse = client.updateStore(storeName, params);

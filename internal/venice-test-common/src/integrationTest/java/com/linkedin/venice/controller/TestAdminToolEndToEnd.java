@@ -26,6 +26,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.views.ChangeCaptureView;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -127,7 +128,10 @@ public class TestAdminToolEndToEnd {
           venice.getLeaderVeniceController().getControllerUrl(), "--cluster", clusterName, "--store", testStoreName1 };
       AdminTool.main(changeCaptureViewCommand);
       StoreResponse storeResponseCheck = controllerClient.getStore(testStoreName1);
-      Assert.assertTrue(storeResponseCheck.getStore().getViewConfigs().containsKey("changeCaptureView"));
+      Assert.assertTrue(
+          storeResponseCheck.getStore()
+              .getViewConfigs()
+              .containsKey(ChangeCaptureView.DEFAULT_CHANGE_CAPTURE_VIEW_NAME));
 
       // Delete a version
       String[] wipeClusterArgs1 = { "--wipe-cluster", "--url", venice.getLeaderVeniceController().getControllerUrl(),
