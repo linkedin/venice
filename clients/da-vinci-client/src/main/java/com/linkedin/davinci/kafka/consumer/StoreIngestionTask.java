@@ -3563,59 +3563,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       KafkaMessageEnvelope kafkaMessageEnvelope,
       LeaderProducedRecordContext leaderProducedRecordContext) {
-    long afterProcessingRecordTimestampMs = System.currentTimeMillis();
-    if (!isUserSystemStore() && isHybridMode() && partitionConsumptionState.hasLagCaughtUp()
-        && (partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.LEADER
-            || partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.STANDBY)) {
-      if (partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.LEADER
-          && leaderProducedRecordContext == null) {
-        LOGGER.error(
-            "LeaderProducedRecordContext is null when PCS state is LEADER for storeName: {},"
-                + " versionNumber: {}, partition: {}",
+    /**
+     * Record nearline latency only when it's a hybrid store and the lag has been caught up. Sometimes
+     * the producerTimestamp can be -1 if the leaderProducedRecordContext had an error after callback
+     * Don't record latency for invalid timestamps
+     */
+    if (!isUserSystemStore() && isHybridMode() && partitionConsumptionState.hasLagCaughtUp()) {
+      long afterProcessingRecordTimestampMs = System.currentTimeMillis();
+      long producerTimestamp = (leaderProducedRecordContext == null)
+          ? kafkaMessageEnvelope.producerMetadata.messageTimestamp
+          : leaderProducedRecordContext.getProducedTimestampMs();
+      if (producerTimestamp > 0) {
+        versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
             storeName,
             versionNumber,
-            partitionConsumptionState.getPartition());
-        return;
-      }
-      if (partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.STANDBY
-          && kafkaMessageEnvelope.getLeaderMetadataFooter() == null) {
-        LOGGER.error(
-            "LeaderMetadataFooter is null when PCS state is STANDBY for storeName: {},"
-                + " versionNumber: {}, partition: {}",
+            afterProcessingRecordTimestampMs - producerTimestamp,
+            afterProcessingRecordTimestampMs);
+      } else if (!REDUNDANT_LOGGING_FILTER.isRedundantException(storeName, "IllegalTimestamp")) {
+        LOGGER.warn(
+            "Illegal timestamp for storeName: {}, versionNumber: {}, partition: {}, "
+                + "leaderProducedRecordContext: {}, producerTimestamp: {}",
             storeName,
             versionNumber,
-            partitionConsumptionState.getPartition());
-        return;
-      }
-      boolean hasCorrespondingUpstreamMessage = false; // No point in recording E2E latency if there is no upstream
-      if (partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.LEADER) {
-        hasCorrespondingUpstreamMessage = leaderProducedRecordContext.hasCorrespondingUpstreamMessage();
-      } else if (partitionConsumptionState.getLeaderFollowerState() == LeaderFollowerStateType.STANDBY
-          && kafkaMessageEnvelope.getLeaderMetadataFooter() != null) {
-        hasCorrespondingUpstreamMessage = kafkaMessageEnvelope.getLeaderMetadataFooter().getUpstreamOffset() > 0;
-      }
-      if (hasCorrespondingUpstreamMessage) {
-        long producerTimestamp = (leaderProducedRecordContext == null)
-            ? kafkaMessageEnvelope.producerMetadata.messageTimestamp
-            : leaderProducedRecordContext.getProducedTimestampMs();
-        if (producerTimestamp <= 0) {
-          LOGGER.warn(
-              "Illegal timestamp for storeName: {}, versionNumber: {}, partition: {}, "
-                  + "leaderProducedRecordContext: {}, leaderMetadataFooter: {}",
-              storeName,
-              versionNumber,
-              partitionConsumptionState.getPartition(),
-              leaderProducedRecordContext == null ? "NA" : leaderProducedRecordContext,
-              kafkaMessageEnvelope.getLeaderMetadataFooter() == null
-                  ? "NA"
-                  : kafkaMessageEnvelope.getLeaderMetadataFooter());
-        } else {
-          versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
-              storeName,
-              versionNumber,
-              afterProcessingRecordTimestampMs - producerTimestamp,
-              afterProcessingRecordTimestampMs);
-        }
+            partitionConsumptionState.getPartition(),
+            leaderProducedRecordContext == null ? "NA" : leaderProducedRecordContext,
+            producerTimestamp);
       }
     }
   }
