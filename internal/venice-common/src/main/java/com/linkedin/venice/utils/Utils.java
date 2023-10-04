@@ -2,6 +2,7 @@ package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.HttpConstants.LOCALHOST;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -127,8 +128,6 @@ public class Utils {
    *                       file is missing and set to true, empty property
    *                       will be returned. If file is missing and set
    *                       to false, this will throw an exception.
-   * @return
-   * @throws Exception
    */
   public static VeniceProperties parseProperties(String directory, String fileName, boolean isFileOptional)
       throws IOException {
@@ -157,7 +156,7 @@ public class Utils {
    * Given a .property file, reads into a Venice Props object
    * @param propertyFile The .property file
    * @return A @Props object with the given properties
-   * @throws Exception  if File not found or not accessible
+   * @throws IOException  if File not found or not accessible
    */
   public static VeniceProperties parseProperties(File propertyFile) throws IOException {
     Properties props = new Properties();
@@ -190,7 +189,6 @@ public class Utils {
   /**
    * Check if a file exists and is readable
    *
-   * @param fileName
    * @return true iff the argument is the name of a readable file
    */
   public static boolean isReadableFile(String fileName) {
@@ -209,7 +207,6 @@ public class Utils {
   /**
    * Get the full Path of the file. Useful in logging/error output
    *
-   * @param fileName
    * @return canonicalPath of the file.
    */
   public static String getCanonicalPath(String fileName) {
@@ -248,13 +245,12 @@ public class Utils {
     }
     try {
       String hostName = InetAddress.getLocalHost().getHostName();
-      LOGGER.info("Resolved local hostname from InetAddress.getLocalHost() {}", hostName);
+      LOGGER.debug("Resolved local hostname from InetAddress.getLocalHost() {}", hostName);
       if (StringUtils.isEmpty(hostName)) {
         throw new VeniceException("Unable to get the hostname.");
       }
       return hostName;
     } catch (UnknownHostException e) {
-      e.printStackTrace();
       throw new VeniceException("Unable to get the hostname.", e);
     }
   }
@@ -264,7 +260,6 @@ public class Utils {
    * InterruptedException and terminate, if this is used in a loop it may become difficult to cleanly break out
    * of the loop.
    *
-   * @param millis
    * @return true on success and false if sleep was interrupted
    */
   public static boolean sleep(long millis) {
@@ -301,7 +296,7 @@ public class Utils {
    */
   public static boolean parseBooleanFromString(String value, String fieldName) {
     if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false")) {
-      return Boolean.valueOf(value);
+      return Boolean.parseBoolean(value);
     } else {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
@@ -343,7 +338,7 @@ public class Utils {
    *
    * @param resourcePath The path of the file under the src/main/resources directory
    * @return the {@link org.apache.avro.Schema} instance corresponding to the file at {@param resourcePath}
-   * @throws IOException
+   * @throws IOException if the resourcePath does not exist
    */
   public static Schema getSchemaFromResource(String resourcePath) throws IOException {
     ClassLoader classLoader = Utils.class.getClassLoader();
@@ -352,7 +347,7 @@ public class Utils {
         throw new IOException("Resource path '" + resourcePath + "' does not exist!");
       }
       String schemaString = IOUtils.toString(inputStream);
-      Schema schema = Schema.parse(schemaString);
+      Schema schema = AvroCompatibilityHelper.parse(schemaString);
       LOGGER.info("Loaded schema from resource path: {}", resourcePath);
       LOGGER.debug("Schema literal:\n{}", schema.toString(true));
       return schema;
@@ -437,7 +432,7 @@ public class Utils {
      * are instead making this a very explicit choice by requiring the change in both places and failing loudly
      * when there is an inconsistency.
      */
-    Schema intendedCurrentProtocol = protocolSchemaMap.get((int) currentProtocolVersion);
+    Schema intendedCurrentProtocol = protocolSchemaMap.get(currentProtocolVersion);
     if (intendedCurrentProtocol == null) {
       throw new VeniceException(
           "Failed to get schema for current version: " + currentProtocolVersion + " class: " + className);
@@ -470,13 +465,6 @@ public class Utils {
       return Collections.emptySet();
     }
     return Utils.setOf(rawString.split(",\\s*"));
-  }
-
-  /**
-   * Computes the percentage, taking care of division by 0
-   */
-  public static double getRatio(long rawNum, long total) {
-    return total == 0 ? 0.0d : rawNum / (double) total;
   }
 
   /**
@@ -546,17 +534,6 @@ public class Utils {
     }
   }
 
-  private static final Pair<String, Integer>[] TIME_SUFFIX_AND_MULTIPLIER =
-      Arrays
-          .asList(
-              new Pair<>("ns", 1),
-              new Pair<>("us", Time.NS_PER_US),
-              new Pair<>("ms", Time.US_PER_MS),
-              new Pair<>("s", Time.MS_PER_SECOND),
-              new Pair<>("m", Time.SECONDS_PER_MINUTE),
-              new Pair<>("h", Time.MINUTES_PER_HOUR))
-          .toArray(new Pair[6]);
-
   private static final TimeUnitInfo[] TIME_UNIT_INFO = { new TimeUnitInfo("ns", 1, new DecimalFormat("0")),
       new TimeUnitInfo("us", Time.NS_PER_US, new DecimalFormat("0")),
       new TimeUnitInfo("ms", Time.US_PER_MS, new DecimalFormat("0")),
@@ -590,7 +567,7 @@ public class Utils {
    *
    * Lifted from: https://stackoverflow.com/a/7690178
    *
-   * @return the pid of the current Java process, or "N/A" if unavailable
+   * @return the pid of the current Java process, or null if unavailable
    */
   public static String getPid() {
     try {
@@ -599,21 +576,21 @@ public class Utils {
       final int index = jvmName.indexOf('@');
 
       if (index < 1) {
-        LOGGER.warn("Failed to determine pid");
-        return "NA";
+        LOGGER.debug("Failed to determine pid");
+        return null;
       }
 
       return Long.toString(Long.parseLong(jvmName.substring(0, index)));
     } catch (Exception e) {
-      LOGGER.warn("Failed to determine pid", e);
-      return "NA";
+      LOGGER.debug("Failed to determine pid", e);
+      return null;
     }
   }
 
   /**
    * This might not work when application is running inside application server like Jetty
    *
-   * @return the version of the venice-common jar on the classpath, if available, or "N/A" otherwise.
+   * @return the version of the venice-common jar on the classpath, if available, or null otherwise.
    */
   public static String getVeniceVersionFromClassPath() {
     // The application class loader is no longer an instance of java.net.URLClassLoader in JDK 9+
@@ -630,16 +607,16 @@ public class Utils {
       }
     }
 
-    LOGGER.warn("Failed to determine Venice version");
-    return "N/A";
+    LOGGER.debug("Failed to determine Venice version");
+    return null;
   }
 
   public static String getCurrentUser() {
     try {
       return System.getProperty("user.name");
     } catch (Exception e) {
-      LOGGER.warn("Failed to determine current user");
-      return "N/A";
+      LOGGER.debug("Failed to determine current user");
+      return null;
     }
   }
 
@@ -659,15 +636,26 @@ public class Utils {
   public static Map<CharSequence, CharSequence> getDebugInfo() {
     Map<CharSequence, CharSequence> debugInfo = new HashMap<>();
     try {
-      debugInfo.put("host", getHostName());
+      String hostname = getHostName();
+      if (hostname != null) {
+        debugInfo.put("host", hostname);
+      }
     } catch (Exception e) {
-      LOGGER.warn("Failed to determine host name");
-      debugInfo.put("host", "N/A");
+      LOGGER.debug("Failed to determine host name");
     }
     debugInfo.put("path", getCurrentWorkingDirectory());
-    debugInfo.put("pid", getPid());
-    debugInfo.put("version", getVeniceVersionFromClassPath());
-    debugInfo.put("user", getCurrentUser());
+    String pid = getPid();
+    if (pid != null) {
+      debugInfo.put("pid", pid);
+    }
+    String version = getVeniceVersionFromClassPath();
+    if (version != null) {
+      debugInfo.put("version", version);
+    }
+    String user = getCurrentUser();
+    if (user != null) {
+      debugInfo.put("user", user);
+    }
     debugInfo.put("JDK major version", Integer.toString(getJavaMajorVersion()));
 
     return debugInfo;
@@ -681,14 +669,6 @@ public class Utils {
     private final String configName;
     private final T defaultValue;
     private final String doc;
-
-    public ConfigEntity(@Nonnull String configName) {
-      this(configName, null, null);
-    }
-
-    public ConfigEntity(@Nonnull String configName, @Nullable T defaultValue) {
-      this(configName, defaultValue, null);
-    }
 
     public ConfigEntity(@Nonnull String configName, @Nullable T defaultValue, @Nullable String doc) {
       Validate.notEmpty(configName);
@@ -737,7 +717,7 @@ public class Utils {
     return Optional.empty();
   }
 
-  // TODO (lcli): Remove it when Java 9+ is used since Set.of is supported in Java 9+
+  // TODO: Remove it when Java 9+ is used since Set.of is supported in Java 9+
   @SafeVarargs
   public static <T> Set<T> setOf(T... objs) {
     return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(objs)));
@@ -863,7 +843,7 @@ public class Utils {
     Map<String, String> params = sparkRequestParams.entrySet()
         .stream()
         // Extract the first (and only) value of each param
-        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()[0]));
+        .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue()[0]));
     return params;
   }
 
@@ -885,7 +865,7 @@ public class Utils {
 
   public static <K, V> Iterator<V> iterateOnMapOfLists(Map<K, List<V>> mapOfLists) {
     return new Iterator<V>() {
-      private Iterator<Map.Entry<K, List<V>>> mapIterator = mapOfLists.entrySet().iterator();
+      private final Iterator<Map.Entry<K, List<V>>> mapIterator = mapOfLists.entrySet().iterator();
       private Iterator<V> listIterator = Collections.emptyIterator();
 
       @Override
