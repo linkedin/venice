@@ -184,7 +184,8 @@ public class DaVinciBackend implements Closeable {
       PubSubClientsFactory pubSubClientsFactory = configLoader.getVeniceServerConfig().getPubSubClientsFactory();
       VeniceWriterFactory writerFactory =
           new VeniceWriterFactory(backendProps.toProperties(), pubSubClientsFactory.getProducerAdapterFactory(), null);
-      String instanceName = Utils.getHostName() + "_" + Utils.getPid();
+      String pid = Utils.getPid();
+      String instanceName = Utils.getHostName() + "_" + (pid == null ? "NA" : pid);
       int derivedSchemaID = backendProps.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1);
       pushStatusStoreWriter = new PushStatusStoreWriter(writerFactory, instanceName, derivedSchemaID);
 
