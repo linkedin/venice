@@ -1,9 +1,9 @@
 package com.linkedin.venice.message;
 
+import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import javax.annotation.Nonnull;
 import org.apache.avro.specific.FixedSize;
@@ -14,10 +14,18 @@ import org.apache.avro.specific.FixedSize;
  * {@link com.linkedin.venice.serialization.KafkaKeySerializer}.
  */
 public class KafkaKey {
+  /**
+   * For control messages, the Key part of the {@link KafkaKey} includes the producer GUID, segment and sequence number.
+   *
+   * N.B.: This could be optimized further by defining an Avro record to hold this data, since Avro would use
+   * variable length encoding for the two integers, which would be smaller than their regular size.
+   */
+  public static final int CONTROL_MESSAGE_KAFKA_KEY_LENGTH =
+      GUID.class.getAnnotation(FixedSize.class).value() + Integer.BYTES * 2;
   public static final KafkaKey HEART_BEAT = new KafkaKey(
       MessageType.CONTROL_MESSAGE,
-      ByteBuffer.allocate(GUID.class.getAnnotation(FixedSize.class).value() + Integer.BYTES * 2)
-          .put(VeniceWriter.HEART_BEAT_GUID.bytes())
+      ByteBuffer.allocate(CONTROL_MESSAGE_KAFKA_KEY_LENGTH)
+          .put(HeartbeatGuidV3Generator.getInstance().getGuid().bytes())
           .putInt(0)
           .putInt(0)
           .array());

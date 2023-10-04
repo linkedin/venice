@@ -226,10 +226,11 @@ public class TestActiveActiveIngestion {
 
   @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class)
   public void testLeaderLagWithIgnoredData() throws Exception {
-    // We want to verify in this test if pushes will go through if the tail end of the RT is full of data which we drop
+    // We want to verify in this test if pushes will go through even if the tail end of the RT is full of data which we
+    // drop
     ControllerClient controllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    // create a active-active enabled store and run batch push job
+    // create an active-active enabled store and run batch push job
     // batch job contains 100 records
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
@@ -241,7 +242,7 @@ public class TestActiveActiveIngestion {
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(360)
-        .setHybridOffsetLagThreshold(8)
+        .setHybridOffsetLagThreshold(0)
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(1);
@@ -273,13 +274,12 @@ public class TestActiveActiveIngestion {
       // Run it again but only add records to the end of the RT which will fail DCR. These records will try to delete
       // everything we just wrote
       runSamzaStreamJob(veniceProducer, storeName, mockPastime, 0, 10, 20);
-
     }
 
-    // Now see if a push will succeed. There are 20 events at the front of the queue which are valid and another 20
+    // Now see if a push will succeed. There are 10 events at the front of the queue which are valid and another 10
     // which are ignored.
-    // our rewind is set to 8 messages as acceptable lag. If the push succeeds, it means we used the drop messages as
-    // part of our calculation
+    // Our rewind is set to 0 messages as acceptable lag. Near the end of the RT there will be a version swap message,
+    // but a lag of 0 is only achievable if the ingestion heartbeat feature is working.
     parentControllerClient.sendEmptyPushAndWait(storeName, "Run empty push job", 1000, 30 * Time.MS_PER_SECOND);
     TestUtils.waitForNonDeterministicAssertion(
         5,

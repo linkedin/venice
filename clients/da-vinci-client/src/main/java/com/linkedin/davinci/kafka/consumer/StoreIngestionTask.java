@@ -1296,6 +1296,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkIngestionProgress(store);
+        maybeSendIngestionHeartbeat();
       }
 
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk

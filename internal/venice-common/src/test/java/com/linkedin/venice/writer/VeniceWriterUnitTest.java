@@ -3,7 +3,6 @@ package com.linkedin.venice.writer;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
-import static com.linkedin.venice.writer.VeniceWriter.HEART_BEAT_GUID;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -17,6 +16,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.LeaderProducerCallback;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.venice.guid.HeartbeatGuidV3Generator;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -459,9 +459,9 @@ public class VeniceWriterUnitTest {
   @Test
   public void testSendHeartbeat() throws ExecutionException, InterruptedException, TimeoutException {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
-    Future mockedFuture = mock(Future.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
-    when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
+    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     String stringSchema = "\"string\"";
@@ -495,7 +495,7 @@ public class VeniceWriterUnitTest {
       ControlMessage controlMessage = (ControlMessage) kme.payloadUnion;
       Assert.assertEquals(controlMessage.controlMessageType, ControlMessageType.START_OF_SEGMENT.getValue());
       ProducerMetadata producerMetadata = kme.producerMetadata;
-      Assert.assertEquals(producerMetadata.producerGUID, HEART_BEAT_GUID);
+      Assert.assertEquals(producerMetadata.producerGUID, HeartbeatGuidV3Generator.getInstance().getGuid());
       Assert.assertEquals(producerMetadata.segmentNumber, 0);
       Assert.assertEquals(producerMetadata.messageSequenceNumber, 0);
     }

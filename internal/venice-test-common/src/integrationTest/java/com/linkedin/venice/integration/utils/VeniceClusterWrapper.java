@@ -630,13 +630,18 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public VeniceServerWrapper addVeniceServer(Properties featureProperties, Properties configProperties) {
+    Properties mergedProperties = options.getExtraProperties();
+    mergedProperties.putAll(configProperties);
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
         options.getRegionName(),
         getClusterName(),
         pubSubBrokerWrapper,
         zkServerWrapper.getAddress(),
         featureProperties,
-        configProperties,
+        mergedProperties,
+        options.isForkServer(),
+        "",
+        options.getKafkaClusterMap(),
         clusterToServerD2.get(getClusterName()));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);

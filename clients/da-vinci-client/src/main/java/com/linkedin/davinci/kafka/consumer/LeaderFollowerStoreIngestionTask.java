@@ -823,8 +823,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final String newSourceKafkaServer = topicSwitch.sourceKafkaServers.get(0).toString();
     final PubSubTopicPartition newSourceTopicPartition =
         partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
-    long upstreamStartOffset = partitionConsumptionState
-        .getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+
+    // Only use the latestProcessedUpstreamRTOffset if we are switching to the new topic from a VT topic or if we are
+    // switching to the same RT topic. The upstreamStartOffset won't be correct if we are already consuming from a RT
+    // topic. e.g. If we are already consuming from RT and would like to switch to some arbitrary topic.
+    boolean switchingToSameTopic = currentLeaderTopic.getName().equals(newSourceTopic.getName());
+    long upstreamStartOffset = switchingToSameTopic || currentLeaderTopic.isVersionTopic()
+        ? partitionConsumptionState
+            .getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY)
+        : OffsetRecord.LOWEST_OFFSET;
 
     if (upstreamStartOffset < 0) {
       if (topicSwitch.rewindStartTimestamp > 0) {
@@ -2044,8 +2051,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * 2. SOS and EOS are from version topics in local fabric, which has 2 different scenarios:
              *    i.  native replication is enabled, but the current fabric is the source fabric (use cases: native repl for source fabric)
              *    ii. native replication is not enabled; it doesn't matter whether current replica is leader or follower,
-             *        messages from local VT doesn't need to be reproduced into local VT again (use cases: local batch consumption,
-             *        incremental push to VT)
+             *        messages from local VT doesn't need to be reproduced into local VT again (use case: local batch consumption)
              *
              * There is one exception that overrules the above conditions. i.e. if the SOS is a heartbeat from the RT topic.
              * In such case the heartbeat is produced to VT with updated {@link LeaderMetadataWrapper}.
@@ -3108,7 +3114,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (earliestOffset == lastOffsetInRealTimeTopic - 1) {
       lag = 0;
     }
-
     if (shouldLog) {
       LOGGER.info(
           "{} partition {} RT lag offset for {} is: Latest RT offset [{}] - persisted offset [{}] = Lag [{}]",
@@ -3177,6 +3182,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopic leaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
       if (isLeader(pcs) && leaderTopic != null && leaderTopic.isRealTime()) {
         // Only leader replica consuming from RT topic may send sync offset control message.
+        if (pcs.getTopicSwitch() != null
+            && !leaderTopic.getName().equals(pcs.getTopicSwitch().getNewSourceTopic().getName())) {
+          // Do not send heartbeat if we detected a topic switch is happening since TS requires the leader to be idle.
+          continue;
+        }
         PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(leaderTopic, pcs.getPartition());
         try {
           veniceWriter.get().sendHeartbeat(topicPartition, null, DEFAULT_LEADER_METADATA_WRAPPER);
