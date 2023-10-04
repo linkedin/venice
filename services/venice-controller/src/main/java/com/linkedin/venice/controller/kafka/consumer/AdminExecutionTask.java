@@ -520,7 +520,6 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
     params.setMinCompactionLagSeconds(message.minCompactionLagSeconds);
     params.setMaxCompactionLagSeconds(message.maxCompactionLagSeconds);
-    LOGGER.info("max compaction lag ms in AdminExecutionTask: " + message.maxCompactionLagSeconds);
 
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {
