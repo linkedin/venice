@@ -66,12 +66,14 @@ public class UtilsTest {
     Map<CharSequence, CharSequence> debugInfo = Utils.getDebugInfo();
     debugInfo.forEach((k, v) -> System.out.println(k + ": " + v));
     Assert.assertFalse(debugInfo.isEmpty(), "debugInfo should not be empty.");
-    String[] expectedKeys = { "path", "host", "pid", "version", "user", "JDK major version" };
-    assertEquals(debugInfo.size(), expectedKeys.length, "debugInfo does not contain the expected number of elements.");
+    // N.B.: The "version" entry is not available in unit tests because of the way the classpath is built...
+    String[] expectedKeys = { "path", "host", "pid", "user", "JDK major version" };
+    assertTrue(
+        debugInfo.size() >= expectedKeys.length,
+        "debugInfo does not contain the minimum expected number of elements. Expected: " + expectedKeys.length
+            + ". Actual: " + debugInfo.size() + ".");
     Arrays.stream(expectedKeys)
         .forEach(key -> assertTrue(debugInfo.containsKey(key), "debugInfo should contain: " + key));
-
-    // N.B.: Not testing the actual debugInfo values because them being environment-specific makes things a bit tricky
   }
 
   @Test
