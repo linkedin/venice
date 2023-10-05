@@ -175,7 +175,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
   protected final Map<Integer, AtomicInteger> partitionToPendingConsumerActionCountMap;
-  protected final Map<Integer, Boolean> partitionToConsumptionStatusMap;
   protected final StorageMetadataService storageMetadataService;
   protected final TopicManagerRepository topicManagerRepository;
   protected final CachedPubSubMetadataGetter cachedPubSubMetadataGetter;
@@ -339,7 +338,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
     this.partitionToPendingConsumerActionCountMap = new VeniceConcurrentHashMap<>();
-    this.partitionToConsumptionStatusMap = new VeniceConcurrentHashMap<>();
 
     // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling
     // kill message
@@ -520,7 +518,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
       partitionToPendingConsumerActionCountMap.computeIfAbsent(subPartition, x -> new AtomicInteger(0))
           .incrementAndGet();
-      partitionToConsumptionStatusMap.put(subPartition, true);
       consumerActionsQueue.add(
           new ConsumerAction(
               SUBSCRIBE,
@@ -1779,7 +1776,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } else {
           LOGGER.info("{} Unsubscribed to: {}", consumerTaskId, topicPartition);
         }
-        partitionToConsumptionStatusMap.put(partition, false);
         break;
       case RESET_OFFSET:
         resetOffset(partition, topicPartition, false);
@@ -3326,8 +3322,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * To check whether the given partition is still consuming message from Kafka
    */
   public boolean isPartitionConsuming(int userPartition) {
-    return hasPendingPartitionIngestionAction(userPartition)
-        || amplificationFactorAdapter.meetsAny(userPartition, partitionConsumptionStateMap::containsKey);
+    Boolean subPartitionConsumptionStateExist =
+        amplificationFactorAdapter.meetsAny(userPartition, partitionConsumptionStateMap::containsKey);
+    Boolean pendingPartitionIngestionAction = hasPendingPartitionIngestionAction(userPartition);
+    return pendingPartitionIngestionAction || subPartitionConsumptionStateExist;
   }
 
   /**
