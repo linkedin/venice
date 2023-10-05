@@ -127,9 +127,9 @@ public class PartitionTracker {
   private void setSegment(GUID guid, Segment segment) {
     Segment previousSegment = this.segments.put(guid, segment);
     if (previousSegment == null) {
-      logger.info(" set state for partition: {}, New state: {}", partition, segment);
+      logger.debug(" set state for partition: {}, New state: {}", partition, segment);
     } else {
-      logger.info(
+      logger.debug(
           " will overwrite previous state for partition: {}, Previous state: {}, New state: {}",
           partition,
           previousSegment,
