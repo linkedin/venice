@@ -65,7 +65,7 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class DispatchingAvroGenericStoreClientTest {
-  private static final int TEST_TIMEOUT = 10 * Time.MS_PER_MINUTE;
+  private static final int TEST_TIMEOUT = 10 * Time.MS_PER_SECOND;
   private static final Schema STORE_VALUE_SCHEMA =
       AvroCompatibilityHelper.parse(loadSchemaFileAsString("TestRecord.avsc"));
   private static final RandomRecordGenerator rrg = new RandomRecordGenerator();

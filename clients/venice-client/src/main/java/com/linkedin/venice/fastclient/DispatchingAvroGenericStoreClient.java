@@ -7,12 +7,12 @@ import com.linkedin.restli.common.HttpStatus;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
-import com.linkedin.venice.client.store.streaming.ClientComputeRecordStreamDecoder;
 import com.linkedin.venice.client.store.streaming.ComputeRecordStreamDecoder;
-import com.linkedin.venice.client.store.streaming.DelegatingTrackingCallback;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -34,6 +34,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -528,12 +529,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       long preRequestTimeInNS) throws VeniceClientException {
     verifyMetadataInitialized();
 
-    computeInternal(requestContext, computeRequest, keys, resultSchema, callback);
-
-    /* Wiring in a callback for when all events have been received. If any route failed with an exception,
-     * that exception will be passed to the aggregate future's next stages. */
-    CompletableFuture.allOf(requestContext.getAllRouteFutures().toArray(new CompletableFuture[0]))
+    computeInternal(requestContext, computeRequest, keys, resultSchema, callback)
         .whenComplete((response, throwable) -> {
+          // Wiring in a callback for when all events have been received. If any route failed with an exception,
+          // that exception will be passed to the aggregate future's next stages.
           if (throwable != null || (!keys.isEmpty() && requestContext.getAllRouteFutures().isEmpty())) {
             // If there is an exception or if no partition has a healthy replica.
             // The exception to send to the client might be different. Get from the requestContext
@@ -558,7 +557,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         });
   }
 
-  private void computeInternal(
+  private CompletableFuture<Void> computeInternal(
       ComputeRequestContext<K, V> requestContext,
       ComputeRequestWrapper computeRequest,
       Set<K> keys,
@@ -578,6 +577,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     int schemaId = metadata.getValueSchemaId(computeRequest.getValueSchema());
     int currentVersion = requestContext.currentVersion;
     Map<Integer, List<String>> partitionRouteMap = new HashMap<>();
+    Map<String, CompletableFuture<Void>> routeToResponseFutures = new VeniceConcurrentHashMap<>();
     for (K key: keys) {
       byte[] keyBytes = keySerializer.serialize(key);
       // For each key determine partition
@@ -605,44 +605,9 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         For loop is not necessary here but if in the future we send to multiple routes then the code below remains */
       for (String route: routes) {
         requestContext.addKey(route, key, keyBytes, partitionId);
+        routeToResponseFutures.put(route, new CompletableFuture<>());
       }
     }
-
-    ClientComputeRecordStreamDecoder.Callback<K, GenericRecord> decoderCallback =
-        new ClientComputeRecordStreamDecoder.Callback<K, GenericRecord>(
-            DelegatingTrackingCallback.wrap((StreamingCallback) callback)) {
-          // private final Map<String, Object> sharedContext = new HashMap<>();
-          @Override
-          public void onRawRecordReceived(K key, GenericRecord value) {
-            // if (value != null) {
-            // value = ComputeUtils.computeResult(
-            // computeRequest.getOperations(),
-            // computeRequest.getOperationResultFields(),
-            // sharedContext,
-            // value,
-            // resultSchema);
-            // getStats().ifPresent(stats -> stats.recordMultiGetFallback(1));
-            // }
-            // onRecordReceived(key, value);
-          }
-
-          @Override
-          public void onRecordReceived(K key, GenericRecord value) {
-            super.onRecordReceived(
-                key,
-                value != null ? new ComputeGenericRecord(value, computeRequest.getValueSchema()) : null);
-          }
-
-          @Override
-          public void onRemoteComputeStateChange(boolean enabled) {
-            // remoteComputationAllowed.set(enabled);
-          }
-
-          @Override
-          public void onCompletion(Optional<Exception> exception) {
-            // Do nothing for now. The callback for onCompletion will be invoked after all routes are complete.
-          }
-        };
 
     Map<String, String> headers = new HashMap<>(2);
     headers.put(
@@ -655,16 +620,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       List<BatchGetRequestContext.KeyInfo<K>> keysForRoutes = requestContext.keysForRoutes(route);
       byte[] serializedRequest = serializeComputeRequest(computeRequest, keysForRoutes);
 
-      List<K> keyList = new ArrayList<>(keysForRoutes.size());
-      for (BatchGetRequestContext.KeyInfo keyInfo: keysForRoutes) {
-        keyList.add((K) keyInfo.getKey());
-      }
-      ComputeRecordStreamDecoder decoder = new ComputeRecordStreamDecoder<>(
-          keyList,
-          decoderCallback,
-          deserializationExecutor,
-          STREAMING_FOOTER_RECORD_DESERIALIZER,
-          getComputeResultRecordDeserializer(resultSchema));
+      ComputeRecordStreamDecoder decoder = getComputeDecoderForRoute(
+          computeRequest,
+          keysForRoutes,
+          route,
+          resultSchema,
+          callback,
+          routeToResponseFutures.get(route));
 
       requestContext.recordRequestSerializationTime(route, getLatencyInNS(nanoTsBeforeSerialization));
       requestContext.recordRequestSentTimeStamp(route);
@@ -680,6 +642,65 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         computeTransportRequestCompletionHandler(requestContext, response, throwable, decoder);
       });
     }
+
+    return CompletableFuture.allOf(routeToResponseFutures.values().toArray(new CompletableFuture[0]));
+  }
+
+  private ComputeRecordStreamDecoder getComputeDecoderForRoute(
+      ComputeRequestWrapper computeRequest,
+      List<BatchGetRequestContext.KeyInfo<K>> keysForRoutes,
+      String route,
+      Schema resultSchema,
+      StreamingCallback<K, ComputeGenericRecord> allRecordsCallback,
+      CompletableFuture<Void> routeFuture) {
+    List<K> keyList = new ArrayList<>(keysForRoutes.size());
+    for (BatchGetRequestContext.KeyInfo keyInfo: keysForRoutes) {
+      keyList.add((K) keyInfo.getKey());
+    }
+
+    // Don't want it to mark the future for all routes complete
+    TrackingStreamingCallback<K, GenericRecord> nonCompletingStreamingCallback =
+        new TrackingStreamingCallback<K, GenericRecord>() {
+          @Override
+          public Optional<ClientStats> getStats() {
+            return Optional.empty();
+          }
+
+          @Override
+          public void onRecordDeserialized() {
+          }
+
+          @Override
+          public void onDeserializationCompletion(
+              Optional<Exception> exception,
+              int successKeyCount,
+              int duplicateEntryCount) {
+          }
+
+          @Override
+          public void onRecordReceived(K key, GenericRecord value) {
+            allRecordsCallback.onRecordReceived(
+                key,
+                value != null ? new ComputeGenericRecord(value, computeRequest.getValueSchema()) : null);
+          }
+
+          @Override
+          public void onCompletion(Optional<Exception> exception) {
+            // Don't complete the main callback here. It will be completed when all routes are done.
+            if (exception.isPresent()) {
+              routeFuture.completeExceptionally(exception.get());
+            } else {
+              routeFuture.complete(null);
+            }
+          }
+        };
+
+    return new ComputeRecordStreamDecoder<>(
+        keyList,
+        nonCompletingStreamingCallback,
+        deserializationExecutor,
+        STREAMING_FOOTER_RECORD_DESERIALIZER,
+        getComputeResultRecordDeserializer(resultSchema));
   }
 
   /**
@@ -697,6 +718,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       HttpStatus statusCode = (exception instanceof VeniceClientHttpException)
           ? HttpStatus.fromCode(((VeniceClientHttpException) exception).getHttpStatus())
           : HttpStatus.S_503_SERVICE_UNAVAILABLE;
+      decoder.onCompletion(Optional.of(new VeniceClientException("Exception received from transport", exception)));
       transportClientResponse.getRouteRequestFuture().complete(statusCode);
       return;
     }
@@ -865,15 +887,5 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   public Schema getLatestValueSchema() {
     return metadata.getLatestValueSchema();
-  }
-
-  // Visible for testing
-  public RecordSerializer<K> getKeySerializer() {
-    return keySerializer;
-  }
-
-  // Visible for testing
-  public RecordSerializer<MultiGetRouterRequestKeyV1> getMultiGetSerializer() {
-    return MULTI_GET_REQUEST_SERIALIZER;
   }
 }
