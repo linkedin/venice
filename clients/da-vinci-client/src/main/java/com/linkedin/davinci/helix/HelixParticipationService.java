@@ -377,7 +377,6 @@ public class HelixParticipationService extends AbstractVeniceService
     currentLogger.info("Started resetting all instance CV states");
     Map<String, Set<Integer>> storePartitionMapping = storageService.getStoreAndUserPartitionsMapping();
     storePartitionMapping.forEach((storeName, partitionIds) -> {
-      currentLogger.info("Started deleting replica status for resource: {}, partitions: {}", storeName, partitionIds);
       partitionIds.forEach(partitionId -> {
         try {
           accessor.deleteReplicaStatus(storeName, partitionId);
@@ -386,7 +385,6 @@ public class HelixParticipationService extends AbstractVeniceService
               .error("Failed to delete CV state for resource: {} and partition id: {}", storeName, partitionId, e);
         }
       });
-      currentLogger.info("Finished deleting replica status for resource: {}", storeName);
     });
     currentLogger.info("Finished resetting all instance CV states");
   }

@@ -143,6 +143,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       /**
        * When state transition fails, we shouldn't remove the corresponding database here since the database could
        * be either recovered by bounce/Helix Reset or completely dropped after going through 'ERROR' to 'DROPPED' state transition.
+       *
+       * Also the CV state will be updated to `ERROR` state, no need to remove it from here.
        */
       stopConsumption(false);
     }, true);
