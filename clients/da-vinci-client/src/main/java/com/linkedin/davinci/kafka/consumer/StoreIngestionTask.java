@@ -110,6 +110,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -529,17 +530,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Adds an asynchronous partition unsubscription request for the task.
    */
-  public synchronized void unSubscribePartition(PubSubTopicPartition topicPartition) {
+  public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
     throwIfNotRunning();
+    List<CompletableFuture<Void>> futures = new ArrayList<>();
     amplificationFactorAdapter.execute(topicPartition.getPartitionNumber(), subPartition -> {
       partitionToPendingConsumerActionCountMap.computeIfAbsent(subPartition, x -> new AtomicInteger(0))
           .incrementAndGet();
-      consumerActionsQueue.add(
-          new ConsumerAction(
-              UNSUBSCRIBE,
-              new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
-              nextSeqNum()));
+      ConsumerAction consumerAction = new ConsumerAction(
+          UNSUBSCRIBE,
+          new PubSubTopicPartitionImpl(topicPartition.getPubSubTopic(), subPartition),
+          nextSeqNum());
+
+      consumerActionsQueue.add(consumerAction);
+      futures.add(consumerAction.getFuture());
     });
+
+    return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
   }
 
   public boolean hasAnySubscription() {
@@ -1479,6 +1485,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             LatencyUtils.getElapsedTimeInMs(action.getCreateTimestampInMs()));
         action.incrementAttempt();
         processConsumerAction(action, store);
+        action.getFuture().complete(null);
         // Remove the action that is processed recently (not necessarily the head of consumerActionsQueue).
         if (consumerActionsQueue.remove(action)) {
           partitionToPendingConsumerActionCountMap.get(action.getPartition()).decrementAndGet();
@@ -1488,6 +1495,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             action,
             LatencyUtils.getElapsedTimeInMs(actionProcessStartTimeInMs));
       } catch (VeniceIngestionTaskKilledException | InterruptedException e) {
+        action.getFuture().completeExceptionally(e);
         throw e;
       } catch (Throwable e) {
         if (action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS) {
@@ -1500,6 +1508,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             action.getAttemptsCount(),
             LatencyUtils.getElapsedTimeInMs(actionProcessStartTimeInMs),
             e);
+        // Mark action as failed since it has exhausted all the retries.
+        action.getFuture().completeExceptionally(e);
         // After MAX_CONSUMER_ACTION_ATTEMPTS retries we should give up and error the ingestion task.
         PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
 

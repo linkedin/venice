@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -65,8 +66,8 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public void stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
-    getStoreIngestionService().stopConsumption(storeConfig, partition);
+  public CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
+    return getStoreIngestionService().stopConsumption(storeConfig, partition);
   }
 
   @Override

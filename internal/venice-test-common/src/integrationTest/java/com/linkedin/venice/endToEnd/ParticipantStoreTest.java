@@ -20,6 +20,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -252,13 +253,19 @@ public class ParticipantStoreTest {
     int expectedOnlineReplicaCount = versionCreationResponseForOnlineVersion.getReplicas();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       for (int p = 0; p < versionCreationResponseForOnlineVersion.getPartitions(); p++) {
-        assertEquals(
-            veniceClusterWrapper.getRandomVeniceRouter()
-                .getRoutingDataRepository()
-                .getReadyToServeInstances(topicNameForOnlineVersion, p)
-                .size(),
-            expectedOnlineReplicaCount,
-            "Not all replicas are ONLINE yet");
+        try {
+          assertEquals(
+              veniceClusterWrapper.getRandomVeniceRouter()
+                  .getRoutingDataRepository()
+                  .getReadyToServeInstances(topicNameForOnlineVersion, p)
+                  .size(),
+              expectedOnlineReplicaCount,
+              "Not all replicas are ONLINE yet");
+        } catch (VeniceException e) {
+          fail(
+              "Received exception when getting the ready to serve replica count for partition: " + p + " for resource: "
+                  + topicNameForOnlineVersion);
+        }
       }
     });
 

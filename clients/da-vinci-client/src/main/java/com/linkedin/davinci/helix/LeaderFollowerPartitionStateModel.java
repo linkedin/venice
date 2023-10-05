@@ -135,7 +135,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
-    executeStateTransition(message, context, this::stopConsumption);
+    executeStateTransition(message, context, () -> stopConsumption(true));
   }
 
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)

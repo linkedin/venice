@@ -6,6 +6,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import io.tehuti.utils.Utils;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 
 /**
@@ -24,6 +25,8 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   private int attempts = 0;
 
   private long createTimestampInMs = System.currentTimeMillis();
+
+  private CompletableFuture<Void> future = new CompletableFuture<>();
 
   public ConsumerAction(ConsumerActionType type, PubSubTopicPartition topicPartition, int sequenceNumber) {
     this(type, topicPartition, sequenceNumber, null, Optional.empty());
@@ -96,6 +99,10 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   public long getCreateTimestampInMs() {
     return createTimestampInMs;
+  }
+
+  public CompletableFuture<Void> getFuture() {
+    return future;
   }
 
   @Override

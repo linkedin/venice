@@ -101,6 +101,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     long offset = report.offset;
+    String message = report.message.toString();
     LOGGER.info(
         "Received ingestion report {} for topic: {}, partition: {} from ingestion service. ",
         reportType.name(),
@@ -114,7 +115,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.valueOf(report.leaderFollowerState);
         notifierHelper(
             notifier -> notifier
-                .completed(topicName, partitionId, report.offset, "", Optional.of(leaderFollowerStateType)));
+                .completed(topicName, partitionId, report.offset, message, Optional.of(leaderFollowerStateType)));
         break;
       case ERROR:
         mainIngestionMonitorService.setVersionPartitionToLocalIngestion(topicName, partitionId);
@@ -149,6 +150,12 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         break;
       case TOPIC_SWITCH_RECEIVED:
         notifierHelper(notifier -> notifier.topicSwitchReceived(topicName, partitionId, offset));
+        break;
+      case DATA_RECOVERY_COMPLETED:
+        notifierHelper(notifier -> notifier.dataRecoveryCompleted(topicName, partitionId, offset, message));
+        break;
+      case STOPPED:
+        notifierHelper(notifier -> notifier.stopped(topicName, partitionId, offset));
         break;
       default:
         LOGGER.warn("Received unsupported ingestion report: {} it will be ignored for now.", report);

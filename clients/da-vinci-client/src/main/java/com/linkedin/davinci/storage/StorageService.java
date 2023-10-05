@@ -41,6 +41,7 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.RocksDBException;
@@ -77,7 +78,7 @@ public class StorageService extends AbstractVeniceService {
    * @param restoreMetadataPartitions indicates if meta data needs to be restored.
    * @param checkWhetherStorageEngineShouldBeKeptOrNot check whether the local storage engine should be kept or not.
    */
-  public StorageService(
+  StorageService(
       VeniceConfigLoader configLoader,
       AggVersionedStorageEngineStats storageEngineStats,
       RocksDBMemoryStats rocksDBMemoryStats,
@@ -86,8 +87,8 @@ public class StorageService extends AbstractVeniceService {
       ReadOnlyStoreRepository storeRepository,
       boolean restoreDataPartitions,
       boolean restoreMetadataPartitions,
-      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot) {
-
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot,
+      Optional<Map<PersistenceType, StorageEngineFactory>> persistenceTypeToStorageEngineFactoryMapOptional) {
     String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
     if (!Utils.directoryExists(dataPath)) {
       if (!configLoader.getVeniceServerConfig().isAutoCreateDataPath()) {
@@ -105,13 +106,17 @@ public class StorageService extends AbstractVeniceService {
     this.serverConfig = configLoader.getVeniceServerConfig();
     this.storageEngineRepository = new StorageEngineRepository();
 
-    this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
     this.aggVersionedStorageEngineStats = storageEngineStats;
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     this.storeVersionStateSerializer = storeVersionStateSerializer;
     this.partitionStateSerializer = partitionStateSerializer;
     this.storeRepository = storeRepository;
-    initInternalStorageEngineFactories();
+    if (persistenceTypeToStorageEngineFactoryMapOptional.isPresent()) {
+      this.persistenceTypeToStorageEngineFactoryMap = persistenceTypeToStorageEngineFactoryMapOptional.get();
+    } else {
+      this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
+      initInternalStorageEngineFactories();
+    }
     if (restoreDataPartitions || restoreMetadataPartitions) {
       restoreAllStores(
           configLoader,
@@ -119,6 +124,29 @@ public class StorageService extends AbstractVeniceService {
           restoreMetadataPartitions,
           checkWhetherStorageEngineShouldBeKeptOrNot);
     }
+  }
+
+  public StorageService(
+      VeniceConfigLoader configLoader,
+      AggVersionedStorageEngineStats storageEngineStats,
+      RocksDBMemoryStats rocksDBMemoryStats,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
+      ReadOnlyStoreRepository storeRepository,
+      boolean restoreDataPartitions,
+      boolean restoreMetadataPartitions,
+      Function<String, Boolean> checkWhetherStorageEngineShouldBeKeptOrNot) {
+    this(
+        configLoader,
+        storageEngineStats,
+        rocksDBMemoryStats,
+        storeVersionStateSerializer,
+        partitionStateSerializer,
+        storeRepository,
+        restoreDataPartitions,
+        restoreMetadataPartitions,
+        checkWhetherStorageEngineShouldBeKeptOrNot,
+        Optional.empty());
   }
 
   public StorageService(
@@ -487,6 +515,19 @@ public class StorageService extends AbstractVeniceService {
 
   public AbstractStorageEngine getStorageEngine(String kafkaTopic) {
     return getStorageEngineRepository().getLocalStorageEngine(kafkaTopic);
+  }
+
+  public Map<String, Set<Integer>> getStoreAndUserPartitionsMapping() {
+    Map<String, Set<Integer>> storePartitionMapping = new HashMap<>();
+    for (AbstractStorageEngine engine: storageEngineRepository.getAllLocalStorageEngines()) {
+      String storeName = engine.getStoreName();
+      int amplificationFactor = PartitionUtils.getAmplificationFactor(storeRepository, storeName);
+      Set<Integer> partitionIdSet = ((Set<Integer>) engine.getPartitionIds()).stream()
+          .map(id -> PartitionUtils.getUserPartition(id, amplificationFactor))
+          .collect(Collectors.toSet());
+      storePartitionMapping.put(storeName, partitionIdSet);
+    }
+    return storePartitionMapping;
   }
 
   @Override

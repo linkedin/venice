@@ -899,16 +899,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @param partitionId Venice partition's id.
    */
   @Override
-  public void stopConsumption(VeniceStoreVersionConfig veniceStore, int partitionId) {
+  public CompletableFuture<Void> stopConsumption(VeniceStoreVersionConfig veniceStore, int partitionId) {
     final String topic = veniceStore.getStoreVersionName();
 
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
       if (ingestionTask != null && ingestionTask.isRunning()) {
-        ingestionTask
+        return ingestionTask
             .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
       } else {
         LOGGER.warn("Ignoring stop consumption message for Topic {} Partition {}", topic, partitionId);
+        return CompletableFuture.completedFuture(null);
       }
     }
   }
