@@ -1,11 +1,14 @@
 package com.linkedin.davinci.helix;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.venice.meta.Store;
 import java.util.concurrent.CompletableFuture;
 import org.testng.annotations.Test;
@@ -65,5 +68,17 @@ public class VeniceLeaderFollowerStateModelTest extends
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
     verify(mockParticipantStateTransitionStats, times(1)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(mockParticipantStateTransitionStats, times(1)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+  }
+
+  @Test
+  public void testRemoveCVStateWhenBecomeOfflineFromStandby() {
+    when(mockStore.getCurrentVersion()).thenReturn(2);
+    when(mockIngestionBackend.stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition)))
+        .thenReturn(CompletableFuture.completedFuture(null));
+
+    testStateModel.onBecomeOfflineFromStandby(mockMessage, mockContext);
+
+    verify(mockIngestionBackend).stopConsumption(any(VeniceStoreVersionConfig.class), eq(testPartition));
+    verify(mockPushStatusAccessor).deleteReplicaStatus(resourceName, testPartition);
   }
 }
