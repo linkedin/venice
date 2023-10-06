@@ -30,6 +30,7 @@ import static com.linkedin.venice.utils.TestUtils.generateInput;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
@@ -171,6 +172,17 @@ public class TestActiveActiveIngestion {
     }
   }
 
+  private void pollChangeEventsFromChangeCaptureConsumer(
+      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
+      BootstrappingVeniceChangelogConsumer bootstrappingVeniceChangelogConsumer) {
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
+        bootstrappingVeniceChangelogConsumer.poll(1000);
+    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
+      String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
+      polledChangeEvents.put(key, pubSubMessage);
+    }
+  }
+
   private void pollChangeEventsFromChangeCaptureConsumer2(
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
@@ -178,6 +190,19 @@ public class TestActiveActiveIngestion {
         veniceChangelogConsumer.poll(1000);
     pubSubMessages.addAll(veniceChangelogConsumer.poll(1000));
     pubSubMessages.addAll(veniceChangelogConsumer.poll(1000));
+    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
+      String key = pubSubMessage.getKey().toString();
+      polledChangeEvents.put(key, pubSubMessage);
+    }
+  }
+
+  private void pollChangeEventsFromChangeCaptureConsumer2(
+      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
+      BootstrappingVeniceChangelogConsumer bootstrappingVeniceChangelogConsumer) {
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
+        bootstrappingVeniceChangelogConsumer.poll(1000);
+    pubSubMessages.addAll(bootstrappingVeniceChangelogConsumer.poll(1000));
+    pubSubMessages.addAll(bootstrappingVeniceChangelogConsumer.poll(1000));
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -964,6 +989,266 @@ public class TestActiveActiveIngestion {
       Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
     });
 
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testBootstrappingVeniceChangelogConsumer_WithoutPollAndCatchUp() throws Exception {
+    ControllerClient childControllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    // create a active-active enabled store and run batch push job
+    // batch job contains 100 records
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    Map<String, String> viewConfig = new HashMap<>();
+    viewConfig.put(
+        "testView",
+        "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+
+    viewConfig.put(
+        "changeCaptureView",
+        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(500)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(3);
+    MetricsRepository metricsRepository = new MetricsRepository();
+    ControllerClient setupControllerClient =
+        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    storeParms.setStoreViews(viewConfig);
+    // IntegrationTestPushUtils.updateStore(clusterName, props, storeParms);
+    setupControllerClient
+        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
+    // controllerClient.updateStore(storeName, storeParms);
+    TestWriteUtils.runPushJob("Run push job", props);
+    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    // Use a unique key for DELETE with RMD validation
+    int deleteWithRmdKeyIndex = 1000;
+
+    TestMockTime testMockTime = new TestMockTime();
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
+        new PubSubBrokerConfigs.Builder().setZkWrapper(localZkServer)
+            .setMockTime(testMockTime)
+            .setRegionName("local-pubsub")
+            .build());
+    Properties consumerProperties = new Properties();
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.put(CLUSTER_NAME, clusterName);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig().setViewName("changeCaptureView")
+        .setConsumerProperties(consumerProperties)
+        .setControllerD2ServiceName(D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setLocalD2ZkHosts(localZkServer.getAddress())
+        .setControllerRequestRetryCount(3)
+        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+
+    BootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer =
+        veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName);
+    bootstrappingVeniceChangelogConsumer.start().get();
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Run Samza job to send PUT and DELETE requests.
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
+      // Produce a DELETE record with large timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+    }
+
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+      });
+    }
+
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
+
+    // 21 changes in nearline. 10 puts, 10 deletes, and 1 record with a producer timestamp
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
+      // 21 events for nearline events
+      Assert.assertEquals(polledChangeEvents.size(), 22);
+      for (int i = 100; i < 110; i++) {
+        String key = Integer.toString(i);
+        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
+        Assert.assertNotNull(changeEvent);
+        if (i != 100) {
+          Assert.assertNull(changeEvent.getPreviousValue());
+        } else {
+          Assert.assertTrue(changeEvent.getPreviousValue().toString().contains(key));
+        }
+        Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
+      }
+      for (int i = 110; i < 120; i++) {
+        String key = Integer.toString(i);
+        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
+        Assert.assertNotNull(changeEvent);
+        Assert.assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
+        Assert.assertNull(changeEvent.getCurrentValue());
+      }
+    });
+
+    polledChangeEvents.clear();
+
+    // Since nothing is produced, so no changed events generated.
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer2(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 0);
+    });
+
+    // Verify total updates match up
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 21));
+    parentControllerClient.disableAndDeleteStore(storeName);
+    // Verify that topics and store is cleaned up
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
+      Assert.assertFalse(storeTopicsResponse.isError());
+      Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testBootstrappingVeniceChangelogConsumer_WithPollAndCatchUp() throws Exception {
+    ControllerClient childControllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    // create a active-active enabled store and run batch push job
+    // batch job contains 100 records
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    Map<String, String> viewConfig = new HashMap<>();
+    viewConfig.put(
+        "testView",
+        "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+
+    viewConfig.put(
+        "changeCaptureView",
+        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(500)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(3);
+    MetricsRepository metricsRepository = new MetricsRepository();
+    ControllerClient setupControllerClient =
+        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    storeParms.setStoreViews(viewConfig);
+    // IntegrationTestPushUtils.updateStore(clusterName, props, storeParms);
+    setupControllerClient
+        .retryableRequest(5, controllerClient1 -> setupControllerClient.updateStore(storeName, storeParms));
+    // controllerClient.updateStore(storeName, storeParms);
+    TestWriteUtils.runPushJob("Run push job", props);
+    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    // Use a unique key for DELETE with RMD validation
+    int deleteWithRmdKeyIndex = 1000;
+
+    TestMockTime testMockTime = new TestMockTime();
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
+        new PubSubBrokerConfigs.Builder().setZkWrapper(localZkServer)
+            .setMockTime(testMockTime)
+            .setRegionName("local-pubsub")
+            .build());
+    Properties consumerProperties = new Properties();
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.put(CLUSTER_NAME, clusterName);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig().setViewName("changeCaptureView")
+        .setConsumerProperties(consumerProperties)
+        .setControllerD2ServiceName(D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setLocalD2ZkHosts(localZkServer.getAddress())
+        .setControllerRequestRetryCount(3)
+        .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+
+    BootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer =
+        veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName);
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Run Samza job to send PUT and DELETE requests.
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
+      // Produce a DELETE record with large timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+    }
+
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+      });
+    }
+
+    bootstrappingVeniceChangelogConsumer.start().get();
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
+
+    // 21 changes in nearline. 10 puts, 10 deletes and 1 delete with timestamp will be ignored and 1 end of bootstrap
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 11);
+
+      for (int i = 100; i < 110; i++) {
+        String key = Integer.toString(i);
+        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key).getValue();
+        Assert.assertNotNull(changeEvent);
+        Assert.assertNull(changeEvent.getPreviousValue());
+        Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
+      }
+
+      Assert.assertTrue(polledChangeEvents.containsKey(null));
+      Assert.assertTrue(polledChangeEvents.get(null).isEndOfBootstrap());
+    });
+
+    polledChangeEvents.clear();
+
+    // Since nothing is produced, so no changed events generated.
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer2(polledChangeEvents, bootstrappingVeniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 0);
+    });
+
+    // Verify total updates match up
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 21));
+    parentControllerClient.disableAndDeleteStore(storeName);
+    // Verify that topics and store is cleaned up
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
+      Assert.assertFalse(storeTopicsResponse.isError());
+      Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
+    });
   }
 
   private void runSamzaStreamJob(

@@ -2,9 +2,11 @@ package com.linkedin.davinci.consumer;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.*;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SpecificRecordChunkingAdapter;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -39,6 +41,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serialization.RawBytesStoreDeserializerCache;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -47,6 +50,7 @@ import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -70,14 +74,14 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
-  private final int partitionCount;
+  protected final int partitionCount;
 
   protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
 
   protected final CompressorFactory compressorFactory = new CompressorFactory();
 
   protected final HashMap<Integer, VeniceCompressor> compressorMap = new HashMap<>();
-  private final AvroStoreDeserializerCache<V> storeDeserializerCache;
+  protected AvroStoreDeserializerCache<V> storeDeserializerCache;
   private final AvroStoreDeserializerCache<RecordChangeEvent> recordChangeEventDeserializerCache;
 
   protected ThinClientMetaStoreBasedRepository storeRepository;
@@ -89,7 +93,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final SchemaReader schemaReader;
   private final String viewClassName;
-  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   protected final RecordDeserializer<K> keyDeserializer;
   private final D2ControllerClient d2ControllerClient;
@@ -139,8 +143,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     // The in memory storage engine only relies on the name of store and nothing else. We use an unversioned store name
     // here in order to reduce confusion (as this storage engine can be used across version topics).
     this.inMemoryStorageEngine = new InMemoryStorageEngine(storeName);
-    // disable noisy logs
-    this.inMemoryStorageEngine.suppressLogs(true);
     this.storeRepository = new ThinClientMetaStoreBasedRepository(
         changelogClientConfig.getInnerClientConfig(),
         VeniceProperties.empty(),
@@ -588,18 +590,36 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           keyBytes,
           ValueRecord.create(schemaId, valueBytes.array()).serialize());
       try {
-        assembledRecord = chunkingAdapter.get(
-            inMemoryStorageEngine,
-            pubSubTopicPartition.getPartitionNumber(),
-            ByteBuffer.wrap(keyBytes),
-            false,
-            null,
-            null,
-            null,
-            readerSchemaId,
-            deserializerCache,
+        assembledRecord = processRecordBytes(
+            recordDeserializer.get(),
             compressor,
-            null);
+            keyBytes,
+            RawBytesChunkingAdapter.INSTANCE.get(
+                inMemoryStorageEngine,
+                pubSubTopicPartition.getPartitionNumber(),
+                ByteBuffer.wrap(keyBytes),
+                false,
+                null,
+                null,
+                null,
+                readerSchemaId,
+                RawBytesStoreDeserializerCache.getInstance(),
+                compressor,
+                null),
+            pubSubTopicPartition,
+            readerSchemaId);
+
+        // assembledRecord = chunkingAdapter.get(
+        // inMemoryStorageEngine,
+        // pubSubTopicPartition.getPartitionNumber(),
+        // ByteBuffer.wrap(keyBytes),
+        // false,
+        // null,
+        // null,
+        // null,
+        // readerSchemaId,
+        // deserializerCache,
+        // compressor, null);
       } catch (Exception ex) {
         // We might get an exception if we haven't persisted all the chunks for a given key. This
         // can actually happen if the client seeks to the middle of a chunked record either by
@@ -613,7 +633,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     } else {
       // this is a fully specified record, no need to buffer and assemble it, just decompress and deserialize it
       try {
-        assembledRecord = recordDeserializer.get().deserialize(compressor.decompress(valueBytes));
+        assembledRecord = processRecordBytes(
+            recordDeserializer.get(),
+            compressor,
+            keyBytes,
+            valueBytes,
+            pubSubTopicPartition,
+            readerSchemaId);
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
@@ -624,6 +650,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     // this is safe to do in all such contexts.
     inMemoryStorageEngine.dropPartition(pubSubTopicPartition.getPartitionNumber());
     return assembledRecord;
+  }
+
+  // This function exists for wrappers of this class to be able to do any kind of preprocessing on the raw bytes of the
+  // data consumed
+  // in the change stream so as to avoid having to do any duplicate deserialization/serialization. Wrappers which depend
+  // on solely
+  // on the data post deserialization
+  protected <T> T processRecordBytes(
+      RecordDeserializer<T> deserializer,
+      VeniceCompressor compressor,
+      byte[] key,
+      ByteBuffer value,
+      PubSubTopicPartition partition,
+      int valueSchemaId) throws IOException {
+    return deserializer.deserialize(compressor.decompress(value));
   }
 
   protected Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> convertPubSubMessageToPubSubChangeEventMessage(
@@ -699,7 +740,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 pubSubTopicPartition,
                 message.getOffset(),
                 message.getPubSubMessageTime(),
-                payloadSize));
+                payloadSize,
+                false));
       }
 
       // Determine if the event should be filtered or not
@@ -791,7 +833,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         pubSubTopicPartition,
         offset,
         timestamp,
-        payloadSize);
+        payloadSize,
+        false);
   }
 
   private V deserializeValueFromBytes(ByteBuffer byteBuffer, int valueSchemaId) {
@@ -841,7 +884,41 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     pubSubConsumer.close();
   }
 
+  @VisibleForTesting
   protected void setStoreRepository(ThinClientMetaStoreBasedRepository repository) {
     this.storeRepository = repository;
+    if (changelogClientConfig.getInnerClientConfig().isSpecificClient()) {
+      // If a value class is supplied, we'll use a Specific record adapter
+      Class valueClass = changelogClientConfig.getInnerClientConfig().getSpecificValueClass();
+      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, valueClass);
+    } else {
+      this.storeDeserializerCache = new AvroStoreDeserializerCache<>(storeRepository, storeName, true);
+    }
+  }
+
+  protected VeniceChangeCoordinate getLatestCoordinate(Integer partition) {
+    Set<PubSubTopicPartition> topicPartitionSet = pubSubConsumer.getAssignment();
+    Optional<PubSubTopicPartition> topicPartition =
+        topicPartitionSet.stream().filter(tp -> tp.getPartitionNumber() == partition).findFirst();
+    if (!topicPartition.isPresent()) {
+      throw new VeniceException(
+          "Cannot get latest coordinate position for partition " + partition + "! Consumer isn't subscribed!");
+    }
+    long offset = pubSubConsumer.endOffset(topicPartition.get()) - 1;
+    return new VeniceChangeCoordinate(
+        topicPartition.get().getPubSubTopic().getName(),
+        new ApacheKafkaOffsetPosition(offset),
+        partition);
+  }
+
+  protected PubSubTopicPartition getTopicPartition(Integer partition) {
+    Set<PubSubTopicPartition> topicPartitionSet = pubSubConsumer.getAssignment();
+    Optional<PubSubTopicPartition> topicPartition =
+        topicPartitionSet.stream().filter(tp -> tp.getPartitionNumber() == partition).findFirst();
+    if (!topicPartition.isPresent()) {
+      throw new VeniceException(
+          "Cannot get latest coordinate position for partition " + partition + "! Consumer isn't subscribed!");
+    }
+    return topicPartition.get();
   }
 }

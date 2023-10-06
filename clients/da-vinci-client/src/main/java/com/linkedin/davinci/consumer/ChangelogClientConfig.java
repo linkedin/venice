@@ -18,6 +18,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private String controllerD2ServiceName;
   private int controllerRequestRetryCount;
 
+  private String bootstrapFileSystemPath;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -120,6 +122,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this.innerClientConfig;
   }
 
+  public ChangelogClientConfig<T> setBootstrapFileSystemPath(String bootstrapFileSystemPath) {
+    this.bootstrapFileSystemPath = bootstrapFileSystemPath;
+    return this;
+  }
+
+  public String getBootstrapFileSystemPath() {
+    return this.bootstrapFileSystemPath;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -130,7 +141,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setD2ControllerClient(config.getD2ControllerClient())
         .setControllerD2ServiceName(config.controllerD2ServiceName)
         .setD2Client(config.getD2Client())
-        .setControllerRequestRetryCount(config.getControllerRequestRetryCount());
+        .setControllerRequestRetryCount(config.getControllerRequestRetryCount())
+        .setBootstrapFileSystemPath(config.getBootstrapFileSystemPath());
     return newConfig;
   }
 }
