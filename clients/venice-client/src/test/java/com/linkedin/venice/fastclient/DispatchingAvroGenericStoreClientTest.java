@@ -602,7 +602,7 @@ public class DispatchingAvroGenericStoreClientTest {
   public void testGet() throws ExecutionException, InterruptedException, IOException {
     try {
       setUpClient();
-      GetRequestContext getRequestContext = new GetRequestContext();
+      GetRequestContext getRequestContext = new GetRequestContext(false);
       GenericRecord value = (GenericRecord) statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
       validateSingleGetMetrics(getRequestContext, true);
@@ -616,7 +616,7 @@ public class DispatchingAvroGenericStoreClientTest {
     GetRequestContext getRequestContext = null;
     try {
       setUpClient(false, true, false, false);
-      getRequestContext = new GetRequestContext();
+      getRequestContext = new GetRequestContext(false);
       statsAvroGenericStoreClient.get(getRequestContext, "test_key").get().toString();
       fail();
     } catch (Exception e) {
@@ -632,7 +632,7 @@ public class DispatchingAvroGenericStoreClientTest {
     GetRequestContext getRequestContext = null;
     try {
       setUpClient(false, false, false, false, false, 2 * Time.MS_PER_SECOND);
-      getRequestContext = new GetRequestContext();
+      getRequestContext = new GetRequestContext(false);
       statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       fail();
     } catch (Exception e) {
@@ -649,7 +649,7 @@ public class DispatchingAvroGenericStoreClientTest {
 
     try {
       setUpClient(useStreamingBatchGetAsDefault);
-      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>();
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(false);
       Map<String, GenericRecord> value =
           (Map<String, GenericRecord>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS)
               .get();
@@ -682,13 +682,15 @@ public class DispatchingAvroGenericStoreClientTest {
       throws ExecutionException, InterruptedException, IOException {
     try {
       setUpClient(true);
-      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>();
+      BatchGetRequestContext batchGetRequestContext;
       Map<String, GenericRecord> value;
       if (streamingBatchGet) {
+        batchGetRequestContext = new BatchGetRequestContext<>(true);
         value = (Map<String, GenericRecord>) statsAvroGenericStoreClient
             .streamingBatchGet(batchGetRequestContext, Collections.emptySet())
             .get();
       } else {
+        batchGetRequestContext = new BatchGetRequestContext<>(false);
         value = (Map<String, GenericRecord>) statsAvroGenericStoreClient
             .batchGet(batchGetRequestContext, Collections.emptySet())
             .get();
@@ -711,7 +713,7 @@ public class DispatchingAvroGenericStoreClientTest {
       throws ExecutionException, InterruptedException, IOException {
     try {
       setUpClient(useStreamingBatchGetAsDefault);
-      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>();
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(false);
       Set<String> keys = new HashSet<>();
       for (int i = 0; i < ClientConfig.MAX_ALLOWED_KEY_COUNT_IN_BATCHGET + 1; ++i) {
         keys.add("testKey" + i);
@@ -727,7 +729,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(useStreamingBatchGetAsDefault, true, false, false);
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } catch (Exception e) {
@@ -755,7 +757,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(useStreamingBatchGetAsDefault, false, true, false);
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(false);
       Map<String, GenericRecord> value =
           (Map<String, GenericRecord>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS)
               .get();
@@ -808,7 +810,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } finally {
@@ -838,7 +840,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get(2, TimeUnit.SECONDS);
       fail();
     } finally {
@@ -868,7 +870,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get(1, TimeUnit.SECONDS);
       fail();
     } finally {
@@ -893,14 +895,14 @@ public class DispatchingAvroGenericStoreClientTest {
     long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(1);
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>();
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_2).get();
       fail();
     } catch (Exception e) {
       assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       BatchGetRequestContext batchGetRequestContext = null;
       try {
-        batchGetRequestContext = new BatchGetRequestContext<>();
+        batchGetRequestContext = new BatchGetRequestContext<>(false);
         statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
         fail();
       } catch (Exception e1) {
@@ -934,7 +936,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(true);
       CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
       future.get();
@@ -965,7 +967,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(true);
       CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
       future.get(2, TimeUnit.SECONDS);
@@ -995,7 +997,7 @@ public class DispatchingAvroGenericStoreClientTest {
     try {
       long routingLeakedRequestCleanupThresholdMS = TimeUnit.SECONDS.toMillis(2);
       setUpClient(true, false, false, true, true, routingLeakedRequestCleanupThresholdMS);
-      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>();
+      BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext<>(true);
       CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS);
       VeniceResponseMap<String, GenericRecord> value = future.get(1, TimeUnit.SECONDS);
@@ -1020,7 +1022,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(useStreamingBatchGetAsDefault, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(false);
       statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } catch (Exception e) {
@@ -1044,7 +1046,7 @@ public class DispatchingAvroGenericStoreClientTest {
       try {
         // the second batchGet is not going to find any routes (as the instances
         // are blocked) and fail instantly
-        batchGetRequestContext2 = new BatchGetRequestContext<>();
+        batchGetRequestContext2 = new BatchGetRequestContext<>(false);
         statsAvroGenericStoreClient.batchGet(batchGetRequestContext2, BATCH_GET_KEYS).get();
         fail();
       } catch (Exception e1) {
@@ -1081,7 +1083,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(true);
       statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } catch (Exception e) {
@@ -1094,7 +1096,7 @@ public class DispatchingAvroGenericStoreClientTest {
       try {
         // the second batchGet is not going to find any routes (as the instances
         // are blocked) and fail instantly
-        batchGetRequestContext2 = new BatchGetRequestContext<>();
+        batchGetRequestContext2 = new BatchGetRequestContext<>(true);
         statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext2, BATCH_GET_KEYS).get();
         fail();
       } catch (Exception e1) {
@@ -1117,7 +1119,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, false, false, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(true);
       statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_1).get();
       fail();
     } catch (Exception e) {
@@ -1128,7 +1130,7 @@ public class DispatchingAvroGenericStoreClientTest {
 
       BatchGetRequestContext batchGetRequestContext2 = null;
       try {
-        batchGetRequestContext2 = new BatchGetRequestContext<>();
+        batchGetRequestContext2 = new BatchGetRequestContext<>(true);
         statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext2, BATCH_GET_KEYS).get();
         fail();
       } catch (Exception e1) {
@@ -1152,7 +1154,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, false, true, true, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(true);
       statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_PARTIAL_KEYS_2).get();
       fail();
     } catch (Exception e) {
@@ -1160,7 +1162,7 @@ public class DispatchingAvroGenericStoreClientTest {
       // as blocked due to setRoutingPendingRequestCounterInstanceBlockThreshold(1)
       assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
       validateMultiGetMetrics(batchGetRequestContext, false, false, RequestType.MULTI_GET_STREAMING, true, false, 1);
-      BatchGetRequestContext batchGetRequestContext2 = new BatchGetRequestContext<>();
+      BatchGetRequestContext batchGetRequestContext2 = new BatchGetRequestContext<>(true);
       CompletableFuture<VeniceResponseMap<String, GenericRecord>> future =
           statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext2, BATCH_GET_KEYS);
       VeniceResponseMap<String, GenericRecord> value = future.get();
@@ -1182,7 +1184,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, false, true, false, true, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(true);
       statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } catch (Exception e) {
@@ -1204,7 +1206,7 @@ public class DispatchingAvroGenericStoreClientTest {
     BatchGetRequestContext batchGetRequestContext = null;
     try {
       setUpClient(true, true, false, false, true, TimeUnit.SECONDS.toMillis(1));
-      batchGetRequestContext = new BatchGetRequestContext<>();
+      batchGetRequestContext = new BatchGetRequestContext<>(true);
       statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
       fail();
     } catch (Exception e) {

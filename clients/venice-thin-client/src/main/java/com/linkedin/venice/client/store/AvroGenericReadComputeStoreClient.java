@@ -20,22 +20,30 @@ public interface AvroGenericReadComputeStoreClient<K, V> extends AvroGenericStor
 
   @Override
   default ComputeRequestBuilder<K> compute() throws VeniceClientException {
-    return compute(Optional.empty(), Optional.empty(), 0);
+    return compute(Optional.empty(), this);
   }
 
+  @Deprecated
   default ComputeRequestBuilder<K> compute(
       Optional<ClientStats> stats,
       Optional<ClientStats> streamingStats,
       long preRequestTimeInNS) throws VeniceClientException {
-    return compute(stats, streamingStats, this, preRequestTimeInNS);
+    return compute(streamingStats, this);
   }
 
+  @Deprecated
   default ComputeRequestBuilder<K> compute(
       Optional<ClientStats> stats,
       Optional<ClientStats> streamingStats,
       AvroGenericReadComputeStoreClient computeStoreClient,
       long preRequestTimeInNS) throws VeniceClientException {
-    return new AvroComputeRequestBuilderV3<K>(computeStoreClient, getLatestValueSchema()).setStats(streamingStats)
+    return compute(stats, computeStoreClient);
+  }
+
+  default ComputeRequestBuilder<K> compute(
+      Optional<ClientStats> stats,
+      AvroGenericReadComputeStoreClient computeStoreClient) throws VeniceClientException {
+    return new AvroComputeRequestBuilderV3<K>(computeStoreClient, getLatestValueSchema()).setStats(stats)
         .setValidateProjectionFields(isProjectionFieldValidationEnabled());
   }
 

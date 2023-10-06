@@ -401,10 +401,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public ComputeRequestBuilder<K> compute(
       Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats,
-      AvroGenericReadComputeStoreClient computeStoreClient,
-      long preRequestTimeInNS) throws VeniceClientException {
-    return new AvroComputeRequestBuilderV4<K>(computeStoreClient, getLatestValueSchema()).setStats(streamingStats)
+      AvroGenericReadComputeStoreClient computeStoreClient) throws VeniceClientException {
+    return new AvroComputeRequestBuilderV4<K>(computeStoreClient, getLatestValueSchema()).setStats(stats)
         .setValidateProjectionFields(isProjectionFieldValidationEnabled());
   }
 

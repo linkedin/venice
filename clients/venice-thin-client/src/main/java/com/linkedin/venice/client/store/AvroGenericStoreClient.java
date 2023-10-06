@@ -128,8 +128,9 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
   void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException;
 
   /**
-   * This experimental feature is subject to backwards-incompatible changes and may even be removed in the future.
-   * @return
+   * This API allows performing transformations on the values associated with the given set of keys. Check out
+   * {@link ComputeRequestBuilder} for details on the available transformations.
+   * @see ComputeRequestBuilder
    */
   ComputeRequestBuilder<K> compute();
 

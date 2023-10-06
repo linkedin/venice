@@ -212,7 +212,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         requestContext.numberOfKeysSentInRetryRequest = pendingKeysFuture.size();
         LOGGER.debug("Retrying {} incomplete keys ", pendingKeysFuture.size());
         // Prepare the retry context and track excluded routes on a per partition basis
-        BatchGetRequestContext<K, V> retryContext = new BatchGetRequestContext<>();
+        BatchGetRequestContext<K, V> retryContext =
+            new BatchGetRequestContext<>(requestContext.isPartialSuccessAllowed);
         retryContext.setRoutesForPartitionMapping(requestContext.getRoutesForPartitionMapping());
         super.streamingBatchGet(
             retryContext,

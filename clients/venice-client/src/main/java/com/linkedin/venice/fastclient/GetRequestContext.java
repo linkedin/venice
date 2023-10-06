@@ -15,14 +15,14 @@ public class GetRequestContext extends RequestContext {
   // maybe add more strict tests around these 2 flags will be helpful.
   boolean retryWin;
 
-  boolean isTriggeredByBatchGet;
+  final boolean isTriggeredByBatchGet;
 
-  GetRequestContext() {
+  GetRequestContext(boolean isTriggeredByBatchGet) {
     partitionId = -1;
     requestUri = null;
     longTailRetryRequestTriggered = false;
     errorRetryRequestTriggered = false;
     retryWin = false;
-    isTriggeredByBatchGet = false;
+    this.isTriggeredByBatchGet = isTriggeredByBatchGet;
   }
 }

@@ -38,29 +38,25 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
 
   @Override
   public CompletableFuture<V> get(K key) throws VeniceClientException {
-    return get(new GetRequestContext(), key);
+    return get(new GetRequestContext(false), key);
   }
 
   protected abstract CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException;
 
   @Override
   public final CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    BatchGetRequestContext<K, V> batchGetRequestContext = new BatchGetRequestContext<>();
     // Since user has invoked batchGet directly, then we do not want to allow partial success
-    batchGetRequestContext.isPartialSuccessAllowed = false;
-    return batchGet(batchGetRequestContext, keys);
+    return batchGet(new BatchGetRequestContext<>(false), keys);
   }
 
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
-    // Since user has invoked batchGet directly, then we do not want to allow partial success
-    requestContext.isPartialSuccessAllowed = false;
     return getClientConfig().useStreamingBatchGetAsDefault()
         ? batchGetUsingStreamingBatchGet(requestContext, keys)
         : batchGetUsingSingleGet(keys);
   }
 
-  protected CompletableFuture<Map<K, V>> batchGetUsingStreamingBatchGet(
+  private CompletableFuture<Map<K, V>> batchGetUsingStreamingBatchGet(
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) throws VeniceClientException {
     CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
@@ -99,11 +95,9 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
     CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
     Map<K, CompletableFuture<V>> valueFutures = new HashMap<>();
     keys.forEach(k -> {
-      GetRequestContext getRequestContext = new GetRequestContext();
-      getRequestContext.isTriggeredByBatchGet = true;
-      valueFutures.put(k, (get(getRequestContext, k)));
+      valueFutures.put(k, (get(new GetRequestContext(true), k)));
     });
-    CompletableFuture.allOf(valueFutures.values().toArray(new CompletableFuture[keyCnt]))
+    CompletableFuture.allOf(valueFutures.values().toArray(new CompletableFuture[0]))
         .whenComplete(((aVoid, throwable) -> {
           if (throwable != null) {
             resultFuture.completeExceptionally(throwable);
@@ -125,14 +119,12 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
 
   @Override
   public final void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
-    BatchGetRequestContext<K, V> requestContext = new BatchGetRequestContext<>();
-    streamingBatchGet(requestContext, keys, callback);
+    streamingBatchGet(new BatchGetRequestContext<>(true), keys, callback);
   }
 
   @Override
   public final CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
-    BatchGetRequestContext<K, V> requestContext = new BatchGetRequestContext<>();
-    return streamingBatchGet(requestContext, keys);
+    return streamingBatchGet(new BatchGetRequestContext<>(true), keys);
   }
 
   protected final CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
@@ -143,7 +135,7 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
     Queue<K> nonExistingKeys = new ConcurrentLinkedQueue<>();
     VeniceConcurrentHashMap<K, V> valueMap = new VeniceConcurrentHashMap<>();
     CompletableFuture<VeniceResponseMap<K, V>> streamingResponseFuture = new VeniceResponseCompletableFuture<>(
-        () -> new VeniceResponseMapImpl<K, V>(valueMap, nonExistingKeys, false),
+        () -> new VeniceResponseMapImpl<>(valueMap, nonExistingKeys, false),
         keySize,
         Optional.empty());
     streamingBatchGet(requestContext, keys, new StreamingCallback<K, V>() {
@@ -182,10 +174,8 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
-    ComputeRequestContext<K, V> requestContext = new ComputeRequestContext<>();
-    if (!computeRequestWrapper.isRequestOriginallyStreaming()) {
-      requestContext.isPartialSuccessAllowed = false;
-    }
+    ComputeRequestContext<K, V> requestContext =
+        new ComputeRequestContext<>(computeRequestWrapper.isRequestOriginallyStreaming());
     compute(requestContext, computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
   }
 

@@ -170,16 +170,16 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
             clientStats.recordRetryRequestSuccessKeyCount(1);
           }
         }
-      } else if (requestContext instanceof BatchGetRequestContext) {
-        // BatchGetRequestContext is also the superclass for ComputeRequestContext
-        BatchGetRequestContext<K, V> batchGetRequestContext = (BatchGetRequestContext<K, V>) requestContext;
-        if (batchGetRequestContext.longTailRetryTriggered) {
+      } else if (requestContext instanceof MultiKeyRequestContext) {
+        // MultiKeyRequestContext is the superclass for ComputeRequestContext and BatchGetRequestContext
+        MultiKeyRequestContext<K, V> multiKeyRequestContext = (MultiKeyRequestContext<K, V>) requestContext;
+        if (multiKeyRequestContext.longTailRetryTriggered) {
           clientStats.recordLongTailRetryRequest();
-          clientStats.recordRetryRequestKeyCount(batchGetRequestContext.numberOfKeysSentInRetryRequest);
+          clientStats.recordRetryRequestKeyCount(multiKeyRequestContext.numberOfKeysSentInRetryRequest);
           if (!exceptionReceived) {
             clientStats
-                .recordRetryRequestSuccessKeyCount(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get());
-            if (batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0) {
+                .recordRetryRequestSuccessKeyCount(multiKeyRequestContext.numberOfKeysCompletedInRetryRequest.get());
+            if (multiKeyRequestContext.numberOfKeysCompletedInRetryRequest.get() > 0) {
               clientStats.recordRetryRequestWin();
             }
           }
@@ -250,12 +250,12 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     private final StreamingCallback<K, V> inner;
     // This future is completed with a number of keys whose values were successfully received.
     private final CompletableFuture<Void> statFuture;
-    private final BatchGetRequestContext requestContext;
+    private final MultiKeyRequestContext requestContext;
 
     StatTrackingStreamingCallBack(
         StreamingCallback<K, V> callback,
         CompletableFuture<Void> statFuture,
-        BatchGetRequestContext requestContext) {
+        MultiKeyRequestContext requestContext) {
       this.inner = callback;
       this.statFuture = statFuture;
       this.requestContext = requestContext;

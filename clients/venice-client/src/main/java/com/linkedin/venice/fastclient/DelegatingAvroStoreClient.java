@@ -29,38 +29,41 @@ import org.apache.avro.Schema;
  *
  * <br><br>
  * Layer -1:<br>
- * {@link AvroGenericStoreClient} => interface: Borrowed from thin-client
+ * {@link AvroGenericStoreClient}, {@link AvroGenericReadComputeStoreClient} => interfaces: Borrowed from thin-client
  *
  * <br><br>
  * Layer 0:<br>
- * {@link InternalAvroStoreClient} implements {@link AvroGenericStoreClient} => Only 1 abstract class implementing above interface:
- *                            Both thin-client and fast-client uses this as the Layer 0. All the internal
- *                            implementations of different tiers should extend this class.
+ * {@link InternalAvroStoreClient} implements {@link AvroGenericReadComputeStoreClient} => The abstract class
+ * implementing above interfaces for fast-client. All other internal implementations of different tiers should extend
+ * this class.
  *
  * <br><br>
  * Layer 1:<br>
- * {@link DispatchingAvroGenericStoreClient} extends {@link InternalAvroStoreClient} => in charge of routing and serialization/de-serialization
+ * {@link DispatchingAvroGenericStoreClient} extends {@link InternalAvroStoreClient} => in charge of routing and
+ * serialization/de-serialization
  *
  * <br><br>
  * Layer 2:<br>
- * {@link RetriableAvroGenericStoreClient} extends {@link DelegatingAvroStoreClient} => Adds optional retry ability on top of DispatchingAvroGenericStoreClient
+ * {@link RetriableAvroGenericStoreClient} extends {@link DelegatingAvroStoreClient} => Adds optional retry ability on
+ * top of DispatchingAvroGenericStoreClient
  *
  * <br><br>
  * Layer 3:<br>
- * {@link StatsAvroGenericStoreClient} extends {@link DelegatingAvroStoreClient} => Adds stats on top of Layer 2 or Layer 1. There is no option
- *                            to disable it, but if needed, can be disabled.
+ * {@link StatsAvroGenericStoreClient} extends {@link DelegatingAvroStoreClient} => Adds stats on top of Layer 2 or
+ * Layer 1. There is no option to disable it, but if needed, can be disabled.
  *
  * <br><br>
  * Layer 4:<br>
- * {@link DualReadAvroGenericStoreClient} extends {@link DelegatingAvroStoreClient} => Adds an extra read via thin client on top of Layer 3.
+ * {@link DualReadAvroGenericStoreClient} extends {@link DelegatingAvroStoreClient} => Adds an extra read via thin
+ * client on top of Layer 3.
  *
  * <br><br>
  * utils class:<br>
- * {@link DelegatingAvroStoreClient} extends {@link InternalAvroStoreClient} => Delegator pattern to not override all the
- *                           functions in every superclass in a duplicate manner.
+ * {@link DelegatingAvroStoreClient} extends {@link InternalAvroStoreClient} => Delegator pattern to not override all
+ * the functions in every superclass in a duplicate manner.
  *
  * <br><br>
- * Interactions between these class for some flows: https://swimlanes.io/u/D3E9Q50pb
+ * Interactions between these class for some flows: https://swimlanes.io/u/iHTCBvlf0
  */
 
 public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, V> {

@@ -73,7 +73,7 @@ public class DualReadAvroGenericStoreClientTest {
     InternalAvroStoreClient<String, String> fastClient = mock(DispatchingAvroGenericStoreClient.class);
     AvroGenericStoreClient<String, String> thinClient = mock(AvroGenericStoreClient.class);
     ClientConfig clientConfig = mock(ClientConfig.class);
-    doReturn(dualClientStats).when(clientConfig).getStats(RequestType.MULTI_GET);
+    doReturn(dualClientStats).when(clientConfig).getStats(RequestType.MULTI_GET_STREAMING);
     doReturn(dualClientStats).when(clientConfig).getStats(RequestType.SINGLE_GET);
     doReturn(useStreamingBatchGetAsDefault).when(clientConfig).useStreamingBatchGetAsDefault();
     doReturn(thinClient).when(clientConfig).getGenericThinClient();
@@ -83,9 +83,8 @@ public class DualReadAvroGenericStoreClientTest {
       String fcRequestFailException = "Mocked VeniceClientException for fast-client while sending out request";
       if (batchGet) {
         if (useStreamingBatchGetAsDefault) {
-          doAnswer(invocation -> {
-            throw new VeniceClientException(fcRequestFailException);
-          }).when(fastClient).streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
+          doThrow(new VeniceClientException(fcRequestFailException)).when(fastClient)
+              .streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
         } else {
           doThrow(new VeniceClientException(fcRequestFailException)).when(fastClient)
               .get(any(GetRequestContext.class), any());

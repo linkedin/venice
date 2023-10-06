@@ -219,7 +219,7 @@ public class RetriableAvroGenericStoreClientTest {
       boolean longTailRetry,
       boolean retryWin,
       boolean keyNotFound) throws ExecutionException, InterruptedException {
-    getRequestContext = new GetRequestContext();
+    getRequestContext = new GetRequestContext(false);
     try {
       String value = (String) statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       if (bothOriginalAndRetryFails) {
@@ -244,7 +244,7 @@ public class RetriableAvroGenericStoreClientTest {
       boolean longTailRetry,
       boolean retryWin,
       boolean keyNotFound) throws ExecutionException, InterruptedException {
-    batchGetRequestContext = new BatchGetRequestContext<>();
+    batchGetRequestContext = new BatchGetRequestContext<>(false);
     try {
       Map<String, String> value =
           (Map<String, String>) statsAvroGenericStoreClient.batchGet(batchGetRequestContext, BATCH_GET_KEYS).get();
@@ -272,7 +272,7 @@ public class RetriableAvroGenericStoreClientTest {
       boolean longTailRetry,
       boolean retryWin,
       boolean keyNotFound) throws ExecutionException, InterruptedException {
-    batchGetRequestContext = new BatchGetRequestContext<>();
+    batchGetRequestContext = new BatchGetRequestContext<>(true);
     try {
       Map<String, String> value =
           (Map<String, String>) statsAvroGenericStoreClient.streamingBatchGet(batchGetRequestContext, BATCH_GET_KEYS)

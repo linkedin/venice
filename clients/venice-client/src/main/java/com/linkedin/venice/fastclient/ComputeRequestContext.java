@@ -6,5 +6,8 @@ package com.linkedin.venice.fastclient;
  * @param <K> Key type
  * @param <V> Value type
  */
-public class ComputeRequestContext<K, V> extends BatchGetRequestContext<K, V> {
+public class ComputeRequestContext<K, V> extends MultiKeyRequestContext<K, V> {
+  public ComputeRequestContext(boolean isPartialSuccessAllowed) {
+    super(isPartialSuccessAllowed);
+  }
 }

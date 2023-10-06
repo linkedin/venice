@@ -39,7 +39,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     super(delegate, config);
     this.thinClient = thinClient;
     this.clientStatsForSingleGet = config.getStats(RequestType.SINGLE_GET);
-    this.clientStatsForMultiGet = config.getStats(RequestType.MULTI_GET);
+    this.clientStatsForMultiGet = config.getStats(RequestType.MULTI_GET_STREAMING);
   }
 
   private static <T> CompletableFuture<T> sendRequest(
@@ -132,7 +132,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
    *  Needs to be investigated */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
-    if (requestContext != null && requestContext.isTriggeredByBatchGet) {
+    if (requestContext.isTriggeredByBatchGet) {
       return super.get(requestContext, key);
     }
     return dualExecute(() -> super.get(requestContext, key), () -> thinClient.get(key), clientStatsForSingleGet);

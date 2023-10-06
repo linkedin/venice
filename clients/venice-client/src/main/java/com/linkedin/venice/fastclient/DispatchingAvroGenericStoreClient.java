@@ -134,7 +134,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return sb;
   }
 
-  private String composeURIForBatchGetRequest(BatchGetRequestContext<K, V> requestContext) {
+  private String composeURIForBatchGetRequest(MultiKeyRequestContext<K, V> requestContext) {
     int currentVersion = getCurrentVersion();
     String resourceName = getResourceName(currentVersion);
 
@@ -144,7 +144,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return sb.toString();
   }
 
-  private String composeURIForComputeRequest(BatchGetRequestContext<K, V> requestContext) {
+  private String composeURIForComputeRequest(MultiKeyRequestContext<K, V> requestContext) {
     int currentVersion = getCurrentVersion();
     String resourceName = getResourceName(currentVersion);
 
@@ -379,7 +379,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
    * @param callback
    */
   private void streamingBatchGetInternal(
-      BatchGetRequestContext<K, V> requestContext,
+      MultiKeyRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) {
     int keyCnt = keys.size();
@@ -459,7 +459,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
    * is completed with {@link TransportClientResponseForRoute} for this route.
    */
   private void batchGetTransportRequestCompletionHandler(
-      BatchGetRequestContext<K, V> requestContext,
+      MultiKeyRequestContext<K, V> requestContext,
       TransportClientResponseForRoute transportClientResponse,
       Throwable exception,
       StreamingCallback<K, V> callback) {
@@ -483,7 +483,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         getLatencyInNS(nanoTsBeforeRequestDeserialization));
     RecordDeserializer<V> dataRecordDeserializer = getDataRecordDeserializer(transportClientResponse.getSchemaId());
 
-    List<BatchGetRequestContext.KeyInfo<K>> keyInfos =
+    List<MultiKeyRequestContext.KeyInfo<K>> keyInfos =
         requestContext.keysForRoutes(transportClientResponse.getRouteId());
     Set<Integer> keysSeen = new HashSet<>();
 
@@ -505,7 +505,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.recordRecordDeserializationTime(
           transportClientResponse.getRouteId(),
           getLatencyInNS(nanoTsBeforeDeserialization));
-      BatchGetRequestContext.KeyInfo<K> k = keyInfos.get(r.keyIndex);
+      MultiKeyRequestContext.KeyInfo<K> k = keyInfos.get(r.keyIndex);
       keysSeen.add(r.keyIndex);
       callback.onRecordReceived(k.getKey(), deserializedValue);
     }
@@ -617,13 +617,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     for (String route: requestContext.getRoutes()) {
       String url = route + uriForComputeRequest;
       long nanoTsBeforeSerialization = System.nanoTime();
-      List<BatchGetRequestContext.KeyInfo<K>> keysForRoutes = requestContext.keysForRoutes(route);
+      List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes = requestContext.keysForRoutes(route);
       byte[] serializedRequest = serializeComputeRequest(computeRequest, keysForRoutes);
 
       ComputeRecordStreamDecoder decoder = getComputeDecoderForRoute(
           computeRequest,
           keysForRoutes,
-          route,
           resultSchema,
           callback,
           routeToResponseFutures.get(route));
@@ -648,13 +647,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   private ComputeRecordStreamDecoder getComputeDecoderForRoute(
       ComputeRequestWrapper computeRequest,
-      List<BatchGetRequestContext.KeyInfo<K>> keysForRoutes,
-      String route,
+      List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes,
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> allRecordsCallback,
       CompletableFuture<Void> routeFuture) {
     List<K> keyList = new ArrayList<>(keysForRoutes.size());
-    for (BatchGetRequestContext.KeyInfo keyInfo: keysForRoutes) {
+    for (MultiKeyRequestContext.KeyInfo keyInfo: keysForRoutes) {
       keyList.add((K) keyInfo.getKey());
     }
 
@@ -744,10 +742,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   private byte[] serializeComputeRequest(
       ComputeRequestWrapper computeRequest,
-      List<BatchGetRequestContext.KeyInfo<K>> keyList) {
+      List<MultiKeyRequestContext.KeyInfo<K>> keyList) {
     List<ComputeRouterRequestKeyV1> routerRequestKeys = new ArrayList<>(keyList.size());
     for (int i = 0; i < keyList.size(); i++) {
-      BatchGetRequestContext.KeyInfo<K> keyInfo = keyList.get(i);
+      MultiKeyRequestContext.KeyInfo<K> keyInfo = keyList.get(i);
       ComputeRouterRequestKeyV1 routerRequestKey = new ComputeRouterRequestKeyV1();
       byte[] keyBytes = keyInfo.getSerializedKey();
       routerRequestKey.keyBytes = ByteBuffer.wrap(keyBytes);
@@ -827,10 +825,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   /* Short utility methods */
 
-  private byte[] serializeMultiGetRequest(List<BatchGetRequestContext.KeyInfo<K>> keyList) {
+  private byte[] serializeMultiGetRequest(List<MultiKeyRequestContext.KeyInfo<K>> keyList) {
     List<MultiGetRouterRequestKeyV1> routerRequestKeys = new ArrayList<>(keyList.size());
     for (int i = 0; i < keyList.size(); i++) {
-      BatchGetRequestContext.KeyInfo<K> keyInfo = keyList.get(i);
+      MultiKeyRequestContext.KeyInfo<K> keyInfo = keyList.get(i);
       MultiGetRouterRequestKeyV1 routerRequestKey = new MultiGetRouterRequestKeyV1();
       byte[] keyBytes = keyInfo.getSerializedKey();
       ByteBuffer keyByteBuffer = ByteBuffer.wrap(keyBytes);
