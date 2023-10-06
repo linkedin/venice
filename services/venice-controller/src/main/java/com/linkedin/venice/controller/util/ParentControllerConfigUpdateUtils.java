@@ -37,24 +37,21 @@ public class ParentControllerConfigUpdateUtils {
         partialUpdateConfigChanged = true;
         setStore.writeComputationEnabled = partialUpdateRequest.get();
         if (partialUpdateRequest.get()) {
-          // Dry-run generating Write Compute schemas before sending admin messages to enable Write Compute because
-          // Write
-          // Compute schema generation may fail due to some reasons. If that happens, abort the store update process.
+          // Dry-run generating update schemas before sending admin messages to enable partial update because
+          // update schema generation may fail due to some reasons. If that happens, abort the store update process.
           addUpdateSchemaForStore(parentHelixAdmin, clusterName, storeName, true);
         }
       }
+      // Explicit request to change partial update config has the highest priority.
+      return partialUpdateConfigChanged;
     }
     /**
-     * Explicit request to change partial update config has the highest priority.
-     */
-    if (partialUpdateConfigChanged) {
-      return true;
-    }
-    /**
-     * If a store: (1) Is being converted to hybrid (2) Is not partial update enabled for now. (3) Does not change
-     * partial update config in this request.
+     * If a store:
+     *     (1) Is being converted to hybrid;
+     *     (2) Is not partial update enabled for now;
+     *     (3) Does not request to change partial update config;
      * It means partial update is not enabled, and there is no explict intention to change it. In this case, we will
-     * look up cluster config and based on the replication policy to enable partial update implicitly.
+     * check cluster default config based on the replication policy to determine whether to try to enable partial update.
      */
     final boolean shouldEnablePartialUpdateBasedOnClusterConfig =
         storeBeingConvertedToHybrid && (setStore.activeActiveReplicationEnabled
@@ -74,6 +71,49 @@ public class ParentControllerConfigUpdateUtils {
       }
     }
     return partialUpdateConfigChanged;
+  }
+
+  public static boolean checkAndMaybeApplyChunkingConfigChange(
+      VeniceParentHelixAdmin parentHelixAdmin,
+      String clusterName,
+      String storeName,
+      Optional<Boolean> chunkingRequest,
+      UpdateStore setStore) {
+    Store currentStore = parentHelixAdmin.getVeniceHelixAdmin().getStore(clusterName, storeName);
+    boolean chunkingConfigChanged = false;
+    if (chunkingRequest.isPresent()) {
+      if (chunkingRequest.get() != currentStore.isChunkingEnabled()) {
+        chunkingConfigChanged = true;
+        setStore.chunkingEnabled = chunkingRequest.get();
+      }
+      // Explicit request to change chunking config has the highest priority.
+      return chunkingConfigChanged;
+    }
+    // If partial update is just enabled, we will by default enable chunking, if no explict request to update chunking
+    // config.
+    return !currentStore.isWriteComputationEnabled() && setStore.writeComputationEnabled;
+  }
+
+  public static boolean checkAndMaybeApplyRmdChunkingConfigChange(
+      VeniceParentHelixAdmin parentHelixAdmin,
+      String clusterName,
+      String storeName,
+      Optional<Boolean> rmdChunkingRequest,
+      UpdateStore setStore) {
+    Store currentStore = parentHelixAdmin.getVeniceHelixAdmin().getStore(clusterName, storeName);
+    boolean rmdChunkingConfigChanged = false;
+    if (rmdChunkingRequest.isPresent()) {
+      if (rmdChunkingRequest.get() != currentStore.isChunkingEnabled()) {
+        rmdChunkingConfigChanged = true;
+        setStore.rmdChunkingEnabled = rmdChunkingRequest.get();
+      }
+      // Explicit request to change RMD chunking config has the highest priority.
+      return rmdChunkingConfigChanged;
+    }
+    // If partial update is just enabled and A/A is enabled, we will by default enable RMD chunking, if no explict
+    // request to update RMD chunking config.
+    return !currentStore.isWriteComputationEnabled() && setStore.writeComputationEnabled
+        && setStore.activeActiveReplicationEnabled;
   }
 
   public static void addUpdateSchemaForStore(
