@@ -17,6 +17,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class is a utility class for Parent Controller store update logics.
+ * The method here aims to take in current status and request params to determine if certain feature is updated / should
+ * be updated based on some customized logics.
+ */
 public class ParentControllerConfigUpdateUtils {
   public static final Logger LOGGER = LogManager.getLogger(ParentControllerConfigUpdateUtils.class);
   public static final WriteComputeSchemaConverter updateSchemaConverter = WriteComputeSchemaConverter.getInstance();
@@ -129,7 +134,7 @@ public class ParentControllerConfigUpdateUtils {
         Schema updateSchema = updateSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
         updateSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), updateSchema));
       } catch (Exception e) {
-        // Allow failure in write-compute schema generation in all schema except the latest value schema
+        // Allow failure in update schema generation in all schema except the latest value schema
         if (valueSchemaEntry.getId() == maxId) {
           throw new VeniceException(
               "For store " + storeName + " cannot generate update schema for value schema ID :"
