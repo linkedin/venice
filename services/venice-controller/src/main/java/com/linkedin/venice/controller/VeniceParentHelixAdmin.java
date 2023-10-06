@@ -2491,7 +2491,7 @@ public class VeniceParentHelixAdmin implements Admin {
           this,
           clusterName,
           storeName,
-          params.getWriteComputationEnabled(),
+          writeComputationEnabled,
           setStore,
           storeBeingConvertedToHybrid);
       if (partialUpdateConfigUpdated) {
@@ -2501,27 +2501,24 @@ public class VeniceParentHelixAdmin implements Admin {
 
       // Update Chunking config.
       boolean chunkingConfigUpdated = ParentControllerConfigUpdateUtils
-          .checkAndMaybeApplyChunkingConfigChange(this, clusterName, storeName, params.getChunkingEnabled(), setStore);
+          .checkAndMaybeApplyChunkingConfigChange(this, clusterName, storeName, chunkingEnabled, setStore);
       if (chunkingConfigUpdated) {
         updatedConfigsList.add(CHUNKING_ENABLED);
       }
 
       // Update RMD Chunking config.
-      boolean rmdChunkingConfigUpdated = ParentControllerConfigUpdateUtils.checkAndMaybeApplyRmdChunkingConfigChange(
-          this,
-          clusterName,
-          storeName,
-          params.getRmdChunkingEnabled(),
-          setStore);
+      boolean rmdChunkingConfigUpdated = ParentControllerConfigUpdateUtils
+          .checkAndMaybeApplyRmdChunkingConfigChange(this, clusterName, storeName, rmdChunkingEnabled, setStore);
       if (rmdChunkingConfigUpdated) {
         updatedConfigsList.add(RMD_CHUNKING_ENABLED);
       }
 
+      // Validate Amplification Factor config based on latest A/A and partial update status.
       if ((setStore.getActiveActiveReplicationEnabled() || setStore.getWriteComputationEnabled())
           && updatedPartitionerConfig.getAmplificationFactor() > 1) {
         throw new VeniceHttpException(
             HttpStatus.SC_BAD_REQUEST,
-            "Non-default amplification factor is not compatible with active-active replication and/or write compute.",
+            "Non-default amplification factor is not compatible with active-active replication and/or partial update.",
             ErrorType.BAD_REQUEST);
       }
 
