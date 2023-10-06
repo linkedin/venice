@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils.addUpdateSchemaForStore;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACTIVE_ACTIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
@@ -123,6 +124,7 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -2367,11 +2369,6 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.clientDecompressionEnabled =
           clientDecompressionEnabled.map(addToUpdatedConfigList(updatedConfigSet, CLIENT_DECOMPRESSION_ENABLED))
               .orElseGet(currStore::getClientDecompressionEnabled);
-      setStore.chunkingEnabled = chunkingEnabled.map(addToUpdatedConfigList(updatedConfigSet, CHUNKING_ENABLED))
-          .orElseGet(currStore::isChunkingEnabled);
-      setStore.rmdChunkingEnabled =
-          rmdChunkingEnabled.map(addToUpdatedConfigList(updatedConfigSet, RMD_CHUNKING_ENABLED))
-              .orElseGet(currStore::isRmdChunkingEnabled);
       setStore.batchGetLimit = batchGetLimit.map(addToUpdatedConfigList(updatedConfigSet, BATCH_GET_LIMIT))
           .orElseGet(currStore::getBatchGetLimit);
       setStore.numVersionsToPreserve =
@@ -2379,9 +2376,11 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::getNumVersionsToPreserve);
       setStore.isMigrating = storeMigration.map(addToUpdatedConfigList(updatedConfigSet, STORE_MIGRATION))
           .orElseGet(currStore::isMigrating);
+      /*
       setStore.writeComputationEnabled =
           writeComputationEnabled.map(addToUpdatedConfigList(updatedConfigSet, WRITE_COMPUTATION_ENABLED))
               .orElseGet(currStore::isWriteComputationEnabled);
+       */
       setStore.replicationMetadataVersionID = replicationMetadataVersionID
           .map(addToUpdatedConfigList(updatedConfigSet, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
           .orElse(currStore.getRmdVersion());
@@ -2494,47 +2493,38 @@ public class VeniceParentHelixAdmin implements Admin {
             ErrorType.BAD_REQUEST);
       }
 
-      // When this config is true, it means partial update is enabled by request.
-      boolean partialUpdateJustEnabled =
-          writeComputationEnabled.orElse(false) && !currStore.isWriteComputationEnabled();
-      if (partialUpdateJustEnabled) {
-        // Dry-run generating Write Compute schemas before sending admin messages to enable Write Compute because Write
-        // Compute schema generation may fail due to some reasons. If that happens, abort the store update process.
-        addWriteComputeSchemaForStore(clusterName, storeName, true);
-      } else {
-        /**
-         * If a store: (1) Is being converted to hybrid (2) Is not partial update enabled for now. (3) Does not change
-         * partial update config in this request.
-         * It means partial update is not enabled, and there is no explict intention to change it. In this case, we will
-         * look up cluster config and based on the replication policy to enable partial update implicitly.
-         */
-        final boolean shouldEnablePartialUpdateBasedOnClusterConfig =
-            storeBeingConvertedToHybrid && (setStore.activeActiveReplicationEnabled
-                ? clusterConfig.isEnablePartialUpdateForHybridActiveActiveUserStores()
-                : clusterConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores());
-        if (!writeComputationEnabled.isPresent() && !currStore.isWriteComputationEnabled()
-            && shouldEnablePartialUpdateBasedOnClusterConfig) {
-          try {
-            addWriteComputeSchemaForStore(clusterName, storeName, true);
-            partialUpdateJustEnabled = true;
-            setStore.writeComputationEnabled = true;
-            updatedConfigSet.add(WRITE_COMPUTATION_ENABLED);
-            LOGGER.info("Controller will enable partial update based on cluster config for store: " + storeName);
-          } catch (Exception e) {
-            LOGGER.warn(
-                "Caught exception when trying to enable partial update base on cluster config, will not enable partial update for store: "
-                    + storeName,
-                e);
-          }
-        }
+      boolean partialUpdateConfigUpdated = ParentControllerConfigUpdateUtils.checkAndMaybeApplyPartialUpdateConfig(
+          this,
+          clusterName,
+          storeName,
+          params.getWriteComputationEnabled(),
+          setStore,
+          storeBeingConvertedToHybrid);
+      if (partialUpdateConfigUpdated) {
+        updatedConfigSet.add(WRITE_COMPUTATION_ENABLED);
       }
-      // Make sure chunking config is also included when turning on partial update.
+      boolean partialUpdateJustEnabled = setStore.writeComputationEnabled && !currStore.isWriteComputationEnabled();
+
+      // Chunking config change.
+      setStore.chunkingEnabled = chunkingEnabled.map(addToUpdatedConfigList(updatedConfigSet, CHUNKING_ENABLED))
+          .orElseGet(currStore::isChunkingEnabled);
+      setStore.rmdChunkingEnabled =
+          rmdChunkingEnabled.map(addToUpdatedConfigList(updatedConfigSet, RMD_CHUNKING_ENABLED))
+              .orElseGet(currStore::isRmdChunkingEnabled);
+      /**
+       * By default turn on chunking when turning on partial update, while explicit config change will always have
+       * higher priority.
+       */
       if (partialUpdateJustEnabled) {
-        setStore.chunkingEnabled = true;
-        updatedConfigSet.add(CHUNKING_ENABLED);
+        if (!chunkingEnabled.isPresent()) {
+          setStore.chunkingEnabled = true;
+          updatedConfigSet.add(CHUNKING_ENABLED);
+        }
         if (setStore.activeActiveReplicationEnabled) {
-          setStore.rmdChunkingEnabled = true;
-          updatedConfigSet.add(RMD_CHUNKING_ENABLED);
+          if (!rmdChunkingEnabled.isPresent()) {
+            setStore.rmdChunkingEnabled = true;
+            updatedConfigSet.add(RMD_CHUNKING_ENABLED);
+          }
         }
       }
 
@@ -2589,8 +2579,8 @@ public class VeniceParentHelixAdmin implements Admin {
         addSupersetSchemaForStore(clusterName, storeName, currStore.isActiveActiveReplicationEnabled());
       }
       if (partialUpdateJustEnabled) {
-        LOGGER.info("Enabling write compute for the first time on store {} in cluster {}", storeName, clusterName);
-        addWriteComputeSchemaForStore(clusterName, storeName, false);
+        LOGGER.info("Enabling partial update for the first time on store: {} in cluster: {}", storeName, clusterName);
+        addUpdateSchemaForStore(this, clusterName, storeName, false);
       }
 
       /**
@@ -2638,36 +2628,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
     if (activeActiveReplicationEnabled) {
       updateReplicationMetadataSchema(clusterName, storeName, supersetSchema, supersetSchemaID);
-    }
-  }
-
-  private void addWriteComputeSchemaForStore(String clusterName, String storeName, boolean dryRun) {
-    Collection<SchemaEntry> valueSchemaEntries = getValueSchemas(clusterName, storeName);
-
-    List<SchemaEntry> writeComputeSchemaEntries = new ArrayList<>(valueSchemaEntries.size());
-    int maxId = valueSchemaEntries.stream().map(SchemaEntry::getId).max(Comparator.naturalOrder()).get();
-
-    for (SchemaEntry valueSchemaEntry: valueSchemaEntries) {
-      try {
-        Schema writeComputeSchema =
-            writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
-        writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
-      } catch (Exception e) {
-        // Allow failure in write-compute schema generation in all schema except the latest value schema
-        if (valueSchemaEntry.getId() == maxId) {
-          throw new VeniceException(
-              "For store " + storeName + " cannot generate update schema for value schema ID :"
-                  + valueSchemaEntry.getId() + ", top level field probably missing defaults.",
-              e);
-        }
-      }
-    }
-    // Start adding write compute schemas only after all write compute schema generation is successful.
-    if (dryRun) {
-      return;
-    }
-    for (SchemaEntry writeComputeSchemaEntry: writeComputeSchemaEntries) {
-      addDerivedSchema(clusterName, storeName, writeComputeSchemaEntry.getId(), writeComputeSchemaEntry.getSchemaStr());
     }
   }
 
