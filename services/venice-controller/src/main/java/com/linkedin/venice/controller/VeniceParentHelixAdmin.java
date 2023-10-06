@@ -2377,11 +2377,6 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::getNumVersionsToPreserve);
       setStore.isMigrating = storeMigration.map(addToUpdatedConfigList(updatedConfigsList, STORE_MIGRATION))
           .orElseGet(currStore::isMigrating);
-      /*
-      setStore.writeComputationEnabled =
-          writeComputationEnabled.map(addToUpdatedConfigList(updatedConfigsList, WRITE_COMPUTATION_ENABLED))
-              .orElseGet(currStore::isWriteComputationEnabled);
-       */
       setStore.replicationMetadataVersionID = replicationMetadataVersionID
           .map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
           .orElse(currStore.getRmdVersion());
@@ -2498,7 +2493,6 @@ public class VeniceParentHelixAdmin implements Admin {
         updatedConfigsList.add(WRITE_COMPUTATION_ENABLED);
       }
       boolean partialUpdateJustEnabled = setStore.writeComputationEnabled && !currStore.isWriteComputationEnabled();
-
       // Update Chunking config.
       boolean chunkingConfigUpdated = ParentControllerConfigUpdateUtils
           .checkAndMaybeApplyChunkingConfigChange(this, clusterName, storeName, chunkingEnabled, setStore);

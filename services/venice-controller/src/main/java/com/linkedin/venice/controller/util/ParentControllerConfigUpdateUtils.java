@@ -111,8 +111,12 @@ public class ParentControllerConfigUpdateUtils {
     }
     // If partial update is just enabled, we will by default enable chunking, if no explict request to update chunking
     // config.
-    return !currentStore.isWriteComputationEnabled() && setStore.writeComputationEnabled
-        && !currentStore.isChunkingEnabled();
+    if (!currentStore.isWriteComputationEnabled() && setStore.writeComputationEnabled
+        && !currentStore.isChunkingEnabled()) {
+      setStore.chunkingEnabled = true;
+      return true;
+    }
+    return false;
   }
 
   public static boolean checkAndMaybeApplyRmdChunkingConfigChange(
@@ -133,8 +137,12 @@ public class ParentControllerConfigUpdateUtils {
     }
     // If partial update is just enabled and A/A is enabled, we will by default enable RMD chunking, if no explict
     // request to update RMD chunking config.
-    return !currentStore.isWriteComputationEnabled() && setStore.writeComputationEnabled
-        && setStore.activeActiveReplicationEnabled && !currentStore.isRmdChunkingEnabled();
+    if (!currentStore.isWriteComputationEnabled() && setStore.writeComputationEnabled
+        && setStore.activeActiveReplicationEnabled && !currentStore.isRmdChunkingEnabled()) {
+      setStore.rmdChunkingEnabled = true;
+      return true;
+    }
+    return false;
   }
 
   public static void addUpdateSchemaForStore(
