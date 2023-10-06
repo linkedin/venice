@@ -50,17 +50,14 @@ public class ParentControllerConfigUpdateUtils {
     boolean partialUpdateConfigChanged = false;
     setStore.writeComputationEnabled = currentStore.isWriteComputationEnabled();
     if (partialUpdateRequest.isPresent()) {
-      if (partialUpdateRequest.get() != currentStore.isWriteComputationEnabled()) {
-        partialUpdateConfigChanged = true;
-        setStore.writeComputationEnabled = partialUpdateRequest.get();
-        if (partialUpdateRequest.get()) {
-          // Dry-run generating update schemas before sending admin messages to enable partial update because
-          // update schema generation may fail due to some reasons. If that happens, abort the store update process.
-          addUpdateSchemaForStore(parentHelixAdmin, clusterName, storeName, true);
-        }
+      setStore.writeComputationEnabled = partialUpdateRequest.get();
+      if (partialUpdateRequest.get() && !currentStore.isWriteComputationEnabled()) {
+        // Dry-run generating update schemas before sending admin messages to enable partial update because
+        // update schema generation may fail due to some reasons. If that happens, abort the store update process.
+        addUpdateSchemaForStore(parentHelixAdmin, clusterName, storeName, true);
       }
       // Explicit request to change partial update config has the highest priority.
-      return partialUpdateConfigChanged;
+      return true;
     }
     /**
      * If a store:
@@ -102,14 +99,10 @@ public class ParentControllerConfigUpdateUtils {
       UpdateStore setStore) {
     Store currentStore = parentHelixAdmin.getVeniceHelixAdmin().getStore(clusterName, storeName);
     setStore.chunkingEnabled = currentStore.isChunkingEnabled();
-    boolean chunkingConfigChanged = false;
     if (chunkingRequest.isPresent()) {
-      if (chunkingRequest.get() != currentStore.isChunkingEnabled()) {
-        chunkingConfigChanged = true;
-        setStore.chunkingEnabled = chunkingRequest.get();
-      }
+      setStore.chunkingEnabled = chunkingRequest.get();
       // Explicit request to change chunking config has the highest priority.
-      return chunkingConfigChanged;
+      return true;
     }
     // If partial update is just enabled, we will by default enable chunking, if no explict request to update chunking
     // config.
@@ -129,14 +122,10 @@ public class ParentControllerConfigUpdateUtils {
       UpdateStore setStore) {
     Store currentStore = parentHelixAdmin.getVeniceHelixAdmin().getStore(clusterName, storeName);
     setStore.rmdChunkingEnabled = currentStore.isRmdChunkingEnabled();
-    boolean rmdChunkingConfigChanged = false;
     if (rmdChunkingRequest.isPresent()) {
-      if (rmdChunkingRequest.get() != currentStore.isChunkingEnabled()) {
-        rmdChunkingConfigChanged = true;
-        setStore.rmdChunkingEnabled = rmdChunkingRequest.get();
-      }
+      setStore.rmdChunkingEnabled = rmdChunkingRequest.get();
       // Explicit request to change RMD chunking config has the highest priority.
-      return rmdChunkingConfigChanged;
+      return true;
     }
     // If partial update is just enabled and A/A is enabled, we will by default enable RMD chunking, if no explict
     // request to update RMD chunking config.

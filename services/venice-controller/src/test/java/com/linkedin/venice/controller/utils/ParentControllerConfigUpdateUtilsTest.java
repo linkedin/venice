@@ -51,10 +51,10 @@ public class ParentControllerConfigUpdateUtilsTest {
             partialUpdateRequest,
             setStore,
             true));
-    // Case 2: partial update config not updated.
+    // Case 2: partial update config updated.
     setStore = new UpdateStore();
     when(store.isWriteComputationEnabled()).thenReturn(true);
-    Assert.assertFalse(
+    Assert.assertTrue(
         ParentControllerConfigUpdateUtils.checkAndMaybeApplyPartialUpdateConfig(
             parentHelixAdmin,
             cluster,
@@ -73,10 +73,10 @@ public class ParentControllerConfigUpdateUtilsTest {
             partialUpdateRequest,
             setStore,
             true));
-    // Case 4: partial update config not updated.
+    // Case 4: partial update config updated.
     setStore = new UpdateStore();
     when(store.isWriteComputationEnabled()).thenReturn(false);
-    Assert.assertFalse(
+    Assert.assertTrue(
         ParentControllerConfigUpdateUtils.checkAndMaybeApplyPartialUpdateConfig(
             parentHelixAdmin,
             cluster,
@@ -154,11 +154,11 @@ public class ParentControllerConfigUpdateUtilsTest {
     Assert.assertTrue(
         ParentControllerConfigUpdateUtils
             .checkAndMaybeApplyChunkingConfigChange(parentHelixAdmin, cluster, storeName, chunkingRequest, setStore));
-    // Case 2: chunking config not updated.
+    // Case 2: chunking config updated.
     setStore = new UpdateStore();
     setStore.chunkingEnabled = false;
     when(store.isChunkingEnabled()).thenReturn(true);
-    Assert.assertFalse(
+    Assert.assertTrue(
         ParentControllerConfigUpdateUtils
             .checkAndMaybeApplyChunkingConfigChange(parentHelixAdmin, cluster, storeName, chunkingRequest, setStore));
     // Case 3: chunking config updated.
@@ -167,10 +167,10 @@ public class ParentControllerConfigUpdateUtilsTest {
     Assert.assertTrue(
         ParentControllerConfigUpdateUtils
             .checkAndMaybeApplyChunkingConfigChange(parentHelixAdmin, cluster, storeName, chunkingRequest, setStore));
-    // Case 4: chunking config not updated.
+    // Case 4: chunking config updated.
     setStore = new UpdateStore();
     when(store.isChunkingEnabled()).thenReturn(false);
-    Assert.assertFalse(
+    Assert.assertTrue(
         ParentControllerConfigUpdateUtils
             .checkAndMaybeApplyChunkingConfigChange(parentHelixAdmin, cluster, storeName, chunkingRequest, setStore));
     /**
@@ -219,11 +219,11 @@ public class ParentControllerConfigUpdateUtilsTest {
             storeName,
             chunkingRequest,
             setStore));
-    // Case 2: chunking config not updated.
+    // Case 2: chunking config updated.
     setStore = new UpdateStore();
     setStore.chunkingEnabled = false;
     when(store.isChunkingEnabled()).thenReturn(true);
-    Assert.assertFalse(
+    Assert.assertTrue(
         ParentControllerConfigUpdateUtils.checkAndMaybeApplyRmdChunkingConfigChange(
             parentHelixAdmin,
             cluster,
@@ -240,10 +240,10 @@ public class ParentControllerConfigUpdateUtilsTest {
             storeName,
             chunkingRequest,
             setStore));
-    // Case 4: chunking config not updated.
+    // Case 4: chunking config updated.
     setStore = new UpdateStore();
     when(store.isChunkingEnabled()).thenReturn(false);
-    Assert.assertFalse(
+    Assert.assertTrue(
         ParentControllerConfigUpdateUtils.checkAndMaybeApplyRmdChunkingConfigChange(
             parentHelixAdmin,
             cluster,
