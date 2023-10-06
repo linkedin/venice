@@ -25,7 +25,6 @@ import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import javax.annotation.concurrent.NotThreadSafe;
-import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.BlockBasedTableConfig;
@@ -923,21 +922,16 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         && writeOnly == partitionConfig.isWriteOnlyConfig();
   }
 
-  /**
-   * This method calculates the file size by adding all subdirectories size
-   * @return the partition db size in bytes
-   */
   @Override
   public long getPartitionSizeInBytes() {
-    File partitionDbDir = new File(fullPathForPartitionDB);
-    if (partitionDbDir.exists()) {
-      /**
-       * {@link FileUtils#sizeOf(File)} will throw {@link IllegalArgumentException} if the file/dir doesn't exist.
-       */
-      return FileUtils.sizeOf(partitionDbDir);
-    } else {
-      return 0;
+    readCloseRWLock.readLock().lock();
+    try {
+      makeSureRocksDBIsStillOpen();
+      return getRocksDBStatValue("rocksdb.live-sst-files-size");
+    } finally {
+      readCloseRWLock.readLock().unlock();
     }
+
   }
 
   protected Options getOptions() {
