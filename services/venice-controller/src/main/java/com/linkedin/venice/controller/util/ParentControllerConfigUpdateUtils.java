@@ -26,6 +26,17 @@ public class ParentControllerConfigUpdateUtils {
   public static final Logger LOGGER = LogManager.getLogger(ParentControllerConfigUpdateUtils.class);
   public static final WriteComputeSchemaConverter updateSchemaConverter = WriteComputeSchemaConverter.getInstance();
 
+  /**
+   * This method takes in current status and request and try to determine whether to change partial update config.
+   * The check logic is:
+   * Step (1): If there is explict request, we will respect the request and maybe update config if new request value is
+   * different from existing config value. In this step, if we are enabling partial update, we will also perform a dry
+   * run to validate schema. If validation fails, it will throw exception and fail the whole request.
+   * Step (2): If there is NO explict request and store is being converted into hybrid store, we will check the cluster
+   * config and store's latest A/A config to see whether we should by default enable partial update. If so, we will also
+   * perform a dry on to validate schema. If validation fails, it will swallow the exception and log warning message. It
+   * will not turn on partial update and will not fail the whole request.
+   */
   public static boolean checkAndMaybeApplyPartialUpdateConfig(
       VeniceParentHelixAdmin parentHelixAdmin,
       String clusterName,
@@ -64,6 +75,10 @@ public class ParentControllerConfigUpdateUtils {
             : clusterConfig.isEnablePartialUpdateForHybridNonActiveActiveUserStores());
     if (!currentStore.isWriteComputationEnabled() && shouldEnablePartialUpdateBasedOnClusterConfig) {
       LOGGER.info("Controller will try to enable partial update based on cluster config for store: " + storeName);
+      /**
+       * When trying to turn on partial update based on cluster config, if schema generation failed, we will not fail the
+       * whole request, but just do NOT turn on partial update, as other config update should still be respected.
+       */
       try {
         addUpdateSchemaForStore(parentHelixAdmin, clusterName, storeName, true);
         setStore.writeComputationEnabled = true;
