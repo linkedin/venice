@@ -48,6 +48,7 @@ public class ParentControllerConfigUpdateUtils {
     VeniceControllerClusterConfig clusterConfig =
         parentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
     boolean partialUpdateConfigChanged = false;
+    setStore.writeComputationEnabled = currentStore.isWriteComputationEnabled();
     if (partialUpdateRequest.isPresent()) {
       if (partialUpdateRequest.get() != currentStore.isWriteComputationEnabled()) {
         partialUpdateConfigChanged = true;
@@ -100,6 +101,7 @@ public class ParentControllerConfigUpdateUtils {
       Optional<Boolean> chunkingRequest,
       UpdateStore setStore) {
     Store currentStore = parentHelixAdmin.getVeniceHelixAdmin().getStore(clusterName, storeName);
+    setStore.chunkingEnabled = currentStore.isChunkingEnabled();
     boolean chunkingConfigChanged = false;
     if (chunkingRequest.isPresent()) {
       if (chunkingRequest.get() != currentStore.isChunkingEnabled()) {
@@ -126,6 +128,7 @@ public class ParentControllerConfigUpdateUtils {
       Optional<Boolean> rmdChunkingRequest,
       UpdateStore setStore) {
     Store currentStore = parentHelixAdmin.getVeniceHelixAdmin().getStore(clusterName, storeName);
+    setStore.rmdChunkingEnabled = currentStore.isRmdChunkingEnabled();
     boolean rmdChunkingConfigChanged = false;
     if (rmdChunkingRequest.isPresent()) {
       if (rmdChunkingRequest.get() != currentStore.isChunkingEnabled()) {

@@ -40,7 +40,6 @@ public class PartialUpdateClusterConfigTest {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
-    Utils.thisIsLocalhost();
     Properties serverProperties = new Properties();
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
