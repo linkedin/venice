@@ -109,7 +109,7 @@ class CachedPubSubMetadataGetter {
       Map<PubSubMetadataCacheKey, ValueAndExpiryTime<T>> metadataCache,
       Supplier<T> valueSupplier) {
     final long now = System.nanoTime();
-    final ValueAndExpiryTime<T> cachedValue =
+    ValueAndExpiryTime<T> cachedValue =
         metadataCache.computeIfAbsent(key, k -> new ValueAndExpiryTime<>(valueSupplier.get(), now + ttlNs));
 
     // For a given key in the given cache, we will only issue one async request at the same time.

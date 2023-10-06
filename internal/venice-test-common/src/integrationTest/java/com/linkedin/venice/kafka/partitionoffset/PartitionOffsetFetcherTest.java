@@ -13,7 +13,6 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistExceptio
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Optional;
 import java.util.Properties;
 import org.testng.Assert;
@@ -50,7 +49,7 @@ public class PartitionOffsetFetcherTest {
         pubSubConsumerAdapterFactory,
         new VeniceProperties(properties),
         pubSubBrokerWrapper.getAddress(),
-        Lazy.of(() -> pubSubAdminAdapterFactory.create(new VeniceProperties(properties), pubSubTopicRepository)),
+        pubSubAdminAdapterFactory.create(new VeniceProperties(properties), pubSubTopicRepository),
         Time.MS_PER_SECOND,
         Optional.empty())) {
       String topic = Utils.getUniqueString("topic") + "_v1";

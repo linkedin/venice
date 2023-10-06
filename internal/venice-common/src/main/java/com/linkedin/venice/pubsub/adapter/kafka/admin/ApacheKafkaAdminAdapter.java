@@ -78,7 +78,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
     this.internalKafkaAdminClient =
         Objects.requireNonNull(internalKafkaAdminClient, "Kafka admin client cannot be null!");
     this.pubSubTopicRepository = pubSubTopicRepository;
-    LOGGER.debug("Created KafkaAdminClient with properties: {}", apacheKafkaAdminConfig.getAdminProperties());
+    LOGGER.info("Created KafkaAdminClient with properties: {}", apacheKafkaAdminConfig.getAdminProperties());
   }
 
   /**
@@ -528,6 +528,7 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
 
   @Override
   public void close() throws IOException {
+    LOGGER.info("Closing KafkaAdminClient: ", Thread.currentThread().getStackTrace());
     if (this.internalKafkaAdminClient != null) {
       try {
         this.internalKafkaAdminClient.close(Duration.ofSeconds(60));
