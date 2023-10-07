@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils.addUpdateSchemaForStore;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACTIVE_ACTIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
@@ -123,6 +124,7 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
+import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -2281,7 +2283,7 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean storeBeingConvertedToHybrid = !currStore.isHybrid() && updatedHybridStoreConfig != null
           && veniceHelixAdmin.isHybrid(updatedHybridStoreConfig);
 
-      // Update active-active replication and incremental push settings
+      // Update active-active replication config.
       setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
           .orElseGet(currStore::isActiveActiveReplicationEnabled);
@@ -2292,7 +2294,7 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.activeActiveReplicationEnabled = true;
         updatedConfigsList.add(ACTIVE_ACTIVE_REPLICATION_ENABLED);
       }
-
+      // Update incremental push config.
       setStore.incrementalPushEnabled =
           incrementalPushEnabled.map(addToUpdatedConfigList(updatedConfigsList, INCREMENTAL_PUSH_ENABLED))
               .orElseGet(currStore::isIncrementalPushEnabled);
@@ -2368,11 +2370,6 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.clientDecompressionEnabled =
           clientDecompressionEnabled.map(addToUpdatedConfigList(updatedConfigsList, CLIENT_DECOMPRESSION_ENABLED))
               .orElseGet(currStore::getClientDecompressionEnabled);
-      setStore.chunkingEnabled = chunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, CHUNKING_ENABLED))
-          .orElseGet(currStore::isChunkingEnabled);
-      setStore.rmdChunkingEnabled =
-          rmdChunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, RMD_CHUNKING_ENABLED))
-              .orElseGet(currStore::isRmdChunkingEnabled);
       setStore.batchGetLimit = batchGetLimit.map(addToUpdatedConfigList(updatedConfigsList, BATCH_GET_LIMIT))
           .orElseGet(currStore::getBatchGetLimit);
       setStore.numVersionsToPreserve =
@@ -2380,9 +2377,6 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::getNumVersionsToPreserve);
       setStore.isMigrating = storeMigration.map(addToUpdatedConfigList(updatedConfigsList, STORE_MIGRATION))
           .orElseGet(currStore::isMigrating);
-      setStore.writeComputationEnabled =
-          writeComputationEnabled.map(addToUpdatedConfigList(updatedConfigsList, WRITE_COMPUTATION_ENABLED))
-              .orElseGet(currStore::isWriteComputationEnabled);
       setStore.replicationMetadataVersionID = replicationMetadataVersionID
           .map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
           .orElse(currStore.getRmdVersion());
@@ -2483,46 +2477,47 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       /**
-       * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
-       * an updatedConfigsList will be used to represent which configs are updated by users.
-       */
-      setStore.replicateAllConfigs = replicateAllConfigs;
-      if (!replicateAllConfigs) {
-        if (updatedConfigsList.size() == 0) {
-          String errMsg =
-              "UpdateStore command failed for store " + storeName + ". The command didn't change any specific"
-                  + " store config and didn't specify \"--replicate-all-configs\" flag.";
-          LOGGER.error(errMsg);
-          throw new VeniceException(errMsg);
-        }
-        setStore.updatedConfigsList = updatedConfigsList;
-      } else {
-        setStore.updatedConfigsList = Collections.emptyList();
-      }
-
-      /**
        * Fabrics filter is not a store config, so we don't need to add it into {@link UpdateStore#updatedConfigsList}
        */
       setStore.regionsFilter = regionsFilter.orElse(null);
 
+      // Update Partial Update config.
+      boolean partialUpdateConfigUpdated = ParentControllerConfigUpdateUtils.checkAndMaybeApplyPartialUpdateConfig(
+          this,
+          clusterName,
+          storeName,
+          writeComputationEnabled,
+          setStore,
+          storeBeingConvertedToHybrid);
+      if (partialUpdateConfigUpdated) {
+        updatedConfigsList.add(WRITE_COMPUTATION_ENABLED);
+      }
+      boolean partialUpdateJustEnabled = setStore.writeComputationEnabled && !currStore.isWriteComputationEnabled();
+      // Update Chunking config.
+      boolean chunkingConfigUpdated = ParentControllerConfigUpdateUtils
+          .checkAndMaybeApplyChunkingConfigChange(this, clusterName, storeName, chunkingEnabled, setStore);
+      if (chunkingConfigUpdated) {
+        updatedConfigsList.add(CHUNKING_ENABLED);
+      }
+
+      // Update RMD Chunking config.
+      boolean rmdChunkingConfigUpdated = ParentControllerConfigUpdateUtils
+          .checkAndMaybeApplyRmdChunkingConfigChange(this, clusterName, storeName, rmdChunkingEnabled, setStore);
+      if (rmdChunkingConfigUpdated) {
+        updatedConfigsList.add(RMD_CHUNKING_ENABLED);
+      }
+
+      // Validate Amplification Factor config based on latest A/A and partial update status.
       if ((setStore.getActiveActiveReplicationEnabled() || setStore.getWriteComputationEnabled())
           && updatedPartitionerConfig.getAmplificationFactor() > 1) {
         throw new VeniceHttpException(
             HttpStatus.SC_BAD_REQUEST,
-            "Non-default amplification factor is not compatible with active-active replication and/or write compute.",
+            "Non-default amplification factor is not compatible with active-active replication and/or partial update.",
             ErrorType.BAD_REQUEST);
       }
 
-      final boolean writeComputeJustEnabled =
-          writeComputationEnabled.orElse(false) && !currStore.isWriteComputationEnabled();
-      if (writeComputeJustEnabled) {
-        // Dry-run generating Write Compute schemas before sending admin messages to enable Write Compute because Write
-        // Compute schema generation may fail due to some reasons. If that happens, abort the store update process.
-        addWriteComputeSchemaForStore(clusterName, storeName, true);
-      }
-
-      if (!veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
-          && veniceHelixAdmin.isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
+      if (!getVeniceHelixAdmin().isHybrid(currStore.getHybridStoreConfig())
+          && getVeniceHelixAdmin().isHybrid(setStore.getHybridStoreConfig()) && setStore.getPartitionNum() == 0) {
         // This is a new hybrid store and partition count is not specified.
         VeniceControllerClusterConfig config =
             getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
@@ -2543,6 +2538,24 @@ public class VeniceParentHelixAdmin implements Admin {
         updatedConfigsList.add(PARTITION_COUNT);
       }
 
+      /**
+       * By default, parent controllers will not try to replicate the unchanged store configs to child controllers;
+       * an updatedConfigsList will be used to represent which configs are updated by users.
+       */
+      setStore.replicateAllConfigs = replicateAllConfigs;
+      if (!replicateAllConfigs) {
+        if (updatedConfigsList.isEmpty()) {
+          String errMsg =
+              "UpdateStore command failed for store " + storeName + ". The command didn't change any specific"
+                  + " store config and didn't specify \"--replicate-all-configs\" flag.";
+          LOGGER.error(errMsg);
+          throw new VeniceException(errMsg);
+        }
+        setStore.updatedConfigsList = new ArrayList<>(updatedConfigsList);
+      } else {
+        setStore.updatedConfigsList = Collections.emptyList();
+      }
+
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
@@ -2550,12 +2563,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
       final boolean readComputeJustEnabled =
           readComputationEnabled.orElse(false) && !currStore.isReadComputationEnabled();
-      if ((!currStore.isSystemStore()) && (readComputeJustEnabled || writeComputeJustEnabled)) {
+      if ((!currStore.isSystemStore()) && (readComputeJustEnabled || partialUpdateJustEnabled)) {
         addSupersetSchemaForStore(clusterName, storeName, currStore.isActiveActiveReplicationEnabled());
       }
-      if (writeComputeJustEnabled) {
-        LOGGER.info("Enabling write compute for the first time on store {} in cluster {}", storeName, clusterName);
-        addWriteComputeSchemaForStore(clusterName, storeName, false);
+      if (partialUpdateJustEnabled) {
+        LOGGER.info("Enabling partial update for the first time on store: {} in cluster: {}", storeName, clusterName);
+        addUpdateSchemaForStore(this, clusterName, storeName, false);
       }
 
       /**
@@ -2603,36 +2616,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
     if (activeActiveReplicationEnabled) {
       updateReplicationMetadataSchema(clusterName, storeName, supersetSchema, supersetSchemaID);
-    }
-  }
-
-  private void addWriteComputeSchemaForStore(String clusterName, String storeName, boolean dryRun) {
-    Collection<SchemaEntry> valueSchemaEntries = getValueSchemas(clusterName, storeName);
-
-    List<SchemaEntry> writeComputeSchemaEntries = new ArrayList<>(valueSchemaEntries.size());
-    int maxId = valueSchemaEntries.stream().map(SchemaEntry::getId).max(Comparator.naturalOrder()).get();
-
-    for (SchemaEntry valueSchemaEntry: valueSchemaEntries) {
-      try {
-        Schema writeComputeSchema =
-            writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
-        writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
-      } catch (Exception e) {
-        // Allow failure in write-compute schema generation in all schema except the latest value schema
-        if (valueSchemaEntry.getId() == maxId) {
-          throw new VeniceException(
-              "For store " + storeName + " cannot generate update schema for value schema ID :"
-                  + valueSchemaEntry.getId() + ", top level field probably missing defaults.",
-              e);
-        }
-      }
-    }
-    // Start adding write compute schemas only after all write compute schema generation is successful.
-    if (dryRun) {
-      return;
-    }
-    for (SchemaEntry writeComputeSchemaEntry: writeComputeSchemaEntries) {
-      addDerivedSchema(clusterName, storeName, writeComputeSchemaEntry.getId(), writeComputeSchemaEntry.getSchemaStr());
     }
   }
 
