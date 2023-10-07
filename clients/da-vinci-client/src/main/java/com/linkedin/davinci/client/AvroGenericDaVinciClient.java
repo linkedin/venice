@@ -370,7 +370,27 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   @Override
   public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
-    throw new VeniceClientException("streamingBatchGet is not supported for DaVinci Client");
+    // DaVinci client doesn't do streaming batch get, so implement streaming batch get using the batch get functionality
+    CompletableFuture<Map<K, V>> batchGetResponseFuture = batchGet(keys);
+    batchGetResponseFuture.whenComplete((batchGetResponse, throwable) -> {
+      if (throwable != null) {
+        callback.onCompletion(Optional.of(new VeniceClientException("Request failed with exception ", throwable)));
+        return;
+      }
+
+      for (Map.Entry<K, V> responseEntry: batchGetResponse.entrySet()) {
+        callback.onRecordReceived(responseEntry.getKey(), responseEntry.getValue());
+      }
+
+      Set<K> missingKeys = new HashSet<>(keys);
+      missingKeys.removeAll(batchGetResponse.keySet());
+
+      for (K missingKey: missingKeys) {
+        callback.onRecordReceived(missingKey, null);
+      }
+
+      callback.onCompletion(Optional.empty());
+    });
   }
 
   @Override
