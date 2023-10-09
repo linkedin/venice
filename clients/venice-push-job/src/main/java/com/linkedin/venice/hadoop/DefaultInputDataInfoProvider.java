@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
 import com.github.luben.zstd.ZstdDictTrainer;
@@ -100,8 +99,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   @Override
   public InputDataInfo validateInputAndGetInfo(String inputUri) throws Exception {
     long inputModificationTime = getInputLastModificationTime(inputUri);
-    FileSystem fs = FileSystem.get(new Configuration());
     Path srcPath = new Path(inputUri);
+    FileSystem fs = srcPath.getFileSystem(getConfiguration());
     FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
 
     if (fileStatuses == null || fileStatuses.length == 0) {
@@ -324,10 +323,25 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     return field.schema();
   }
 
+  private Configuration getConfiguration() {
+    Configuration conf = new Configuration();
+    for (String key: props.keySet()) {
+      if (key.startsWith(HADOOP_PREFIX)) {
+        String hadoopKey = key.substring(HADOOP_PREFIX.length());
+        if (conf.get(hadoopKey) != null) {
+          LOGGER.warn("Hadoop configuration {} is overwritten by {}", hadoopKey, key);
+        }
+        conf.set(hadoopKey, props.getString(key));
+      }
+    }
+    LOGGER.info("Hadoop configuration: {} {}", conf.get("fs.s3.awsAccessKeyId"), conf.get("fs.s3.awsSecretAccessKey"));
+    return conf;
+  }
+
   @Override
   public long getInputLastModificationTime(String inputUri) throws IOException {
     Path srcPath = new Path(inputUri);
-    FileSystem fs = srcPath.getFileSystem(new Configuration());
+    FileSystem fs = srcPath.getFileSystem(getConfiguration());
     try {
       return fs.getFileStatus(srcPath).getModificationTime();
     } catch (FileNotFoundException e) {
