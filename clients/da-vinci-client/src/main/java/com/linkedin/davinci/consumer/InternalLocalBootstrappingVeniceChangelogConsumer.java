@@ -378,13 +378,15 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceChan
         String offsetString = offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE);
         VeniceChangeCoordinate localCheckpoint;
         try {
-          localCheckpoint = StringUtils.isEmpty(offsetString)
-              ? new VeniceChangeCoordinate(
-                  getTopicPartition(partition).getPubSubTopic().getName(),
-                  new ApacheKafkaOffsetPosition(offsetRecord.getLocalVersionTopicOffset()),
-                  partition)
-              : VeniceChangeCoordinate.decodeStringAndConvertToVeniceChangeCoordinate(
-                  offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE));
+          if (StringUtils.isEmpty(offsetString)) {
+            localCheckpoint = new VeniceChangeCoordinate(
+                getTopicPartition(partition).getPubSubTopic().getName(),
+                new ApacheKafkaOffsetPosition(offsetRecord.getLocalVersionTopicOffset()),
+                partition);
+          } else {
+            localCheckpoint = VeniceChangeCoordinate.decodeStringAndConvertToVeniceChangeCoordinate(
+                offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE));
+          }
         } catch (IOException | ClassNotFoundException e) {
           throw new VeniceException("Failed to decode local hhange capture coordinate chekcpoint with exception: ", e);
         }
