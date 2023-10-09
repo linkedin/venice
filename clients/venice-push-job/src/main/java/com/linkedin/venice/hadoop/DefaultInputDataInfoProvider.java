@@ -326,8 +326,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
 
   @Override
   public long getInputLastModificationTime(String inputUri) throws IOException {
-    FileSystem fs = FileSystem.get(new Configuration());
     Path srcPath = new Path(inputUri);
+    FileSystem fs = srcPath.getFileSystem(new Configuration());
     try {
       return fs.getFileStatus(srcPath).getModificationTime();
     } catch (FileNotFoundException e) {
