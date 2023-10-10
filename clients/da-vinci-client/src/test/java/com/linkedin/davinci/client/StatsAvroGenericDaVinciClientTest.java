@@ -1,7 +1,7 @@
 package com.linkedin.davinci.client;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -9,13 +9,16 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -72,19 +75,24 @@ public class StatsAvroGenericDaVinciClientTest {
     String storeName = "test_store";
     Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2", "key3"));
     AvroGenericDaVinciClient mockClient = mock(AvroGenericDaVinciClient.class);
-    CompletableFuture<String> errorFuture = new CompletableFuture<>();
-    errorFuture.completeExceptionally(new RuntimeException("mock_exception_thrown_by_async_future"));
-    CompletableFuture<Map<String, String>> okFuture = new CompletableFuture<>();
     Map<String, String> resultMap = new HashMap<>();
     resultMap.put("key1", "value1");
     resultMap.put("key2", "value2");
-    okFuture.complete(resultMap);
-
-    doCallRealMethod().when(mockClient).streamingBatchGet(any(), any());
-
-    when(mockClient.batchGet(any())).thenReturn(okFuture)
-        .thenReturn(errorFuture)
-        .thenThrow(new RuntimeException("mock_exception_by_function_directly"));
+    Set<String> missingKeys = Collections.singleton("key3");
+    doAnswer(invocation -> {
+      StreamingCallback callback = invocation.getArgument(1);
+      resultMap.forEach((k, v) -> callback.onRecordReceived(k, v));
+      missingKeys.forEach(k -> callback.onRecordReceived(k, null));
+      callback.onCompletion(Optional.empty());
+      return null;
+    }).doAnswer(invocation -> {
+      StreamingCallback callback = invocation.getArgument(1);
+      callback.onCompletion(Optional.of(new RuntimeException("mock_exception_thrown_by_callback")));
+      return null;
+    })
+        .doThrow(new RuntimeException("mock_exception_by_function_directly"))
+        .when(mockClient)
+        .streamingBatchGet(any(), any());
     when(mockClient.getStoreName()).thenReturn(storeName);
 
     MetricsRepository metricsRepository = new MetricsRepository();
