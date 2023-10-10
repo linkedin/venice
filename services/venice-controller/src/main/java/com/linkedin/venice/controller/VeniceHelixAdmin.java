@@ -16,6 +16,7 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.PushType;
+import static com.linkedin.venice.meta.Version.VENICE_RE_PUSH_PUSH_ID_PREFIX;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
@@ -2642,9 +2643,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         if (startIngestion) {
-          // Early delete backup version on start of a push, controlled by store config earlyDeleteBackupEnabled
+          // Early delete backup version on start of a push, except for repush.
           if (backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
-              && multiClusterConfigs.getControllerConfig(clusterName).isEarlyDeleteBackUpEnabled()) {
+              && multiClusterConfigs.getControllerConfig(clusterName).isEarlyDeleteBackUpEnabled()
+              && !pushJobId.startsWith(VENICE_RE_PUSH_PUSH_ID_PREFIX)) {
             try {
               retireOldStoreVersions(clusterName, storeName, true, currentVersionBeforePush);
             } catch (Throwable t) {
