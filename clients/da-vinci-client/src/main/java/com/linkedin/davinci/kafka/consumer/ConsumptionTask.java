@@ -145,6 +145,7 @@ class ConsumptionTask implements Runnable {
           }
           stats.recordConsumerRecordsProducingToWriterBufferLatency(
               LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
+          stats.recordNonZeroPollResultNum(polledPubSubMessagesCount);
           bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
           recordsThrottler.accept(polledPubSubMessagesCount);
           cleaner.unsubscribe(topicPartitionsToUnsub);
