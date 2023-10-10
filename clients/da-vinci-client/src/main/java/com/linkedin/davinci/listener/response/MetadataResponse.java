@@ -51,6 +51,10 @@ public class MetadataResponse {
     responseRecord.setHelixGroupInfo(helixGroupInfo);
   }
 
+  public void setReadComputationEnabled(boolean readComputationEnabled) {
+    responseRecord.setReadComputationEnabled(readComputationEnabled);
+  }
+
   public ByteBuf getResponseBody() {
     return Unpooled.wrappedBuffer(serializedResponse());
   }

@@ -53,6 +53,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
@@ -82,6 +83,7 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
 
   private final AtomicInteger currentVersion = new AtomicInteger();
   private final AtomicInteger latestSuperSetValueSchemaId = new AtomicInteger();
+  private final AtomicBoolean readComputationEnabled = new AtomicBoolean();
   private final AtomicReference<SchemaData> schemas = new AtomicReference<>();
   // A map of version partition string to a list of ready to serve instances.
   private final Map<String, List<String>> readyToServeInstancesMap = new VeniceConcurrentHashMap<>();
@@ -340,6 +342,7 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
       if (dictionaryFetchFutures.length > 0) {
         CompletableFuture.allOf(dictionaryFetchFutures).get(ZSTD_DICT_FETCH_TIMEOUT, TimeUnit.SECONDS);
       }
+      readComputationEnabled.set(storeProperties.readComputationEnabled);
       currentVersion.set(storeProperties.currentVersion);
       clusterStats.updateCurrentVersion(currentVersion.get());
       latestSuperSetValueSchemaId.set(storeProperties.latestSuperSetValueSchemaId);
@@ -418,4 +421,9 @@ public abstract class VeniceClientBasedMetadata extends AbstractStoreMetadata {
   }
 
   protected abstract StoreMetaValue getStoreMetaValue(StoreMetaKey key);
+
+  @Override
+  public boolean isReadComputationEnabled() {
+    return readComputationEnabled.get();
+  }
 }

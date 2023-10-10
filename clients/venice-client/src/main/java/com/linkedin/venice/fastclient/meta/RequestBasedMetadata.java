@@ -48,6 +48,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -71,6 +72,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final AtomicInteger currentVersion = new AtomicInteger();
   private final AtomicInteger latestSuperSetValueSchemaId = new AtomicInteger();
   private final AtomicReference<SchemaData> schemas = new AtomicReference<>();
+  private final AtomicBoolean readComputationEnabled = new AtomicBoolean();
   private final Map<String, List<String>> readyToServeInstancesMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, VenicePartitioner> versionPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
@@ -256,6 +258,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       routingStrategy.updateHelixGroupInfo(helixGroupInfo);
 
       latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
+      readComputationEnabled.set(metadataResponse.getReadComputationEnabled());
       // Wait for dictionary fetch to finish if there is one
       try {
         if (dictionaryFetchFuture != null) {
@@ -455,5 +458,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   public long getRefreshIntervalInSeconds() {
     return refreshIntervalInSeconds;
+  }
+
+  @Override
+  public boolean isReadComputationEnabled() {
+    return readComputationEnabled.get();
   }
 }

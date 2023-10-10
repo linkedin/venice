@@ -1296,6 +1296,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       response.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
       response.setRoutingInfo(routingInfo);
       response.setHelixGroupInfo(helixGroupInfo);
+      response.setReadComputationEnabled(store.isReadComputationEnabled());
     } catch (VeniceException e) {
       LOGGER.warn("Failed to populate request based metadata for store: {}.", storeName);
       response.setMessage("Failed to populate metadata for store: " + storeName + " due to: " + e.getMessage());

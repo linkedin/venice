@@ -612,6 +612,11 @@ public class TestClientSimulator implements Client {
       public DerivedSchemaEntry getLatestUpdateSchema() {
         return null;
       }
+
+      @Override
+      public boolean isReadComputationEnabled() {
+        return false;
+      }
     };
 
     metadata.setRoutingStrategy(new UnitTestRoutingStrategy());
