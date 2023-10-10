@@ -26,6 +26,12 @@ dependencies {
     exclude group: 'javax.servlet'
   }
 
+  implementation (libraries.hadoopAws){
+    // Exclude transitive dependency
+    exclude group: 'org.apache.avro'
+    exclude group: 'javax.servlet'
+  }
+
   implementation project(':clients:venice-thin-client') // Needed by the Post Bulk-load Analysis Job
 
   implementation libraries.commonsIo
