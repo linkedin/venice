@@ -349,7 +349,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
   }
 
-  private CompletableFuture<Map<K, V>> batchGetInternal(Set<K> keys) {
+  CompletableFuture<Map<K, V>> batchGetInternal(Set<K> keys) {
     throwIfNotReady();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
@@ -377,12 +377,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         return;
       }
 
-      for (Map.Entry<K, V> responseEntry: batchGetResponse.entrySet()) {
-        callback.onRecordReceived(responseEntry.getKey(), responseEntry.getValue());
-      }
-
       Set<K> missingKeys = new HashSet<>(keys);
-      missingKeys.removeAll(batchGetResponse.keySet());
+      for (Map.Entry<K, V> responseEntry: batchGetResponse.entrySet()) {
+        K key = responseEntry.getKey();
+        callback.onRecordReceived(key, responseEntry.getValue());
+        missingKeys.remove(key);
+      }
 
       for (K missingKey: missingKeys) {
         callback.onRecordReceived(missingKey, null);
